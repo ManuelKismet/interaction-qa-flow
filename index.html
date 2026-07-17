@@ -102,6 +102,48 @@
       margin-top: 1rem;
     }
 
+    .control-group {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 250, 240, 0.7);
+      margin: 0;
+      padding: 0.65rem;
+    }
+
+    .control-group summary {
+      align-items: center;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+      list-style: none;
+    }
+
+    .control-group summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .control-group summary::after {
+      content: "+";
+      color: var(--muted);
+      font-size: 1.1rem;
+    }
+
+    .control-group[open] summary::after {
+      content: "-";
+    }
+
+    .control-actions {
+      display: grid;
+      gap: 0.55rem;
+      margin-top: 0.65rem;
+    }
+
+    .primary-actions {
+      display: grid;
+      gap: 0.55rem;
+    }
+
     .file-input {
       display: none;
     }
@@ -171,7 +213,7 @@
       color: #fff;
     }
 
-    details {
+    aside > details:not(.control-group) {
       border-top: 1px solid var(--line);
       margin-top: 1rem;
       padding-top: 0.75rem;
@@ -691,24 +733,41 @@
         </div>
       </div>
       <div class="controls">
-        <button id="addQuestion" type="button">Add shared question</button>
-        <button id="addParticipantQuestion" type="button">Add participant question</button>
-        <button id="exportJson" type="button">Save JSON file</button>
-        <button id="importJson" type="button">Open JSON file</button>
-        <button id="exportCsv" type="button">Export CSV</button>
-        <button id="printFlow" type="button">Print / Save PDF</button>
-        <button id="resetFlow" type="button">Clear flow</button>
+        <div class="primary-actions" aria-label="Question actions">
+          <button id="addQuestion" type="button">Add shared question</button>
+          <button id="addParticipantQuestion" type="button">Add participant question</button>
+        </div>
+        <details class="control-group">
+          <summary>Flow files</summary>
+          <div class="control-actions">
+            <button id="exportJson" type="button">Save JSON file</button>
+            <button id="importJson" type="button">Open JSON file</button>
+            <button id="resetFlow" type="button">Clear flow</button>
+          </div>
+        </details>
         <input id="importFile" class="file-input" type="file" accept="application/json,.json">
-        <select id="templateSelect" class="template-select" aria-label="Load a template">
-          <option value="">Choose template...</option>
-        </select>
-        <input id="templateName" class="subtle-input" type="text" placeholder="Template name">
-        <button id="loadTemplate" type="button">Load template</button>
-        <button id="saveTemplate" type="button">Save as template</button>
-        <button id="deleteTemplate" type="button">Delete template</button>
-        <button id="exportTemplates" type="button">Export templates</button>
-        <button id="importTemplates" type="button">Import templates</button>
+        <details class="control-group" open>
+          <summary>Templates</summary>
+          <div class="control-actions">
+            <select id="templateSelect" class="template-select" aria-label="Load a template">
+              <option value="">Choose template...</option>
+            </select>
+            <input id="templateName" class="subtle-input" type="text" placeholder="Template name">
+            <button id="loadTemplate" type="button">Load template</button>
+            <button id="saveTemplate" type="button">Save as template</button>
+            <button id="deleteTemplate" type="button">Delete template</button>
+            <button id="exportTemplates" type="button">Export templates</button>
+            <button id="importTemplates" type="button">Import templates</button>
+          </div>
+        </details>
         <input id="importTemplateFile" class="file-input" type="file" accept="application/json,.json">
+        <details class="control-group">
+          <summary>Output</summary>
+          <div class="control-actions">
+            <button id="exportCsv" type="button">Export CSV</button>
+            <button id="printFlow" type="button">Print / Save PDF</button>
+          </div>
+        </details>
       </div>
       <p class="privacy-note">Privacy: this tool stores data locally in your browser. Nothing is uploaded unless you export and share a file yourself.</p>
       <h2>Flow Rules</h2>
