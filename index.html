@@ -721,7 +721,7 @@
           <li>Add shared questions when everyone should answer the same prompt.</li>
           <li>Add participant questions when only the active participant needs that prompt.</li>
           <li>Switch participants to capture separate answers against the same shared questions.</li>
-          <li>Branch from any answer if a new participant-specific follow-up appears.</li>
+          <li>Use Add follow-up when an answer reveals a new participant-specific question.</li>
           <li>Save JSON files to reopen or share a flow later.</li>
           <li>Use Report view or Print / Save PDF when you need a read-only record.</li>
         </ul>
@@ -1045,7 +1045,6 @@
         const answerNode = createAnswerNode(item, answerRecord, {
           label: isShared ? `Answer: ${getActiveParticipant().name}` : "Answer",
           placeholder: `Type ${getActiveParticipant().name}'s answer here...`,
-          hint: "Double-click",
           onInput: (answerValue) => {
             const nextItem = visibleItems[index + 1];
             if (answerValue.trim() && nextItem && !nextItem.open) {
@@ -1116,7 +1115,7 @@
       node.className = `node answer-node ${item.open ? "visible" : ""}`;
       const header = document.createElement("div");
       header.className = "node-header";
-      header.innerHTML = `<span class="tag answer">${escapeHtml(options.label)}</span><span class="status">${escapeHtml(options.hint)}</span>`;
+      header.innerHTML = `<span class="tag answer">${escapeHtml(options.label)}</span>`;
       const actionRow = document.createElement("div");
       actionRow.className = "button-row";
       const branchButton = document.createElement("button");
@@ -1141,11 +1140,6 @@
         if (shouldRender) {
           render();
         }
-      });
-      answer.addEventListener("dblclick", () => {
-        answerRecord.branches.push(createNode("New follow-up question", true, "participant", activeParticipantId));
-        saveFlow();
-        render();
       });
       node.append(header, answer);
       return node;
@@ -1189,7 +1183,7 @@
       });
       const branchAnswerStack = document.createElement("div");
       branchAnswerStack.className = "answer-stack";
-      const branchAnswer = createAnswerNode(branch, branchAnswerRecord, { label: "Follow-up A", placeholder: "Answer the follow-up, then continue with the original path...", hint: "Double-click", onInput: () => false });
+      const branchAnswer = createAnswerNode(branch, branchAnswerRecord, { label: "Follow-up A", placeholder: "Answer the follow-up, then continue with the original path...", onInput: () => false });
       branchAnswer.classList.add("visible");
       branchAnswerStack.append(branchAnswer);
       if (branchAnswerRecord.branches.length) {
