@@ -395,8 +395,11 @@
       display: grid;
       gap: 0.9rem;
       margin: 0.85rem 0 0;
-      padding-left: 1rem;
-      border-left: 2px solid rgba(54, 95, 159, 0.32);
+      padding: 0.85rem 0.85rem 0.85rem 1rem;
+      border: 1px solid rgba(54, 95, 159, 0.2);
+      border-left: 4px solid rgba(54, 95, 159, 0.42);
+      border-radius: 8px;
+      background: rgba(233, 240, 250, 0.48);
       position: relative;
     }
 
@@ -430,6 +433,15 @@
       align-items: start;
       position: relative;
       max-width: 42rem;
+    }
+
+    .branch-pair .node {
+      border-color: rgba(54, 95, 159, 0.24);
+      background: rgba(255, 252, 246, 0.94);
+    }
+
+    .branch-pair > .node:first-child {
+      border-left: 4px solid rgba(54, 95, 159, 0.58);
     }
 
     .branch-pair::after {
