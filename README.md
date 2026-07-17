@@ -23,7 +23,7 @@ It is designed for conversations and workflows where you start with a planned qu
 - Follow-up branches from any answer
 - Nested follow-up branches
 - Editable questions and answers
-- Separate answer clearing and question deletion
+- Question deletion
 - Local autosave in the browser
 - Autosave history summary
 - Named JSON export files
@@ -31,7 +31,9 @@ It is designed for conversations and workflows where you start with a planned qu
 - CSV export
 - Read-only report view
 - Print / Save PDF support
-- Built-in templates
+- One built-in default template
+- Local custom templates for repeated question sets
+- Template import and export
 - No login or backend required
 
 ## Excel Workbook
@@ -66,21 +68,18 @@ If you clear browser storage, local autosaved data may be removed. Use **Save JS
 2. Add shared questions when every participant should answer the same prompt.
 3. Add participants and switch between them to capture separate answers.
 4. Add participant questions when only the active participant needs that prompt.
-5. Use **Add follow-up** or double-click an answer to create a participant-specific branch.
+5. Use **Add follow-up** to create a participant-specific branch.
 6. Use **Report view** for a read-only summary of the active participant view.
 7. Use **Save JSON file** to keep a reusable copy.
 8. Use **Open JSON file** to reopen a saved flow.
 
 ## Templates
 
-The app includes starter templates for:
+The app includes one default template for a general interaction QA flow.
 
-- Support call
-- Incident report
-- Audit checklist
-- Requirements discovery
+You can also save your own recurring question sets as local templates. Custom templates are stored in your browser, keep the question and branch structure, and clear answer text so sensitive responses are not carried into the reusable template.
 
-Loading a template replaces the current flow after confirmation when data already exists.
+Use **Export templates** and **Import templates** to share template sets with another browser, device, or team. Loading a template replaces the current flow after confirmation when data already exists.
 
 ## Hosting
 

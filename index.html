@@ -700,12 +700,15 @@
         <button id="resetFlow" type="button">Clear flow</button>
         <input id="importFile" class="file-input" type="file" accept="application/json,.json">
         <select id="templateSelect" class="template-select" aria-label="Load a template">
-          <option value="">Load template...</option>
-          <option value="support">Support call</option>
-          <option value="incident">Incident report</option>
-          <option value="audit">Audit checklist</option>
-          <option value="requirements">Requirements discovery</option>
+          <option value="">Choose template...</option>
         </select>
+        <input id="templateName" class="subtle-input" type="text" placeholder="Template name">
+        <button id="loadTemplate" type="button">Load template</button>
+        <button id="saveTemplate" type="button">Save as template</button>
+        <button id="deleteTemplate" type="button">Delete template</button>
+        <button id="exportTemplates" type="button">Export templates</button>
+        <button id="importTemplates" type="button">Import templates</button>
+        <input id="importTemplateFile" class="file-input" type="file" accept="application/json,.json">
       </div>
       <p class="privacy-note">Privacy: this tool stores data locally in your browser. Nothing is uploaded unless you export and share a file yourself.</p>
       <h2>Flow Rules</h2>
@@ -722,6 +725,7 @@
           <li>Add participant questions when only the active participant needs that prompt.</li>
           <li>Switch participants to capture separate answers against the same shared questions.</li>
           <li>Use Add follow-up when an answer reveals a new participant-specific question.</li>
+          <li>Save recurring question sets as local templates, then export them when a team needs the same set.</li>
           <li>Save JSON files to reopen or share a flow later.</li>
           <li>Use Report view or Print / Save PDF when you need a read-only record.</li>
         </ul>
@@ -751,12 +755,15 @@
   <script>
     const storageKey = "interaction-qa-flow-v2";
     const historyKey = "interaction-qa-flow-history-v1";
+    const templateStorageKey = "interaction-qa-flow-templates-v1";
     const defaultParticipantId = "participant-1";
     const flowElement = document.querySelector("#flow");
     const statusElement = document.querySelector("#status");
     const historyElement = document.querySelector("#historyList");
     const participantSelect = document.querySelector("#participantSelect");
     const newParticipantNameField = document.querySelector("#newParticipantName");
+    const templateSelect = document.querySelector("#templateSelect");
+    const templateNameField = document.querySelector("#templateName");
     const toggleReportButton = document.querySelector("#toggleReport");
     const viewButtons = {
       mixed: document.querySelector("#viewMixed"),
@@ -776,12 +783,7 @@
     };
 
     const defaultFlow = [];
-    const templates = {
-      support: { meta: { caseTitle: "Support call QA", interviewer: "", interviewee: "" }, questions: ["What issue or request is being reported?", "When did it start or when was it first noticed?", "What steps have already been tried?", "What outcome would resolve this for the user?"] },
-      incident: { meta: { caseTitle: "Incident report QA", interviewer: "", interviewee: "" }, questions: ["What happened?", "Where did it happen?", "When did it happen?", "Who or what was affected?", "What immediate action was taken?"] },
-      audit: { meta: { caseTitle: "Audit checklist QA", interviewer: "", interviewee: "" }, questions: ["What process, control, or record is being reviewed?", "What evidence is available?", "Does the evidence match the expected requirement?", "What exception, gap, or follow-up is needed?"] },
-      requirements: { meta: { caseTitle: "Requirements discovery QA", interviewer: "", interviewee: "" }, questions: ["What problem needs to be solved?", "Who is affected by this problem?", "What does a successful outcome look like?", "What constraints or dependencies matter?", "What questions remain open?"] }
-    };
+    const builtInTemplates = [{ id: "general", name: "General Interaction QA", meta: { caseTitle: "General Interaction QA", interviewer: "", interviewee: "" }, questions: ["What is the main topic or request?", "Who is affected or involved?", "What information is already known?", "What follow-up is needed next?"] }];
 
     let state = loadState();
     let flow = state.flow;
@@ -915,6 +917,213 @@
         return Array.isArray(parsed) ? parsed : [];
       } catch {
         return [];
+      }
+    }
+
+    function loadUserTemplates() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(templateStorageKey) || "[]");
+        const records = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.templates) ? parsed.templates : []);
+        return records.map((template) => normalizeTemplateRecord(template)).filter(Boolean);
+      } catch {
+        return [];
+      }
+    }
+
+    function saveUserTemplates(templates) {
+      localStorage.setItem(templateStorageKey, JSON.stringify(templates, null, 2));
+    }
+
+    function normalizeTemplateRecord(template) {
+      if (!template || typeof template !== "object") {
+        return null;
+      }
+      const participantsList = Array.isArray(template.participants) && template.participants.length
+        ? template.participants.map((participant, index) => ({ id: participant.id || (index === 0 ? defaultParticipantId : crypto.randomUUID()), name: participant.name || `Participant ${index + 1}` }))
+        : defaultParticipants();
+      const activeId = participantsList.some((participant) => participant.id === template.activeParticipantId) ? template.activeParticipantId : participantsList[0].id;
+      const templateFlow = Array.isArray(template.flow)
+        ? template.flow.map((item) => normalizeNode(item, "New question", "shared", activeId))
+        : (Array.isArray(template.questions) ? template.questions.map((question) => createPreparedNode(question)) : []);
+      return {
+        id: typeof template.id === "string" && template.id ? template.id : crypto.randomUUID(),
+        name: typeof template.name === "string" && template.name.trim() ? template.name.trim() : "Imported template",
+        meta: { ...defaultMeta, ...(template.meta || {}) },
+        participants: participantsList,
+        activeParticipantId: activeId,
+        viewMode: ["mixed", "shared", "participant"].includes(template.viewMode) ? template.viewMode : "mixed",
+        flow: createTemplateFlowSnapshot(templateFlow),
+        createdAt: template.createdAt || new Date().toISOString(),
+        updatedAt: template.updatedAt || new Date().toISOString()
+      };
+    }
+
+    function createTemplateFlowSnapshot(items) {
+      return items.map((item) => {
+        const answers = {};
+        Object.entries(item.answers || {}).forEach(([participantKey, answerRecord]) => {
+          answers[participantKey] = {
+            answer: "",
+            branchesCollapsed: false,
+            branches: createTemplateFlowSnapshot(answerRecord.branches || [])
+          };
+        });
+        return {
+          question: item.question,
+          scope: item.scope,
+          participantId: item.participantId,
+          open: item.open,
+          answers
+        };
+      });
+    }
+
+    function renderTemplateOptions() {
+      const selectedValue = templateSelect.value;
+      const userTemplates = loadUserTemplates();
+      const builtInOptions = builtInTemplates.map((template) => `<option value="builtin:${template.id}">Default: ${escapeHtml(template.name)}</option>`).join("");
+      const userOptions = userTemplates.map((template) => `<option value="user:${template.id}">${escapeHtml(template.name)}</option>`).join("");
+      templateSelect.innerHTML = `<option value="">Choose template...</option>${builtInOptions}${userOptions ? `<option disabled>-- My templates --</option>${userOptions}` : ""}`;
+      if ([...templateSelect.options].some((option) => option.value === selectedValue)) {
+        templateSelect.value = selectedValue;
+      }
+    }
+
+    function getSelectedTemplate() {
+      const [source, id] = templateSelect.value.split(":");
+      if (source === "builtin") {
+        return { source, template: builtInTemplates.find((template) => template.id === id) };
+      }
+      if (source === "user") {
+        return { source, template: loadUserTemplates().find((template) => template.id === id) };
+      }
+      return { source: "", template: null };
+    }
+
+    function instantiateTemplateNode(item) {
+      const normalized = normalizeNode(item, "New question", item?.scope === "participant" ? "participant" : "shared", item?.participantId || defaultParticipantId);
+      const answers = {};
+      Object.entries(normalized.answers || {}).forEach(([participantKey, answerRecord]) => {
+        answers[participantKey] = {
+          answer: "",
+          branchesCollapsed: false,
+          branches: (answerRecord.branches || []).map((branch) => instantiateTemplateNode(branch))
+        };
+      });
+      return { ...normalized, id: crypto.randomUUID(), answers };
+    }
+
+    function createCurrentTemplate(name, existingTemplate = null) {
+      const savedAt = new Date().toISOString();
+      return {
+        id: existingTemplate?.id || crypto.randomUUID(),
+        name,
+        meta: structuredClone(meta),
+        participants: participants.map((participant) => ({ ...participant })),
+        activeParticipantId,
+        viewMode,
+        flow: createTemplateFlowSnapshot(flow),
+        createdAt: existingTemplate?.createdAt || savedAt,
+        updatedAt: savedAt
+      };
+    }
+
+    function saveCurrentTemplate() {
+      const name = templateNameField.value.trim() || meta.caseTitle.trim();
+      if (!name) {
+        alert("Enter a template name first.");
+        templateNameField.focus();
+        return;
+      }
+      const userTemplates = loadUserTemplates();
+      const existingIndex = userTemplates.findIndex((template) => template.name.toLowerCase() === name.toLowerCase());
+      if (existingIndex >= 0 && !confirm(`Replace the existing template named "${userTemplates[existingIndex].name}"?`)) {
+        return;
+      }
+      const existingTemplate = existingIndex >= 0 ? userTemplates[existingIndex] : null;
+      const nextTemplate = createCurrentTemplate(name, existingTemplate);
+      if (existingIndex >= 0) {
+        userTemplates[existingIndex] = nextTemplate;
+      } else {
+        userTemplates.push(nextTemplate);
+      }
+      saveUserTemplates(userTemplates);
+      renderTemplateOptions();
+      templateSelect.value = `user:${nextTemplate.id}`;
+      statusElement.textContent = `Saved template ${name}`;
+    }
+
+    function loadSelectedTemplate() {
+      const { source, template } = getSelectedTemplate();
+      if (!template) {
+        alert("Choose a template to load.");
+        return;
+      }
+      if (flow.length && !confirm("Load this template and replace the current flow?")) {
+        return;
+      }
+      meta = { ...defaultMeta, ...template.meta };
+      participants = source === "builtin" ? defaultParticipants() : template.participants.map((participant) => ({ ...participant }));
+      activeParticipantId = source === "builtin" ? defaultParticipantId : template.activeParticipantId;
+      viewMode = source === "builtin" ? "mixed" : template.viewMode;
+      flow = source === "builtin" ? template.questions.map((question) => createPreparedNode(question)) : template.flow.map((item) => instantiateTemplateNode(item));
+      reportMode = false;
+      syncMetaFields();
+      saveFlow();
+      render();
+      statusElement.textContent = `Loaded template ${template.name}`;
+    }
+
+    function deleteSelectedTemplate() {
+      const { source, template } = getSelectedTemplate();
+      if (source !== "user" || !template) {
+        alert("Choose one of your saved templates to delete.");
+        return;
+      }
+      if (!confirm(`Delete template "${template.name}"?`)) {
+        return;
+      }
+      saveUserTemplates(loadUserTemplates().filter((item) => item.id !== template.id));
+      templateSelect.value = "";
+      renderTemplateOptions();
+      statusElement.textContent = `Deleted template ${template.name}`;
+    }
+
+    function exportTemplates() {
+      const userTemplates = loadUserTemplates();
+      if (!userTemplates.length) {
+        alert("No saved templates to export yet.");
+        return;
+      }
+      const date = new Date().toISOString().slice(0, 10);
+      downloadFile(`interaction-qa-flow-templates-${date}.json`, JSON.stringify({ kind: "interaction-qa-flow-templates", version: 1, exportedAt: new Date().toISOString(), templates: userTemplates }, null, 2), "application/json");
+      statusElement.textContent = "Exported templates";
+    }
+
+    async function importTemplateJsonFile(file) {
+      if (!file) {
+        return;
+      }
+      try {
+        const imported = JSON.parse(await file.text());
+        const incoming = (Array.isArray(imported) ? imported : imported.templates).map((template) => normalizeTemplateRecord(template)).filter(Boolean);
+        if (!incoming.length) {
+          throw new Error("No templates found");
+        }
+        const userTemplates = loadUserTemplates();
+        incoming.forEach((template) => {
+          const existingIndex = userTemplates.findIndex((item) => item.id === template.id || item.name.toLowerCase() === template.name.toLowerCase());
+          if (existingIndex >= 0) {
+            userTemplates[existingIndex] = { ...template, id: userTemplates[existingIndex].id, createdAt: userTemplates[existingIndex].createdAt };
+          } else {
+            userTemplates.push(template);
+          }
+        });
+        saveUserTemplates(userTemplates);
+        renderTemplateOptions();
+        statusElement.textContent = `Imported ${incoming.length} template${incoming.length === 1 ? "" : "s"}`;
+      } catch {
+        alert("This file could not be opened. Choose a template JSON file exported from Interaction QA Flow.");
       }
     }
 
@@ -1307,25 +1516,6 @@
       flow = Array.isArray(imported.flow) ? imported.flow.map((item) => normalizeNode(item, "New question", "shared", activeParticipantId)) : [];
     }
 
-    function loadTemplate(templateKey) {
-      const template = templates[templateKey];
-      if (!template) {
-        return;
-      }
-      if (flow.length && !confirm("Load this template and replace the current flow?")) {
-        return;
-      }
-      meta = { ...defaultMeta, ...template.meta };
-      participants = defaultParticipants();
-      activeParticipantId = defaultParticipantId;
-      viewMode = "mixed";
-      flow = template.questions.map((question) => createPreparedNode(question));
-      reportMode = false;
-      syncMetaFields();
-      saveFlow();
-      render();
-    }
-
     function exportCsv() {
       const rows = [["flow_title", "owner", "participant", "scope", "type", "depth", "question", "answer", "returns_to"]];
       participants.forEach((participant) => {
@@ -1380,8 +1570,17 @@
     });
     document.querySelector("#exportCsv").addEventListener("click", exportCsv);
     document.querySelector("#printFlow").addEventListener("click", () => window.print());
-    document.querySelector("#templateSelect").addEventListener("change", (event) => {
-      loadTemplate(event.target.value);
+    templateSelect.addEventListener("change", () => {
+      const { source, template } = getSelectedTemplate();
+      templateNameField.value = source === "user" && template ? template.name : "";
+    });
+    document.querySelector("#loadTemplate").addEventListener("click", loadSelectedTemplate);
+    document.querySelector("#saveTemplate").addEventListener("click", saveCurrentTemplate);
+    document.querySelector("#deleteTemplate").addEventListener("click", deleteSelectedTemplate);
+    document.querySelector("#exportTemplates").addEventListener("click", exportTemplates);
+    document.querySelector("#importTemplates").addEventListener("click", () => document.querySelector("#importTemplateFile").click());
+    document.querySelector("#importTemplateFile").addEventListener("change", (event) => {
+      importTemplateJsonFile(event.target.files[0]);
       event.target.value = "";
     });
     toggleReportButton.addEventListener("click", () => {
@@ -1404,6 +1603,7 @@
 
     bindMetaFields();
     syncMetaFields();
+  renderTemplateOptions();
     saveFlow();
     renderHistory();
     render();
