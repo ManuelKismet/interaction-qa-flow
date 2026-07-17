@@ -713,7 +713,7 @@
         <li>Shared questions collect a separate answer for each participant.</li>
         <li>Participant questions appear only for the active participant.</li>
         <li>Any answer can add a participant-specific follow-up question.</li>
-        <li>Clear answers separately from deleting questions.</li>
+        <li>Edit or delete answer text directly in the answer field.</li>
       </ul>
       <details>
         <summary>Help</summary>
@@ -1119,15 +1119,6 @@
       header.innerHTML = `<span class="tag answer">${escapeHtml(options.label)}</span><span class="status">${escapeHtml(options.hint)}</span>`;
       const actionRow = document.createElement("div");
       actionRow.className = "button-row";
-      const clearButton = document.createElement("button");
-      clearButton.className = "secondary-button";
-      clearButton.type = "button";
-      clearButton.textContent = "Clear answer";
-      clearButton.addEventListener("click", () => {
-        answerRecord.answer = "";
-        saveFlow();
-        render();
-      });
       const branchButton = document.createElement("button");
       branchButton.className = "secondary-button";
       branchButton.type = "button";
@@ -1137,7 +1128,7 @@
         saveFlow();
         render();
       });
-      actionRow.append(clearButton, branchButton);
+      actionRow.append(branchButton);
       header.append(actionRow);
       const answer = document.createElement("textarea");
       answer.className = "field";
