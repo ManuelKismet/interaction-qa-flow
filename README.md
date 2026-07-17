@@ -1,8 +1,8 @@
 # Interaction QA Flow
 
-Interaction QA Flow is a free, local-first browser tool for mapping prepared questions, live answers, and unexpected follow-up branches.
+Interaction QA Flow is a free, local-first browser tool for mapping shared questions, participant-specific questions, live answers, and unexpected follow-up branches.
 
-It is designed for conversations and workflows where you start with a planned question path, but an answer may reveal a new question that needs to be captured before returning to the original path.
+It is designed for conversations and workflows where you start with a planned question path, switch between participants, and capture new follow-up questions when an answer reveals something unexpected.
 
 ## Use Cases
 
@@ -16,6 +16,9 @@ It is designed for conversations and workflows where you start with a planned qu
 ## Features
 
 - Prepared question path
+- Multiple participants
+- Shared questions with separate answers per participant
+- Participant-specific questions
 - Answer fields for each question
 - Follow-up branches from any answer
 - Nested follow-up branches
@@ -60,12 +63,13 @@ If you clear browser storage, local autosaved data may be removed. Use **Save JS
 ## How To Use
 
 1. Open `index.html` in a browser.
-2. Add prepared questions for the main path.
-3. Type answers as the flow is used.
-4. Use **Add follow-up** or double-click an answer to create a branch.
-5. Use **Report view** for a read-only summary.
-6. Use **Save JSON file** to keep a reusable copy.
-7. Use **Open JSON file** to reopen a saved flow.
+2. Add shared questions when every participant should answer the same prompt.
+3. Add participants and switch between them to capture separate answers.
+4. Add participant questions when only the active participant needs that prompt.
+5. Use **Add follow-up** or double-click an answer to create a participant-specific branch.
+6. Use **Report view** for a read-only summary of the active participant view.
+7. Use **Save JSON file** to keep a reusable copy.
+8. Use **Open JSON file** to reopen a saved flow.
 
 ## Templates
 

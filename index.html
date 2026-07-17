@@ -143,6 +143,34 @@
       cursor: pointer;
     }
 
+    .participant-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 250, 240, 0.7);
+      display: grid;
+      gap: 0.55rem;
+      margin: 1rem 0;
+      padding: 0.75rem;
+    }
+
+    .participant-panel label {
+      color: var(--muted);
+      display: grid;
+      gap: 0.25rem;
+      font-size: 0.88rem;
+    }
+
+    .segmented {
+      display: grid;
+      gap: 0.4rem;
+    }
+
+    .segmented button[aria-pressed="true"] {
+      background: var(--question);
+      border-color: var(--question);
+      color: #fff;
+    }
+
     details {
       border-top: 1px solid var(--line);
       margin-top: 1rem;
@@ -334,6 +362,15 @@
 
     .tag.branch {
       background: var(--branch);
+    }
+
+    .tag.participant-tag {
+      background: var(--branch);
+    }
+
+    .scope-note {
+      color: var(--muted);
+      font-size: 0.82rem;
     }
 
     .small-button {
@@ -627,7 +664,7 @@
   <div class="app">
     <aside>
       <h1>Interaction QA Flow</h1>
-      <p>Build a prepared question path, then branch from any answer when the response reveals a new question.</p>
+      <p>Build shared questions, switch participants, and branch from answers when a response reveals a new question.</p>
       <div class="meta-grid" aria-label="Flow details">
         <label>Flow title
           <input id="caseTitle" class="subtle-input" type="text" placeholder="e.g. Customer support QA">
@@ -639,8 +676,23 @@
           <input id="interviewee" class="subtle-input" type="text" placeholder="Person, team, or record source">
         </label>
       </div>
+      <div class="participant-panel" aria-label="Participants">
+        <label>Active participant
+          <select id="participantSelect" class="template-select"></select>
+        </label>
+        <label>New participant name
+          <input id="newParticipantName" class="subtle-input" type="text" placeholder="e.g. Person B">
+        </label>
+        <button id="addParticipant" type="button">Add participant</button>
+        <div class="segmented" aria-label="Question visibility">
+          <button id="viewMixed" type="button" aria-pressed="true">Shared + participant</button>
+          <button id="viewShared" type="button" aria-pressed="false">Shared only</button>
+          <button id="viewParticipant" type="button" aria-pressed="false">Participant only</button>
+        </div>
+      </div>
       <div class="controls">
-        <button id="addQuestion" type="button">Add prepared question</button>
+        <button id="addQuestion" type="button">Add shared question</button>
+        <button id="addParticipantQuestion" type="button">Add participant question</button>
         <button id="exportJson" type="button">Save JSON file</button>
         <button id="importJson" type="button">Open JSON file</button>
         <button id="exportCsv" type="button">Export CSV</button>
@@ -658,15 +710,18 @@
       <p class="privacy-note">Privacy: this tool stores data locally in your browser. Nothing is uploaded unless you export and share a file yourself.</p>
       <h2>Flow Rules</h2>
       <ul class="hint-list">
-        <li>Prepared questions stay in the main path.</li>
-        <li>Any answer can add another follow-up question.</li>
+        <li>Shared questions collect a separate answer for each participant.</li>
+        <li>Participant questions appear only for the active participant.</li>
+        <li>Any answer can add a participant-specific follow-up question.</li>
         <li>Clear answers separately from deleting questions.</li>
       </ul>
       <details>
         <summary>Help</summary>
         <ul class="hint-list">
-          <li>Add prepared questions for the main path.</li>
-          <li>Answer a question to continue, then branch from any answer if a new question appears.</li>
+          <li>Add shared questions when everyone should answer the same prompt.</li>
+          <li>Add participant questions when only the active participant needs that prompt.</li>
+          <li>Switch participants to capture separate answers against the same shared questions.</li>
+          <li>Branch from any answer if a new participant-specific follow-up appears.</li>
           <li>Save JSON files to reopen or share a flow later.</li>
           <li>Use Report view or Print / Save PDF when you need a read-only record.</li>
         </ul>
@@ -683,7 +738,8 @@
             <span id="status" class="status"></span>
           </div>
           <div class="toolbar-actions">
-            <button id="addQuestionTop" type="button">Add prepared question</button>
+            <button id="addQuestionTop" type="button">Add shared question</button>
+            <button id="addParticipantQuestionTop" type="button">Add participant question</button>
             <button id="toggleReport" class="view-toggle" type="button" aria-pressed="false">Report view</button>
           </div>
         </div>
@@ -695,10 +751,18 @@
   <script>
     const storageKey = "interaction-qa-flow-v2";
     const historyKey = "interaction-qa-flow-history-v1";
+    const defaultParticipantId = "participant-1";
     const flowElement = document.querySelector("#flow");
     const statusElement = document.querySelector("#status");
     const historyElement = document.querySelector("#historyList");
+    const participantSelect = document.querySelector("#participantSelect");
+    const newParticipantNameField = document.querySelector("#newParticipantName");
     const toggleReportButton = document.querySelector("#toggleReport");
+    const viewButtons = {
+      mixed: document.querySelector("#viewMixed"),
+      shared: document.querySelector("#viewShared"),
+      participant: document.querySelector("#viewParticipant")
+    };
     const metaFields = {
       caseTitle: document.querySelector("#caseTitle"),
       interviewer: document.querySelector("#interviewer"),
@@ -712,107 +776,115 @@
     };
 
     const defaultFlow = [];
-
     const templates = {
-      support: {
-        meta: { caseTitle: "Support call QA", interviewer: "", interviewee: "" },
-        questions: [
-          "What issue or request is being reported?",
-          "When did it start or when was it first noticed?",
-          "What steps have already been tried?",
-          "What outcome would resolve this for the user?"
-        ]
-      },
-      incident: {
-        meta: { caseTitle: "Incident report QA", interviewer: "", interviewee: "" },
-        questions: [
-          "What happened?",
-          "Where did it happen?",
-          "When did it happen?",
-          "Who or what was affected?",
-          "What immediate action was taken?"
-        ]
-      },
-      audit: {
-        meta: { caseTitle: "Audit checklist QA", interviewer: "", interviewee: "" },
-        questions: [
-          "What process, control, or record is being reviewed?",
-          "What evidence is available?",
-          "Does the evidence match the expected requirement?",
-          "What exception, gap, or follow-up is needed?"
-        ]
-      },
-      requirements: {
-        meta: { caseTitle: "Requirements discovery QA", interviewer: "", interviewee: "" },
-        questions: [
-          "What problem needs to be solved?",
-          "Who is affected by this problem?",
-          "What does a successful outcome look like?",
-          "What constraints or dependencies matter?",
-          "What questions remain open?"
-        ]
-      }
+      support: { meta: { caseTitle: "Support call QA", interviewer: "", interviewee: "" }, questions: ["What issue or request is being reported?", "When did it start or when was it first noticed?", "What steps have already been tried?", "What outcome would resolve this for the user?"] },
+      incident: { meta: { caseTitle: "Incident report QA", interviewer: "", interviewee: "" }, questions: ["What happened?", "Where did it happen?", "When did it happen?", "Who or what was affected?", "What immediate action was taken?"] },
+      audit: { meta: { caseTitle: "Audit checklist QA", interviewer: "", interviewee: "" }, questions: ["What process, control, or record is being reviewed?", "What evidence is available?", "Does the evidence match the expected requirement?", "What exception, gap, or follow-up is needed?"] },
+      requirements: { meta: { caseTitle: "Requirements discovery QA", interviewer: "", interviewee: "" }, questions: ["What problem needs to be solved?", "Who is affected by this problem?", "What does a successful outcome look like?", "What constraints or dependencies matter?", "What questions remain open?"] }
     };
 
     let state = loadState();
     let flow = state.flow;
     let meta = state.meta;
+    let participants = state.participants;
+    let activeParticipantId = state.activeParticipantId;
+    let viewMode = state.viewMode;
     let reportMode = false;
     let lastHistoryAt = 0;
 
-    function createNode(question = "New follow-up question", open = true) {
+    function createParticipant(name = "Participant") {
+      return { id: crypto.randomUUID(), name };
+    }
+
+    function defaultParticipants() {
+      return [{ id: defaultParticipantId, name: "Participant 1" }];
+    }
+
+    function createAnswerRecord(answer = "", branches = [], branchesCollapsed = false) {
+      return { answer, branchesCollapsed, branches };
+    }
+
+    function createNode(question = "New follow-up question", open = true, scope = "shared", participantId = null) {
       return {
         id: crypto.randomUUID(),
         question,
-        answer: "",
+        scope,
+        participantId: scope === "participant" ? participantId : null,
         open,
-        branchesCollapsed: false,
-        branches: []
+        answers: {}
       };
     }
 
-    function createPreparedNode(question = "New prepared question") {
-      return createNode(question, true);
+    function createPreparedNode(question = "New shared question") {
+      return createNode(question, true, "shared");
     }
 
-    function normalizeNode(node, fallbackQuestion = "New question") {
+    function createParticipantQuestion(question = `New question for ${getActiveParticipant().name}`) {
+      return createNode(question, true, "participant", activeParticipantId);
+    }
+
+    function normalizeAnswerRecord(record, defaultScope = "participant", defaultParticipant = defaultParticipantId) {
+      const legacyBranches = Array.isArray(record?.branches) ? record.branches : [];
       return {
-        id: node.id || crypto.randomUUID(),
-        question: typeof node.question === "string" ? node.question : fallbackQuestion,
-        answer: typeof node.answer === "string" ? node.answer : "",
-        open: Boolean(node.open),
-        branchesCollapsed: Boolean(node.branchesCollapsed),
-        branches: Array.isArray(node.branches) ? node.branches.map((branch) => normalizeNode(branch, "New follow-up question")) : []
+        answer: typeof record?.answer === "string" ? record.answer : "",
+        branchesCollapsed: Boolean(record?.branchesCollapsed),
+        branches: legacyBranches.map((branch) => normalizeNode(branch, "New follow-up question", defaultScope, defaultParticipant))
       };
+    }
+
+    function normalizeNode(node, fallbackQuestion = "New question", defaultScope = "shared", defaultParticipant = defaultParticipantId) {
+      const scope = node?.scope === "participant" ? "participant" : defaultScope;
+      const participantId = scope === "participant" ? (node?.participantId || defaultParticipant) : null;
+      const normalized = {
+        id: node?.id || crypto.randomUUID(),
+        question: typeof node?.question === "string" ? node.question : fallbackQuestion,
+        scope,
+        participantId,
+        open: node?.open !== false,
+        answers: {}
+      };
+
+      if (node?.answers && typeof node.answers === "object") {
+        Object.entries(node.answers).forEach(([participantKey, answerRecord]) => {
+          normalized.answers[participantKey] = normalizeAnswerRecord(answerRecord, "participant", participantKey);
+        });
+      } else {
+        const participantKey = participantId || defaultParticipant;
+        normalized.answers[participantKey] = normalizeAnswerRecord({
+          answer: node?.answer,
+          branchesCollapsed: node?.branchesCollapsed,
+          branches: node?.branches
+        }, "participant", participantKey);
+      }
+
+      return normalized;
     }
 
     function loadState() {
       const saved = localStorage.getItem(storageKey);
       if (!saved) {
-        return { meta: structuredClone(defaultMeta), flow: structuredClone(defaultFlow) };
+        return { meta: structuredClone(defaultMeta), flow: structuredClone(defaultFlow), participants: defaultParticipants(), activeParticipantId: defaultParticipantId, viewMode: "mixed" };
       }
 
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return {
-            meta: structuredClone(defaultMeta),
-            flow: parsed.map((item) => normalizeNode(item))
-          };
-        }
-
-        const parsedFlow = Array.isArray(parsed.flow) ? parsed.flow.map((item) => normalizeNode(item)) : structuredClone(defaultFlow);
+        const participantList = Array.isArray(parsed.participants) && parsed.participants.length ? parsed.participants : defaultParticipants();
+        const activeId = participantList.some((participant) => participant.id === parsed.activeParticipantId) ? parsed.activeParticipantId : participantList[0].id;
+        const normalizedFlow = Array.isArray(parsed) ? parsed.map((item) => normalizeNode(item)) : (Array.isArray(parsed.flow) ? parsed.flow.map((item) => normalizeNode(item)) : []);
         return {
           meta: { ...defaultMeta, ...(parsed.meta || {}) },
-          flow: parsedFlow
+          flow: normalizedFlow,
+          participants: participantList,
+          activeParticipantId: activeId,
+          viewMode: ["mixed", "shared", "participant"].includes(parsed.viewMode) ? parsed.viewMode : "mixed"
         };
       } catch {
-        return { meta: structuredClone(defaultMeta), flow: structuredClone(defaultFlow) };
+        return { meta: structuredClone(defaultMeta), flow: structuredClone(defaultFlow), participants: defaultParticipants(), activeParticipantId: defaultParticipantId, viewMode: "mixed" };
       }
     }
 
     function saveFlow() {
-      localStorage.setItem(storageKey, JSON.stringify({ meta, flow }));
+      localStorage.setItem(storageKey, JSON.stringify({ meta, participants, activeParticipantId, viewMode, flow }));
       const savedAt = new Date();
       statusElement.textContent = `Autosaved ${savedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
       recordAutosave(savedAt);
@@ -823,25 +895,18 @@
       const now = savedAt.getTime();
       const history = loadHistory();
       const entry = createAutosaveEntry(savedAt);
-
       if (!force && now - lastHistoryAt < 15000) {
         history[0] = entry;
         localStorage.setItem(historyKey, JSON.stringify(history.slice(0, 8)));
         return;
       }
-
       lastHistoryAt = now;
       history.unshift(entry);
       localStorage.setItem(historyKey, JSON.stringify(history.slice(0, 8)));
     }
 
     function createAutosaveEntry(savedAt) {
-      return {
-        savedAt: savedAt.toISOString(),
-        title: meta.caseTitle || "Untitled flow",
-        questions: countQuestions(flow),
-        branches: countBranches(flow)
-      };
+      return { savedAt: savedAt.toISOString(), title: meta.caseTitle || "Untitled flow", questions: countQuestionsForParticipant(flow, activeParticipantId), branches: countBranchesForParticipant(flow, activeParticipantId) };
     }
 
     function loadHistory() {
@@ -859,19 +924,64 @@
         historyElement.textContent = "No autosaves yet.";
         return;
       }
-
       historyElement.innerHTML = history.map((entry) => {
         const savedAt = new Date(entry.savedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
         return `<div><span>${savedAt}</span> - ${escapeHtml(entry.title)} (${entry.questions} Q, ${entry.branches} branches)</div>`;
       }).join("");
     }
 
-    function countQuestions(items) {
-      return items.reduce((total, item) => total + 1 + countQuestions(item.branches || []), 0);
+    function getActiveParticipant() {
+      return participants.find((participant) => participant.id === activeParticipantId) || participants[0];
     }
 
-    function countBranches(items) {
-      return items.reduce((total, item) => total + (item.branches?.length || 0) + countBranches(item.branches || []), 0);
+    function getAnswerKey(item, participantId = activeParticipantId) {
+      return item.scope === "participant" ? item.participantId : participantId;
+    }
+
+    function getAnswerRecord(item, participantId = activeParticipantId, createIfMissing = true) {
+      const key = getAnswerKey(item, participantId);
+      if (!item.answers) {
+        item.answers = {};
+      }
+      if (!item.answers[key] && createIfMissing) {
+        item.answers[key] = createAnswerRecord();
+      }
+      return item.answers[key] || createAnswerRecord();
+    }
+
+    function isVisibleQuestion(item, participantId = activeParticipantId) {
+      if (item.scope === "shared") {
+        return viewMode !== "participant";
+      }
+      return item.participantId === participantId && viewMode !== "shared";
+    }
+
+    function visibleFlowItems() {
+      return flow.filter((item) => isVisibleQuestion(item));
+    }
+
+    function countQuestionsForParticipant(items, participantId) {
+      return items.reduce((total, item) => {
+        if (!isVisibleQuestionForCount(item, participantId)) {
+          return total;
+        }
+        const answerRecord = getAnswerRecord(item, participantId, false);
+        return total + 1 + countQuestionsForParticipant(answerRecord.branches || [], participantId);
+      }, 0);
+    }
+
+    function countBranchesForParticipant(items, participantId) {
+      return items.reduce((total, item) => {
+        if (!isVisibleQuestionForCount(item, participantId)) {
+          return total;
+        }
+        const branches = getAnswerRecord(item, participantId, false).branches || [];
+        return total + branches.length + countBranchesForParticipant(branches, participantId);
+      }, 0);
+    }
+
+    function isVisibleQuestionForCount(item, participantId) {
+      return item.scope === "shared" || item.participantId === participantId;
     }
 
     function bindMetaFields() {
@@ -889,42 +999,55 @@
       });
     }
 
+    function renderParticipants() {
+      participantSelect.innerHTML = participants.map((participant) => `<option value="${participant.id}">${escapeHtml(participant.name)}</option>`).join("");
+      participantSelect.value = activeParticipantId;
+      Object.entries(viewButtons).forEach(([mode, button]) => button.setAttribute("aria-pressed", String(viewMode === mode)));
+    }
+
     function render() {
+      renderParticipants();
       flowElement.innerHTML = "";
       toggleReportButton.setAttribute("aria-pressed", String(reportMode));
       toggleReportButton.textContent = reportMode ? "Edit view" : "Report view";
-
       if (reportMode) {
         renderReport();
         return;
       }
 
-      if (!flow.length) {
-        flowElement.innerHTML = '<div class="empty-state">No questions yet.<br><button type="button" data-add-question>Add the first prepared question</button></div>';
-        flowElement.querySelector("[data-add-question]").addEventListener("click", addPreparedQuestion);
+      const visibleItems = visibleFlowItems();
+      if (!visibleItems.length) {
+        flowElement.innerHTML = `<div class="empty-state">No questions in this view.<br><button type="button" data-add-shared>Add shared question</button><button type="button" data-add-participant>Add question for ${escapeHtml(getActiveParticipant().name)}</button></div>`;
+        flowElement.querySelector("[data-add-shared]").addEventListener("click", addSharedQuestion);
+        flowElement.querySelector("[data-add-participant]").addEventListener("click", addParticipantQuestion);
         return;
       }
 
-      flow.forEach((item, index) => {
+      let sharedCount = 0;
+      let participantCount = 0;
+      visibleItems.forEach((item, index) => {
         const row = document.createElement("section");
         row.className = "question-row";
-
+        const isShared = item.scope === "shared";
+        const label = isShared ? `Shared Q${++sharedCount}` : `${getActiveParticipant().name} Q${++participantCount}`;
+        const answerRecord = getAnswerRecord(item);
         const questionNode = createQuestionNode(item, {
-          label: `Q${index + 1}`,
-          deleteLabel: "Delete question",
+          label,
+          tagClass: isShared ? "" : "participant-tag",
+          scopeNote: isShared ? "Shared question" : `Only for ${getActiveParticipant().name}`,
+          deleteLabel: isShared ? "Delete shared question" : "Delete participant question",
           onDelete: () => {
             flow = flow.filter((question) => question.id !== item.id);
           }
         });
         const answerStack = document.createElement("div");
         answerStack.className = "answer-stack";
-
-        const answerNode = createAnswerNode(item, {
-          label: "Answer",
-          placeholder: "Type the answer here...",
+        const answerNode = createAnswerNode(item, answerRecord, {
+          label: isShared ? `Answer: ${getActiveParticipant().name}` : "Answer",
+          placeholder: `Type ${getActiveParticipant().name}'s answer here...`,
           hint: "Double-click",
           onInput: (answerValue) => {
-            const nextItem = flow[index + 1];
+            const nextItem = visibleItems[index + 1];
             if (answerValue.trim() && nextItem && !nextItem.open) {
               nextItem.open = true;
               return true;
@@ -933,33 +1056,29 @@
           }
         });
         answerStack.append(answerNode);
-
         row.append(questionNode, answerStack);
-
-        if (item.branches.length) {
-          const rowBranches = createBranchChain(item, item.branches, `returns to ${flow[index + 1]?.question || "end"}`);
+        if (answerRecord.branches.length) {
+          const rowBranches = createBranchChain(answerRecord, answerRecord.branches, `returns to ${visibleItems[index + 1]?.question || "end"}`);
           rowBranches.classList.add("row-branches");
           row.append(rowBranches);
         }
-
         flowElement.append(row);
       });
 
       const endAdd = document.createElement("div");
       endAdd.className = "end-add";
-      endAdd.innerHTML = '<span>End of prepared path</span><br><button type="button">Add another prepared question</button>';
-      endAdd.querySelector("button").addEventListener("click", addPreparedQuestion);
+      endAdd.innerHTML = `<span>End of ${viewMode === "participant" ? getActiveParticipant().name : "visible"} path</span><br><button type="button" data-add-shared>Add shared question</button> <button type="button" data-add-participant>Add question for ${escapeHtml(getActiveParticipant().name)}</button>`;
+      endAdd.querySelector("[data-add-shared]").addEventListener("click", addSharedQuestion);
+      endAdd.querySelector("[data-add-participant]").addEventListener("click", addParticipantQuestion);
       flowElement.append(endAdd);
     }
 
     function createQuestionNode(item, options) {
       const node = document.createElement("article");
       node.className = "node";
-
       const header = document.createElement("div");
       header.className = "node-header";
-      header.innerHTML = `<span class="tag">${options.label}</span>`;
-
+      header.innerHTML = `<span class="tag ${options.tagClass || ""}">${escapeHtml(options.label)}</span><span class="scope-note">${escapeHtml(options.scopeNote || "")}</span>`;
       const removeButton = document.createElement("button");
       removeButton.className = "danger-button";
       removeButton.type = "button";
@@ -971,7 +1090,6 @@
         saveFlow();
         render();
       });
-
       const questionText = document.createElement("textarea");
       questionText.className = "question-text";
       questionText.value = item.question;
@@ -988,52 +1106,45 @@
         saveFlow();
         render();
       });
-
       header.append(removeButton);
       node.append(header, questionText);
       return node;
     }
 
-    function createAnswerNode(item, options) {
+    function createAnswerNode(item, answerRecord, options) {
       const node = document.createElement("article");
       node.className = `node answer-node ${item.open ? "visible" : ""}`;
-
       const header = document.createElement("div");
       header.className = "node-header";
-      header.innerHTML = `<span class="tag answer">${options.label}</span><span class="status">${options.hint}</span>`;
-
+      header.innerHTML = `<span class="tag answer">${escapeHtml(options.label)}</span><span class="status">${escapeHtml(options.hint)}</span>`;
       const actionRow = document.createElement("div");
       actionRow.className = "button-row";
-
       const clearButton = document.createElement("button");
       clearButton.className = "secondary-button";
       clearButton.type = "button";
       clearButton.textContent = "Clear answer";
       clearButton.addEventListener("click", () => {
-        item.answer = "";
+        answerRecord.answer = "";
         saveFlow();
         render();
       });
-
       const branchButton = document.createElement("button");
       branchButton.className = "secondary-button";
       branchButton.type = "button";
       branchButton.textContent = "Add follow-up";
       branchButton.addEventListener("click", () => {
-        item.branches.push(createNode());
+        answerRecord.branches.push(createNode("New follow-up question", true, "participant", activeParticipantId));
         saveFlow();
         render();
       });
-
       actionRow.append(clearButton, branchButton);
       header.append(actionRow);
-
       const answer = document.createElement("textarea");
       answer.className = "field";
       answer.placeholder = options.placeholder;
-      answer.value = item.answer;
+      answer.value = answerRecord.answer;
       answer.addEventListener("input", () => {
-        item.answer = answer.value;
+        answerRecord.answer = answer.value;
         const shouldRender = options.onInput ? options.onInput(answer.value) : false;
         saveFlow();
         if (shouldRender) {
@@ -1041,142 +1152,120 @@
         }
       });
       answer.addEventListener("dblclick", () => {
-        item.branches.push(createNode());
+        answerRecord.branches.push(createNode("New follow-up question", true, "participant", activeParticipantId));
         saveFlow();
         render();
       });
-
       node.append(header, answer);
       return node;
     }
 
-    function createBranchChain(parent, branches, returnLabel) {
+    function createBranchChain(parentAnswerRecord, branches, returnLabel) {
       const branchChain = document.createElement("div");
       branchChain.className = "branch-chain";
       const tools = document.createElement("div");
       tools.className = "branch-tools";
       tools.innerHTML = '<span>follow-up branch</span>';
-
       const toggleButton = document.createElement("button");
       toggleButton.className = "branch-toggle";
       toggleButton.type = "button";
-      toggleButton.textContent = parent.branchesCollapsed ? "Expand" : "Collapse";
+      toggleButton.textContent = parentAnswerRecord.branchesCollapsed ? "Expand" : "Collapse";
       toggleButton.addEventListener("click", () => {
-        parent.branchesCollapsed = !parent.branchesCollapsed;
+        parentAnswerRecord.branchesCollapsed = !parentAnswerRecord.branchesCollapsed;
         saveFlow();
         render();
       });
-
       tools.append(toggleButton);
       branchChain.append(tools);
-      branchChain.classList.toggle("collapsed", Boolean(parent.branchesCollapsed));
-      branches.forEach((branch) => branchChain.append(createBranchPair(parent, branch, returnLabel)));
+      branchChain.classList.toggle("collapsed", Boolean(parentAnswerRecord.branchesCollapsed));
+      branches.filter((branch) => isVisibleQuestionForCount(branch, activeParticipantId)).forEach((branch) => branchChain.append(createBranchPair(parentAnswerRecord, branch, returnLabel)));
       return branchChain;
     }
 
-    function createBranchPair(parent, branch, returnLabel) {
+    function createBranchPair(parentAnswerRecord, branch, returnLabel) {
       const pair = document.createElement("section");
       pair.className = "branch-pair";
       pair.dataset.returnLabel = returnLabel;
-
+      const branchAnswerRecord = getAnswerRecord(branch);
       const branchQuestion = createQuestionNode(branch, {
         label: "Follow-up Q",
+        tagClass: "participant-tag",
+        scopeNote: `Only for ${getActiveParticipant().name}`,
         deleteLabel: "Delete follow-up",
         onDelete: () => {
-          parent.branches = parent.branches.filter((item) => item.id !== branch.id);
+          parentAnswerRecord.branches = parentAnswerRecord.branches.filter((item) => item.id !== branch.id);
         }
       });
-
       const branchAnswerStack = document.createElement("div");
       branchAnswerStack.className = "answer-stack";
-      const branchAnswer = createAnswerNode(branch, {
-        label: "Follow-up A",
-        placeholder: "Answer the follow-up, then continue with the original path...",
-        hint: "Double-click",
-        onInput: () => false
-      });
+      const branchAnswer = createAnswerNode(branch, branchAnswerRecord, { label: "Follow-up A", placeholder: "Answer the follow-up, then continue with the original path...", hint: "Double-click", onInput: () => false });
       branchAnswer.classList.add("visible");
       branchAnswerStack.append(branchAnswer);
-
-      if (branch.branches.length) {
-        branchAnswerStack.append(createBranchChain(branch, branch.branches, "returns to previous path"));
+      if (branchAnswerRecord.branches.length) {
+        branchAnswerStack.append(createBranchChain(branchAnswerRecord, branchAnswerRecord.branches, "returns to previous path"));
       }
-
       pair.append(branchQuestion, branchAnswerStack);
       return pair;
     }
 
-    function addPreparedQuestion() {
-      flow.push({
-        id: crypto.randomUUID(),
-        question: "New prepared question",
-        answer: "",
-        open: true,
-        branches: []
-      });
+    function addSharedQuestion() {
+      flow.push(createPreparedNode());
       saveFlow();
       render();
-      requestAnimationFrame(() => {
-        flowElement.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      });
+      requestAnimationFrame(() => flowElement.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+    }
+
+    function addParticipantQuestion() {
+      flow.push(createParticipantQuestion());
+      saveFlow();
+      render();
+      requestAnimationFrame(() => flowElement.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     }
 
     function renderReport() {
-      if (!flow.length) {
-        flowElement.innerHTML = '<div class="empty-state">No questions yet. Switch back to Edit view to add the first prepared question.</div>';
+      const visibleItems = visibleFlowItems();
+      if (!visibleItems.length) {
+        flowElement.innerHTML = '<div class="empty-state">No questions in this view. Switch back to Edit view to add questions.</div>';
         return;
       }
-
       const report = document.createElement("div");
       report.className = "report";
       const header = document.createElement("section");
       header.className = "report-header";
-      header.innerHTML = `
-        <div class="report-label">Read-only report</div>
-        <h2>${escapeHtml(meta.caseTitle || "Untitled QA flow")}</h2>
-        <p>Owner: ${escapeHtml(meta.interviewer || "Not specified")}</p>
-        <p>Participant or source: ${escapeHtml(meta.interviewee || "Not specified")}</p>
-        <p>${countQuestions(flow)} questions including ${countBranches(flow)} follow-up branches.</p>
-      `;
+      header.innerHTML = `<div class="report-label">Read-only report</div><h2>${escapeHtml(meta.caseTitle || "Untitled QA flow")}</h2><p>Owner: ${escapeHtml(meta.interviewer || "Not specified")}</p><p>Participant: ${escapeHtml(getActiveParticipant().name)}</p><p>${countQuestionsForParticipant(flow, activeParticipantId)} visible questions including ${countBranchesForParticipant(flow, activeParticipantId)} follow-up branches.</p>`;
       report.append(header);
-
-      flow.forEach((item, index) => {
-        report.append(createReportItem(item, `Q${index + 1}`, false));
-        item.branches.forEach((branch) => appendReportBranches(report, branch, 1));
+      visibleItems.forEach((item, index) => {
+        report.append(createReportItem(item, getAnswerRecord(item), `${item.scope === "shared" ? "Shared" : getActiveParticipant().name} Q${index + 1}`, false));
+        getAnswerRecord(item).branches.forEach((branch) => appendReportBranches(report, branch, 1));
       });
-
       flowElement.append(report);
     }
 
     function appendReportBranches(report, branch, depth) {
-      report.append(createReportItem(branch, `Follow-up level ${depth}`, true));
-      branch.branches.forEach((child) => appendReportBranches(report, child, depth + 1));
+      if (!isVisibleQuestionForCount(branch, activeParticipantId)) {
+        return;
+      }
+      const answerRecord = getAnswerRecord(branch);
+      report.append(createReportItem(branch, answerRecord, `Follow-up level ${depth}`, true));
+      answerRecord.branches.forEach((child) => appendReportBranches(report, child, depth + 1));
     }
 
-    function createReportItem(item, label, isBranch) {
+    function createReportItem(item, answerRecord, label, isBranch) {
       const section = document.createElement("section");
       section.className = `report-item ${isBranch ? "branch" : ""}`;
-      section.innerHTML = `
-        <div class="report-label">${escapeHtml(label)}</div>
-        <strong>${escapeHtml(item.question || "Untitled question")}</strong>
-        <div class="report-answer">${escapeHtml(item.answer || "No answer recorded.")}</div>
-      `;
+      section.innerHTML = `<div class="report-label">${escapeHtml(label)}</div><strong>${escapeHtml(item.question || "Untitled question")}</strong><div class="report-answer">${escapeHtml(answerRecord.answer || "No answer recorded.")}</div>`;
       return section;
     }
 
     function escapeHtml(value) {
-      return String(value).replace(/[&<>"]/g, (character) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;"
-      }[character]));
+      return String(value).replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[character]));
     }
 
-    function walkBranches(item, visit, depth = 1, returnTo = "End") {
-      item.branches.forEach((branch) => {
-        visit(branch, depth, returnTo);
-        walkBranches(branch, visit, depth + 1, "previous path");
+    function walkBranchesForParticipant(answerRecord, participantId, visit, depth = 1, returnTo = "End") {
+      answerRecord.branches.filter((branch) => isVisibleQuestionForCount(branch, participantId)).forEach((branch) => {
+        const branchAnswer = getAnswerRecord(branch, participantId, false);
+        visit(branch, branchAnswer, depth, returnTo);
+        walkBranchesForParticipant(branchAnswer, participantId, visit, depth + 1, "previous path");
       });
     }
 
@@ -1190,17 +1279,14 @@
     }
 
     function slugify(value) {
-      const slug = String(value || "interaction-qa-flow")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
+      const slug = String(value || "interaction-qa-flow").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       return slug || "interaction-qa-flow";
     }
 
     function exportJson() {
       const date = new Date().toISOString().slice(0, 10);
       const filename = `${slugify(meta.caseTitle)}-${date}.json`;
-      downloadFile(filename, JSON.stringify({ meta, flow }, null, 2), "application/json");
+      downloadFile(filename, JSON.stringify({ meta, participants, activeParticipantId, viewMode, flow }, null, 2), "application/json");
       statusElement.textContent = `Saved file ${filename}`;
     }
 
@@ -1208,10 +1294,8 @@
       if (!file) {
         return;
       }
-
       try {
-        const imported = JSON.parse(await file.text());
-        applyImportedState(imported);
+        applyImportedState(JSON.parse(await file.text()));
         reportMode = false;
         saveFlow();
         syncMetaFields();
@@ -1225,12 +1309,17 @@
     function applyImportedState(imported) {
       if (Array.isArray(imported)) {
         meta = structuredClone(defaultMeta);
+        participants = defaultParticipants();
+        activeParticipantId = defaultParticipantId;
+        viewMode = "mixed";
         flow = imported.map((item) => normalizeNode(item));
         return;
       }
-
+      participants = Array.isArray(imported.participants) && imported.participants.length ? imported.participants : defaultParticipants();
+      activeParticipantId = participants.some((participant) => participant.id === imported.activeParticipantId) ? imported.activeParticipantId : participants[0].id;
+      viewMode = ["mixed", "shared", "participant"].includes(imported.viewMode) ? imported.viewMode : "mixed";
       meta = { ...defaultMeta, ...(imported.meta || {}) };
-      flow = Array.isArray(imported.flow) ? imported.flow.map((item) => normalizeNode(item)) : [];
+      flow = Array.isArray(imported.flow) ? imported.flow.map((item) => normalizeNode(item, "New question", "shared", activeParticipantId)) : [];
     }
 
     function loadTemplate(templateKey) {
@@ -1238,12 +1327,13 @@
       if (!template) {
         return;
       }
-
       if (flow.length && !confirm("Load this template and replace the current flow?")) {
         return;
       }
-
       meta = { ...defaultMeta, ...template.meta };
+      participants = defaultParticipants();
+      activeParticipantId = defaultParticipantId;
+      viewMode = "mixed";
       flow = template.questions.map((question) => createPreparedNode(question));
       reportMode = false;
       syncMetaFields();
@@ -1252,21 +1342,51 @@
     }
 
     function exportCsv() {
-      const rows = [["flow_title", "owner", "participant_or_source", "type", "depth", "question", "answer", "returns_to"]];
-      flow.forEach((item, index) => {
-        const nextQuestion = flow[index + 1]?.question || "End";
-        rows.push([meta.caseTitle, meta.interviewer, meta.interviewee, "prepared", 0, item.question, item.answer, nextQuestion]);
-        walkBranches(item, (branch, depth, returnTo) => {
-          rows.push([meta.caseTitle, meta.interviewer, meta.interviewee, "branch", depth, branch.question, branch.answer, returnTo]);
+      const rows = [["flow_title", "owner", "participant", "scope", "type", "depth", "question", "answer", "returns_to"]];
+      participants.forEach((participant) => {
+        flow.filter((item) => isVisibleQuestionForCount(item, participant.id)).forEach((item) => {
+          const answerRecord = getAnswerRecord(item, participant.id, false);
+          rows.push([meta.caseTitle, meta.interviewer, participant.name, item.scope, "question", 0, item.question, answerRecord.answer, ""]);
+          walkBranchesForParticipant(answerRecord, participant.id, (branch, branchAnswer, depth, returnTo) => {
+            rows.push([meta.caseTitle, meta.interviewer, participant.name, branch.scope, "branch", depth, branch.question, branchAnswer.answer, returnTo]);
+          });
         });
       });
-
       const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
       downloadFile("interaction-qa-flow.csv", csv, "text/csv");
     }
 
-    document.querySelector("#addQuestion").addEventListener("click", addPreparedQuestion);
-    document.querySelector("#addQuestionTop").addEventListener("click", addPreparedQuestion);
+    function addParticipant() {
+      const name = newParticipantNameField.value.trim() || `Participant ${participants.length + 1}`;
+      const participant = createParticipant(name.trim());
+      participants.push(participant);
+      activeParticipantId = participant.id;
+      viewMode = "mixed";
+      reportMode = false;
+      newParticipantNameField.value = "";
+      saveFlow();
+      render();
+    }
+
+    document.querySelector("#addQuestion").addEventListener("click", addSharedQuestion);
+    document.querySelector("#addQuestionTop").addEventListener("click", addSharedQuestion);
+    document.querySelector("#addParticipantQuestion").addEventListener("click", addParticipantQuestion);
+    document.querySelector("#addParticipantQuestionTop").addEventListener("click", addParticipantQuestion);
+    document.querySelector("#addParticipant").addEventListener("click", addParticipant);
+    participantSelect.addEventListener("change", () => {
+      activeParticipantId = participantSelect.value;
+      reportMode = false;
+      saveFlow();
+      render();
+    });
+    Object.entries(viewButtons).forEach(([mode, button]) => {
+      button.addEventListener("click", () => {
+        viewMode = mode;
+        reportMode = false;
+        saveFlow();
+        render();
+      });
+    });
     document.querySelector("#exportJson").addEventListener("click", exportJson);
     document.querySelector("#importJson").addEventListener("click", () => document.querySelector("#importFile").click());
     document.querySelector("#importFile").addEventListener("change", (event) => {
@@ -1288,6 +1408,9 @@
         return;
       }
       meta = structuredClone(defaultMeta);
+      participants = defaultParticipants();
+      activeParticipantId = defaultParticipantId;
+      viewMode = "mixed";
       flow = structuredClone(defaultFlow);
       syncMetaFields();
       saveFlow();
