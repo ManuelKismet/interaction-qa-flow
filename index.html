@@ -400,11 +400,23 @@
       position: relative;
     }
 
-    .branch-chain::before {
-      content: "follow-up branch";
+    .branch-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
       color: var(--branch);
       font-size: 0.78rem;
       font-weight: 700;
+    }
+
+    .branch-toggle {
+      padding: 0.3rem 0.5rem;
+      font-size: 0.78rem;
+    }
+
+    .branch-chain.collapsed .branch-pair {
+      display: none;
     }
 
     .branch-chain .branch-chain {
@@ -742,6 +754,7 @@
         question,
         answer: "",
         open,
+        branchesCollapsed: false,
         branches: []
       };
     }
@@ -756,6 +769,7 @@
         question: typeof node.question === "string" ? node.question : fallbackQuestion,
         answer: typeof node.answer === "string" ? node.answer : "",
         open: Boolean(node.open),
+        branchesCollapsed: Boolean(node.branchesCollapsed),
         branches: Array.isArray(node.branches) ? node.branches.map((branch) => normalizeNode(branch, "New follow-up question")) : []
       };
     }
@@ -896,7 +910,7 @@
         const answerNode = createAnswerNode(item, {
           label: "Answer",
           placeholder: "Type the answer here...",
-          hint: "Double-click below to branch",
+          hint: "Double-click",
           onInput: (answerValue) => {
             const nextItem = flow[index + 1];
             if (answerValue.trim() && nextItem && !nextItem.open) {
@@ -1027,6 +1041,23 @@
     function createBranchChain(parent, branches, returnLabel) {
       const branchChain = document.createElement("div");
       branchChain.className = "branch-chain";
+      const tools = document.createElement("div");
+      tools.className = "branch-tools";
+      tools.innerHTML = '<span>follow-up branch</span>';
+
+      const toggleButton = document.createElement("button");
+      toggleButton.className = "branch-toggle";
+      toggleButton.type = "button";
+      toggleButton.textContent = parent.branchesCollapsed ? "Expand" : "Collapse";
+      toggleButton.addEventListener("click", () => {
+        parent.branchesCollapsed = !parent.branchesCollapsed;
+        saveFlow();
+        render();
+      });
+
+      tools.append(toggleButton);
+      branchChain.append(tools);
+      branchChain.classList.toggle("collapsed", Boolean(parent.branchesCollapsed));
       branches.forEach((branch) => branchChain.append(createBranchPair(parent, branch, returnLabel)));
       return branchChain;
     }
@@ -1049,7 +1080,7 @@
       const branchAnswer = createAnswerNode(branch, {
         label: "Follow-up A",
         placeholder: "Answer the follow-up, then continue with the original path...",
-        hint: "Double-click below to branch again",
+        hint: "Double-click",
         onInput: () => false
       });
       branchAnswer.classList.add("visible");
