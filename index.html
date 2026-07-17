@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A free local-first browser tool for mapping prepared questions, live answers, and unexpected follow-up branches.">
+  <meta name="theme-color" content="#255c57">
+  <meta property="og:title" content="Interaction QA Flow">
+  <meta property="og:description" content="Map prepared questions, answers, and live follow-up branches without an account.">
+  <title>Interaction QA Flow</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17201b;
+      --muted: #5f6f66;
+      --paper: #f6f1e8;
+      --panel: #fffaf0;
+      --line: #c8bda7;
+      --question: #255c57;
+      --answer: #9b4f32;
+      --branch: #365f9f;
+      --shadow: 0 16px 40px rgba(32, 26, 18, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(222, 173, 91, 0.22), transparent 26rem),
+        linear-gradient(135deg, #f8f3ea 0%, #eef4ee 52%, #f2eadc 100%);
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff7e8;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 0.65rem 0.85rem;
+      cursor: pointer;
+      transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+
+    button:hover {
+      background: #fff1d6;
+      box-shadow: 0 8px 18px rgba(35, 28, 18, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 18rem minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    aside {
+      border-right: 1px solid var(--line);
+      background: rgba(255, 250, 240, 0.76);
+      padding: 1.25rem;
+      backdrop-filter: blur(14px);
+    }
+
+    main {
+      padding: 1.5rem;
+      overflow: auto;
+    }
+
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: clamp(1.65rem, 4vw, 2.6rem);
+      line-height: 1;
+    }
+
+    h2 {
+      margin: 1.25rem 0 0.65rem;
+      font-size: 1rem;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.45;
+      margin: 0 0 1rem;
+    }
+
+    .controls {
+      display: grid;
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .meta-grid {
+      display: grid;
+      gap: 0.6rem;
+      margin: 1rem 0;
+    }
+
+    .meta-grid label {
+      display: grid;
+      gap: 0.25rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .subtle-input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 250, 240, 0.85);
+      color: var(--ink);
+      padding: 0.55rem 0.65rem;
+      outline: none;
+    }
+
+    .subtle-input:focus {
+      box-shadow: 0 0 0 2px rgba(37, 92, 87, 0.22);
+    }
+
+    .template-select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff7e8;
+      color: var(--ink);
+      padding: 0.65rem 0.7rem;
+      cursor: pointer;
+    }
+
+    details {
+      border-top: 1px solid var(--line);
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .privacy-note,
+    .history-list {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 250, 240, 0.7);
+      color: var(--muted);
+      line-height: 1.4;
+      padding: 0.75rem;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 0.35rem;
+      max-height: 8.5rem;
+      overflow: auto;
+      font-size: 0.88rem;
+    }
+
+    .history-list span {
+      color: var(--ink);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.45rem;
+    }
+
+    .secondary-button,
+    .danger-button {
+      padding: 0.38rem 0.55rem;
+      font-size: 0.86rem;
+    }
+
+    .danger-button {
+      border-color: #c99b8d;
+      color: #7c2f22;
+      background: #fff2ee;
+    }
+
+    .hint-list {
+      display: grid;
+      gap: 0.55rem;
+      margin: 1rem 0 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .hint-list li {
+      border-left: 3px solid var(--line);
+      padding-left: 0.7rem;
+    }
+
+    .flow-shell {
+      min-width: min(72rem, 100%);
+      background: rgba(255, 250, 240, 0.74);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 1rem;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255, 250, 240, 0.94);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.75rem;
+      backdrop-filter: blur(12px);
+    }
+
+    .toolbar-title {
+      display: grid;
+      gap: 0.15rem;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .view-toggle[aria-pressed="true"] {
+      background: var(--question);
+      color: #fff;
+      border-color: var(--question);
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .flow {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .question-row {
+      display: grid;
+      grid-template-columns: minmax(14rem, 22rem) minmax(18rem, 1fr);
+      gap: 1rem;
+      align-items: start;
+      position: relative;
+    }
+
+    .question-row::before {
+      content: "answer ->";
+      position: absolute;
+      left: calc(22rem + 0.2rem);
+      top: 2.2rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+
+    .question-row::after {
+      content: "";
+      position: absolute;
+      left: 11rem;
+      top: 100%;
+      width: 2px;
+      height: 1rem;
+      background: var(--line);
+    }
+
+    .question-row:last-child::after {
+      display: none;
+    }
+
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 10px 24px rgba(32, 26, 18, 0.08);
+      overflow: hidden;
+    }
+
+    .node-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.7rem 0.8rem;
+      background: rgba(255, 246, 229, 0.88);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.7rem;
+      border-radius: 999px;
+      padding: 0.25rem 0.55rem;
+      color: #fff;
+      background: var(--question);
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+
+    .tag.answer {
+      background: var(--answer);
+    }
+
+    .tag.branch {
+      background: var(--branch);
+    }
+
+    .small-button {
+      padding: 0.35rem 0.5rem;
+      min-width: 2.15rem;
+      line-height: 1;
+    }
+
+    .field {
+      width: 100%;
+      min-height: 5.25rem;
+      border: 0;
+      resize: vertical;
+      background: transparent;
+      color: var(--ink);
+      padding: 0.85rem;
+      outline: none;
+      line-height: 1.45;
+    }
+
+    .question-text {
+      width: 100%;
+      min-height: 5.25rem;
+      border: 0;
+      resize: vertical;
+      background: transparent;
+      color: var(--ink);
+      padding: 0.85rem;
+      outline: none;
+      line-height: 1.45;
+    }
+
+    .question-text:focus,
+    .field:focus {
+      box-shadow: inset 0 0 0 2px rgba(37, 92, 87, 0.28);
+    }
+
+    .answer-stack {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .answer-node {
+      display: none;
+    }
+
+    .answer-node.visible {
+      display: block;
+      animation: rise 220ms ease both;
+    }
+
+    .branch-chain {
+      display: grid;
+      gap: 0.75rem;
+      margin: 0.75rem 0 0 1.5rem;
+      padding-left: 1rem;
+      border-left: 2px solid rgba(54, 95, 159, 0.32);
+      position: relative;
+    }
+
+    .branch-chain::before {
+      content: "follow-up branch";
+      color: var(--branch);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .branch-chain .branch-chain {
+      margin-left: 0.75rem;
+    }
+
+    .branch-pair {
+      display: grid;
+      grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr);
+      gap: 0.75rem;
+      align-items: start;
+      position: relative;
+    }
+
+    .branch-pair::after {
+      content: attr(data-return-label);
+      position: absolute;
+      right: 0.5rem;
+      bottom: -1.3rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .empty-state {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .empty-state button,
+    .end-add button {
+      margin-top: 0.75rem;
+    }
+
+    .end-add {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .report {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .report-header,
+    .report-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 1rem;
+    }
+
+    .report-item {
+      display: grid;
+      gap: 0.55rem;
+      border-left: 4px solid var(--question);
+    }
+
+    .report-item.branch {
+      margin-left: min(2rem, 5vw);
+      border-left-color: var(--branch);
+    }
+
+    .report-label {
+      color: var(--muted);
+      font-size: 0.84rem;
+      text-transform: uppercase;
+    }
+
+    .report-answer {
+      border-left: 3px solid var(--answer);
+      padding-left: 0.75rem;
+      white-space: pre-wrap;
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 820px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      main {
+        padding: 1rem;
+      }
+
+      .question-row,
+      .branch-pair {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        top: 0;
+      }
+
+      .toolbar-actions,
+      .button-row {
+        width: 100%;
+      }
+
+      .toolbar-actions button,
+      .button-row button,
+      .controls button,
+      .template-select {
+        flex: 1 1 12rem;
+        min-height: 2.75rem;
+      }
+
+      .controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      details,
+      .privacy-note,
+      .history-list {
+        grid-column: 1 / -1;
+      }
+
+      .question-row::before,
+      .question-row::after,
+      .branch-pair::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      .node-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .question-text,
+      .field {
+        min-height: 6.5rem;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      aside,
+      .toolbar-actions,
+      .button-row,
+      .danger-button,
+      .end-add,
+      .empty-state button {
+        display: none !important;
+      }
+
+      .app {
+        display: block;
+      }
+
+      main {
+        padding: 0;
+      }
+
+      .flow-shell,
+      .node {
+        box-shadow: none;
+      }
+
+      .toolbar {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>Interaction QA Flow</h1>
+      <p>Build a prepared question path, then branch from any answer when the response reveals a new question.</p>
+      <div class="meta-grid" aria-label="Flow details">
+        <label>Flow title
+          <input id="caseTitle" class="subtle-input" type="text" placeholder="e.g. Customer support QA">
+        </label>
+        <label>Owner
+          <input id="interviewer" class="subtle-input" type="text" placeholder="Name or team">
+        </label>
+        <label>Participant or source
+          <input id="interviewee" class="subtle-input" type="text" placeholder="Person, team, or record source">
+        </label>
+      </div>
+      <div class="controls">
+        <button id="addQuestion" type="button">Add prepared question</button>
+        <button id="exportJson" type="button">Save JSON file</button>
+        <button id="importJson" type="button">Open JSON file</button>
+        <button id="exportCsv" type="button">Export CSV</button>
+        <button id="printFlow" type="button">Print / Save PDF</button>
+        <button id="resetFlow" type="button">Clear flow</button>
+        <input id="importFile" class="file-input" type="file" accept="application/json,.json">
+        <select id="templateSelect" class="template-select" aria-label="Load a template">
+          <option value="">Load template...</option>
+          <option value="support">Support call</option>
+          <option value="incident">Incident report</option>
+          <option value="audit">Audit checklist</option>
+          <option value="requirements">Requirements discovery</option>
+        </select>
+      </div>
+      <p class="privacy-note">Privacy: this tool stores data locally in your browser. Nothing is uploaded unless you export and share a file yourself.</p>
+      <h2>Flow Rules</h2>
+      <ul class="hint-list">
+        <li>Prepared questions stay in the main path.</li>
+        <li>Any answer can add another follow-up question.</li>
+        <li>Clear answers separately from deleting questions.</li>
+      </ul>
+      <details>
+        <summary>Help</summary>
+        <ul class="hint-list">
+          <li>Add prepared questions for the main path.</li>
+          <li>Answer a question to continue, then branch from any answer if a new question appears.</li>
+          <li>Save JSON files to reopen or share a flow later.</li>
+          <li>Use Report view or Print / Save PDF when you need a read-only record.</li>
+        </ul>
+      </details>
+      <h2>Autosave</h2>
+      <div id="historyList" class="history-list" aria-live="polite"></div>
+    </aside>
+
+    <main>
+      <section class="flow-shell" aria-label="Interaction QA flow board">
+        <div class="toolbar">
+          <div class="toolbar-title">
+            <strong>Question path</strong>
+            <span id="status" class="status"></span>
+          </div>
+          <div class="toolbar-actions">
+            <button id="addQuestionTop" type="button">Add prepared question</button>
+            <button id="toggleReport" class="view-toggle" type="button" aria-pressed="false">Report view</button>
+          </div>
+        </div>
+        <div id="flow" class="flow"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const storageKey = "interaction-qa-flow-v2";
+    const historyKey = "interaction-qa-flow-history-v1";
+    const flowElement = document.querySelector("#flow");
+    const statusElement = document.querySelector("#status");
+    const historyElement = document.querySelector("#historyList");
+    const toggleReportButton = document.querySelector("#toggleReport");
+    const metaFields = {
+      caseTitle: document.querySelector("#caseTitle"),
+      interviewer: document.querySelector("#interviewer"),
+      interviewee: document.querySelector("#interviewee")
+    };
+
+    const defaultMeta = {
+      caseTitle: "",
+      interviewer: "",
+      interviewee: ""
+    };
+
+    const defaultFlow = [];
+
+    const templates = {
+      support: {
+        meta: { caseTitle: "Support call QA", interviewer: "", interviewee: "" },
+        questions: [
+          "What issue or request is being reported?",
+          "When did it start or when was it first noticed?",
+          "What steps have already been tried?",
+          "What outcome would resolve this for the user?"
+        ]
+      },
+      incident: {
+        meta: { caseTitle: "Incident report QA", interviewer: "", interviewee: "" },
+        questions: [
+          "What happened?",
+          "Where did it happen?",
+          "When did it happen?",
+          "Who or what was affected?",
+          "What immediate action was taken?"
+        ]
+      },
+      audit: {
+        meta: { caseTitle: "Audit checklist QA", interviewer: "", interviewee: "" },
+        questions: [
+          "What process, control, or record is being reviewed?",
+          "What evidence is available?",
+          "Does the evidence match the expected requirement?",
+          "What exception, gap, or follow-up is needed?"
+        ]
+      },
+      requirements: {
+        meta: { caseTitle: "Requirements discovery QA", interviewer: "", interviewee: "" },
+        questions: [
+          "What problem needs to be solved?",
+          "Who is affected by this problem?",
+          "What does a successful outcome look like?",
+          "What constraints or dependencies matter?",
+          "What questions remain open?"
+        ]
+      }
+    };
+
+    let state = loadState();
+    let flow = state.flow;
+    let meta = state.meta;
+    let reportMode = false;
+    let lastHistoryAt = 0;
+
+    function createNode(question = "New follow-up question", open = true) {
+      return {
+        id: crypto.randomUUID(),
+        question,
+        answer: "",
+        open,
+        branches: []
+      };
+    }
+
+    function createPreparedNode(question = "New prepared question") {
+      return createNode(question, true);
+    }
+
+    function normalizeNode(node, fallbackQuestion = "New question") {
+      return {
+        id: node.id || crypto.randomUUID(),
+        question: typeof node.question === "string" ? node.question : fallbackQuestion,
+        answer: typeof node.answer === "string" ? node.answer : "",
+        open: Boolean(node.open),
+        branches: Array.isArray(node.branches) ? node.branches.map((branch) => normalizeNode(branch, "New follow-up question")) : []
+      };
+    }
+
+    function loadState() {
+      const saved = localStorage.getItem(storageKey);
+      if (!saved) {
+        return { meta: structuredClone(defaultMeta), flow: structuredClone(defaultFlow) };
+      }
+
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return {
+            meta: structuredClone(defaultMeta),
+            flow: parsed.map((item) => normalizeNode(item))
+          };
+        }
+
+        const parsedFlow = Array.isArray(parsed.flow) ? parsed.flow.map((item) => normalizeNode(item)) : structuredClone(defaultFlow);
+        return {
+          meta: { ...defaultMeta, ...(parsed.meta || {}) },
+          flow: parsedFlow
+        };
+      } catch {
+        return { meta: structuredClone(defaultMeta), flow: structuredClone(defaultFlow) };
+      }
+    }
+
+    function saveFlow() {
+      localStorage.setItem(storageKey, JSON.stringify({ meta, flow }));
+      const savedAt = new Date();
+      statusElement.textContent = `Autosaved ${savedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      recordAutosave(savedAt);
+      renderHistory();
+    }
+
+    function recordAutosave(savedAt, force = false) {
+      const now = savedAt.getTime();
+      const history = loadHistory();
+      const entry = createAutosaveEntry(savedAt);
+
+      if (!force && now - lastHistoryAt < 15000) {
+        history[0] = entry;
+        localStorage.setItem(historyKey, JSON.stringify(history.slice(0, 8)));
+        return;
+      }
+
+      lastHistoryAt = now;
+      history.unshift(entry);
+      localStorage.setItem(historyKey, JSON.stringify(history.slice(0, 8)));
+    }
+
+    function createAutosaveEntry(savedAt) {
+      return {
+        savedAt: savedAt.toISOString(),
+        title: meta.caseTitle || "Untitled flow",
+        questions: countQuestions(flow),
+        branches: countBranches(flow)
+      };
+    }
+
+    function loadHistory() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(historyKey) || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function renderHistory() {
+      const history = loadHistory();
+      if (!history.length) {
+        historyElement.textContent = "No autosaves yet.";
+        return;
+      }
+
+      historyElement.innerHTML = history.map((entry) => {
+        const savedAt = new Date(entry.savedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        return `<div><span>${savedAt}</span> - ${escapeHtml(entry.title)} (${entry.questions} Q, ${entry.branches} branches)</div>`;
+      }).join("");
+    }
+
+    function countQuestions(items) {
+      return items.reduce((total, item) => total + 1 + countQuestions(item.branches || []), 0);
+    }
+
+    function countBranches(items) {
+      return items.reduce((total, item) => total + (item.branches?.length || 0) + countBranches(item.branches || []), 0);
+    }
+
+    function bindMetaFields() {
+      Object.entries(metaFields).forEach(([key, field]) => {
+        field.addEventListener("input", () => {
+          meta[key] = field.value;
+          saveFlow();
+        });
+      });
+    }
+
+    function syncMetaFields() {
+      Object.entries(metaFields).forEach(([key, field]) => {
+        field.value = meta[key] || "";
+      });
+    }
+
+    function render() {
+      flowElement.innerHTML = "";
+      toggleReportButton.setAttribute("aria-pressed", String(reportMode));
+      toggleReportButton.textContent = reportMode ? "Edit view" : "Report view";
+
+      if (reportMode) {
+        renderReport();
+        return;
+      }
+
+      if (!flow.length) {
+        flowElement.innerHTML = '<div class="empty-state">No questions yet.<br><button type="button" data-add-question>Add the first prepared question</button></div>';
+        flowElement.querySelector("[data-add-question]").addEventListener("click", addPreparedQuestion);
+        return;
+      }
+
+      flow.forEach((item, index) => {
+        const row = document.createElement("section");
+        row.className = "question-row";
+
+        const questionNode = createQuestionNode(item, {
+          label: `Q${index + 1}`,
+          deleteLabel: "Delete question",
+          onDelete: () => {
+            flow = flow.filter((question) => question.id !== item.id);
+          }
+        });
+        const answerStack = document.createElement("div");
+        answerStack.className = "answer-stack";
+
+        const answerNode = createAnswerNode(item, {
+          label: "Answer",
+          placeholder: "Type the answer here...",
+          hint: "Double-click below to branch",
+          onInput: (answerValue) => {
+            const nextItem = flow[index + 1];
+            if (answerValue.trim() && nextItem && !nextItem.open) {
+              nextItem.open = true;
+              return true;
+            }
+            return false;
+          }
+        });
+        answerStack.append(answerNode);
+
+        if (item.branches.length) {
+          answerStack.append(createBranchChain(item, item.branches, `returns to ${flow[index + 1]?.question || "end"}`));
+        }
+
+        row.append(questionNode, answerStack);
+        flowElement.append(row);
+      });
+
+      const endAdd = document.createElement("div");
+      endAdd.className = "end-add";
+      endAdd.innerHTML = '<span>End of prepared path</span><br><button type="button">Add another prepared question</button>';
+      endAdd.querySelector("button").addEventListener("click", addPreparedQuestion);
+      flowElement.append(endAdd);
+    }
+
+    function createQuestionNode(item, options) {
+      const node = document.createElement("article");
+      node.className = "node";
+
+      const header = document.createElement("div");
+      header.className = "node-header";
+      header.innerHTML = `<span class="tag">${options.label}</span>`;
+
+      const removeButton = document.createElement("button");
+      removeButton.className = "danger-button";
+      removeButton.type = "button";
+      removeButton.textContent = options.deleteLabel;
+      removeButton.title = options.deleteLabel;
+      removeButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        options.onDelete();
+        saveFlow();
+        render();
+      });
+
+      const questionText = document.createElement("textarea");
+      questionText.className = "question-text";
+      questionText.value = item.question;
+      questionText.placeholder = "Type the question here...";
+      questionText.addEventListener("input", () => {
+        item.question = questionText.value.trim();
+        saveFlow();
+      });
+      questionText.addEventListener("focus", () => {
+        if (item.open) {
+          return;
+        }
+        item.open = true;
+        saveFlow();
+        render();
+      });
+
+      header.append(removeButton);
+      node.append(header, questionText);
+      return node;
+    }
+
+    function createAnswerNode(item, options) {
+      const node = document.createElement("article");
+      node.className = `node answer-node ${item.open ? "visible" : ""}`;
+
+      const header = document.createElement("div");
+      header.className = "node-header";
+      header.innerHTML = `<span class="tag answer">${options.label}</span><span class="status">${options.hint}</span>`;
+
+      const actionRow = document.createElement("div");
+      actionRow.className = "button-row";
+
+      const clearButton = document.createElement("button");
+      clearButton.className = "secondary-button";
+      clearButton.type = "button";
+      clearButton.textContent = "Clear answer";
+      clearButton.addEventListener("click", () => {
+        item.answer = "";
+        saveFlow();
+        render();
+      });
+
+      const branchButton = document.createElement("button");
+      branchButton.className = "secondary-button";
+      branchButton.type = "button";
+      branchButton.textContent = "Add follow-up";
+      branchButton.addEventListener("click", () => {
+        item.branches.push(createNode());
+        saveFlow();
+        render();
+      });
+
+      actionRow.append(clearButton, branchButton);
+      header.append(actionRow);
+
+      const answer = document.createElement("textarea");
+      answer.className = "field";
+      answer.placeholder = options.placeholder;
+      answer.value = item.answer;
+      answer.addEventListener("input", () => {
+        item.answer = answer.value;
+        const shouldRender = options.onInput ? options.onInput(answer.value) : false;
+        saveFlow();
+        if (shouldRender) {
+          render();
+        }
+      });
+      answer.addEventListener("dblclick", () => {
+        item.branches.push(createNode());
+        saveFlow();
+        render();
+      });
+
+      node.append(header, answer);
+      return node;
+    }
+
+    function createBranchChain(parent, branches, returnLabel) {
+      const branchChain = document.createElement("div");
+      branchChain.className = "branch-chain";
+      branches.forEach((branch) => branchChain.append(createBranchPair(parent, branch, returnLabel)));
+      return branchChain;
+    }
+
+    function createBranchPair(parent, branch, returnLabel) {
+      const pair = document.createElement("section");
+      pair.className = "branch-pair";
+      pair.dataset.returnLabel = returnLabel;
+
+      const branchQuestion = createQuestionNode(branch, {
+        label: "Follow-up Q",
+        deleteLabel: "Delete follow-up",
+        onDelete: () => {
+          parent.branches = parent.branches.filter((item) => item.id !== branch.id);
+        }
+      });
+
+      const branchAnswerStack = document.createElement("div");
+      branchAnswerStack.className = "answer-stack";
+      const branchAnswer = createAnswerNode(branch, {
+        label: "Follow-up A",
+        placeholder: "Answer the follow-up, then continue with the original path...",
+        hint: "Double-click below to branch again",
+        onInput: () => false
+      });
+      branchAnswer.classList.add("visible");
+      branchAnswerStack.append(branchAnswer);
+
+      if (branch.branches.length) {
+        branchAnswerStack.append(createBranchChain(branch, branch.branches, "returns to previous path"));
+      }
+
+      pair.append(branchQuestion, branchAnswerStack);
+      return pair;
+    }
+
+    function addPreparedQuestion() {
+      flow.push({
+        id: crypto.randomUUID(),
+        question: "New prepared question",
+        answer: "",
+        open: true,
+        branches: []
+      });
+      saveFlow();
+      render();
+      requestAnimationFrame(() => {
+        flowElement.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+
+    function renderReport() {
+      if (!flow.length) {
+        flowElement.innerHTML = '<div class="empty-state">No questions yet. Switch back to Edit view to add the first prepared question.</div>';
+        return;
+      }
+
+      const report = document.createElement("div");
+      report.className = "report";
+      const header = document.createElement("section");
+      header.className = "report-header";
+      header.innerHTML = `
+        <div class="report-label">Read-only report</div>
+        <h2>${escapeHtml(meta.caseTitle || "Untitled QA flow")}</h2>
+        <p>Owner: ${escapeHtml(meta.interviewer || "Not specified")}</p>
+        <p>Participant or source: ${escapeHtml(meta.interviewee || "Not specified")}</p>
+        <p>${countQuestions(flow)} questions including ${countBranches(flow)} follow-up branches.</p>
+      `;
+      report.append(header);
+
+      flow.forEach((item, index) => {
+        report.append(createReportItem(item, `Q${index + 1}`, false));
+        item.branches.forEach((branch) => appendReportBranches(report, branch, 1));
+      });
+
+      flowElement.append(report);
+    }
+
+    function appendReportBranches(report, branch, depth) {
+      report.append(createReportItem(branch, `Follow-up level ${depth}`, true));
+      branch.branches.forEach((child) => appendReportBranches(report, child, depth + 1));
+    }
+
+    function createReportItem(item, label, isBranch) {
+      const section = document.createElement("section");
+      section.className = `report-item ${isBranch ? "branch" : ""}`;
+      section.innerHTML = `
+        <div class="report-label">${escapeHtml(label)}</div>
+        <strong>${escapeHtml(item.question || "Untitled question")}</strong>
+        <div class="report-answer">${escapeHtml(item.answer || "No answer recorded.")}</div>
+      `;
+      return section;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"]/g, (character) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;"
+      }[character]));
+    }
+
+    function walkBranches(item, visit, depth = 1, returnTo = "End") {
+      item.branches.forEach((branch) => {
+        visit(branch, depth, returnTo);
+        walkBranches(branch, visit, depth + 1, "previous path");
+      });
+    }
+
+    function downloadFile(filename, contents, type) {
+      const blob = new Blob([contents], { type });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    function slugify(value) {
+      const slug = String(value || "interaction-qa-flow")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      return slug || "interaction-qa-flow";
+    }
+
+    function exportJson() {
+      const date = new Date().toISOString().slice(0, 10);
+      const filename = `${slugify(meta.caseTitle)}-${date}.json`;
+      downloadFile(filename, JSON.stringify({ meta, flow }, null, 2), "application/json");
+      statusElement.textContent = `Saved file ${filename}`;
+    }
+
+    async function importJsonFile(file) {
+      if (!file) {
+        return;
+      }
+
+      try {
+        const imported = JSON.parse(await file.text());
+        applyImportedState(imported);
+        reportMode = false;
+        saveFlow();
+        syncMetaFields();
+        render();
+        statusElement.textContent = `Opened file ${file.name}`;
+      } catch {
+        alert("This file could not be opened. Choose a JSON file exported from Interaction QA Flow.");
+      }
+    }
+
+    function applyImportedState(imported) {
+      if (Array.isArray(imported)) {
+        meta = structuredClone(defaultMeta);
+        flow = imported.map((item) => normalizeNode(item));
+        return;
+      }
+
+      meta = { ...defaultMeta, ...(imported.meta || {}) };
+      flow = Array.isArray(imported.flow) ? imported.flow.map((item) => normalizeNode(item)) : [];
+    }
+
+    function loadTemplate(templateKey) {
+      const template = templates[templateKey];
+      if (!template) {
+        return;
+      }
+
+      if (flow.length && !confirm("Load this template and replace the current flow?")) {
+        return;
+      }
+
+      meta = { ...defaultMeta, ...template.meta };
+      flow = template.questions.map((question) => createPreparedNode(question));
+      reportMode = false;
+      syncMetaFields();
+      saveFlow();
+      render();
+    }
+
+    function exportCsv() {
+      const rows = [["flow_title", "owner", "participant_or_source", "type", "depth", "question", "answer", "returns_to"]];
+      flow.forEach((item, index) => {
+        const nextQuestion = flow[index + 1]?.question || "End";
+        rows.push([meta.caseTitle, meta.interviewer, meta.interviewee, "prepared", 0, item.question, item.answer, nextQuestion]);
+        walkBranches(item, (branch, depth, returnTo) => {
+          rows.push([meta.caseTitle, meta.interviewer, meta.interviewee, "branch", depth, branch.question, branch.answer, returnTo]);
+        });
+      });
+
+      const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+      downloadFile("interaction-qa-flow.csv", csv, "text/csv");
+    }
+
+    document.querySelector("#addQuestion").addEventListener("click", addPreparedQuestion);
+    document.querySelector("#addQuestionTop").addEventListener("click", addPreparedQuestion);
+    document.querySelector("#exportJson").addEventListener("click", exportJson);
+    document.querySelector("#importJson").addEventListener("click", () => document.querySelector("#importFile").click());
+    document.querySelector("#importFile").addEventListener("change", (event) => {
+      importJsonFile(event.target.files[0]);
+      event.target.value = "";
+    });
+    document.querySelector("#exportCsv").addEventListener("click", exportCsv);
+    document.querySelector("#printFlow").addEventListener("click", () => window.print());
+    document.querySelector("#templateSelect").addEventListener("change", (event) => {
+      loadTemplate(event.target.value);
+      event.target.value = "";
+    });
+    toggleReportButton.addEventListener("click", () => {
+      reportMode = !reportMode;
+      render();
+    });
+    document.querySelector("#resetFlow").addEventListener("click", () => {
+      if (!confirm("Clear this QA flow and start from an empty board?")) {
+        return;
+      }
+      meta = structuredClone(defaultMeta);
+      flow = structuredClone(defaultFlow);
+      syncMetaFields();
+      saveFlow();
+      render();
+    });
+
+    bindMetaFields();
+    syncMetaFields();
+    saveFlow();
+    renderHistory();
+    render();
+  </script>
+</body>
+</html>

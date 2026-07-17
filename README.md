@@ -1,0 +1,87 @@
+# Interaction QA Flow
+
+Interaction QA Flow is a free, local-first browser tool for mapping prepared questions, live answers, and unexpected follow-up branches.
+
+It is designed for conversations and workflows where you start with a planned question path, but an answer may reveal a new question that needs to be captured before returning to the original path.
+
+## Use Cases
+
+- Customer support troubleshooting
+- Incident reports
+- Audit or compliance checks
+- Requirements discovery
+- Consulting or discovery calls
+- QA and exploratory testing notes
+
+## Features
+
+- Prepared question path
+- Answer fields for each question
+- Follow-up branches from any answer
+- Nested follow-up branches
+- Editable questions and answers
+- Separate answer clearing and question deletion
+- Local autosave in the browser
+- Autosave history summary
+- Named JSON export files
+- JSON import to reopen or share flows
+- CSV export
+- Read-only report view
+- Print / Save PDF support
+- Built-in templates
+- No login or backend required
+
+## Privacy
+
+This tool stores data locally in your browser using `localStorage`. Nothing is uploaded by the app. A flow only leaves your device if you export and share a JSON, CSV, or PDF file yourself.
+
+If you clear browser storage, local autosaved data may be removed. Use **Save JSON file** for anything important.
+
+## How To Use
+
+1. Open `index.html` in a browser.
+2. Add prepared questions for the main path.
+3. Type answers as the flow is used.
+4. Use **Add follow-up** or double-click an answer to create a branch.
+5. Use **Report view** for a read-only summary.
+6. Use **Save JSON file** to keep a reusable copy.
+7. Use **Open JSON file** to reopen a saved flow.
+
+## Templates
+
+The app includes starter templates for:
+
+- Support call
+- Incident report
+- Audit checklist
+- Requirements discovery
+
+Loading a template replaces the current flow after confirmation when data already exists.
+
+## Hosting
+
+This is a static site. You can host it with:
+
+- GitHub Pages
+- Cloudflare Pages
+- Netlify
+- Vercel
+- Any static web server
+
+No build step is required.
+
+## Development
+
+The app is currently a single self-contained HTML file:
+
+- `index.html`
+
+A quick JavaScript syntax check can be run with:
+
+```sh
+node -e 'const fs=require("fs"); const html=fs.readFileSync("index.html","utf8"); for (const [,code] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(code); console.log("inline script syntax ok");'
+```
+
+## License
+
+MIT. See `LICENSE`.
