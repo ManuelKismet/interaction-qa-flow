@@ -195,6 +195,10 @@
       padding: 0.75rem;
     }
 
+    .view-options {
+      margin: 0 0 1rem;
+    }
+
     .participant-panel label {
       color: var(--muted);
       display: grid;
@@ -726,12 +730,15 @@
           <input id="newParticipantName" class="subtle-input" type="text" placeholder="e.g. Person B">
         </label>
         <button id="addParticipant" type="button">Add participant</button>
-        <div class="segmented" aria-label="Question visibility">
+      </div>
+      <details class="control-group view-options" open>
+        <summary>View options</summary>
+        <div class="control-actions segmented" aria-label="Question visibility">
           <button id="viewMixed" type="button" aria-pressed="true">Shared + participant</button>
           <button id="viewShared" type="button" aria-pressed="false">Shared only</button>
           <button id="viewParticipant" type="button" aria-pressed="false">Participant only</button>
         </div>
-      </div>
+      </details>
       <div class="controls">
         <div class="primary-actions" aria-label="Question actions">
           <button id="addQuestion" type="button">Add shared question</button>
