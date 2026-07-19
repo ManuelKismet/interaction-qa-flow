@@ -713,8 +713,8 @@
         <label>Owner
           <input id="interviewer" class="subtle-input" type="text" placeholder="Name or team">
         </label>
-        <label>Participant or source
-          <input id="interviewee" class="subtle-input" type="text" placeholder="Person, team, or record source">
+        <label>Context / source
+          <input id="interviewee" class="subtle-input" type="text" placeholder="Ticket, account, record, dataset, or setting">
         </label>
       </div>
       <details class="control-group participant-panel" open>
@@ -1486,7 +1486,7 @@
       report.className = "report";
       const header = document.createElement("section");
       header.className = "report-header";
-      header.innerHTML = `<div class="report-label">Read-only report</div><h2>${escapeHtml(meta.caseTitle || "Untitled QA flow")}</h2><p>Owner: ${escapeHtml(meta.interviewer || "Not specified")}</p><p>Participant: ${escapeHtml(getActiveParticipant().name)}</p><p>${countQuestionsForParticipant(flow, activeParticipantId)} visible questions including ${countBranchesForParticipant(flow, activeParticipantId)} follow-up branches.</p>`;
+      header.innerHTML = `<div class="report-label">Read-only report</div><h2>${escapeHtml(meta.caseTitle || "Untitled QA flow")}</h2><p>Owner: ${escapeHtml(meta.interviewer || "Not specified")}</p><p>Context/source: ${escapeHtml(meta.interviewee || "Not specified")}</p><p>Participant: ${escapeHtml(getActiveParticipant().name)}</p><p>${countQuestionsForParticipant(flow, activeParticipantId)} visible questions including ${countBranchesForParticipant(flow, activeParticipantId)} follow-up branches.</p>`;
       report.append(header);
       visibleItems.forEach((item, index) => {
         report.append(createReportItem(item, getAnswerRecord(item), `${item.scope === "shared" ? "Shared" : getActiveParticipant().name} Q${index + 1}`, false));

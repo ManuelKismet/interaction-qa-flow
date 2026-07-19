@@ -36,29 +36,9 @@ It is designed for conversations and workflows where you start with a planned qu
 - Template import and export
 - No login or backend required
 
-## Excel Workbook
-
-For company environments that prefer Excel over a public website, this repo includes a macro-free workbook:
-
-- `Interaction_QA_Flow_Template.xlsx`
-
-The workbook includes:
-
-- `Instructions` sheet
-- `Flow` sheet for prepared and follow-up questions
-- `Report` sheet for review, printing, or PDF export
-- `Templates` sheet with starter question sets
-- Dropdowns for path type and status
-- Color-coded prepared/follow-up rows
-- Frozen headers, filters, and structured tables
-
-The workbook is `.xlsx`, not `.xlsm`, and contains no macros.
-
 ## Privacy
 
 This tool stores data locally in your browser using `localStorage`. Nothing is uploaded by the app. A flow only leaves your device if you export and share a JSON, CSV, or PDF file yourself.
-
-The Excel workbook stores data only inside the workbook file. Use your company-approved storage location for sensitive data.
 
 If you clear browser storage, local autosaved data may be removed. Use **Save JSON file** for anything important.
 
@@ -95,10 +75,9 @@ No build step is required.
 
 ## Development
 
-The app is currently a single self-contained HTML file plus the optional Excel workbook:
+The app is currently a single self-contained HTML file:
 
 - `index.html`
-- `Interaction_QA_Flow_Template.xlsx`
 
 A quick JavaScript syntax check can be run with:
 
