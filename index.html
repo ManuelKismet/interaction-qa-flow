@@ -72,6 +72,25 @@
       backdrop-filter: blur(14px);
     }
 
+    .mobile-menu-bar {
+      display: none;
+    }
+
+    .side-menu-content {
+      display: block;
+    }
+
+    .menu-icon {
+      display: inline-grid;
+      gap: 0.22rem;
+      width: 1rem;
+    }
+
+    .menu-icon span {
+      border-top: 2px solid currentColor;
+      display: block;
+    }
+
     main {
       padding: 1.5rem;
       overflow: auto;
@@ -607,6 +626,46 @@
       aside {
         border-right: 0;
         border-bottom: 1px solid var(--line);
+        padding: 0.75rem 1rem;
+        position: sticky;
+        top: 0;
+        z-index: 30;
+      }
+
+      .mobile-menu-bar {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .mobile-menu-bar strong {
+        font-size: 1.1rem;
+      }
+
+      .mobile-menu-toggle {
+        align-items: center;
+        display: inline-flex;
+        gap: 0.5rem;
+        min-height: 2.75rem;
+      }
+
+      .side-menu-content {
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        pointer-events: none;
+        transition: max-height 220ms ease, opacity 180ms ease, padding-top 180ms ease;
+        visibility: hidden;
+      }
+
+      aside.menu-open .side-menu-content {
+        max-height: calc(100vh - 5rem);
+        opacity: 1;
+        overflow: auto;
+        padding-top: 1rem;
+        pointer-events: auto;
+        visibility: visible;
       }
 
       main {
@@ -704,94 +763,100 @@
 <body>
   <div class="app">
     <aside>
-      <h1>Interaction QA Flow</h1>
-      <p>Build shared questions, switch participants, and branch from answers when a response reveals a new question.</p>
-      <div class="meta-grid" aria-label="Flow details">
-        <label>Flow title
-          <input id="caseTitle" class="subtle-input" type="text" placeholder="e.g. Customer support QA">
-        </label>
-        <label>Owner
-          <input id="interviewer" class="subtle-input" type="text" placeholder="Name or team">
-        </label>
-        <label>Context / source
-          <input id="interviewee" class="subtle-input" type="text" placeholder="Ticket, account, record, dataset, or setting">
-        </label>
+      <div class="mobile-menu-bar">
+        <strong>Interaction QA Flow</strong>
+        <button id="mobileMenuToggle" class="mobile-menu-toggle" type="button" aria-controls="sideMenuContent" aria-expanded="false"><span class="menu-icon" aria-hidden="true"><span></span><span></span><span></span></span>Menu</button>
       </div>
-      <details class="control-group participant-panel" open>
-        <summary>Participants</summary>
-        <div class="control-actions">
-          <label>Active participant
-            <select id="participantSelect" class="template-select"></select>
+      <div id="sideMenuContent" class="side-menu-content">
+        <h1>Interaction QA Flow</h1>
+        <p>Build shared questions, switch participants, and branch from answers when a response reveals a new question.</p>
+        <div class="meta-grid" aria-label="Flow details">
+          <label>Flow title
+            <input id="caseTitle" class="subtle-input" type="text" placeholder="e.g. Customer support QA">
           </label>
-          <label>New participant name
-            <input id="newParticipantName" class="subtle-input" type="text" placeholder="e.g. Person B">
+          <label>Owner
+            <input id="interviewer" class="subtle-input" type="text" placeholder="Name or team">
           </label>
-          <button id="addParticipant" type="button">Add participant</button>
+          <label>Context / source
+            <input id="interviewee" class="subtle-input" type="text" placeholder="Ticket, account, record, dataset, or setting">
+          </label>
         </div>
-      </details>
-      <details class="control-group view-options" open>
-        <summary>View options</summary>
-        <div class="control-actions segmented" aria-label="Question visibility">
-          <button id="viewMixed" type="button" aria-pressed="true">Shared + individual</button>
-          <button id="viewShared" type="button" aria-pressed="false">Shared</button>
-          <button id="viewParticipant" type="button" aria-pressed="false">Individual</button>
+        <details class="control-group participant-panel" open>
+          <summary>Participants</summary>
+          <div class="control-actions">
+            <label>Active participant
+              <select id="participantSelect" class="template-select"></select>
+            </label>
+            <label>New participant name
+              <input id="newParticipantName" class="subtle-input" type="text" placeholder="e.g. Person B">
+            </label>
+            <button id="addParticipant" type="button">Add participant</button>
+          </div>
+        </details>
+        <details class="control-group view-options" open>
+          <summary>View options</summary>
+          <div class="control-actions segmented" aria-label="Question visibility">
+            <button id="viewMixed" type="button" aria-pressed="true">Shared + individual</button>
+            <button id="viewShared" type="button" aria-pressed="false">Shared</button>
+            <button id="viewParticipant" type="button" aria-pressed="false">Individual</button>
+          </div>
+        </details>
+        <div class="controls">
+          <details class="control-group">
+            <summary>Flow files</summary>
+            <div class="control-actions">
+              <button id="exportJson" type="button">Save JSON file</button>
+              <button id="importJson" type="button">Open JSON file</button>
+              <button id="resetFlow" type="button">Clear flow</button>
+            </div>
+          </details>
+          <input id="importFile" class="file-input" type="file" accept="application/json,.json">
+          <details class="control-group" open>
+            <summary>Templates</summary>
+            <div class="control-actions">
+              <select id="templateSelect" class="template-select" aria-label="Load a template">
+                <option value="">Choose template...</option>
+              </select>
+              <button id="loadTemplate" type="button">Load template</button>
+              <button id="deleteTemplate" type="button">Delete template</button>
+              <button id="saveTemplate" type="button">Save as template</button>
+              <input id="templateName" class="subtle-input" type="text" placeholder="Template name">
+              <button id="exportTemplates" type="button">Export templates</button>
+              <button id="importTemplates" type="button">Import templates</button>
+            </div>
+          </details>
+          <input id="importTemplateFile" class="file-input" type="file" accept="application/json,.json">
+          <details class="control-group">
+            <summary>Output</summary>
+            <div class="control-actions">
+              <button id="exportCsv" type="button">Export CSV</button>
+              <button id="printFlow" type="button">Print / Save PDF</button>
+            </div>
+          </details>
         </div>
-      </details>
-      <div class="controls">
-        <details class="control-group">
-          <summary>Flow files</summary>
-          <div class="control-actions">
-            <button id="exportJson" type="button">Save JSON file</button>
-            <button id="importJson" type="button">Open JSON file</button>
-            <button id="resetFlow" type="button">Clear flow</button>
-          </div>
-        </details>
-        <input id="importFile" class="file-input" type="file" accept="application/json,.json">
-        <details class="control-group" open>
-          <summary>Templates</summary>
-          <div class="control-actions">
-            <select id="templateSelect" class="template-select" aria-label="Load a template">
-              <option value="">Choose template...</option>
-            </select>
-            <button id="loadTemplate" type="button">Load template</button>
-            <button id="deleteTemplate" type="button">Delete template</button>
-            <button id="saveTemplate" type="button">Save as template</button>
-            <input id="templateName" class="subtle-input" type="text" placeholder="Template name">
-            <button id="exportTemplates" type="button">Export templates</button>
-            <button id="importTemplates" type="button">Import templates</button>
-          </div>
-        </details>
-        <input id="importTemplateFile" class="file-input" type="file" accept="application/json,.json">
-        <details class="control-group">
-          <summary>Output</summary>
-          <div class="control-actions">
-            <button id="exportCsv" type="button">Export CSV</button>
-            <button id="printFlow" type="button">Print / Save PDF</button>
-          </div>
-        </details>
-      </div>
-      <p class="privacy-note">Privacy: this tool stores data locally in your browser. Nothing is uploaded unless you export and share a file yourself.</p>
-      <h2>Flow Rules</h2>
-      <ul class="hint-list">
-        <li>Shared questions collect a separate answer for each participant.</li>
-        <li>Participant questions appear only for the active participant.</li>
-        <li>Any answer can add an individual follow-up question.</li>
-        <li>Edit or delete answer text directly in the answer field.</li>
-      </ul>
-      <details>
-        <summary>Help</summary>
+        <p class="privacy-note">Privacy: this tool stores data locally in your browser. Nothing is uploaded unless you export and share a file yourself.</p>
+        <h2>Flow Rules</h2>
         <ul class="hint-list">
-          <li>Add shared questions when everyone should answer the same prompt.</li>
-          <li>Add participant questions when only the active participant needs that prompt.</li>
-          <li>Switch participants to capture separate answers against the same shared questions.</li>
-          <li>Use Add follow-up when an answer reveals a new individual question.</li>
-          <li>Save recurring question sets as local templates, then export them when a team needs the same set.</li>
-          <li>Save JSON files to reopen or share a flow later.</li>
-          <li>Use Report view or Print / Save PDF when you need a read-only record.</li>
+          <li>Shared questions collect a separate answer for each participant.</li>
+          <li>Participant questions appear only for the active participant.</li>
+          <li>Any answer can add an individual follow-up question.</li>
+          <li>Edit or delete answer text directly in the answer field.</li>
         </ul>
-      </details>
-      <h2>Autosave</h2>
-      <div id="historyList" class="history-list" aria-live="polite"></div>
+        <details>
+          <summary>Help</summary>
+          <ul class="hint-list">
+            <li>Add shared questions when everyone should answer the same prompt.</li>
+            <li>Add participant questions when only the active participant needs that prompt.</li>
+            <li>Switch participants to capture separate answers against the same shared questions.</li>
+            <li>Use Add follow-up when an answer reveals a new individual question.</li>
+            <li>Save recurring question sets as local templates, then export them when a team needs the same set.</li>
+            <li>Save JSON files to reopen or share a flow later.</li>
+            <li>Use Report view or Print / Save PDF when you need a read-only record.</li>
+          </ul>
+        </details>
+        <h2>Autosave</h2>
+        <div id="historyList" class="history-list" aria-live="polite"></div>
+      </div>
     </aside>
 
     <main>
@@ -822,6 +887,10 @@
     const flowElement = document.querySelector("#flow");
     const statusElement = document.querySelector("#status");
     const historyElement = document.querySelector("#historyList");
+    const sidebarElement = document.querySelector("aside");
+    const mobileMenuToggle = document.querySelector("#mobileMenuToggle");
+    const sideMenuContent = document.querySelector("#sideMenuContent");
+    const mobileMenuQuery = window.matchMedia("(max-width: 820px)");
     const participantSelect = document.querySelector("#participantSelect");
     const newParticipantNameField = document.querySelector("#newParticipantName");
     const templateSelect = document.querySelector("#templateSelect");
@@ -1718,8 +1787,29 @@
       render();
     }
 
+    function syncMobileMenu(isOpen = sidebarElement.classList.contains("menu-open")) {
+      if (!mobileMenuQuery.matches) {
+        sidebarElement.classList.remove("menu-open");
+        mobileMenuToggle.setAttribute("aria-expanded", "false");
+        sideMenuContent.removeAttribute("aria-hidden");
+        sideMenuContent.inert = false;
+        return;
+      }
+      mobileMenuToggle.setAttribute("aria-expanded", String(isOpen));
+      sideMenuContent.setAttribute("aria-hidden", String(!isOpen));
+      sideMenuContent.inert = !isOpen;
+    }
+
     document.querySelector("#addQuestionTop").addEventListener("click", addSharedQuestion);
     document.querySelector("#addParticipantQuestionTop").addEventListener("click", addParticipantQuestion);
+    mobileMenuToggle.addEventListener("click", () => {
+      const isOpen = sidebarElement.classList.toggle("menu-open");
+      syncMobileMenu(isOpen);
+    });
+    window.addEventListener("resize", () => {
+      requestAnimationFrame(() => syncMobileMenu());
+    });
+    mobileMenuQuery.addEventListener("change", () => syncMobileMenu());
     document.querySelector("#addParticipant").addEventListener("click", addParticipant);
     participantSelect.addEventListener("change", () => {
       activeParticipantId = participantSelect.value;
@@ -1803,7 +1893,8 @@
 
     bindMetaFields();
     syncMetaFields();
-  renderTemplateOptions();
+    renderTemplateOptions();
+    syncMobileMenu();
     saveFlow();
     renderHistory();
     render();
