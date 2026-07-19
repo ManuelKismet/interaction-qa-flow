@@ -23,13 +23,13 @@ It is designed for conversations and workflows where you start with a planned qu
 - Follow-up branches from any answer
 - Nested follow-up branches
 - Editable questions and answers
-- Question deletion
+- Question deletion with undo
 - Local autosave in the browser
 - Autosave history summary
 - Named JSON export files
 - JSON import to reopen or share flows
 - CSV export
-- Read-only report view
+- Read-only active participant and all-participants report views
 - Print / Save PDF support
 - One built-in default template
 - Local custom templates for repeated question sets
@@ -42,6 +42,8 @@ This tool stores data locally in your browser using `localStorage`. Nothing is u
 
 If you clear browser storage, local autosaved data may be removed. Use **Save JSON file** for anything important.
 
+Autosave runs after each edit, add, delete, import, template load, or view change. The autosave history list is summarized and throttled so quick edits do not create a new history row for every keystroke.
+
 ## How To Use
 
 1. Open `index.html` in a browser.
@@ -49,7 +51,7 @@ If you clear browser storage, local autosaved data may be removed. Use **Save JS
 3. Add participants and switch between them to capture separate answers.
 4. Add participant questions when only the active participant needs that prompt.
 5. Use **Add follow-up** to create a participant-specific branch.
-6. Use **Report view** for a read-only summary of the active participant view.
+6. Use **Report view** for a read-only summary of the active participant view, or **All participants report** for every participant.
 7. Use **Save JSON file** to keep a reusable copy.
 8. Use **Open JSON file** to reopen a saved flow.
 
@@ -60,6 +62,8 @@ The app includes one default template for a general interaction QA flow.
 You can also save your own recurring question sets as local templates. Custom templates are stored in your browser, keep the question and branch structure, and clear answer text so sensitive responses are not carried into the reusable template.
 
 Use **Export templates** and **Import templates** to share template sets with another browser, device, or team. Loading a template replaces the current flow after confirmation when data already exists.
+
+**Clear flow** resets the active flow only. It does not delete saved local templates; use **Delete template** for that.
 
 ## Hosting
 

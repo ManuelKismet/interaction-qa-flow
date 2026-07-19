@@ -804,7 +804,9 @@
           <div class="toolbar-actions">
             <button id="addQuestionTop" type="button">Add shared question</button>
             <button id="addParticipantQuestionTop" type="button">Add participant question</button>
+            <button id="undoDelete" type="button" disabled hidden>Undo delete</button>
             <button id="toggleReport" class="view-toggle" type="button" aria-pressed="false">Report view</button>
+            <button id="toggleAllReport" class="view-toggle" type="button" aria-pressed="false">All participants report</button>
           </div>
         </div>
         <div id="flow" class="flow"></div>
@@ -824,7 +826,9 @@
     const newParticipantNameField = document.querySelector("#newParticipantName");
     const templateSelect = document.querySelector("#templateSelect");
     const templateNameField = document.querySelector("#templateName");
+    const undoDeleteButton = document.querySelector("#undoDelete");
     const toggleReportButton = document.querySelector("#toggleReport");
+    const toggleAllReportButton = document.querySelector("#toggleAllReport");
     const viewButtons = {
       mixed: document.querySelector("#viewMixed"),
       shared: document.querySelector("#viewShared"),
@@ -852,6 +856,8 @@
     let activeParticipantId = state.activeParticipantId;
     let viewMode = state.viewMode;
     let reportMode = false;
+    let reportScope = "active";
+    let lastDeleted = null;
     let lastHistoryAt = 0;
 
     function createParticipant(name = "Participant") {
@@ -1276,8 +1282,10 @@
 
     function render() {
       renderParticipants();
+      renderUndoDelete();
       flowElement.innerHTML = "";
-      toggleReportButton.setAttribute("aria-pressed", String(reportMode));
+      toggleReportButton.setAttribute("aria-pressed", String(reportMode && reportScope === "active"));
+      toggleAllReportButton.setAttribute("aria-pressed", String(reportMode && reportScope === "all"));
       toggleReportButton.textContent = reportMode ? "Edit view" : "Report view";
       if (reportMode) {
         renderReport();
@@ -1306,7 +1314,15 @@
           scopeNote: isShared ? "Shared question" : `Only for ${getActiveParticipant().name}`,
           deleteLabel: isShared ? "Delete shared question" : "Delete participant question",
           onDelete: () => {
-            flow = flow.filter((question) => question.id !== item.id);
+            const deleteIndex = flow.findIndex((question) => question.id === item.id);
+            if (deleteIndex < 0) {
+              return;
+            }
+            const deletedItem = structuredClone(item);
+            setUndoDelete(optionsDeleteLabel(item), () => {
+              flow.splice(Math.min(deleteIndex, flow.length), 0, deletedItem);
+            });
+            flow.splice(deleteIndex, 1);
           }
         });
         const answerStack = document.createElement("div");
@@ -1379,6 +1395,22 @@
       return node;
     }
 
+    function optionsDeleteLabel(item) {
+      return item.scope === "shared" ? "shared question" : "participant question";
+    }
+
+    function setUndoDelete(label, restore) {
+      lastDeleted = { label, restore };
+      statusElement.textContent = `Deleted ${label}`;
+      renderUndoDelete();
+    }
+
+    function renderUndoDelete() {
+      undoDeleteButton.hidden = !lastDeleted;
+      undoDeleteButton.disabled = !lastDeleted;
+      undoDeleteButton.textContent = lastDeleted ? `Undo delete ${lastDeleted.label}` : "Undo delete";
+    }
+
     function createAnswerNode(item, answerRecord, options) {
       const node = document.createElement("article");
       node.className = `node answer-node ${item.open ? "visible" : ""}`;
@@ -1447,7 +1479,15 @@
         scopeNote: `Only for ${getActiveParticipant().name}`,
         deleteLabel: "Delete follow-up",
         onDelete: () => {
-          parentAnswerRecord.branches = parentAnswerRecord.branches.filter((item) => item.id !== branch.id);
+          const deleteIndex = parentAnswerRecord.branches.findIndex((item) => item.id === branch.id);
+          if (deleteIndex < 0) {
+            return;
+          }
+          const deletedItem = structuredClone(branch);
+          setUndoDelete("follow-up", () => {
+            parentAnswerRecord.branches.splice(Math.min(deleteIndex, parentAnswerRecord.branches.length), 0, deletedItem);
+          });
+          parentAnswerRecord.branches.splice(deleteIndex, 1);
         }
       });
       const branchAnswerStack = document.createElement("div");
@@ -1477,6 +1517,10 @@
     }
 
     function renderReport() {
+      if (reportScope === "all") {
+        renderAllParticipantsReport();
+        return;
+      }
       const visibleItems = visibleFlowItems();
       if (!visibleItems.length) {
         flowElement.innerHTML = '<div class="empty-state">No questions in this view. Switch back to Edit view to add questions.</div>';
@@ -1486,22 +1530,82 @@
       report.className = "report";
       const header = document.createElement("section");
       header.className = "report-header";
-      header.innerHTML = `<div class="report-label">Read-only report</div><h2>${escapeHtml(meta.caseTitle || "Untitled QA flow")}</h2><p>Owner: ${escapeHtml(meta.interviewer || "Not specified")}</p><p>Context/source: ${escapeHtml(meta.interviewee || "Not specified")}</p><p>Participant: ${escapeHtml(getActiveParticipant().name)}</p><p>${countQuestionsForParticipant(flow, activeParticipantId)} visible questions including ${countBranchesForParticipant(flow, activeParticipantId)} follow-up branches.</p>`;
+      header.innerHTML = `<div class="report-label">Read-only report</div><h2>${escapeHtml(meta.caseTitle || "Untitled QA flow")}</h2><p>Owner: ${escapeHtml(meta.interviewer || "Not specified")}</p><p>Context/source: ${escapeHtml(meta.interviewee || "Not specified")}</p><p>Report scope: Active participant</p><p>View: ${escapeHtml(getViewModeLabel())}</p><p>Participant: ${escapeHtml(getActiveParticipant().name)}</p><p>${countQuestionsForReport(flow, activeParticipantId)} visible questions including ${countBranchesForReport(flow, activeParticipantId)} follow-up branches.</p>`;
       report.append(header);
       visibleItems.forEach((item, index) => {
         report.append(createReportItem(item, getAnswerRecord(item), `${item.scope === "shared" ? "Shared" : getActiveParticipant().name} Q${index + 1}`, false));
-        getAnswerRecord(item).branches.forEach((branch) => appendReportBranches(report, branch, 1));
+        getAnswerRecord(item).branches.forEach((branch) => appendReportBranches(report, branch, activeParticipantId, 1));
       });
       flowElement.append(report);
     }
 
-    function appendReportBranches(report, branch, depth) {
-      if (!isVisibleQuestionForCount(branch, activeParticipantId)) {
+    function renderAllParticipantsReport() {
+      const report = document.createElement("div");
+      report.className = "report";
+      const header = document.createElement("section");
+      header.className = "report-header";
+      header.innerHTML = `<div class="report-label">Read-only report</div><h2>${escapeHtml(meta.caseTitle || "Untitled QA flow")}</h2><p>Owner: ${escapeHtml(meta.interviewer || "Not specified")}</p><p>Context/source: ${escapeHtml(meta.interviewee || "Not specified")}</p><p>Report scope: All participants</p><p>View: ${escapeHtml(getViewModeLabel())}</p><p>${participants.length} participant${participants.length === 1 ? "" : "s"} included.</p>`;
+      report.append(header);
+      participants.forEach((participant) => {
+        const participantItems = flow.filter((item) => isVisibleQuestionForReport(item, participant.id));
+        const participantHeader = document.createElement("section");
+        participantHeader.className = "report-header";
+        participantHeader.innerHTML = `<div class="report-label">Participant</div><h2>${escapeHtml(participant.name)}</h2><p>${countQuestionsForReport(flow, participant.id)} visible questions including ${countBranchesForReport(flow, participant.id)} follow-up branches.</p>`;
+        report.append(participantHeader);
+        if (!participantItems.length) {
+          const empty = document.createElement("section");
+          empty.className = "report-item";
+          empty.innerHTML = '<div class="report-label">No visible questions</div><div class="report-answer">No questions match this view for this participant.</div>';
+          report.append(empty);
+          return;
+        }
+        participantItems.forEach((item, index) => {
+          const answerRecord = getAnswerRecord(item, participant.id, false);
+          report.append(createReportItem(item, answerRecord, `${item.scope === "shared" ? "Shared" : participant.name} Q${index + 1}`, false));
+          answerRecord.branches.forEach((branch) => appendReportBranches(report, branch, participant.id, 1));
+        });
+      });
+      flowElement.append(report);
+    }
+
+    function appendReportBranches(report, branch, participantId, depth) {
+      if (!isVisibleQuestionForReport(branch, participantId)) {
         return;
       }
-      const answerRecord = getAnswerRecord(branch);
+      const answerRecord = getAnswerRecord(branch, participantId, false);
       report.append(createReportItem(branch, answerRecord, `Follow-up level ${depth}`, true));
-      answerRecord.branches.forEach((child) => appendReportBranches(report, child, depth + 1));
+      answerRecord.branches.forEach((child) => appendReportBranches(report, child, participantId, depth + 1));
+    }
+
+    function isVisibleQuestionForReport(item, participantId) {
+      if (item.scope === "shared") {
+        return viewMode !== "participant";
+      }
+      return item.participantId === participantId && viewMode !== "shared";
+    }
+
+    function countQuestionsForReport(items, participantId) {
+      return items.reduce((total, item) => {
+        if (!isVisibleQuestionForReport(item, participantId)) {
+          return total;
+        }
+        const answerRecord = getAnswerRecord(item, participantId, false);
+        return total + 1 + countQuestionsForReport(answerRecord.branches || [], participantId);
+      }, 0);
+    }
+
+    function countBranchesForReport(items, participantId) {
+      return items.reduce((total, item) => {
+        if (!isVisibleQuestionForReport(item, participantId)) {
+          return total;
+        }
+        const branches = getAnswerRecord(item, participantId, false).branches || [];
+        return total + branches.filter((branch) => isVisibleQuestionForReport(branch, participantId)).length + countBranchesForReport(branches, participantId);
+      }, 0);
+    }
+
+    function getViewModeLabel() {
+      return { mixed: "Shared + participant", shared: "Shared only", participant: "Participant only" }[viewMode] || "Shared + participant";
     }
 
     function createReportItem(item, answerRecord, label, isBranch) {
@@ -1642,7 +1746,31 @@
       event.target.value = "";
     });
     toggleReportButton.addEventListener("click", () => {
-      reportMode = !reportMode;
+      if (reportMode) {
+        reportMode = false;
+      } else {
+        reportMode = true;
+        reportScope = "active";
+      }
+      render();
+    });
+    toggleAllReportButton.addEventListener("click", () => {
+      if (reportMode && reportScope === "all") {
+        reportMode = false;
+      } else {
+        reportMode = true;
+        reportScope = "all";
+      }
+      render();
+    });
+    undoDeleteButton.addEventListener("click", () => {
+      if (!lastDeleted) {
+        return;
+      }
+      const deleted = lastDeleted;
+      lastDeleted = null;
+      deleted.restore();
+      saveFlow();
       render();
     });
     document.querySelector("#resetFlow").addEventListener("click", () => {
@@ -1653,7 +1781,10 @@
       participants = defaultParticipants();
       activeParticipantId = defaultParticipantId;
       viewMode = "mixed";
+      reportMode = false;
+      reportScope = "active";
       flow = structuredClone(defaultFlow);
+      lastDeleted = null;
       syncMetaFields();
       saveFlow();
       render();
