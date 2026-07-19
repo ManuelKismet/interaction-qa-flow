@@ -1,6 +1,6 @@
 # Interaction QA Flow
 
-Interaction QA Flow is a free, local-first browser tool for mapping shared questions, participant-specific questions, live answers, and unexpected follow-up branches.
+Interaction QA Flow is a free, local-first browser tool for mapping shared questions, individual questions, live answers, and unexpected follow-up branches.
 
 It is designed for conversations and workflows where you start with a planned question path, switch between participants, and capture new follow-up questions when an answer reveals something unexpected.
 
@@ -18,7 +18,7 @@ It is designed for conversations and workflows where you start with a planned qu
 - Prepared question path
 - Multiple participants
 - Shared questions with separate answers per participant
-- Participant-specific questions
+- Individual questions
 - Answer fields for each question
 - Follow-up branches from any answer
 - Nested follow-up branches
@@ -49,8 +49,8 @@ Autosave runs after each edit, add, delete, import, template load, or view chang
 1. Open `index.html` in a browser.
 2. Add shared questions when every participant should answer the same prompt.
 3. Add participants and switch between them to capture separate answers.
-4. Add participant questions when only the active participant needs that prompt.
-5. Use **Add follow-up** to create a participant-specific branch.
+4. Add individual questions when only the active participant needs that prompt.
+5. Use **Add follow-up** to create an individual branch.
 6. Use **Report view** for a read-only summary of the active participant view, or **All participants report** for every participant.
 7. Use **Save JSON file** to keep a reusable copy.
 8. Use **Open JSON file** to reopen a saved flow.

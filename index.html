@@ -732,9 +732,9 @@
       <details class="control-group view-options" open>
         <summary>View options</summary>
         <div class="control-actions segmented" aria-label="Question visibility">
-          <button id="viewMixed" type="button" aria-pressed="true">Shared + participant</button>
-          <button id="viewShared" type="button" aria-pressed="false">Shared only</button>
-          <button id="viewParticipant" type="button" aria-pressed="false">Participant only</button>
+          <button id="viewMixed" type="button" aria-pressed="true">Shared + individual</button>
+          <button id="viewShared" type="button" aria-pressed="false">Shared</button>
+          <button id="viewParticipant" type="button" aria-pressed="false">Individual</button>
         </div>
       </details>
       <div class="controls">
@@ -775,7 +775,7 @@
       <ul class="hint-list">
         <li>Shared questions collect a separate answer for each participant.</li>
         <li>Participant questions appear only for the active participant.</li>
-        <li>Any answer can add a participant-specific follow-up question.</li>
+        <li>Any answer can add an individual follow-up question.</li>
         <li>Edit or delete answer text directly in the answer field.</li>
       </ul>
       <details>
@@ -784,7 +784,7 @@
           <li>Add shared questions when everyone should answer the same prompt.</li>
           <li>Add participant questions when only the active participant needs that prompt.</li>
           <li>Switch participants to capture separate answers against the same shared questions.</li>
-          <li>Use Add follow-up when an answer reveals a new participant-specific question.</li>
+          <li>Use Add follow-up when an answer reveals a new individual question.</li>
           <li>Save recurring question sets as local templates, then export them when a team needs the same set.</li>
           <li>Save JSON files to reopen or share a flow later.</li>
           <li>Use Report view or Print / Save PDF when you need a read-only record.</li>
@@ -1128,6 +1128,7 @@
       if (flow.length && !confirm("Load this template and replace the current flow?")) {
         return;
       }
+      clearUndoDelete();
       meta = { ...defaultMeta, ...template.meta };
       participants = source === "builtin" ? defaultParticipants() : template.participants.map((participant) => ({ ...participant }));
       activeParticipantId = source === "builtin" ? defaultParticipantId : template.activeParticipantId;
@@ -1411,6 +1412,11 @@
       undoDeleteButton.textContent = lastDeleted ? `Undo delete ${lastDeleted.label}` : "Undo delete";
     }
 
+    function clearUndoDelete() {
+      lastDeleted = null;
+      renderUndoDelete();
+    }
+
     function createAnswerNode(item, answerRecord, options) {
       const node = document.createElement("article");
       node.className = `node answer-node ${item.open ? "visible" : ""}`;
@@ -1424,6 +1430,7 @@
       branchButton.type = "button";
       branchButton.textContent = "Add follow-up";
       branchButton.addEventListener("click", () => {
+        clearUndoDelete();
         answerRecord.branches.push(createNode("New follow-up question", true, "participant", activeParticipantId));
         saveFlow();
         render();
@@ -1503,6 +1510,7 @@
     }
 
     function addSharedQuestion() {
+      clearUndoDelete();
       flow.push(createPreparedNode());
       saveFlow();
       render();
@@ -1510,6 +1518,7 @@
     }
 
     function addParticipantQuestion() {
+      clearUndoDelete();
       flow.push(createParticipantQuestion());
       saveFlow();
       render();
@@ -1605,7 +1614,7 @@
     }
 
     function getViewModeLabel() {
-      return { mixed: "Shared + participant", shared: "Shared only", participant: "Participant only" }[viewMode] || "Shared + participant";
+      return { mixed: "Shared + individual", shared: "Shared", participant: "Individual" }[viewMode] || "Shared + individual";
     }
 
     function createReportItem(item, answerRecord, label, isBranch) {
@@ -1653,6 +1662,7 @@
         return;
       }
       try {
+        clearUndoDelete();
         applyImportedState(JSON.parse(await file.text()));
         reportMode = false;
         saveFlow();
@@ -1696,6 +1706,7 @@
     }
 
     function addParticipant() {
+      clearUndoDelete();
       const name = newParticipantNameField.value.trim() || `Participant ${participants.length + 1}`;
       const participant = createParticipant(name.trim());
       participants.push(participant);
