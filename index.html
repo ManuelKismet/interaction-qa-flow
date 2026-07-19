@@ -139,11 +139,6 @@
       margin-top: 0.65rem;
     }
 
-    .primary-actions {
-      display: grid;
-      gap: 0.55rem;
-    }
-
     .file-input {
       display: none;
     }
@@ -722,15 +717,18 @@
           <input id="interviewee" class="subtle-input" type="text" placeholder="Person, team, or record source">
         </label>
       </div>
-      <div class="participant-panel" aria-label="Participants">
-        <label>Active participant
-          <select id="participantSelect" class="template-select"></select>
-        </label>
-        <label>New participant name
-          <input id="newParticipantName" class="subtle-input" type="text" placeholder="e.g. Person B">
-        </label>
-        <button id="addParticipant" type="button">Add participant</button>
-      </div>
+      <details class="control-group participant-panel" open>
+        <summary>Participants</summary>
+        <div class="control-actions">
+          <label>Active participant
+            <select id="participantSelect" class="template-select"></select>
+          </label>
+          <label>New participant name
+            <input id="newParticipantName" class="subtle-input" type="text" placeholder="e.g. Person B">
+          </label>
+          <button id="addParticipant" type="button">Add participant</button>
+        </div>
+      </details>
       <details class="control-group view-options" open>
         <summary>View options</summary>
         <div class="control-actions segmented" aria-label="Question visibility">
@@ -740,10 +738,6 @@
         </div>
       </details>
       <div class="controls">
-        <div class="primary-actions" aria-label="Question actions">
-          <button id="addQuestion" type="button">Add shared question</button>
-          <button id="addParticipantQuestion" type="button">Add participant question</button>
-        </div>
         <details class="control-group">
           <summary>Flow files</summary>
           <div class="control-actions">
@@ -1609,9 +1603,7 @@
       render();
     }
 
-    document.querySelector("#addQuestion").addEventListener("click", addSharedQuestion);
     document.querySelector("#addQuestionTop").addEventListener("click", addSharedQuestion);
-    document.querySelector("#addParticipantQuestion").addEventListener("click", addParticipantQuestion);
     document.querySelector("#addParticipantQuestionTop").addEventListener("click", addParticipantQuestion);
     document.querySelector("#addParticipant").addEventListener("click", addParticipant);
     participantSelect.addEventListener("change", () => {
