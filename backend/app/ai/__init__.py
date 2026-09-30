@@ -1,0 +1,1 @@
+"""Reserved for provider-independent search and ranking integrations."""
