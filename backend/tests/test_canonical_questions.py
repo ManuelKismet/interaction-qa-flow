@@ -105,6 +105,7 @@ async def test_owner_merges_multiple_questions_and_preserves_history(app_client)
 
     detail = await client.get(
         f"/api/v1/questions/{ids['finance_question']}",
+        headers=headers(ids, "finance_owner"),
         params={"organisation_id": str(ids["organisation"])},
     )
     assert {alias["title"] for alias in detail.json()["aliases"]} == {

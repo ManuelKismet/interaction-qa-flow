@@ -93,7 +93,10 @@ async def test_answer_resolve_detail_and_reopen(app_client) -> None:
 
     detail = await client.get(
         f"/api/v1/questions/{question['id']}",
-        params={"organisation_id": str(identities["organisation_id"])},
+        params={
+            "organisation_id": str(identities["organisation_id"]),
+            "user_id": str(identities["author_id"]),
+        },
     )
     assert detail.status_code == 200
     assert detail.json()["accepted_answer"]["id"] == answer["id"]
@@ -203,6 +206,7 @@ async def test_update_archive_and_owned_content_crud(app_client) -> None:
         "/api/v1/questions",
         params={
             "organisation_id": str(identities["organisation_id"]),
+            "user_id": str(identities["author_id"]),
             "status": "open",
         },
     )
