@@ -26,10 +26,12 @@ Knowledge and Interact remain one platform. Production comes later.
 
 ## Application gates and ownership
 
-The platform is NOT running. The clean source import still fails in
-backend/app/services/team.py:157: TypeError: function object is not subscriptable.
-No workaround or application remediation was applied. Existing audit IQ-01
-remains open. Codex owns this infrastructure/configuration setup; Copilot owns
+The platform is NOT deployed. Founder explicitly requested the startup fix
+before authentication integration on 2026-10-02. Added deferred annotations
+in TeamService to avoid the list-method/builtin-type collision. Clean FastAPI
+import passed and all 38 existing fake-provider backend tests passed (4.71s).
+These tests use isolated in-memory SQLite, not the hosted PostgreSQL instance.
+IQ-01 remediation is implemented on the draft branch; joint review remains. Codex owns this infrastructure/configuration setup; Copilot owns
 application fixes and relevant tests; founder + Codex review together.
 
 Prepared Copilot scope (not yet assigned):
@@ -57,3 +59,5 @@ Use explicit --project=intqaflow-dev and --billing-project=intqaflow-dev
 where required; do not change other applications' resources or defaults.
 Do not print tokens, passwords or credential files. User login remains in
 the private Codespace for the authorized task; no credentials are committed.
+
+Firebase development web app verified ACTIVE: 1:398672910103:web:e968506023d8eab9290952.
