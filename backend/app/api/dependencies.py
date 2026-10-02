@@ -181,6 +181,15 @@ async def enforce_tenant_scope(
     request: Request,
     identity: AuthenticatedIdentity = Depends(get_development_identity),
 ) -> None:
+    if any(
+        header in request.headers
+        for header in ("x-user-id", "x-organisation-id", "x-user-role")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Legacy development identity headers are not accepted",
+        )
+
     for value in request.query_params.getlist("organisation_id"):
         if value != str(identity.organisation_id):
             raise HTTPException(

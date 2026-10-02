@@ -5,7 +5,7 @@ from firebase_admin import auth
 from sqlalchemy import select
 
 from app.api import dependencies
-from app.api.dependencies import get_development_identity
+from app.api.dependencies import enforce_tenant_scope, get_development_identity
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.models import FirebaseUidMapping, Organisation, User, UserRole
@@ -17,6 +17,11 @@ FIREBASE_UID = "synthetic-user-uid"
 
 def bearer_header() -> str:
     return "".join(("bear", "er ", "synthetic-test-id-token"))
+
+
+def use_real_identity_dependencies() -> None:
+    app.dependency_overrides.pop(get_development_identity, None)
+    app.dependency_overrides.pop(enforce_tenant_scope, None)
 
 
 async def seed_membership(session_factory, *, status: str = "active") -> tuple:
@@ -61,22 +66,28 @@ async def test_valid_uid_membership_ignores_forged_development_headers(
 ) -> None:
     client, session_factory = app_client
     organisation_id, user_id = await seed_membership(session_factory)
-    app.dependency_overrides.pop(get_development_identity)
+    use_real_identity_dependencies()
     monkeypatch.setattr(dependencies, "verify_id_token", lambda *_: valid_claims())
 
     response = await client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": bearer_header()},
+    )
+    assert response.status_code == 200
+    assert response.json()["user_id"] == str(user_id)
+    assert response.json()["organisation_id"] == str(organisation_id)
+    assert response.json()["role"] == "admin"
+
+    forged = await client.get(
         "/api/v1/auth/me",
         headers={
             "Authorization": bearer_header(),
             "X-User-ID": str(uuid4()),
             "X-Organisation-ID": str(uuid4()),
+            "X-User-Role": "admin",
         },
     )
-
-    assert response.status_code == 200
-    assert response.json()["user_id"] == str(user_id)
-    assert response.json()["organisation_id"] == str(organisation_id)
-    assert response.json()["role"] == "admin"
+    assert forged.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -84,7 +95,7 @@ async def test_missing_and_invalid_identity_tokens_fail_closed(
     app_client, monkeypatch
 ) -> None:
     client, _ = app_client
-    app.dependency_overrides.pop(get_development_identity)
+    use_real_identity_dependencies()
 
     missing = await client.get("/api/v1/auth/me")
     assert missing.status_code == 401
@@ -132,7 +143,7 @@ async def test_wrong_project_issuer_and_empty_uid_are_rejected(
     app_client, monkeypatch, claims
 ) -> None:
     client, _ = app_client
-    app.dependency_overrides.pop(get_development_identity)
+    use_real_identity_dependencies()
     monkeypatch.setattr(dependencies, "verify_id_token", lambda *_: claims)
 
     response = await client.get(
@@ -158,7 +169,7 @@ async def test_unmapped_and_inactive_firebase_users_are_rejected(
             )
         )
         await session.commit()
-    app.dependency_overrides.pop(get_development_identity)
+    use_real_identity_dependencies()
     monkeypatch.setattr(dependencies, "verify_id_token", lambda *_: valid_claims())
     headers = {"Authorization": bearer_header()}
 
@@ -176,7 +187,7 @@ async def test_app_check_observation_allows_missing_but_rejects_invalid_tokens(
 ) -> None:
     client, _ = app_client
     await seed_membership(app_client[1])
-    app.dependency_overrides.pop(get_development_identity)
+    use_real_identity_dependencies()
     monkeypatch.setattr(dependencies, "verify_id_token", lambda *_: valid_claims())
     monkeypatch.setattr(
         dependencies,
@@ -212,7 +223,7 @@ async def test_app_check_enforcement_rejects_missing_and_wrong_app(
 ) -> None:
     client, session_factory = app_client
     await seed_membership(session_factory)
-    app.dependency_overrides.pop(get_development_identity)
+    use_real_identity_dependencies()
     app.dependency_overrides[get_settings] = lambda: Settings(app_check_mode="enforce")
     monkeypatch.setattr(dependencies, "verify_id_token", lambda *_: valid_claims())
     monkeypatch.setattr(
@@ -249,7 +260,7 @@ async def test_cross_tenant_selection_and_role_restrictions_are_rejected(
 ) -> None:
     client, session_factory = app_client
     organisation_id, _ = await seed_membership(session_factory)
-    app.dependency_overrides.pop(get_development_identity)
+    use_real_identity_dependencies()
     monkeypatch.setattr(dependencies, "verify_id_token", lambda *_: valid_claims())
     headers = {"Authorization": bearer_header()}
 
