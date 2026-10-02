@@ -1238,12 +1238,20 @@ class GuidedService:
     ) -> GuidedSession:
         actor = await self.permissions.actor(user_id, organisation_id)
         session = await self._session(session_id, organisation_id)
-        if actor.id != session.created_by and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError("Only the session owner or an admin can change it")
+        if actor.id != session.created_by and (
+            session.visibility == GuidedSessionVisibility.PRIVATE
+            or actor.role != UserRole.ADMIN
+        ):
+            raise PermissionDeniedError("Only the session owner can change a private session")
         return session
 
     async def _require_view(self, actor, session: GuidedSession) -> None:
-        if actor.role == UserRole.ADMIN or actor.id == session.created_by:
+        if actor.id == session.created_by:
+            return
+        if (
+            actor.role == UserRole.ADMIN
+            and session.visibility != GuidedSessionVisibility.PRIVATE
+        ):
             return
         if session.visibility == GuidedSessionVisibility.ORGANISATION:
             return
