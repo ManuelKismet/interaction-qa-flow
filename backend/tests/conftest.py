@@ -7,7 +7,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.database import get_session
-from app.api.dependencies import AuthenticatedIdentity, get_development_identity
+from app.api.dependencies import (
+    AuthenticatedIdentity,
+    enforce_tenant_scope,
+    get_development_identity,
+)
 from app.main import app
 from app.models import Base
 
@@ -53,8 +57,12 @@ async def app_client() -> AsyncIterator[
             role="employee",
         )
 
+    async def override_scope(_: Request) -> None:
+        return None
+
     app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_development_identity] = override_identity
+    app.dependency_overrides[enforce_tenant_scope] = override_scope
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client, session_factory
