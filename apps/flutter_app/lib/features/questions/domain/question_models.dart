@@ -74,6 +74,7 @@ class SemanticSearchResult {
     required this.matchedQuestionIds,
     required this.matchedText,
     required this.matchSource,
+    required this.matchMethod,
     this.answerVerifiedBy,
     this.answerVerifiedAt,
     this.answerFreshnessStatus,
@@ -101,6 +102,7 @@ class SemanticSearchResult {
             .cast<String>(),
         matchedText: json['matched_text'] as String,
         matchSource: json['match_source'] as String,
+        matchMethod: json['match_method'] as String? ?? 'semantic',
         canonicalBody: json['canonical_body'] as String?,
         resolvedAt: _date(json['resolved_at']),
         answerVerifiedBy: json['answer_verified_by'] as String?,
@@ -133,6 +135,7 @@ class SemanticSearchResult {
   final List<String> matchedQuestionIds;
   final String matchedText;
   final String matchSource;
+  final String matchMethod;
   final String? canonicalBody;
   final DateTime? resolvedAt;
   final String? answerVerifiedBy;

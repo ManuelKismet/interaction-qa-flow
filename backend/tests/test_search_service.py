@@ -9,7 +9,6 @@ from app.ai.embedding_provider import (
     EmbeddingProviderError,
 )
 from app.core.config import Settings
-from app.core.exceptions import ServiceUnavailableError
 from app.models.answer import Answer, AnswerStatus
 from app.models.question import Question, QuestionStatus, QuestionVisibility
 from app.models.user import User
@@ -71,6 +70,7 @@ async def test_search_classifies_and_ranks_candidates() -> None:
         clock=lambda: now,
     )
     service.permissions.actor = AsyncMock(return_value=actor)
+    service.search_repository.lexical_candidates = AsyncMock(return_value=[])
     service.search_repository.semantic_candidates = AsyncMock(
         return_value=[
             candidate(
@@ -101,7 +101,7 @@ async def test_search_classifies_and_ranks_candidates() -> None:
         user_id=actor.id,
     )
 
-    assert [result.similarity for result in results] == [0.9, 0.749, 0.751]
+    assert [result.similarity for result in results] == [0.9, 0.751, 0.749]
     assert results[0].confidence == MatchConfidence.HIGH_CONFIDENCE
     assert results[1].confidence == MatchConfidence.RELATED
     assert "embedding" not in results[0].model_dump()
@@ -133,6 +133,7 @@ async def test_search_can_include_open_question_without_answer() -> None:
         clock=lambda: now,
     )
     service.permissions.actor = AsyncMock(return_value=actor)
+    service.search_repository.lexical_candidates = AsyncMock(return_value=[])
     service.search_repository.semantic_candidates = AsyncMock(
         return_value=[(question, question, None, None, None, 0.91, 0)]
     )
@@ -199,6 +200,7 @@ async def test_search_ranks_fresh_verified_before_overdue_and_community() -> Non
         clock=lambda: now,
     )
     service.permissions.actor = AsyncMock(return_value=actor)
+    service.search_repository.lexical_candidates = AsyncMock(return_value=[])
     service.search_repository.semantic_candidates = AsyncMock(
         return_value=candidates
     )
@@ -251,6 +253,7 @@ async def test_search_collapses_aliases_using_strongest_similarity() -> None:
         clock=lambda: now,
     )
     service.permissions.actor = AsyncMock(return_value=actor)
+    service.search_repository.lexical_candidates = AsyncMock(return_value=[])
     service.search_repository.semantic_candidates = AsyncMock(
         return_value=[
             (canonical, canonical, answer, department, team, 0.82, challenge_count),
@@ -274,7 +277,65 @@ async def test_search_collapses_aliases_using_strongest_similarity() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_reports_provider_failure_without_exposing_details() -> None:
+async def test_search_fuses_branch_ranks_without_exposing_keyword_scores() -> None:
+    actor = User(
+        id=uuid4(),
+        organisation_id=uuid4(),
+        email="fusion@example.test",
+        display_name="Fusion Tester",
+    )
+    first = candidate(
+        actor,
+        similarity=100.0,
+        answer_status=AnswerStatus.COMMUNITY,
+        resolved_at=datetime.now(UTC),
+    )
+    second_lexical = candidate(
+        actor,
+        similarity=10.0,
+        answer_status=AnswerStatus.COMMUNITY,
+        resolved_at=datetime.now(UTC),
+    )
+    keyword_only = candidate(
+        actor,
+        similarity=10.0,
+        answer_status=AnswerStatus.COMMUNITY,
+        resolved_at=datetime.now(UTC),
+    )
+    first_semantic = (*first[:5], 0.7, first[6])
+    second_semantic = (*second_lexical[:5], 0.9, second_lexical[6])
+    service = SearchService(
+        AsyncMock(),
+        DeterministicFakeEmbeddingProvider(),
+        Settings(),
+    )
+    service.permissions.actor = AsyncMock(return_value=actor)
+    service.search_repository.lexical_candidates = AsyncMock(
+        return_value=[first, second_lexical, keyword_only]
+    )
+    service.search_repository.semantic_candidates = AsyncMock(
+        return_value=[second_semantic, first_semantic]
+    )
+
+    results = await service.search(
+        query="reset password",
+        limit=5,
+        organisation_id=actor.organisation_id,
+        user_id=actor.id,
+    )
+
+    assert results[0].question_id == second_lexical[0].id
+    assert results[0].match_method == "hybrid"
+    keyword_result = next(
+        result for result in results if result.question_id == keyword_only[0].id
+    )
+    assert keyword_result.match_method == "keyword"
+    assert keyword_result.similarity == 0.0
+    assert keyword_result.confidence == MatchConfidence.LOW_CONFIDENCE
+
+
+@pytest.mark.asyncio
+async def test_search_preserves_lexical_results_when_provider_fails() -> None:
     actor = User(
         id=uuid4(),
         organisation_id=uuid4(),
@@ -283,14 +344,25 @@ async def test_search_reports_provider_failure_without_exposing_details() -> Non
     )
     service = SearchService(AsyncMock(), FailingEmbeddingProvider(), Settings())
     service.permissions.actor = AsyncMock(return_value=actor)
+    service.search_repository.semantic_candidates = AsyncMock()
+    lexical_hit = candidate(
+        actor,
+        similarity=11.0,
+        answer_status=AnswerStatus.COMMUNITY,
+        resolved_at=datetime.now(UTC),
+    )
+    service.search_repository.lexical_candidates = AsyncMock(
+        return_value=[lexical_hit]
+    )
 
-    with pytest.raises(
-        ServiceUnavailableError,
-        match="Semantic search is temporarily unavailable",
-    ):
-        await service.search(
-            query="Mileage claim",
-            limit=5,
-            organisation_id=actor.organisation_id,
-            user_id=actor.id,
-        )
+    results = await service.search(
+        query="Mileage claim",
+        limit=5,
+        organisation_id=actor.organisation_id,
+        user_id=actor.id,
+    )
+
+    assert len(results) == 1
+    assert results[0].similarity == 0.0
+    assert results[0].confidence == MatchConfidence.LOW_CONFIDENCE
+    service.search_repository.semantic_candidates.assert_not_awaited()

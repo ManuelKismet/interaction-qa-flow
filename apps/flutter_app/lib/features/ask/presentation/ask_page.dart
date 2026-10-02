@@ -248,6 +248,11 @@ class _SuggestionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final highConfidence = result.confidence == 'high_confidence';
+    final matchLabel = result.matchMethod == 'keyword'
+        ? 'Keyword match'
+        : highConfidence
+            ? 'Likely match'
+            : 'Related';
     return InkWell(
       onTap: () => context.go('/questions/${result.questionId}'),
       child: Padding(
@@ -269,7 +274,7 @@ class _SuggestionRow extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        highConfidence ? 'Likely match' : 'Related',
+                        matchLabel,
                         style: TextStyle(
                           color: highConfidence
                               ? const Color(0xFF255C57)
