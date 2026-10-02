@@ -26,6 +26,9 @@ if [[ "$(git -C "$iq_flutter_root" rev-parse "$iq_flutter_release^{commit}")" !=
   echo "Flutter release tag does not match the recorded revision." >&2
   exit 1
 fi
+git -C "$iq_flutter_root" checkout -B stable "$iq_flutter_release"
+# Regenerate version metadata if an extension probed the SDK before tagging.
+rm -f "$iq_flutter_root/bin/cache/flutter.version.json"
 export PATH="$iq_flutter_root/bin:$PATH"
 flutter --version
 flutter precache --web
