@@ -21,3 +21,7 @@ The refreshed diagnostic development release returned `auth/missing-password` af
 ### Direct user entry and membership-loading regression
 
 Direct user sign-in progressed past the sign-in form but remained at the membership loading spinner. Cloud Run logs showed repeated GET /api/v1/auth/me responses of 400. The client globally sets Content-Type application/json; tenant enforcement attempted to parse an empty body. Independently reproduced with a freshly verified synthetic ID token: empty GET without JSON header = 200; same request with JSON header = 400 Malformed request body. This establishes successful identity verification followed by a body-parsing failure. Fix b9befa4 skips JSON parsing only for absent bodies, retaining nonempty malformed-body and cross-tenant rejection. All 57 backend tests pass (including three new regression cases). Development-only API rebuild is in progress; browser acceptance is not signed off.
+
+### Browser recovery verified
+
+Development API revision intqaflow-dev-api-00002-bm6 is Ready and serving all traffic from fix b9befa4. Reloading the existing user-authenticated hosted browser session now displays the signed-in IntQAFlow Knowledge screen with Ask & search, Questions and the application navigation. No credentials were re-entered or inspected by the agent. Browser sign-in and membership loading are verified; real App Check attestation and Phase 6 flows are not yet signed off. Draft corrective PR: https://github.com/ManuelKismet/interaction-qa-flow/pull/6 (no merge or production deployment).
