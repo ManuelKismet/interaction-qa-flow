@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_page.dart';
