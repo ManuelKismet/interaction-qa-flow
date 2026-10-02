@@ -39,7 +39,7 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     return detail.when(
       data: (question) => _buildDetail(
         question,
-        ref.watch(currentMembershipProvider).valueOrNull,
+        ref.watch(currentMembershipProvider).value,
       ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stackTrace) => Center(

@@ -69,7 +69,7 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(currentMembershipProvider).valueOrNull?.role ?? '';
+    final role = ref.watch(currentMembershipProvider).value?.role ?? '';
     final destinations = _destinations(role).where((destination) {
       return destination.path != '/review-queue' ||
           {'admin', 'answer_owner'}.contains(role);

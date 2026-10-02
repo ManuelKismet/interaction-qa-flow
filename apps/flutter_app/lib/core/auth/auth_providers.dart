@@ -12,7 +12,7 @@ final authStateProvider = StreamProvider<User?>(
 
 final currentMembershipProvider = FutureProvider.autoDispose<ActiveMembership>(
   (ref) async {
-    final user = ref.watch(authStateProvider).valueOrNull;
+    final user = ref.watch(authStateProvider).value;
     if (user == null) throw StateError('No authenticated user');
     final response = await ref
         .watch(apiClientProvider)

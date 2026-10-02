@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/config/app_config.dart';
 
+const _authorizationScheme = 'Bearer';
+
 final apiClientProvider = Provider<Dio>((ref) {
   final source = _FirebaseTokenSource(
     auth: FirebaseAuth.instance,
@@ -119,6 +121,6 @@ Future<void> _attachTokens(
     throw StateError('Firebase authentication or App Check is unavailable.');
   }
   options
-    ..headers['Authorization'] = 'Bear' + 'er ' + currentIdToken
+    ..headers['Authorization'] = '$_authorizationScheme $currentIdToken'
     ..headers['X-Firebase-AppCheck'] = appCheckToken;
 }

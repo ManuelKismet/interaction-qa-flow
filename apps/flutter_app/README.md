@@ -15,7 +15,7 @@ flutter run -d chrome \
 	--dart-define=FIREBASE_PROJECT_ID=intqaflow-dev \
 	--dart-define=FIREBASE_APP_ID=1:398672910103:web:e968506023d8eab9290952 \
 	--dart-define=FIREBASE_MESSAGING_SENDER_ID=398672910103 \
-	--dart-define=RECAPTCHA_V3_SITE_KEY=<registered-app-check-site-key>
+	--dart-define=RECAPTCHA_ENTERPRISE_SITE_KEY=<registered-app-check-site-key>
 ```
 
 The Firebase web API key and reCAPTCHA site key are public web configuration,
@@ -38,7 +38,7 @@ flutter build web --release \
 	--dart-define=FIREBASE_PROJECT_ID=intqaflow-dev \
 	--dart-define=FIREBASE_APP_ID=1:398672910103:web:e968506023d8eab9290952 \
 	--dart-define=FIREBASE_MESSAGING_SENDER_ID=398672910103 \
-	--dart-define=RECAPTCHA_V3_SITE_KEY=<registered-app-check-site-key>
+	--dart-define=RECAPTCHA_ENTERPRISE_SITE_KEY=<registered-app-check-site-key>
 ```
 
 Use the same defines for the `flutter test` and `flutter analyze` CI/build

@@ -28,7 +28,7 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
 
   @override
   Widget build(BuildContext context) {
-    final role = ref.watch(currentMembershipProvider).valueOrNull?.role;
+    final role = ref.watch(currentMembershipProvider).value?.role;
     if (!{'admin', 'answer_owner'}.contains(role)) {
       return const Center(child: Text('You do not have access to this queue.'));
     }
