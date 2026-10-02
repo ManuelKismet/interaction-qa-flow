@@ -75,3 +75,20 @@ Recovered earlier notes establish these outstanding scenarios, but do not contai
 4. Run real sign-in and App Check positive/negative checks privately; then verify hosted database behaviour on the reviewed schema/migrations. Migration 0008 is not applied by this checklist.
 5. Run the Phase 6 browser scenarios, capture verdicts, and reconcile recovered A–M labels if the original source becomes available.
 6. Review remaining audit findings and record formal sign-off before discussing deployment or retiring the local database.
+
+
+## Independent correction review on 2026-10-02
+
+Pinned b2bdf20ab102eec625dfa844618af4efc5f39cf3: full fake-embedding backend suite 52 passed in 6.38 seconds. Separate UID-mapped replay confirmed original IQ-03 direct reads/child reads/comment and answer writes/list exclusion, owner access, sampled tenant denial and IQ-04 null-department creation denial/legacy record reads/revisions/exports/list exclusion. IQ-05 still reproduced there.
+
+Copilot then completed IQ-05 in 2962b2c502e5ff1183fb5bfadde683e1c9a91667. Independently pinned this commit: full fake-embedding suite 53 passed in 6.34 seconds; the UID-mapped replay passed four cases in 2.34 seconds, including 81 missing-identity operations and administrator denial on another owner's private Interact session. Inspected owner/read authorization changes and the focused suite. These results are synthetic SQLite evidence with mocked token verification, not live hosted acceptance.
+
+Remaining IQ-03 canonical-target leak: an unrelated same-tenant actor submits a duplicate suggestion for a visible source question, selecting a visible alias whose canonical root is private. POST /api/v1/questions/{source}/duplicate-suggestions returns 201 and discloses the private root's ID and title. Permission is checked on the alias before _root resolves it; the resolved root lacks a visibility check. Independent negative acceptance test fails (expected 403, observed 201), and a suggestion is persisted. This blocks Knowledge privacy sign-off despite the ordinary suite passing.
+
+Reproducible opt-in files:
+- review-probes/privacy_acceptance.py: four successful boundary cases on 2962b2c.
+- review-probes/canonical_privacy_acceptance.py: one failing private canonical-target case on 2962b2c.
+
+Run from the pinned backend with PYTHONPATH containing that backend and the isolation branch's docs/operations/review-probes directory, using the review virtual environment and EMBEDDING_PROVIDER=fake. Invoke these files explicitly with pytest; they are not automatically included in the application's suite. Preserve backend_security_observations.py as the historical defect reproduction helper.
+
+Next correction: check visibility of resolved canonical roots and intermediate aliases before suggestion creation and response construction; test denied creation leaves no persisted suggestion, legitimate owner/public-root operations succeed, and related canonical/search paths do not expose private target metadata. Live Firebase/App Check, hosted migration/database acceptance and manual Phase 6 remain pending. No merge or deployment.
