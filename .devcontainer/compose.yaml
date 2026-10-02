@@ -1,0 +1,37 @@
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
+    command: sleep infinity
+    volumes:
+      - ..:/workspaces/intqaflow:cached
+    environment:
+      DATABASE_URL: postgresql+asyncpg://intqaflow_dev:local_synthetic_only@postgres:5432/intqaflow_dev
+      APP_ENV: development
+      DEBUG: "false"
+      EMBEDDING_PROVIDER: fake
+      EMBEDDING_MODEL: text-embedding-3-small
+      EMBEDDING_DIMENSIONS: "1536"
+      EMBEDDING_API_KEY: ""
+      EMBEDDING_BASE_URL: http://127.0.0.1:9
+      HIGH_MATCH_THRESHOLD: "0.82"
+      RELATED_MATCH_THRESHOLD: "0.68"
+      DEFAULT_REVIEW_DAYS: "180"
+      REVIEW_DUE_SOON_DAYS: "30"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: intqaflow_dev
+      POSTGRES_USER: intqaflow_dev
+      POSTGRES_PASSWORD: local_synthetic_only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intqaflow_dev -d intqaflow_dev"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - workspace_postgres:/var/lib/postgresql/data
+volumes:
+  workspace_postgres:

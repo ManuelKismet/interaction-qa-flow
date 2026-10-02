@@ -8,8 +8,11 @@ Baseline: 0ff4ab941264604aedda368909961bdee602cb67.
 Configuration prepared; runtime isolation is **not yet verified**. No Codespace,
 cloud deployment, database container, tenant or application server was created
 by this change. Docker and Flutter are unavailable in the preparation runtime.
-YAML parsing and configuration consistency checks passed; Docker Compose
-validation, PostgreSQL migrations, backend tests and Flutter/browser acceptance
+YAML/JSON parsing, configuration consistency and bootstrap shell syntax passed.
+A fresh Python 3.12 virtual environment installed backend dependencies with
+pip check passing. Clean app import and pytest collection both fail at the
+existing TeamService annotation blocker (IQ-01); no tests passed in this run.
+Docker Compose execution, PostgreSQL migrations and Flutter/browser acceptance
 remain pending.
 
 Knowledge and Interact stay in one platform. Authentication remains deferred.
@@ -178,3 +181,54 @@ Known setup boundary: configuration prepared and statically checked; complete
 chat recovery, a development Codespace, synthetic seeding and live acceptance
 are not complete. Do not treat the isolation branch or this runbook as a
 working environment.
+
+## Development container candidate and fresh baseline check
+
+The .devcontainer directory adds a Python 3.12 workspace plus a PostgreSQL 16
+pgvector sidecar. The database has no published host ports. Its workspace-only
+DATABASE_URL uses postgres:5432 rather than the host's loopback:55432; these are
+two separate development launch modes. Do not source the local-host environment
+example inside the devcontainer, because it would replace the sidecar URL.
+
+The bootstrap installs backend tooling and the Flutter source revision recorded
+in apps/flutter_app/.metadata (ff37bef603469fb030f2b72995ab929ccfc227f0).
+It prepares Flutter web dependencies; it does not migrate, seed, start servers,
+or patch application code. Container images and backend dependency ranges are
+not digest/version locked, so a successful reproducible rebuild remains an
+acceptance requirement.
+
+No ports are explicitly forwarded, and automatic forwarding is disabled.
+Before adding a private web/API tunnel, inspect actual Codespace port
+visibility and verify signed-out access is denied. No database forwarding is
+needed. Browser preview routing is not established by this configuration.
+Do not switch the server-backed platform to public access to solve routing.
+
+Development container JSON/YAML, no-published-port assertions, fake-provider
+settings, database consistency, Flutter revision consistency and bootstrap
+bash syntax passed static checks. Neither the container image build nor
+bootstrap execution nor Codespace rebuild has been verified.
+
+Fresh backend check on 2026-10-02, Python 3.12.14, clean branch application
+source, exported local isolated settings and fake embeddings:
+- Dependencies installed in a new backend .venv; pip check passed.
+- app.main import fails with TypeError: 'function' object is not subscriptable
+  at backend/app/services/team.py line 157.
+- pytest exits 4 during conftest import; no tests are collected.
+- No import workaround, migration, seed, API launch or customer data is used.
+- Resolved versions: FastAPI 0.142.2, SQLAlchemy 2.1.2, Pydantic 2.13.5,
+  pydantic-settings 2.15.0, pytest 8.4.2, pytest-asyncio 1.4.0,
+  asyncpg 0.31.0, pgvector 0.5.0, Alembic 1.20.0.
+
+IQ-01 application handoff for founder + Codex review: Copilot should restore
+clean supported-Python import without changing access policy or unrelated
+audit findings, then run the existing fake-provider backend suite and record
+the supported resolved dependencies. This is a prepared scope, not evidence
+that Copilot has been assigned or implemented it.
+
+Codespace provisioning requires a capability beyond the current connected
+GitHub repository tools. Plugin discovery found the installed GitHub plugin
+but no additional Codespaces control. A browser fallback needs user approval
+before it is used. No Codespace has been created or started.
+
+References: [Dev Container specification](https://github.com/devcontainers/spec/blob/main/docs/specs/devcontainerjson-reference.md)
+and [GitHub port forwarding](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace).
