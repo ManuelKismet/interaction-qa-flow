@@ -10,6 +10,7 @@ class IntQaFlowApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(appRouterProvider);
     final auth = ref.watch(authStateProvider);
     return auth.when(
       loading: () => _messageApp(const CircularProgressIndicator()),
@@ -36,7 +37,7 @@ class IntQaFlowApp extends ConsumerWidget {
                 title: 'IntQAFlow',
                 debugShowCheckedModeBanner: false,
                 theme: AppTheme.light,
-                routerConfig: ref.watch(appRouterProvider),
+                routerConfig: router,
               ),
             );
       },

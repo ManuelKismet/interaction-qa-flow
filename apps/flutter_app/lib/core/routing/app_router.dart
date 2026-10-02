@@ -1,16 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:int_qa_flow/core/routing/session_deep_link.dart';
 import 'package:int_qa_flow/features/admin/presentation/admin_page.dart';
 import 'package:int_qa_flow/features/ask/presentation/ask_page.dart';
 import 'package:int_qa_flow/features/governance/presentation/review_queue_page.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_page.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_session_page.dart';
-import 'package:int_qa_flow/features/questions/presentation/questions_page.dart';
 import 'package:int_qa_flow/features/questions/presentation/question_detail_page.dart';
+import 'package:int_qa_flow/features/questions/presentation/questions_page.dart';
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
+    initialLocation: sessionDeepLinkInitialLocation(Uri.base),
+    overridePlatformDefaultLocation: true,
     routes: [
       ShellRoute(
         builder: (context, state, child) => AppShell(
