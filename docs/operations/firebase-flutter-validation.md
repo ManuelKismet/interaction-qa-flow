@@ -31,3 +31,12 @@ worktree; it has not been pushed into Copilot's branch.
 Compilation checks do not establish live Firebase token exchange, membership,
 App Check enforcement, tenant/privacy acceptance or hosted browser behavior.
 The known backend guided-proposal failure remains a separate issue.
+
+
+## Independent rerun on corrected PR commit 936e801
+
+Codespace validation on 2026-10-02 used a detached worktree at 936e801848c20ac3b453212add47dc7c895fde44, Flutter 3.41.4 and Dart 3.11.1. Dependency resolution, analysis and the Flutter tests all exited successfully. The initial release web build ended with the compiler terminated (exit -15) and an unsuccessful optional Wasm dry run; it did not report the previous source errors. A release retry with `--no-wasm-dry-run` succeeded and produced `build/web` in 42.3 seconds. This validates the JavaScript release build, not a Wasm build.
+
+The build used a private development defines file with the Enterprise site-key setting and a loopback API URL. No live Firebase sign-in, App Check token exchange, hosted backend end-to-end flow, merge or deployment was performed.
+
+Backend IQ-03 and IQ-04 corrections were handed to Copilot on PR 4 in comment 5960196899, with the independent review and synthetic reproduction cases. Copilot acknowledged the request with an eyes reaction. IQ-05 remains a separate privacy policy decision; the existing IQ-07 failure remains outstanding.
