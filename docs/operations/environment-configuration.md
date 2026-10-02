@@ -26,9 +26,16 @@ until the hosted application passes end-to-end checks.
 Official Firebase web configuration retrieved and saved at
 $HOME/.local/share/intqaflow/firebase-dev-web-config.json with mode 0600.
 No API key values, passwords, tokens or credential files are committed.
-Current App Check provider readback returned HTTP 403; registration and
-enforcement are not verified. Diagnose API enablement/permissions before
-registration. No attestation provider or debug token has been created.
+App Check HTTP 403 was diagnosed as SERVICE_DISABLED. Enabled
+firebaseappcheck.googleapis.com and recaptchaenterprise.googleapis.com.
+Registered reCAPTCHA Enterprise for the development web app and independently
+verified the App Check configuration: token TTL 3600 seconds; provider key
+restricted to intqaflow-dev.firebaseapp.com and intqaflow-dev.web.app.
+Configuration is saved outside the repository in
+$HOME/.local/share/intqaflow/firebase-dev-appcheck-config.json (mode 0600).
+No debug token created. Local/Codespace attestation needs a separately scoped
+debug setup or an explicitly authorized development origin when testing.
+No live token exchange or backend enforcement has been verified.
 
 ## Approved development service identity
 
@@ -61,7 +68,8 @@ must be the registered development web app. Configure explicit development
 CORS origins; no wildcard and no production configuration.
 App Check enforcement awaits a configured client and valid-traffic checks.
 
-Environment configuration acceptance still pending: App Check API/provider
-registration and final configuration mapping to reviewed application code.
+Environment configuration acceptance still pending: final configuration
+mapping to reviewed application code and valid/invalid client token tests.
+App Check API enablement and development provider registration are verified.
 The approved service identity and its exact grants are verified.
 No deployment performed.
