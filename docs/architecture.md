@@ -17,8 +17,8 @@ a shared governance destination rather than a third product module.
 - `backend/app/services` owns validation and business rules.
 - `backend/app/repositories` owns SQLAlchemy queries.
 - `backend/app/models` owns persisted entities and tenant foreign keys.
-- `backend/app/services/permissions.py` owns temporary actor authorization so
-  token-based identity can replace request IDs without moving business rules.
+- `backend/app/services/permissions.py` owns role and actor authorization after
+  the API resolves Firebase identity to an active membership.
 - `backend/app/ai` owns the swappable embedding provider and canonical question
   text/hash lifecycle. It does not generate answers or other content.
 - `apps/flutter_app/lib/features/guided` owns the native Interact workspace,
@@ -39,16 +39,16 @@ Question detail uses bounded aggregate reads: question/author/department,
 answers/authors/reaction counts, and comment count. It does not issue one query
 per answer.
 
-Authentication is not implemented. Development clients currently send
-`organisation_id` and `user_id`; TODO markers identify every boundary where
-these values must later come from validated authentication tokens.
-
-Semantic search and governance take their temporary identity from
-`X-Organisation-ID` and `X-User-ID` headers rather than the request body. Its
-repository filters by organisation, answered/resolved state, eligible answer,
-embedding model, and visibility before returning candidates. Organisation-visible rows
-are shared within the tenant, department-visible rows require the user's single
-primary `department_id`, and private rows are visible only to their author.
+All `/api/v1` routes require a Firebase ID token verified for the configured
+project and an independent App Check token gate. A unique Firebase UID mapping
+resolves the active user, organisation, and role from PostgreSQL; request
+headers and body fields cannot select that identity. App Check supports explicit
+observation and enforcement modes. Semantic search and governance use this
+server-resolved membership; repositories still filter by organisation,
+answered/resolved state, eligible answer, embedding model, and visibility.
+Organisation-visible rows are shared within the tenant, department-visible rows
+require the user's single primary `department_id`, and private rows are visible
+only to their author.
 
 `users.department_id` is the nullable primary department. Operational team
 membership is many-to-many through `team_memberships`; it does not replace or
@@ -138,7 +138,8 @@ infer the user's formal department.
   Open suggestions appear in the existing department-scoped review queue and
   may be accepted through merge or rejected without altering either question.
 - Canonical linking, answer selection, and suggestions derive tenant/actor
-  identity from headers and use the existing admin/department-owner policy.
+  identity from the authenticated membership and use the existing
+  admin/department-owner policy.
 
 ## IntQAFlow Interact
 
@@ -167,6 +168,6 @@ infer the user's formal department.
 
 ## Deferred work
 
-Generative AI, Firebase Auth, team-only visibility for primary Q&A, Microsoft
-Teams integration, browser extensions, document ingestion, and agent access
-remain intentionally deferred.
+Generative AI, team-only visibility for primary Q&A, Microsoft Teams
+integration, browser extensions, document ingestion, and agent access remain
+intentionally deferred.

@@ -13,9 +13,8 @@ from app.schemas.team import TeamSummary
 
 
 class QuestionCreate(BaseModel):
-    # TODO(auth): derive organisation_id and author_id from the authenticated identity.
-    organisation_id: UUID
-    author_id: UUID
+    organisation_id: UUID | None = None
+    author_id: UUID | None = None
     department_id: UUID | None = None
     team_id: UUID | None = None
     title: str = Field(min_length=1, max_length=500)
@@ -38,9 +37,8 @@ class QuestionResponse(EntityResponse):
 
 
 class QuestionUpdate(BaseModel):
-    # TODO(auth): derive organisation_id and user_id from the authenticated identity.
-    organisation_id: UUID
-    user_id: UUID
+    organisation_id: UUID | None = None
+    user_id: UUID | None = None
     title: str | None = Field(default=None, min_length=1, max_length=500)
     body: str | None = None
     department_id: UUID | None = None
@@ -49,9 +47,8 @@ class QuestionUpdate(BaseModel):
 
 
 class QuestionAction(BaseModel):
-    # TODO(auth): derive organisation_id and user_id from the authenticated identity.
-    organisation_id: UUID
-    user_id: UUID
+    organisation_id: UUID | None = None
+    user_id: UUID | None = None
 
 
 class QuestionResolve(QuestionAction):
