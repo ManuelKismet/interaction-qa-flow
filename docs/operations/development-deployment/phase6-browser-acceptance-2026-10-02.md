@@ -26,3 +26,12 @@ Codespace recovery: a clean GitHub stop/restart restored the remote terminal. Go
 
 
 Completed live App Check: revision intqaflow-dev-api-00003-2bz verified configured-web-app tokens from three fresh hosted-browser requests at 2026-10-02T21:44:50–52Z. Invalid App Check: 401. Foreign organisation: 403. Missing authentication: 401. Missing App Check: 200, expected in observe mode. Enforcement remains observe. All 57 backend tests passed. Template snapshot, PDF and multi-account browser checks remain unverified.
+
+
+## Continued template and layout acceptance
+
+Hosted template creation passed. Template 5eddaac6-8acf-40d3-a172-8bf8e027cbeb created v1 session 9835c632-a39e-4495-8235-77fe56043c44 with two questions. UI Save as new version cloned v2. Live API revised the template to v3 (one new question): the old session retained version 87974ad3-3f8e-4f5c-916e-774f9e6d772c and its original question texts; a new session c5fc0611-fb14-4cdf-958b-0765fc223ba0 used v3. Immutable snapshot check: PASS. UI editing of version contents remains unverified.
+
+PDF output remains unverified: report contents are correct, and the Print / Save PDF action maps to window.print(), but no print preview/file was observable in this cloud browser. Separate authenticated-account checks remain pending.
+
+User-requested deep follow-up UX review reproduced a severe width problem using eight long nested follow-ups in the synthetic v3 session. The deepest text wraps nearly one character per line at desktop width. See interact-deep-followup-layout-review-2026-10-02.md for source evidence, proposed flat layout/capped indentation and focused branch navigation, and acceptance criteria. Recommendation is recorded, not implemented or assigned to Copilot yet.
