@@ -216,6 +216,74 @@ async def test_answered_question_author_requests_admin_review(app_client) -> Non
 
 
 @pytest.mark.asyncio
+async def test_unapproved_answer_author_can_edit_and_remove_own_answer(
+    app_client,
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_policy_users(session_factory)
+    question = await create_question(client, ids)
+    answer = await create_answer(client, ids, question)
+    path = f"/api/v1/answers/{answer['id']}"
+
+    own_headers = headers(ids["organisation"], ids["contributor"])
+    changed = await client.patch(
+        path,
+        headers=own_headers,
+        json={"body": "My corrected answer."},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["body"] == "My corrected answer."
+
+    unrelated = await client.patch(
+        path,
+        headers=headers(ids["organisation"], ids["unrelated"]),
+        json={"body": "Unauthorized rewrite."},
+    )
+    assert unrelated.status_code == 403
+
+    removed = await client.delete(path, headers=own_headers)
+    assert removed.status_code == 204
+    missing = await client.get(
+        f"/api/v1/questions/{question['id']}/answers",
+        headers=own_headers,
+    )
+    assert missing.status_code == 200
+    assert missing.json() == []
+
+
+@pytest.mark.asyncio
+async def test_admin_can_reject_change_request_without_applying_it(app_client) -> None:
+    client, session_factory = app_client
+    ids = await seed_policy_users(session_factory)
+    question = await create_question(client, ids)
+    await create_answer(client, ids, question)
+    path = f"/api/v1/questions/{question['id']}"
+    request = await client.post(
+        f"{path}/change-requests",
+        headers=headers(ids["organisation"], ids["author"]),
+        json={"archive": True, "reason": "This should be retired."},
+    )
+    assert request.status_code == 201, request.text
+
+    reviewed = await client.post(
+        f"/api/v1/questions/change-requests/{request.json()['id']}/review",
+        headers=headers(ids["organisation"], ids["admin"]),
+        json={"decision": "reject", "review_note": "Keep for current guidance."},
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["status"] == "rejected"
+    assert reviewed.json()["reviewed_by"] == str(ids["admin"])
+
+    detail = await client.get(
+        path,
+        headers=headers(ids["organisation"], ids["author"]),
+    )
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "answered"
+    assert detail.json()["title"] == question["title"]
+
+
+@pytest.mark.asyncio
 async def test_accepted_question_changes_are_admin_only_and_invalidate_approval(
     app_client,
 ) -> None:
@@ -248,6 +316,12 @@ async def test_accepted_question_changes_are_admin_only_and_invalidate_approval(
             json={},
         )
         assert reopen.status_code == 403
+        archive = await client.post(
+            f"{path}/archive",
+            headers=headers(ids["organisation"], ids[user_key]),
+            json={"reason": "Must not archive approved content."},
+        )
+        assert archive.status_code == 403
 
     admin_headers = headers(ids["organisation"], ids["admin"])
     changed = await client.patch(
@@ -412,3 +486,9 @@ async def test_private_content_visibility_is_not_bypassed_by_admin(app_client) -
         json={"title": "Administrator private edit", "reason": "Policy."},
     )
     assert admin_edit.status_code == 403
+    admin_archive = await client.post(
+        f"{private_path}/archive",
+        headers=admin_headers,
+        json={"reason": "Private questions remain owner-controlled."},
+    )
+    assert admin_archive.status_code == 403

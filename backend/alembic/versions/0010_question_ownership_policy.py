@@ -88,6 +88,22 @@ def upgrade() -> None:
         WHERE status = 'archived'
         """
     )
+    op.execute(
+        """
+        UPDATE questions
+        SET status_before_archive = CASE
+                WHEN accepted_answer_id IS NOT NULL OR resolved_at IS NOT NULL
+                    THEN 'resolved'
+                WHEN EXISTS (
+                    SELECT 1 FROM answers
+                    WHERE answers.question_id = questions.id
+                      AND answers.organisation_id = questions.organisation_id
+                ) THEN 'answered'
+                ELSE 'open'
+            END
+        WHERE status = 'archived'
+        """
+    )
 
     op.add_column("answers", sa.Column("archived_at", sa.DateTime(timezone=True)))
     op.add_column("answers", sa.Column("archived_by", sa.Uuid()))
