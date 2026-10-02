@@ -197,7 +197,10 @@ async def enforce_tenant_scope(
                 detail="Cross-organisation request denied",
             )
 
-    if request.headers.get("content-type", "").startswith("application/json"):
+    if (
+        request.headers.get("content-type", "").startswith("application/json")
+        and await request.body()
+    ):
         try:
             allow_target_user_id = (
                 "/members" in request.url.path
