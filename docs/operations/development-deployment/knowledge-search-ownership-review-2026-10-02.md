@@ -33,3 +33,15 @@ Answer update rejects verified and accepted answers. Answer deletion rejects ver
 - Record actor, reason and timestamp for archival and provide restoration. Never widen private-content visibility through governance authority.
 
 Sources inspected: backend/app/services/question.py, services/answer.py, services/permissions.py, services/governance.py, repositories/search.py, ai/embedding_provider.py and apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart on fix/development-auth-diagnostics (9236eb5).
+
+## User-directed ownership policy — recorded 2026-10-02
+This supersedes the earlier proposal allowing department knowledge owners to manage approved content. Implementation remains pending.
+
+| Content state | Author rights | Administrator rights |
+|---|---|---|
+| Question with no answers | Edit or remove own question | Manage visible content |
+| Question with answers | Question edits/removal gated to preserve contributors; request changes | Review changes/removal |
+| Answer not accepted or verified | Answer author may edit/remove own answer | Moderate visible content |
+| Question or answer with accepted/verified answer | No ordinary author edit/removal | Admin-only versioned changes or removal |
+
+Recommendations accompanying the policy: use recoverable archive/soft deletion for removal, retain attribution and audit records, preserve approved versions, and require review again when meaning changes. Existing private visibility rules still apply to administrators. The admin-only rule concerns modifying/removing approved content; approval creation and assigned department verifier roles are a separate existing governance capability and have not been changed by this record.
