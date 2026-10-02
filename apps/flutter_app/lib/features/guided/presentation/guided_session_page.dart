@@ -8,6 +8,7 @@ import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
+import 'package:int_qa_flow/features/guided/presentation/guided_report_document.dart';
 
 class GuidedSessionPage extends ConsumerStatefulWidget {
   const GuidedSessionPage({required this.sessionId, super.key});
@@ -27,7 +28,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   GuidedSessionQuery get _query => (
     sessionId: widget.sessionId,
     participantId: _allParticipantsReport ? null : _participantId,
-    viewMode: _viewMode,
+    viewMode: _reportMode ? GuidedViewMode.allRelevant : _viewMode,
   );
 
   void _refresh() => ref.invalidate(guidedSessionProvider);
@@ -91,7 +92,16 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
               }),
               onExport: (format) => _export(session, format),
               onHistory: _history,
-              onPrint: _reportMode ? printCurrentPage : null,
+              onPrint: _reportMode
+                  ? () => openPrintableReport(
+                      buildGuidedReportDocument(
+                        session: session,
+                        allParticipants: _allParticipantsReport,
+                        participantId: _participantId,
+                        generatedAt: DateTime.now(),
+                      ),
+                    )
+                  : null,
               onTransition: session.status == 'draft'
                   ? () => _transition('start')
                   : session.status == 'active'
