@@ -232,6 +232,7 @@ async def test_challenge_accept_replaces_answer_and_reject_is_final(app_client) 
 
     detail = await client.get(
         f"/api/v1/questions/{ids['finance_question']}",
+        headers=headers(ids),
         params={"organisation_id": str(ids["organisation"])},
     )
     assert detail.json()["accepted_answer"]["freshness_status"] == "challenged"
