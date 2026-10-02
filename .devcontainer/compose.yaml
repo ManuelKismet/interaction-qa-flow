@@ -5,7 +5,7 @@ services:
     volumes:
       - ..:/workspaces/intqaflow:cached
     environment:
-      DATABASE_URL: postgresql+asyncpg://intqaflow_dev:local_synthetic_only@postgres:5432/intqaflow_dev
+      DATABASE_URL: postgresql+asyncpg://cloud_connection_not_configured@127.0.0.1:6543/intqaflow_dev
       APP_ENV: development
       DEBUG: "false"
       EMBEDDING_PROVIDER: fake
@@ -17,21 +17,5 @@ services:
       RELATED_MATCH_THRESHOLD: "0.68"
       DEFAULT_REVIEW_DAYS: "180"
       REVIEW_DUE_SOON_DAYS: "30"
-    depends_on:
-      postgres:
-        condition: service_healthy
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_DB: intqaflow_dev
-      POSTGRES_USER: intqaflow_dev
-      POSTGRES_PASSWORD: local_synthetic_only
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U intqaflow_dev -d intqaflow_dev"]
-      interval: 2s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - workspace_postgres:/var/lib/postgresql/data
-volumes:
-  workspace_postgres:
+# Hosted Cloud SQL is the development database. Configure a private Cloud SQL
+# Auth Proxy/connector before launching; this placeholder intentionally fails closed.
