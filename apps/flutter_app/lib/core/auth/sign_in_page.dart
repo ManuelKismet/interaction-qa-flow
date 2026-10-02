@@ -44,11 +44,29 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           password: _password.text,
         );
       }
-    } on FirebaseAuthException {
+    } on FirebaseAuthException catch (error) {
+      // Log only a sanitized error code; never credentials or exception details.
+      final code = error.code.replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+      const diagnostics = bool.fromEnvironment('AUTH_DIAGNOSTICS');
+      if (diagnostics) debugPrint('Firebase authentication failed: auth/$code');
+      if (!mounted) return;
+      final message = switch (code) {
+        'network-request-failed' =>
+          'Unable to reach the sign-in service. Check your connection and try again.',
+        'too-many-requests' =>
+          'Too many sign-in attempts. Please wait before trying again.',
+        'invalid-api-key' || 'app-not-authorized' || 'operation-not-allowed' =>
+          'Sign-in is unavailable because the application configuration needs attention.',
+        'captcha-check-failed' || 'invalid-app-credential' =>
+          'Application verification failed. Please contact the development administrator.',
+        'invalid-credential' || 'wrong-password' || 'user-not-found' || 'invalid-email' =>
+          'Sign-in failed. Check your email and password and try again.',
+        _ => 'Sign-in failed. Please try again.',
+      };
       setState(() {
-        _error = _resetMode
-            ? 'Unable to send a reset email. Check the address and try again.'
-            : 'Sign-in failed. Check your email and password and try again.';
+        _error = (_resetMode
+            ? 'Unable to send a reset email. Please try again.'
+            : message) + (diagnostics ? ' [auth/$code]' : '');
       });
     } finally {
       if (mounted) setState(() => _busy = false);
