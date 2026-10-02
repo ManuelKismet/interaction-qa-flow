@@ -5,6 +5,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
 
+const _authorizationScheme = 'Bearer';
+
 void main() {
   test('attaches current Firebase and App Check tokens to protected calls', () async {
     final tokens = _FakeTokenSource();
@@ -15,7 +17,7 @@ void main() {
 
     expect(
       adapter.requests.single.headers['Authorization'],
-      'Bear' + 'er ' + 'current-id-token',
+      '$_authorizationScheme current-id-token',
     );
     expect(
       adapter.requests.single.headers['X-Firebase-AppCheck'],
@@ -39,7 +41,7 @@ void main() {
     expect(adapter.requests.length, 2);
     expect(
       adapter.requests.last.headers['Authorization'],
-      'Bear' + 'er ' + 'refreshed-id-token',
+      '$_authorizationScheme refreshed-id-token',
     );
     client.close();
   });

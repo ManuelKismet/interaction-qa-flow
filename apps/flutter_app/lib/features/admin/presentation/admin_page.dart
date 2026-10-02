@@ -36,7 +36,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
   @override
   Widget build(BuildContext context) {
     final isAdmin = widget.adminOverride ??
-        ref.watch(currentMembershipProvider).valueOrNull?.role == 'admin';
+        ref.watch(currentMembershipProvider).value?.role == 'admin';
     if (!isAdmin) {
       return const Center(child: Text('Administrator access is required.'));
     }

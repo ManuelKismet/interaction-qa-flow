@@ -23,7 +23,7 @@ abstract final class AppConfig {
     defaultValue: '398672910103',
   );
   static const recaptchaSiteKey = String.fromEnvironment(
-    'RECAPTCHA_V3_SITE_KEY',
+    'RECAPTCHA_ENTERPRISE_SITE_KEY',
   );
 
   static FirebaseOptions get firebaseOptions => FirebaseOptions(

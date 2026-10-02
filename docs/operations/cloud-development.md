@@ -121,7 +121,7 @@ the service, change IAM, or create cloud resources.
   permits a missing App Check token while validating any provided token.
   `APP_CHECK_MODE=enforce` rejects missing, invalid, and wrong-web-app tokens.
   Keep observation mode until the real hosted web client passes the browser
-  matrix below. Codex must configure the approved reCAPTCHA v3 provider,
+  matrix below. Codex must configure the approved reCAPTCHA Enterprise provider,
   register the actual hosted web origins and the web app ID with Firebase App
   Check, and provide its public site key as a build define. Firebase App Check
   debug tokens are not enabled in this app.
@@ -129,7 +129,7 @@ the service, change IAM, or create cloud resources.
   `["https://intqaflow-dev.web.app"]`). A configured hosted-origin list disables
   the local-only development origin pattern. Wildcard origins are rejected.
 - The Flutter web app requires non-secret build defines for Firebase API key,
-  registered web app/project IDs, and the registered reCAPTCHA v3 site key.
+  registered web app/project IDs, and the registered reCAPTCHA Enterprise site key.
   Firebase email/password sign-in, password reset and sign-out are supported.
   The client sends refreshed ID and App Check tokens and obtains its active
   membership from `/api/v1/auth/me`.

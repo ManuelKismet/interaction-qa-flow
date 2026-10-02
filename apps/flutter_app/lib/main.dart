@@ -22,7 +22,7 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp(options: AppConfig.firebaseOptions);
     await FirebaseAppCheck.instance.activate(
-      webProvider: ReCaptchaV3Provider(AppConfig.recaptchaSiteKey),
+      providerWeb: ReCaptchaEnterpriseProvider(AppConfig.recaptchaSiteKey),
     );
   } catch (_) {
     runApp(
