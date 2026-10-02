@@ -60,10 +60,23 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
   }
 
   Widget _buildDetail(QuestionDetail question, ActiveMembership? membership) {
-    final canResolve =
-        question.author.id == membership?.userId ||
-        membership?.role == 'admin';
-    final canCorrect = canResolve && question.status != 'archived';
+    final isAdmin = membership?.role == 'admin';
+    final isAuthor = question.author.id == membership?.userId;
+    final hasContributions = question.answers.isNotEmpty ||
+        question.commentCount > 0 ||
+        question.protectedAt != null;
+    final isProtected = question.protectedAt != null ||
+        question.acceptedAnswer != null ||
+        question.answers.any(
+          (answer) => answer.protectedAt != null || answer.status == 'verified',
+        );
+    final canResolve = isAdmin || (isAuthor && !isProtected);
+    final canManageQuestion = isAdmin ||
+        (isAuthor && !hasContributions && !isProtected);
+    final canRequestReview =
+        isAuthor && hasContributions && !isAdmin && question.status != 'archived';
+    final canRestore = question.status == 'archived' &&
+        (isAdmin || (isAuthor && !hasContributions && !isProtected));
     final canGovern = {
       'admin',
       'answer_owner',
@@ -92,7 +105,7 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                           style: Theme.of(context).textTheme.headlineMedium,
                         ),
                       ),
-                      if (canCorrect) ...[
+                      if (canManageQuestion && question.status != 'archived') ...[
                         IconButton(
                           tooltip: 'Edit question',
                           onPressed: _isMutating
@@ -108,6 +121,22 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                           icon: const Icon(Icons.archive_outlined),
                         ),
                       ],
+                      if (canRequestReview)
+                        IconButton(
+                          tooltip: 'Request review',
+                          onPressed: _isMutating
+                              ? null
+                              : () => _requestChangeReview(question),
+                          icon: const Icon(Icons.rate_review_outlined),
+                        ),
+                      if (canRestore)
+                        IconButton(
+                          tooltip: 'Restore question',
+                          onPressed: _isMutating
+                              ? null
+                              : () => _restoreQuestion(question),
+                          icon: const Icon(Icons.restore_outlined),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -242,6 +271,13 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                           ? () => _showChallenges(accepted)
                           : null,
                       onHistory: () => _showHistory(accepted),
+                      onEdit: _canManageAnswer(accepted, membership, accepted: true)
+                          ? () => _editAnswer(accepted, question)
+                          : null,
+                      onDelete:
+                          _canManageAnswer(accepted, membership, accepted: true)
+                              ? () => _deleteAnswer(accepted, question)
+                              : null,
                     ),
                   ],
                   if (otherAnswers.isNotEmpty) ...[
@@ -270,6 +306,20 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                             ? () => _showChallenges(answer)
                             : null,
                         onHistory: () => _showHistory(answer),
+                        onEdit: _canManageAnswer(
+                          answer,
+                          membership,
+                          accepted: false,
+                        )
+                            ? () => _editAnswer(answer, question)
+                            : null,
+                        onDelete: _canManageAnswer(
+                          answer,
+                          membership,
+                          accepted: false,
+                        )
+                            ? () => _deleteAnswer(answer, question)
+                            : null,
                         onAccept: canResolve && question.status != 'archived'
                             ? () => _runAction(
                                 () => ref
@@ -904,6 +954,7 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
               body: result.body,
               departmentId: result.departmentId,
               teamId: result.teamId,
+              reason: result.reason.isEmpty ? null : result.reason,
             ),
         'Question updated.',
       );
@@ -913,12 +964,23 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
   }
 
   Future<void> _archiveQuestion(QuestionDetail question) async {
+    final reason = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Archive question?'),
-        content: const Text(
-          'The question will leave active lists but remain available for history and governance.',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'The question will leave active lists but remain available for history and governance.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reason,
+              decoration: const InputDecoration(labelText: 'Reason'),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -926,17 +988,25 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
             child: const Text('Cancel'),
           ),
           FilledButton.icon(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(
+              context,
+              reason.text.trim().isNotEmpty,
+            ),
             icon: const Icon(Icons.archive_outlined),
             label: const Text('Archive'),
           ),
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted) {
+      reason.dispose();
+      return;
+    }
     setState(() => _isMutating = true);
     try {
-      await ref.read(questionsRepositoryProvider).archiveQuestion(question.id);
+      await ref
+          .read(questionsRepositoryProvider)
+          .archiveQuestion(question.id, reason.text.trim());
       ref.invalidate(questionsProvider);
       if (!mounted) return;
       context.go('/questions');
@@ -946,8 +1016,184 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     } catch (error) {
       _showError(error, 'Unable to archive this question.');
     } finally {
+      reason.dispose();
       if (mounted) setState(() => _isMutating = false);
     }
+  }
+
+  Future<void> _restoreQuestion(QuestionDetail question) async {
+    final reason = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore question?'),
+        content: TextField(
+          controller: reason,
+          decoration: const InputDecoration(labelText: 'Reason'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              reason.text.trim().isNotEmpty,
+            ),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      reason.dispose();
+      return;
+    }
+    await _runAction(
+      () => ref
+          .read(questionsRepositoryProvider)
+          .restoreQuestion(question.id, reason.text.trim()),
+      'Question restored.',
+    );
+    reason.dispose();
+  }
+
+  Future<void> _requestChangeReview(QuestionDetail question) async {
+    final result = await showDialog<_ChangeReviewResult>(
+      context: context,
+      builder: (context) => _QuestionChangeRequestDialog(question: question),
+    );
+    if (result == null) return;
+    await _runAction(
+      () => ref.read(questionsRepositoryProvider).requestChangeReview(
+            question.id,
+            title: result.title,
+            body: result.body,
+            archive: result.archive,
+            reason: result.reason,
+          ),
+      'Change request submitted for review.',
+    );
+  }
+
+  bool _canManageAnswer(
+    AnswerDetail answer,
+    ActiveMembership? membership, {
+    required bool accepted,
+  }) {
+    final protected = accepted ||
+        answer.status == 'verified' ||
+        answer.protectedAt != null;
+    if (protected) return membership?.role == 'admin';
+    return answer.author.id == membership?.userId;
+  }
+
+  Future<void> _editAnswer(AnswerDetail answer, QuestionDetail question) async {
+    final body = TextEditingController(text: answer.body);
+    final reason = TextEditingController();
+    final needsReason =
+        answer.status == 'verified' ||
+        answer.protectedAt != null ||
+        question.acceptedAnswer?.id == answer.id;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit answer'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: body, minLines: 3, maxLines: 8),
+              if (needsReason) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reason,
+                  decoration: const InputDecoration(labelText: 'Reason'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              body.text.trim().isNotEmpty &&
+                  (!needsReason || reason.text.trim().isNotEmpty),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _runAction(
+        () => ref.read(questionsRepositoryProvider).updateAnswer(
+              answer.id,
+              body: body.text.trim(),
+              reason: needsReason ? reason.text.trim() : null,
+            ),
+        'Answer updated.',
+      );
+    }
+    body.dispose();
+    reason.dispose();
+  }
+
+  Future<void> _deleteAnswer(AnswerDetail answer, QuestionDetail question) async {
+    final needsReason =
+        answer.status == 'verified' ||
+        answer.protectedAt != null ||
+        question.acceptedAnswer?.id == answer.id;
+    final reason = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove answer?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('This action cannot be undone for an unapproved answer.'),
+            if (needsReason) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: reason,
+                decoration: const InputDecoration(labelText: 'Reason'),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              !needsReason || reason.text.trim().isNotEmpty,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _runAction(
+        () => ref.read(questionsRepositoryProvider).deleteAnswer(
+              answer.id,
+              reason: needsReason ? reason.text.trim() : null,
+            ),
+        'Answer removed.',
+      );
+    }
+    reason.dispose();
   }
 
   Future<void> _runAction(
@@ -991,12 +1237,14 @@ class _QuestionEditResult {
     required this.body,
     required this.departmentId,
     required this.teamId,
+    required this.reason,
   });
 
   final String title;
   final String? body;
   final String? departmentId;
   final String? teamId;
+  final String reason;
 }
 
 class _QuestionEditDialog extends StatefulWidget {
@@ -1017,6 +1265,7 @@ class _QuestionEditDialog extends StatefulWidget {
 class _QuestionEditDialogState extends State<_QuestionEditDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _bodyController;
+  late final TextEditingController _reasonController;
   late String? _departmentId;
   late String? _teamId;
 
@@ -1025,6 +1274,7 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
     super.initState();
     _titleController = TextEditingController(text: widget.question.title);
     _bodyController = TextEditingController(text: widget.question.body ?? '');
+    _reasonController = TextEditingController();
     _departmentId = widget.question.department?.id;
     _teamId = widget.question.team?.id;
   }
@@ -1033,6 +1283,7 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
   void dispose() {
     _titleController.dispose();
     _bodyController.dispose();
+    _reasonController.dispose();
     super.dispose();
   }
 
@@ -1105,6 +1356,16 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
                   );
                 }),
               ),
+              if (widget.question.answers.isNotEmpty ||
+                  widget.question.commentCount > 0 ||
+                  widget.question.protectedAt != null) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _reasonController,
+                  decoration: const InputDecoration(labelText: 'Edit reason'),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
             ],
           ),
         ),
@@ -1115,7 +1376,11 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _titleController.text.trim().isEmpty
+          onPressed: _titleController.text.trim().isEmpty ||
+                  ((widget.question.answers.isNotEmpty ||
+                          widget.question.commentCount > 0 ||
+                          widget.question.protectedAt != null) &&
+                      _reasonController.text.trim().isEmpty)
               ? null
               : () {
                   final body = _bodyController.text.trim();
@@ -1126,6 +1391,7 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
                       body: body.isEmpty ? null : body,
                       departmentId: _departmentId,
                       teamId: _teamId,
+                      reason: _reasonController.text.trim(),
                     ),
                   );
                 },
@@ -1134,6 +1400,128 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
       ],
     );
   }
+}
+
+class _ChangeReviewResult {
+  const _ChangeReviewResult({
+    required this.title,
+    required this.body,
+    required this.archive,
+    required this.reason,
+  });
+
+  final String? title;
+  final String? body;
+  final bool archive;
+  final String reason;
+}
+
+class _QuestionChangeRequestDialog extends StatefulWidget {
+  const _QuestionChangeRequestDialog({required this.question});
+
+  final QuestionDetail question;
+
+  @override
+  State<_QuestionChangeRequestDialog> createState() =>
+      _QuestionChangeRequestDialogState();
+}
+
+class _QuestionChangeRequestDialogState
+    extends State<_QuestionChangeRequestDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _bodyController;
+  late final TextEditingController _reasonController;
+  bool _archive = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController();
+    _bodyController = TextEditingController();
+    _reasonController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _bodyController.dispose();
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Request a change review'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Current question: ${widget.question.title}'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Proposed question wording (optional)',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _bodyController,
+                  minLines: 2,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'Proposed detail (optional)',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _archive,
+                  title: const Text('Request archival instead'),
+                  onChanged: (value) => setState(() => _archive = value ?? false),
+                ),
+                TextField(
+                  controller: _reasonController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(labelText: 'Reason'),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: _reasonController.text.trim().isEmpty ||
+                    (!_archive &&
+                        _titleController.text.trim().isEmpty &&
+                        _bodyController.text.trim().isEmpty)
+                ? null
+                : () => Navigator.pop(
+                      context,
+                      _ChangeReviewResult(
+                        title: _titleController.text.trim().isEmpty
+                            ? null
+                            : _titleController.text.trim(),
+                        body: _bodyController.text.trim().isEmpty
+                            ? null
+                            : _bodyController.text.trim(),
+                        archive: _archive,
+                        reason: _reasonController.text.trim(),
+                      ),
+                    ),
+            child: const Text('Submit request'),
+          ),
+        ],
+      );
 }
 
 class _AnswerView extends StatelessWidget {
@@ -1148,6 +1536,8 @@ class _AnswerView extends StatelessWidget {
     this.onVerify,
     this.onReview,
     this.onChallenges,
+    this.onEdit,
+    this.onDelete,
   });
 
   final AnswerDetail answer;
@@ -1160,6 +1550,8 @@ class _AnswerView extends StatelessWidget {
   final VoidCallback? onVerify;
   final VoidCallback? onReview;
   final VoidCallback? onChallenges;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -1230,6 +1622,18 @@ class _AnswerView extends StatelessWidget {
                   onPressed: onChallenges,
                   icon: const Icon(Icons.report_outlined, size: 18),
                   label: Text('Challenges ${answer.challengeCount}'),
+                ),
+              if (onEdit != null)
+                TextButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit answer'),
+                ),
+              if (onDelete != null)
+                TextButton.icon(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Remove answer'),
                 ),
             ],
           ),

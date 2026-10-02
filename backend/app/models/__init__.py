@@ -5,6 +5,10 @@ from app.models.answer_version import AnswerVersion
 from app.models.audit_event import AuditAction, AuditEvent
 from app.models.base import Base
 from app.models.comment import Comment
+from app.models.question_change_request import (
+    ChangeRequestStatus,
+    QuestionChangeRequest,
+)
 from app.models.department import Department
 from app.models.department_answer_owner import DepartmentAnswerOwner
 from app.models.firebase_uid_mapping import FirebaseUidMapping
@@ -32,6 +36,7 @@ from app.models.guided import (
 from app.models.organisation import Organisation
 from app.models.question import Question, QuestionStatus, QuestionVisibility
 from app.models.question_embedding import QuestionEmbedding
+from app.models.question_version import QuestionVersion
 from app.models.team import Team, TeamStatus
 from app.models.team_membership import TeamMembership
 from app.models.user import User, UserRole
@@ -48,6 +53,7 @@ __all__ = [
     "ChallengeStatus",
     "ChallengeType",
     "Comment",
+    "ChangeRequestStatus",
     "Department",
     "DepartmentAnswerOwner",
     "FirebaseUidMapping",
@@ -70,9 +76,11 @@ __all__ = [
     "KnowledgeProposalStatus",
     "Organisation",
     "Question",
+    "QuestionChangeRequest",
     "QuestionEmbedding",
     "QuestionStatus",
     "QuestionVisibility",
+    "QuestionVersion",
     "ReactionType",
     "Team",
     "TeamMembership",

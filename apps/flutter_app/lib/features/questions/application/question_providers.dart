@@ -69,6 +69,11 @@ final questionDetailProvider =
   return ref.watch(questionsRepositoryProvider).getQuestion(questionId);
 });
 
+final questionChangeRequestsProvider =
+    FutureProvider.autoDispose<List<QuestionChangeRequest>>((ref) {
+  return ref.watch(questionsRepositoryProvider).listChangeRequests();
+});
+
 final commentsProvider =
     FutureProvider.autoDispose.family<List<CommentDetail>, String>((ref, questionId) {
   return ref.watch(questionsRepositoryProvider).listComments(questionId);

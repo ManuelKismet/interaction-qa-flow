@@ -27,6 +27,7 @@ class AnswerResponse(EntityResponse):
     review_due_at: datetime | None
     last_reviewed_at: datetime | None
     last_reviewed_by: UUID | None
+    protected_at: datetime | None
 
 
 class AnswerDetailResponse(AnswerResponse):
@@ -44,6 +45,11 @@ class AnswerUpdate(BaseModel):
     organisation_id: UUID | None = None
     user_id: UUID | None = None
     body: str = Field(min_length=1)
+    reason: str | None = Field(default=None, max_length=4000)
+
+
+class AnswerRestoreRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=4000)
 
 
 class ReactionCreate(BaseModel):

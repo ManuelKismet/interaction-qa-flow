@@ -22,6 +22,10 @@ from app.schemas.canonical import (
 )
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.schemas.question import (
+    ArchiveQuestionRequest,
+    QuestionChangeRequestCreate,
+    QuestionChangeRequestResponse,
+    QuestionChangeRequestReview,
     QuestionAction,
     QuestionCreate,
     QuestionDetailResponse,
@@ -29,6 +33,8 @@ from app.schemas.question import (
     QuestionResolve,
     QuestionResponse,
     QuestionUpdate,
+    QuestionVersionResponse,
+    RestoreQuestionRequest,
 )
 from app.schemas.search import SemanticSearchRequest, SemanticSearchResult
 from app.services.answer import AnswerService
@@ -130,6 +136,37 @@ async def search_questions(
     )
 
 
+@router.get(
+    "/change-requests",
+    response_model=list[QuestionChangeRequestResponse],
+)
+async def list_question_change_requests(
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> list[QuestionChangeRequestResponse]:
+    return await QuestionService(session).list_change_requests(
+        identity.organisation_id, identity.user_id
+    )
+
+
+@router.post(
+    "/change-requests/{request_id}/review",
+    response_model=QuestionChangeRequestResponse,
+)
+async def review_question_change_request(
+    request_id: UUID,
+    payload: QuestionChangeRequestReview,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> QuestionChangeRequestResponse:
+    return await QuestionService(session).review_change_request(
+        request_id,
+        identity.organisation_id,
+        identity.user_id,
+        payload,
+    )
+
+
 @router.post("", response_model=QuestionResponse, status_code=status.HTTP_201_CREATED)
 async def create_question(
     payload: QuestionCreate,
@@ -166,6 +203,41 @@ async def list_questions(
         department_id,
         team_id,
         author_id,
+    )
+
+
+@router.get(
+    "/{question_id}/versions",
+    response_model=list[QuestionVersionResponse],
+)
+async def list_question_versions(
+    question_id: UUID,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> list[QuestionVersionResponse]:
+    return await QuestionService(session).list_versions(
+        question_id,
+        identity.organisation_id,
+        identity.user_id,
+    )
+
+
+@router.post(
+    "/{question_id}/change-requests",
+    response_model=QuestionChangeRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_question_change_request(
+    question_id: UUID,
+    payload: QuestionChangeRequestCreate,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> QuestionChangeRequestResponse:
+    return await QuestionService(session).request_change(
+        question_id,
+        identity.organisation_id,
+        identity.user_id,
+        payload,
     )
 
 
@@ -237,11 +309,29 @@ async def reopen_question(
 @router.post("/{question_id}/archive", response_model=QuestionResponse)
 async def archive_question(
     question_id: UUID,
-    payload: QuestionAction,
+    payload: ArchiveQuestionRequest,
     identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> QuestionResponse:
     return await QuestionService(session).archive(
+        question_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )
+
+
+@router.post("/{question_id}/restore", response_model=QuestionResponse)
+async def restore_question(
+    question_id: UUID,
+    payload: RestoreQuestionRequest,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> QuestionResponse:
+    return await QuestionService(session).restore(
         question_id,
         payload.model_copy(
             update={

@@ -10,6 +10,9 @@ import 'package:int_qa_flow/features/governance/domain/governance_models.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
+import 'package:int_qa_flow/features/questions/application/question_providers.dart';
+import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
+import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 class ReviewQueuePage extends ConsumerStatefulWidget {
   const ReviewQueuePage({super.key});
@@ -175,10 +178,74 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
                   error: (_, _) =>
                       const Text('Unable to load Interact proposals.'),
                 ),
+            const SizedBox(height: 32),
+            Text(
+              'Question change requests',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            ref.watch(questionChangeRequestsProvider).when(
+                  data: (items) => items.isEmpty
+                      ? const Text('No question changes pending review.')
+                      : Column(
+                          children: [
+                            for (final item in items)
+                              _QuestionChangeRequestRow(request: item),
+                          ],
+                        ),
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, _) => const Text(
+                    'Unable to load question change requests.',
+                  ),
+                ),
           ],
         ],
       ),
     );
+  }
+}
+
+class _QuestionChangeRequestRow extends ConsumerWidget {
+  const _QuestionChangeRequestRow({required this.request});
+
+  final QuestionChangeRequest request;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        title: Text(
+          request.proposedTitle ??
+              (request.archiveRequested
+                  ? 'Question archival request'
+                  : 'Question content change request'),
+        ),
+        subtitle: Text(request.reason),
+        onTap: () => context.go('/questions/${request.questionId}'),
+        trailing: Wrap(
+          spacing: 4,
+          children: [
+            IconButton(
+              tooltip: 'Reject change request',
+              icon: const Icon(Icons.close),
+              onPressed: () => _review(ref, 'reject'),
+            ),
+            IconButton(
+              tooltip: 'Approve change request',
+              icon: const Icon(Icons.check),
+              onPressed: () => _review(ref, 'approve'),
+            ),
+          ],
+        ),
+      );
+
+  Future<void> _review(WidgetRef ref, String decision) async {
+    await ref.read(questionsRepositoryProvider).reviewChangeRequest(
+          request.id,
+          decision: decision,
+        );
+    ref.invalidate(questionChangeRequestsProvider);
+    ref.invalidate(questionDetailProvider(request.questionId));
+    ref.invalidate(questionsProvider);
   }
 }
 

@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -12,11 +15,20 @@ from app.ai.embedding_provider import (
 )
 from app.ai.embedding_service import EmbeddingService
 from app.core.config import get_settings
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
+from app.models.answer import Answer, AnswerStatus
+from app.models.answer_version import AnswerVersion
+from app.models.audit_event import AuditAction, AuditEvent
+from app.models.question_change_request import (
+    ChangeRequestStatus,
+    QuestionChangeRequest,
+)
 from app.models.question import Question, QuestionStatus
-from app.models.user import User
+from app.models.question_version import QuestionVersion
+from app.models.user import User, UserRole
 from app.repositories.answer import AnswerRepository
 from app.repositories.department import DepartmentRepository
+from app.repositories.governance import GovernanceRepository
 from app.repositories.question import QuestionRepository
 from app.repositories.team import TeamRepository
 from app.repositories.user import UserRepository
@@ -24,11 +36,18 @@ from app.schemas.answer import AnswerDetailResponse
 from app.schemas.canonical import CanonicalQuestionSummary, QuestionAliasSummary
 from app.schemas.department import DepartmentSummary
 from app.schemas.question import (
+    ArchiveQuestionRequest,
+    ChangeRequestDecision,
     QuestionAction,
+    QuestionChangeRequestCreate,
+    QuestionChangeRequestResponse,
+    QuestionChangeRequestReview,
     QuestionCreate,
     QuestionDetailResponse,
     QuestionListItem,
     QuestionResolve,
+    QuestionVersionResponse,
+    RestoreQuestionRequest,
     QuestionUpdate,
 )
 from app.schemas.user import UserSummary
@@ -51,6 +70,7 @@ class QuestionService:
         self.questions = QuestionRepository(session)
         self.teams = TeamRepository(session)
         self.users = UserRepository(session)
+        self.governance = GovernanceRepository(session)
         self.permissions = PermissionService(self.users)
         self.embedding_service = EmbeddingService(
             session,
@@ -223,11 +243,42 @@ class QuestionService:
         return immediate
 
     async def update(self, question_id: UUID, data: QuestionUpdate) -> Question:
-        question = await self._owned_question(question_id, data.organisation_id, data.user_id)
+        question, actor = await self._question_and_actor(
+            question_id, data.organisation_id, data.user_id
+        )
+        if question.status == QuestionStatus.ARCHIVED:
+            raise ConflictError("Archived questions must be restored before editing")
+        protected = await self._is_protected(question)
+        has_contributions = await self._has_contributions(question)
         changes = data.model_dump(
-            exclude={"organisation_id", "user_id"},
+            exclude={"organisation_id", "user_id", "reason"},
             exclude_unset=True,
         )
+        changes = {
+            field: value
+            for field, value in changes.items()
+            if value != getattr(question, field)
+        }
+        if not changes:
+            return question
+        if (protected or has_contributions) and actor.role != UserRole.ADMIN:
+            raise PermissionDeniedError(
+                "Only an administrator can edit a contributed question"
+            )
+        reason = (data.reason or "").strip()
+        if (protected or has_contributions) and not reason:
+            raise ConflictError("A reason is required for administrator edits")
+        if protected or has_contributions:
+            await self._create_question_version(question, actor, reason)
+            await self._audit(
+                actor,
+                AuditAction.QUESTION_VERSION_CREATED,
+                "question",
+                question.id,
+                {"reason": reason},
+            )
+        if protected:
+            await self._invalidate_question_approval(question, actor, reason)
         embedding_changed = any(
             field in changes and changes[field] != getattr(question, field)
             for field in ("title", "body")
@@ -271,7 +322,15 @@ class QuestionService:
             raise ConflictError("Team does not belong to the selected department")
 
     async def resolve(self, question_id: UUID, data: QuestionResolve) -> Question:
-        question = await self._owned_question(question_id, data.organisation_id, data.user_id)
+        question, actor = await self._question_and_actor(
+            question_id, data.organisation_id, data.user_id
+        )
+        if question.status == QuestionStatus.ARCHIVED:
+            raise ConflictError("Archived questions must be restored before resolving")
+        if await self._is_protected(question) and actor.role != UserRole.ADMIN:
+            raise PermissionDeniedError(
+                "Only an administrator can change an approved question"
+            )
         answer = await self.answers.get_for_organisation(
             data.answer_id,
             data.organisation_id,
@@ -281,12 +340,20 @@ class QuestionService:
         question.accepted_answer_id = answer.id
         question.status = QuestionStatus.RESOLVED
         question.resolved_at = datetime.now(UTC)
+        question.protected_at = question.protected_at or question.resolved_at
+        answer.protected_at = answer.protected_at or question.resolved_at
         await self.session.commit()
         await self.session.refresh(question)
         return question
 
     async def reopen(self, question_id: UUID, data: QuestionAction) -> Question:
-        question = await self._owned_question(question_id, data.organisation_id, data.user_id)
+        question, actor = await self._question_and_actor(
+            question_id, data.organisation_id, data.user_id
+        )
+        if await self._is_protected(question) and actor.role != UserRole.ADMIN:
+            raise PermissionDeniedError(
+                "Only an administrator can reopen approved knowledge"
+            )
         if question.status != QuestionStatus.RESOLVED:
             raise ConflictError("Only resolved questions can be reopened")
         question.status = QuestionStatus.OPEN
@@ -296,12 +363,354 @@ class QuestionService:
         await self.session.refresh(question)
         return question
 
-    async def archive(self, question_id: UUID, data: QuestionAction) -> Question:
-        question = await self._owned_question(question_id, data.organisation_id, data.user_id)
+    async def archive(
+        self, question_id: UUID, data: ArchiveQuestionRequest
+    ) -> Question:
+        question, actor = await self._question_and_actor(
+            question_id, data.organisation_id, data.user_id
+        )
+        if question.status == QuestionStatus.ARCHIVED:
+            raise ConflictError("Question is already archived")
+        if (
+            await self._is_protected(question)
+            or await self._has_contributions(question)
+        ) and actor.role != UserRole.ADMIN:
+            raise PermissionDeniedError(
+                "Only an administrator can archive a contributed question"
+            )
+        reason = data.reason.strip()
+        if not reason:
+            raise ConflictError("An archive reason is required")
+        await self._create_question_version(question, actor, reason)
+        question.status_before_archive = question.status
         question.status = QuestionStatus.ARCHIVED
+        question.archived_at = datetime.now(UTC)
+        question.archived_by = actor.id
+        question.archive_reason = reason
+        await self._audit(
+            actor,
+            AuditAction.QUESTION_ARCHIVED,
+            "question",
+            question.id,
+            {"reason": reason},
+        )
+        await self._audit(
+            actor,
+            AuditAction.QUESTION_VERSION_CREATED,
+            "question",
+            question.id,
+            {"reason": reason},
+        )
         await self.session.commit()
         await self.session.refresh(question)
         return question
+
+    async def restore(
+        self, question_id: UUID, data: RestoreQuestionRequest
+    ) -> Question:
+        question, actor = await self._question_and_actor(
+            question_id, data.organisation_id, data.user_id
+        )
+        if question.status != QuestionStatus.ARCHIVED:
+            raise ConflictError("Only archived questions can be restored")
+        if (
+            await self._is_protected(question)
+            or await self._has_contributions(question)
+        ) and actor.role != UserRole.ADMIN:
+            raise PermissionDeniedError(
+                "Only an administrator can restore a contributed question"
+            )
+        reason = data.reason.strip()
+        if not reason:
+            raise ConflictError("A restoration reason is required")
+        question.status = question.status_before_archive or QuestionStatus.OPEN
+        question.status_before_archive = None
+        question.archived_at = None
+        question.archived_by = None
+        question.archive_reason = None
+        await self._create_question_version(question, actor, reason)
+        await self._audit(
+            actor,
+            AuditAction.QUESTION_RESTORED,
+            "question",
+            question.id,
+            {"reason": reason},
+        )
+        await self._audit(
+            actor,
+            AuditAction.QUESTION_VERSION_CREATED,
+            "question",
+            question.id,
+            {"reason": reason},
+        )
+        await self.session.commit()
+        await self.session.refresh(question)
+        return question
+
+    async def request_change(
+        self,
+        question_id: UUID,
+        organisation_id: UUID,
+        user_id: UUID,
+        data: QuestionChangeRequestCreate,
+    ) -> QuestionChangeRequestResponse:
+        question = await self.questions.get_for_organisation(
+            question_id, organisation_id
+        )
+        if not question:
+            raise NotFoundError("Question not found")
+        actor = await self.permissions.actor(user_id, organisation_id)
+        self.permissions.require_question_visibility(actor, question)
+        if actor.id != question.author_id:
+            raise PermissionDeniedError(
+                "Only the question author can request a change review"
+            )
+        if question.status == QuestionStatus.ARCHIVED:
+            raise ConflictError("Archived questions cannot receive change requests")
+        if not await self._has_contributions(question):
+            raise ConflictError(
+                "Questions without contributions can be edited directly"
+            )
+        change_title = "title" in data.model_fields_set and data.title is not None
+        change_body = "body" in data.model_fields_set
+        if not (change_title or change_body or data.archive):
+            raise ConflictError("A change request must propose an edit or archival")
+        reason = data.reason.strip()
+        if not reason:
+            raise ConflictError("A change request reason is required")
+
+        request = QuestionChangeRequest(
+            organisation_id=organisation_id,
+            question_id=question.id,
+            requested_by=actor.id,
+            proposed_title=data.title,
+            proposed_body=data.body,
+            change_title=change_title,
+            change_body=change_body,
+            archive_requested=data.archive,
+            reason=reason,
+        )
+        await self.questions.add_change_request(request)
+        await self._audit(
+            actor,
+            AuditAction.QUESTION_CHANGE_REQUESTED,
+            "question_change_request",
+            request.id,
+            {"question_id": str(question.id)},
+        )
+        await self.session.commit()
+        await self.session.refresh(request)
+        return QuestionChangeRequestResponse.model_validate(request)
+
+    async def list_change_requests(
+        self,
+        organisation_id: UUID,
+        user_id: UUID,
+    ) -> list[QuestionChangeRequestResponse]:
+        actor = await self.permissions.actor(user_id, organisation_id)
+        self.permissions.require_admin(actor)
+        rows = await self.questions.list_change_requests(
+            organisation_id, actor
+        )
+        return [
+            QuestionChangeRequestResponse.model_validate(request)
+            for request, _, _ in rows
+        ]
+
+    async def review_change_request(
+        self,
+        request_id: UUID,
+        organisation_id: UUID,
+        user_id: UUID,
+        data: QuestionChangeRequestReview,
+    ) -> QuestionChangeRequestResponse:
+        actor = await self.permissions.actor(user_id, organisation_id)
+        self.permissions.require_admin(actor)
+        row = await self.questions.get_change_request(
+            request_id, organisation_id
+        )
+        if not row:
+            raise NotFoundError("Change request not found")
+        request, question = row
+        self.permissions.require_question_visibility(actor, question)
+        if request.status != ChangeRequestStatus.PENDING:
+            raise ConflictError("Change request has already been reviewed")
+        review_note = (data.review_note or "").strip() or request.reason
+        if data.decision == ChangeRequestDecision.APPROVE:
+            if request.archive_requested:
+                await self.archive(
+                    question.id,
+                    ArchiveQuestionRequest(
+                        organisation_id=organisation_id,
+                        user_id=user_id,
+                        reason=review_note,
+                    ),
+                )
+            else:
+                update_values = {
+                    "organisation_id": organisation_id,
+                    "user_id": user_id,
+                    "reason": review_note,
+                }
+                if request.change_title:
+                    update_values["title"] = request.proposed_title
+                if request.change_body:
+                    update_values["body"] = request.proposed_body
+                await self.update(
+                    question.id,
+                    QuestionUpdate.model_validate(update_values),
+                )
+            request.status = ChangeRequestStatus.APPROVED
+        else:
+            request.status = ChangeRequestStatus.REJECTED
+        request.reviewed_by = actor.id
+        request.reviewed_at = datetime.now(UTC)
+        request.review_note = review_note
+        await self._audit(
+            actor,
+            AuditAction.QUESTION_CHANGE_REQUEST_REVIEWED,
+            "question_change_request",
+            request.id,
+            {"decision": data.decision.value, "question_id": str(question.id)},
+        )
+        await self.session.commit()
+        await self.session.refresh(request)
+        return QuestionChangeRequestResponse.model_validate(request)
+
+    async def list_versions(
+        self,
+        question_id: UUID,
+        organisation_id: UUID,
+        user_id: UUID,
+    ) -> list[QuestionVersionResponse]:
+        question = await self.questions.get_for_organisation(
+            question_id, organisation_id
+        )
+        if not question:
+            raise NotFoundError("Question not found")
+        actor = await self.permissions.actor(user_id, organisation_id)
+        self.permissions.require_question_visibility(actor, question)
+        return [
+            QuestionVersionResponse.model_validate(
+                {
+                    **version.__dict__,
+                    "changed_by": UserSummary.model_validate(changed_by),
+                }
+            )
+            for version, changed_by in await self.questions.list_versions(
+                question_id, organisation_id, actor
+            )
+        ]
+
+    async def _is_protected(self, question: Question) -> bool:
+        return bool(
+            question.protected_at
+            or question.accepted_answer_id
+            or await self.questions.has_verified_answer(
+                question.id, question.organisation_id
+            )
+        )
+
+    async def _has_contributions(self, question: Question) -> bool:
+        return bool(question.contribution_started_at) or (
+            await self.questions.contribution_count(
+                question.id, question.organisation_id
+            )
+        ) > 0
+
+    async def _create_question_version(
+        self,
+        question: Question,
+        actor: User,
+        reason: str,
+    ) -> QuestionVersion:
+        version = QuestionVersion(
+            organisation_id=question.organisation_id,
+            question_id=question.id,
+            version_number=await self.questions.next_version_number(
+                question.id, question.organisation_id
+            ),
+            title=question.title,
+            body=question.body,
+            status_snapshot=question.status,
+            visibility_snapshot=question.visibility,
+            department_id=question.department_id,
+            team_id=question.team_id,
+            changed_by=actor.id,
+            change_reason=reason,
+        )
+        self.session.add(version)
+        await self.session.flush()
+        return version
+
+    async def _invalidate_question_approval(
+        self,
+        question: Question,
+        actor: User,
+        reason: str,
+    ) -> None:
+        approved_answers = list(
+            await self.session.scalars(
+                select(Answer).where(
+                    Answer.question_id == question.id,
+                    Answer.organisation_id == question.organisation_id,
+                    Answer.archived_at.is_(None),
+                    (
+                        (Answer.status == AnswerStatus.VERIFIED)
+                        | (Answer.id == question.accepted_answer_id)
+                    ),
+                )
+            )
+        )
+        for answer in approved_answers:
+            version = AnswerVersion(
+                organisation_id=answer.organisation_id,
+                question_id=answer.question_id,
+                answer_id=answer.id,
+                version_number=await self.governance.next_version_number(
+                    answer.question_id, answer.organisation_id
+                ),
+                body=answer.body,
+                status_snapshot=answer.status,
+                changed_by=actor.id,
+                change_reason=reason,
+            )
+            await self.governance.add(version)
+            await self._audit(
+                actor,
+                AuditAction.ANSWER_VERSION_CREATED,
+                "answer_version",
+                version.id,
+                {"answer_id": str(answer.id), "reason": reason},
+            )
+            answer.status = AnswerStatus.COMMUNITY
+            answer.verified_by = None
+            answer.verified_at = None
+            answer.review_due_at = None
+            answer.last_reviewed_at = None
+            answer.last_reviewed_by = None
+        question.accepted_answer_id = None
+        question.status = QuestionStatus.UNDER_REVIEW
+        question.resolved_at = None
+
+    async def _audit(
+        self,
+        actor: User,
+        action: AuditAction,
+        entity_type: str,
+        entity_id: UUID,
+        metadata: dict | None = None,
+    ) -> None:
+        await self.governance.add(
+            AuditEvent(
+                organisation_id=actor.organisation_id,
+                actor_id=actor.id,
+                action=action.value,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                event_metadata=metadata,
+            )
+        )
 
     async def _owned_question(
         self,
@@ -309,19 +718,36 @@ class QuestionService:
         organisation_id: UUID,
         user_id: UUID,
     ) -> Question:
-        question = await self.questions.get_for_organisation(question_id, organisation_id)
+        question, _ = await self._question_and_actor(
+            question_id, organisation_id, user_id
+        )
+        return question
+
+    async def _question_and_actor(
+        self,
+        question_id: UUID,
+        organisation_id: UUID,
+        user_id: UUID,
+    ) -> tuple[Question, User]:
+        question = await self.questions.get_for_organisation(
+            question_id, organisation_id
+        )
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
         self.permissions.require_question_visibility(actor, question)
         self.permissions.require_question_owner_or_admin(actor, question)
-        return question
+        return question, actor
 
     async def _sync_embedding_safely(self, question: Question) -> None:
         question_id = question.id
         try:
             await self.embedding_service.sync_question(question)
-        except (EmbeddingProviderError, SQLAlchemyError, ValueError):
+        except (EmbeddingProviderError, ValueError):
+            logger.exception(
+                "Failed to generate embedding for question %s", question_id
+            )
+        except SQLAlchemyError:
             await self.session.rollback()
             await self.session.refresh(question)
             logger.exception("Failed to generate embedding for question %s", question_id)

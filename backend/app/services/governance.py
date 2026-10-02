@@ -63,6 +63,8 @@ class GovernanceService:
         await self._supersede_current(question, answer.id, actor)
         now = datetime.now(UTC)
         answer.status = AnswerStatus.VERIFIED
+        answer.protected_at = answer.protected_at or now
+        question.protected_at = question.protected_at or now
         answer.verified_by = actor.id
         answer.verified_at = now
         answer.last_reviewed_by = actor.id
@@ -491,11 +493,15 @@ class GovernanceService:
         answer = await self.answers.get_for_organisation(answer_id, organisation_id)
         if not answer:
             raise NotFoundError("Answer not found")
+        if answer.archived_at is not None:
+            raise ConflictError("Archived answers cannot be governed")
         question = await self.questions.get_for_organisation(
             answer.question_id, organisation_id
         )
         if not question:
             raise NotFoundError("Question not found")
+        if question.status == QuestionStatus.ARCHIVED:
+            raise ConflictError("Archived questions cannot be governed")
         actor = await self.permissions.actor(user_id, organisation_id)
         self.permissions.require_question_visibility(actor, question)
         return answer, question, actor

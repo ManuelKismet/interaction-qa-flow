@@ -1,10 +1,11 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.models.comment import Comment
-from app.models.question import Question
+from app.models.question import Question, QuestionStatus
 from app.models.user import User
 from app.repositories.answer import AnswerRepository
 from app.repositories.comment import CommentRepository
@@ -25,9 +26,11 @@ class CommentService:
         self.permissions = PermissionService(self.users)
 
     async def create(self, question_id: UUID, data: CommentCreate) -> CommentResponse:
-        _, author = await self._visible_question(
+        question, author = await self._visible_question(
             question_id, data.organisation_id, data.author_id
         )
+        if question.status == QuestionStatus.ARCHIVED:
+            raise ConflictError("Archived questions cannot receive new comments")
         if data.answer_id:
             answer = await self.answers.get_for_organisation(
                 data.answer_id,
@@ -36,6 +39,9 @@ class CommentService:
             if not answer or answer.question_id != question_id:
                 raise NotFoundError("Answer not found for this question")
         comment = Comment(question_id=question_id, **data.model_dump())
+        question.contribution_started_at = (
+            question.contribution_started_at or datetime.now(UTC)
+        )
         await self.comments.add(comment)
         await self.session.commit()
         await self.session.refresh(comment)

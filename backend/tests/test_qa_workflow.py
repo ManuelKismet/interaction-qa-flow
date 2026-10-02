@@ -267,6 +267,7 @@ async def test_update_archive_and_owned_content_crud(app_client) -> None:
         json={
             "organisation_id": str(identities["organisation_id"]),
             "user_id": str(identities["admin_id"]),
+            "reason": "No longer current.",
         },
     )
     assert archived.status_code == 200

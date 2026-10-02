@@ -101,6 +101,7 @@ class SearchRepository:
             candidate_answer.question_id == canonical_question.id,
             candidate_answer.organisation_id == organisation_id,
             candidate_answer.status.in_(answer_statuses),
+            candidate_answer.archived_at.is_(None),
         )
         statement = (
             statement.outerjoin(candidate_answer, answer_join)

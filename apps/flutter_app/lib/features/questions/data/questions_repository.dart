@@ -133,6 +133,7 @@ class QuestionsRepository {
     String? body,
     String? departmentId,
     String? teamId,
+    String? reason,
   }) async {
     await _request(
       () => _client.patch<void>(
@@ -142,15 +143,104 @@ class QuestionsRepository {
           'body': body,
           'department_id': departmentId,
           'team_id': teamId,
+          if (reason != null) 'reason': reason,
         },
       ),
     );
   }
 
-  Future<void> archiveQuestion(String questionId) async {
+  Future<void> archiveQuestion(String questionId, String reason) async {
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/archive',
+        data: {'reason': reason},
+      ),
+    );
+  }
+
+  Future<void> restoreQuestion(String questionId, String reason) async {
+    await _request(
+      () => _client.post<void>(
+        '/api/v1/questions/$questionId/restore',
+        data: {'reason': reason},
+      ),
+    );
+  }
+
+  Future<void> requestChangeReview(
+    String questionId, {
+    String? title,
+    String? body,
+    required bool archive,
+    required String reason,
+  }) async {
+    await _request(
+      () => _client.post<void>(
+        '/api/v1/questions/$questionId/change-requests',
+        data: {
+          if (title != null) 'title': title,
+          if (body != null) 'body': body,
+          'archive': archive,
+          'reason': reason,
+        },
+      ),
+    );
+  }
+
+  Future<List<QuestionChangeRequest>> listChangeRequests() async {
+    try {
+      final response = await _client.get<List<dynamic>>(
+        '/api/v1/questions/change-requests',
+      );
+      return (response.data ?? const [])
+          .map(
+            (item) => QuestionChangeRequest.fromJson(
+              item as Map<String, dynamic>,
+            ),
+          )
+          .toList();
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
+  Future<void> reviewChangeRequest(
+    String requestId, {
+    required String decision,
+    String? note,
+  }) async {
+    await _request(
+      () => _client.post<void>(
+        '/api/v1/questions/change-requests/$requestId/review',
+        data: {
+          'decision': decision,
+          if (note != null) 'review_note': note,
+        },
+      ),
+    );
+  }
+
+  Future<void> updateAnswer(
+    String answerId, {
+    required String body,
+    String? reason,
+  }) async {
+    await _request(
+      () => _client.patch<void>(
+        '/api/v1/answers/$answerId',
+        data: {
+          'body': body,
+          if (reason != null) 'reason': reason,
+        },
+      ),
+    );
+  }
+
+  Future<void> deleteAnswer(String answerId, {String? reason}) async {
+    await _request(
+      () => _client.delete<void>(
+        '/api/v1/answers/$answerId',
+        queryParameters: {if (reason != null) 'reason': reason},
       ),
     );
   }

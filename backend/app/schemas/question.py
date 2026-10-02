@@ -1,7 +1,8 @@
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.question import QuestionStatus, QuestionVisibility
 from app.schemas.answer import AnswerDetailResponse
@@ -34,6 +35,10 @@ class QuestionResponse(EntityResponse):
     canonical_question_id: UUID | None
     accepted_answer_id: UUID | None
     resolved_at: datetime | None
+    protected_at: datetime | None
+    archived_at: datetime | None
+    archived_by: UUID | None
+    archive_reason: str | None
 
 
 class QuestionUpdate(BaseModel):
@@ -44,11 +49,72 @@ class QuestionUpdate(BaseModel):
     department_id: UUID | None = None
     team_id: UUID | None = None
     visibility: QuestionVisibility | None = None
+    reason: str | None = Field(default=None, max_length=4000)
 
 
 class QuestionAction(BaseModel):
     organisation_id: UUID | None = None
     user_id: UUID | None = None
+    reason: str | None = Field(default=None, max_length=4000)
+
+
+class ArchiveQuestionRequest(QuestionAction):
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+class RestoreQuestionRequest(QuestionAction):
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+class QuestionChangeRequestCreate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    body: str | None = None
+    archive: bool = False
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+class ChangeRequestDecision(StrEnum):
+    APPROVE = "approve"
+    REJECT = "reject"
+
+
+class QuestionChangeRequestReview(BaseModel):
+    decision: ChangeRequestDecision
+    review_note: str | None = Field(default=None, max_length=4000)
+
+
+class QuestionChangeRequestResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    question_id: UUID
+    requested_by: UUID
+    proposed_title: str | None
+    proposed_body: str | None
+    change_title: bool
+    change_body: bool
+    archive_requested: bool
+    reason: str
+    status: str
+    reviewed_by: UUID | None
+    reviewed_at: datetime | None
+    review_note: str | None
+    created_at: datetime
+
+
+class QuestionVersionResponse(BaseModel):
+    id: UUID
+    question_id: UUID
+    version_number: int
+    title: str
+    body: str | None
+    status_snapshot: QuestionStatus
+    visibility_snapshot: QuestionVisibility
+    department_id: UUID | None
+    team_id: UUID | None
+    changed_by: UserSummary
+    change_reason: str
+    created_at: datetime
 
 
 class QuestionResolve(QuestionAction):

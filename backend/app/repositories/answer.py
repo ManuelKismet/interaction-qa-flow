@@ -81,6 +81,7 @@ class AnswerRepository:
             .where(
                 Answer.question_id == question_id,
                 Answer.organisation_id == organisation_id,
+                Answer.archived_at.is_(None),
             )
             .group_by(Answer.id, User.id, verifier.id)
             .order_by(Answer.created_at.asc())
