@@ -103,6 +103,10 @@ async def require_app_check(
     app_check_token: str | None = Header(default=None, alias="X-Firebase-AppCheck"),
     settings: Settings = Depends(get_settings),
 ) -> None:
+    if settings.app_env == "development":
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            logger.addHandler(logging.StreamHandler())
     if not app_check_token:
         if settings.app_check_mode == "enforce":
             raise HTTPException(
@@ -125,6 +129,9 @@ async def require_app_check(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid App Check application",
         )
+
+    if settings.app_env == "development":
+        logger.info("Development App Check verified for configured web app")
 
 
 _ACTOR_FIELDS = {
@@ -197,7 +204,10 @@ async def enforce_tenant_scope(
                 detail="Cross-organisation request denied",
             )
 
-    if request.headers.get("content-type", "").startswith("application/json"):
+    if (
+        request.headers.get("content-type", "").startswith("application/json")
+        and await request.body()
+    ):
         try:
             allow_target_user_id = (
                 "/members" in request.url.path
