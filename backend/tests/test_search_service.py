@@ -1,8 +1,10 @@
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from app.ai.embedding_provider import (
     DeterministicFakeEmbeddingProvider,
@@ -12,6 +14,7 @@ from app.core.config import Settings
 from app.models.answer import Answer, AnswerStatus
 from app.models.question import Question, QuestionStatus, QuestionVisibility
 from app.models.user import User
+from app.repositories.search import SearchRepository
 from app.schemas.search import MatchConfidence
 from app.services.search import SearchService
 
@@ -160,6 +163,40 @@ async def test_search_can_include_open_question_without_answer() -> None:
         limit=50,
         include_unanswered=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_semantic_candidate_limit_partitions_by_canonical_question() -> None:
+    actor = User(
+        id=uuid4(),
+        organisation_id=uuid4(),
+        email="semantic-limit@example.test",
+        display_name="Semantic Limit Tester",
+    )
+    session = AsyncMock()
+    session.get_bind = Mock(
+        return_value=SimpleNamespace(
+            dialect=SimpleNamespace(name="postgresql")
+        )
+    )
+    session.execute = AsyncMock(return_value=[])
+
+    await SearchRepository(session).semantic_candidates(
+        organisation_id=actor.organisation_id,
+        actor=actor,
+        query_text="password",
+        query_embedding=[0.0] * 1536,
+        embedding_model="deterministic-fake-v1",
+        minimum_similarity=0.68,
+        limit=5,
+    )
+
+    statement = session.execute.await_args.args[0]
+    sql = str(statement.compile(dialect=postgresql.dialect()))
+    assert "row_number() OVER (PARTITION BY" in sql
+    assert "canonical_rank" in sql
+    assert "question_embeddings.embedding <=>" in sql
+    assert "LIMIT" in sql
 
 
 @pytest.mark.asyncio

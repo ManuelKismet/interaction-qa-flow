@@ -26,21 +26,46 @@ class SearchRepository:
         include_unanswered: bool = False,
     ):
         canonical_question = aliased(Question)
-        candidate_answer = aliased(Answer)
+        answer_to_rank = aliased(Answer)
+        answer_question = aliased(Question)
         answer_statuses = [
             AnswerStatus.VERIFIED,
             AnswerStatus.COMMUNITY,
             AnswerStatus.PROPOSED,
         ]
         answer_order = (
-            case((candidate_answer.status == AnswerStatus.VERIFIED, 0), else_=1),
+            case((answer_to_rank.status == AnswerStatus.VERIFIED, 0), else_=1),
             case(
-                (candidate_answer.id == canonical_question.accepted_answer_id, 0),
+                (answer_to_rank.id == answer_question.accepted_answer_id, 0),
                 else_=1,
             ),
-            case((candidate_answer.status == AnswerStatus.COMMUNITY, 0), else_=1),
-            candidate_answer.created_at.desc(),
+            case((answer_to_rank.status == AnswerStatus.COMMUNITY, 0), else_=1),
+            answer_to_rank.created_at.desc(),
+            answer_to_rank.id.desc(),
         )
+        ranked_answers = (
+            select(
+                answer_to_rank.id.label("answer_id"),
+                answer_to_rank.question_id.label("question_id"),
+                func.row_number()
+                .over(
+                    partition_by=answer_to_rank.question_id,
+                    order_by=answer_order,
+                )
+                .label("answer_rank"),
+            )
+            .join(
+                answer_question,
+                answer_question.id == answer_to_rank.question_id,
+            )
+            .where(
+                answer_to_rank.organisation_id == organisation_id,
+                answer_to_rank.status.in_(answer_statuses),
+                answer_to_rank.archived_at.is_(None),
+            )
+            .subquery()
+        )
+        candidate_answer = aliased(Answer)
         open_challenge_count = (
             select(func.count(AnswerChallenge.id))
             .where(
@@ -91,6 +116,7 @@ class SearchRepository:
                 Team,
                 open_challenge_count.label("open_challenge_count"),
             )
+            .select_from(Question)
             .join(
                 canonical_question,
                 canonical_question.id
@@ -98,16 +124,19 @@ class SearchRepository:
             )
         )
         answer_join = and_(
-            candidate_answer.question_id == canonical_question.id,
-            candidate_answer.organisation_id == organisation_id,
-            candidate_answer.status.in_(answer_statuses),
-            candidate_answer.archived_at.is_(None),
+            ranked_answers.c.question_id == canonical_question.id,
+            ranked_answers.c.answer_rank == 1,
         )
-        statement = (
-            statement.outerjoin(candidate_answer, answer_join)
-            if include_unanswered
-            else statement.join(candidate_answer, answer_join)
-        )
+        if include_unanswered:
+            statement = statement.outerjoin(ranked_answers, answer_join).outerjoin(
+                candidate_answer,
+                candidate_answer.id == ranked_answers.c.answer_id,
+            )
+        else:
+            statement = statement.join(ranked_answers, answer_join).join(
+                candidate_answer,
+                candidate_answer.id == ranked_answers.c.answer_id,
+            )
         eligible_statuses = [QuestionStatus.ANSWERED, QuestionStatus.RESOLVED]
         if include_unanswered:
             eligible_statuses.append(QuestionStatus.OPEN)
@@ -133,7 +162,41 @@ class SearchRepository:
                 canonical_visibility,
             )
         )
-        return statement, canonical_question, answer_order
+        return statement, canonical_question
+
+    @staticmethod
+    def _limit_distinct_candidates(
+        statement,
+        canonical_question,
+        *,
+        order_by: tuple,
+        limit: int,
+    ):
+        ranked_candidates = (
+            statement.with_only_columns(
+                Question.id.label("matched_question_id"),
+                func.row_number()
+                .over(
+                    partition_by=canonical_question.id,
+                    order_by=(*order_by, Question.id.asc()),
+                )
+                .label("canonical_rank"),
+                maintain_column_froms=True,
+            )
+            .order_by(None)
+            .subquery()
+        )
+        return (
+            statement.where(
+                Question.id.in_(
+                    select(ranked_candidates.c.matched_question_id).where(
+                        ranked_candidates.c.canonical_rank == 1
+                    )
+                )
+            )
+            .order_by(*order_by, Question.id.asc())
+            .limit(limit)
+        )
 
     @staticmethod
     def _tokens(query_text: str) -> list[str]:
@@ -170,7 +233,7 @@ class SearchRepository:
     ) -> list[
         tuple[Question, Question, Answer | None, Department | None, Team | None, float, int]
     ]:
-        statement, _, answer_order = self._candidate_statement(
+        statement, canonical_question = self._candidate_statement(
             organisation_id=organisation_id,
             actor=actor,
             include_unanswered=include_unanswered,
@@ -191,8 +254,12 @@ class SearchRepository:
                     == query_text.strip().lower(),
                 ),
             )
-            .order_by(distance.asc(), *answer_order)
-            .limit(limit)
+        )
+        statement = self._limit_distinct_candidates(
+            statement,
+            canonical_question,
+            order_by=(distance.asc(),),
+            limit=limit,
         )
         result = await self.session.execute(statement)
         return self._candidate_rows(result)
@@ -212,7 +279,7 @@ class SearchRepository:
         if not tokens and not query_text.strip():
             return []
 
-        statement, canonical_question, answer_order = self._candidate_statement(
+        statement, canonical_question = self._candidate_statement(
             organisation_id=organisation_id,
             actor=actor,
             include_unanswered=include_unanswered,
@@ -280,15 +347,14 @@ class SearchRepository:
             score += case((all_terms_match, 5.0), else_=0.0)
             identifier_matches = []
 
-        statement = (
-            statement.add_columns(score.label("similarity"))
-            .where(or_(exact_title, text_match, *identifier_matches))
-            .order_by(
-                score.desc(),
-                *answer_order,
-                canonical_question.updated_at.desc(),
-            )
-            .limit(limit)
+        statement = statement.add_columns(score.label("similarity")).where(
+            or_(exact_title, text_match, *identifier_matches)
+        )
+        statement = self._limit_distinct_candidates(
+            statement,
+            canonical_question,
+            order_by=(score.desc(), canonical_question.updated_at.desc()),
+            limit=limit,
         )
         result = await self.session.execute(statement)
         return self._candidate_rows(result)
