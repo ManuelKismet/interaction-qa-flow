@@ -159,6 +159,7 @@ async def list_questions(
 ) -> list[QuestionListItem]:
     return await QuestionService(session).list(
         identity.organisation_id,
+        identity.user_id,
         offset,
         limit,
         status_filter,
@@ -174,7 +175,9 @@ async def get_question(
     identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> QuestionDetailResponse:
-    return await QuestionService(session).get(question_id, identity.organisation_id)
+    return await QuestionService(session).get(
+        question_id, identity.organisation_id, identity.user_id
+    )
 
 
 @router.patch("/{question_id}", response_model=QuestionResponse)
@@ -277,7 +280,9 @@ async def list_answers(
     identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> list[AnswerDetailResponse]:
-    return await AnswerService(session).list(question_id, identity.organisation_id)
+    return await AnswerService(session).list(
+        question_id, identity.organisation_id, identity.user_id
+    )
 
 
 @router.post(
@@ -308,4 +313,6 @@ async def list_comments(
     identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> list[CommentResponse]:
-    return await CommentService(session).list(question_id, identity.organisation_id)
+    return await CommentService(session).list(
+        question_id, identity.organisation_id, identity.user_id
+    )

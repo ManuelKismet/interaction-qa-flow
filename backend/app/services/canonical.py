@@ -365,6 +365,7 @@ class CanonicalQuestionService:
 
     async def _require_manager(self, actor: User, *questions: Question) -> None:
         for question in questions:
+            self.permissions.require_question_visibility(actor, question)
             await self.permissions.require_answer_manager(
                 actor, question, self.governance
             )

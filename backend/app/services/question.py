@@ -85,6 +85,7 @@ class QuestionService:
     async def list(
         self,
         organisation_id: UUID,
+        user_id: UUID,
         offset: int,
         limit: int,
         status: QuestionStatus | None = None,
@@ -92,14 +93,16 @@ class QuestionService:
         team_id: UUID | None = None,
         author_id: UUID | None = None,
     ) -> list[QuestionListItem]:
+        actor = await self.permissions.actor(user_id, organisation_id)
         rows = await self.questions.list_for_organisation(
             organisation_id,
             offset,
             limit,
-            status,
-            department_id,
-            team_id,
-            author_id,
+            actor=actor,
+            status=status,
+            department_id=department_id,
+            team_id=team_id,
+            author_id=author_id,
         )
         return [
             QuestionListItem.model_validate(
@@ -119,7 +122,9 @@ class QuestionService:
         self,
         question_id: UUID,
         organisation_id: UUID,
+        user_id: UUID,
     ) -> QuestionDetailResponse:
+        actor = await self.permissions.actor(user_id, organisation_id)
         detail = await self.questions.get_detail_for_organisation(
             question_id,
             organisation_id,
@@ -127,13 +132,14 @@ class QuestionService:
         if not detail:
             raise NotFoundError("Question not found")
         question, author, department, team = detail
+        self.permissions.require_question_visibility(actor, question)
         canonical_question = None
         aliases = []
         if question.canonical_question_id:
             canonical = await self.questions.get_for_organisation(
                 question.canonical_question_id, organisation_id
             )
-            if canonical:
+            if canonical and self.permissions.can_view_question(actor, canonical):
                 canonical_question = CanonicalQuestionSummary(
                     id=canonical.id, title=canonical.title
                 )
@@ -141,7 +147,7 @@ class QuestionService:
             aliases = [
                 QuestionAliasSummary.model_validate(alias)
                 for alias in await self.questions.list_aliases(
-                    question.id, organisation_id, limit=5
+                    question.id, organisation_id, limit=5, actor=actor
                 )
             ]
         answer_rows = await self.answers.list_details_for_question(
@@ -283,6 +289,7 @@ class QuestionService:
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
+        self.permissions.require_question_visibility(actor, question)
         self.permissions.require_question_owner_or_admin(actor, question)
         return question
 

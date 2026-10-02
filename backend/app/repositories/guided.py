@@ -47,10 +47,11 @@ class GuidedRepository:
             GuidedSession.created_by == user_id,
             GuidedSession.visibility == GuidedSessionVisibility.ORGANISATION,
         ]
-        if department_id:
+        if department_id is not None:
             visibility.append(
                 and_(
                     GuidedSession.visibility == GuidedSessionVisibility.DEPARTMENT,
+                    GuidedSession.department_id.is_not(None),
                     GuidedSession.department_id == department_id,
                 )
             )

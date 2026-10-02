@@ -1,7 +1,9 @@
 from uuid import UUID
 
+from sqlalchemy import and_, or_
+
 from app.core.exceptions import NotFoundError, PermissionDeniedError
-from app.models.question import Question
+from app.models.question import Question, QuestionVisibility
 from app.models.user import User, UserRole
 from app.repositories.governance import GovernanceRepository
 from app.repositories.user import UserRepository
@@ -33,18 +35,44 @@ class PermissionService:
             raise PermissionDeniedError("Administrator permission is required")
 
     @staticmethod
-    def require_question_visibility(actor: User, question: Question) -> None:
+    def question_visibility_clause(actor: User, question=Question):
+        visibility = or_(
+            question.visibility == QuestionVisibility.ORGANISATION,
+            and_(
+                question.visibility == QuestionVisibility.PRIVATE,
+                question.author_id == actor.id,
+            ),
+        )
+        if actor.department_id is not None:
+            visibility = or_(
+                visibility,
+                and_(
+                    question.visibility == QuestionVisibility.DEPARTMENT,
+                    question.department_id == actor.department_id,
+                ),
+            )
+        return visibility
+
+    @staticmethod
+    def can_view_question(actor: User, question: Question) -> bool:
         if question.visibility.value == "organisation":
-            return
+            return True
         if question.visibility.value == "private" and question.author_id == actor.id:
-            return
+            return True
         if (
             question.visibility.value == "department"
             and actor.department_id is not None
+            and question.department_id is not None
             and actor.department_id == question.department_id
         ):
+            return True
+        return False
+
+    @staticmethod
+    def require_question_visibility(actor: User, question: Question) -> None:
+        if PermissionService.can_view_question(actor, question):
             return
-        raise PermissionDeniedError("You do not have permission to view this answer")
+        raise PermissionDeniedError("You do not have permission to view this question")
 
     @staticmethod
     async def require_answer_manager(

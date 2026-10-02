@@ -98,7 +98,12 @@ class GuidedService:
         data: GuidedSessionCreate,
     ) -> GuidedSessionResponse:
         await self.permissions.actor(user_id, organisation_id)
-        await self._validate_structure(data.department_id, data.team_id, organisation_id)
+        await self._validate_structure(
+            data.department_id,
+            data.team_id,
+            organisation_id,
+            require_department=data.visibility == GuidedSessionVisibility.DEPARTMENT,
+        )
         template = None
         version = None
         if data.template_id:
@@ -182,10 +187,12 @@ class GuidedService:
         if data.expected_revision and data.expected_revision != session.revision:
             raise ConflictError("Session changed since it was loaded")
         changes = data.model_dump(exclude_unset=True, exclude={"expected_revision"})
+        visibility = changes.get("visibility", session.visibility)
         await self._validate_structure(
             changes.get("department_id", session.department_id),
             changes.get("team_id", session.team_id),
             organisation_id,
+            require_department=visibility == GuidedSessionVisibility.DEPARTMENT,
         )
         for field, value in changes.items():
             setattr(session, field, value)
@@ -1203,7 +1210,11 @@ class GuidedService:
         department_id: UUID | None,
         team_id: UUID | None,
         organisation_id: UUID,
+        *,
+        require_department: bool = False,
     ) -> None:
+        if require_department and department_id is None:
+            raise ConflictError("Department-visible sessions require a department")
         if department_id and not await self.departments.get_for_organisation(
             department_id, organisation_id
         ):
@@ -1238,6 +1249,8 @@ class GuidedService:
             return
         if (
             session.visibility == GuidedSessionVisibility.DEPARTMENT
+            and session.department_id is not None
+            and actor.department_id is not None
             and actor.department_id == session.department_id
         ):
             return
