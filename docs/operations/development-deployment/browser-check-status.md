@@ -7,3 +7,5 @@ Cloud browser: hosted sign-in screen renders, accessibility controls are present
 Next step: user supplies the disposable development account credentials through the cloud browser secure sign-in request. Password remains in the private Codespace credential file and is not stored in repository records.
 
 The user requested cleanup. The agent-created /tmp/intqaflow-browser-venv and the newly downloaded ~/.cache/ms-playwright browser cache were removed and absence verified. No system libraries had been installed. The source probe and recorded failed-launch evidence were retained; the private credential file and application/backend environments were preserved.
+
+Secure browser sign-in was requested again and returned submitted. The deployed app displayed its generic sign-in failure message and remained signed out. A separate Firebase REST check using the saved synthetic credentials returned HTTP 200. The account remains valid; browser failure cause has not been established. No retry was automatically submitted after that failure. All signed-in browser acceptance remains pending.
