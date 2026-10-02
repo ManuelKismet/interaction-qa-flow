@@ -23,3 +23,6 @@ Issues / unverified:
 The JSON download timeout was a mistaken expectation about UI behavior, not an export failure: export content was subsequently validated through Copy.
 
 Codespace recovery: a clean GitHub stop/restart restored the remote terminal. Google Cloud active sign-in and Cloud Logging reads succeed. The temporary review venv was cleared by restart; dependencies were restored in the development worktree backend/.venv and all 57 tests pass again. Safe development App Check outcome logging is committed as 9236eb5 and its API update is in progress.
+
+
+Completed live App Check: revision intqaflow-dev-api-00003-2bz verified configured-web-app tokens from three fresh hosted-browser requests at 2026-10-02T21:44:50–52Z. Invalid App Check: 401. Foreign organisation: 403. Missing authentication: 401. Missing App Check: 200, expected in observe mode. Enforcement remains observe. All 57 backend tests passed. Template snapshot, PDF and multi-account browser checks remain unverified.
