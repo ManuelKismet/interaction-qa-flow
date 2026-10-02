@@ -262,7 +262,18 @@ class _TemplatesList extends ConsumerWidget {
               trailing: PopupMenuButton<String>(
                 onSelected: (action) async {
                   final repository = ref.read(guidedRepositoryProvider);
-                  if (action == 'version') await repository.versionTemplate(item.id, item.questions);
+                  if (action == 'version') {
+                    final questions =
+                        await showDialog<List<GuidedTemplateQuestion>>(
+                          context: context,
+                          builder: (_) => GuidedTemplateVersionDraftDialog(
+                            questions: item.questions,
+                          ),
+                        );
+                    if (questions != null) {
+                      await repository.versionTemplate(item.id, questions);
+                    }
+                  }
                   if (action == 'duplicate') await repository.duplicateTemplate(item.id);
                   if (action == 'archive') await repository.archiveTemplate(item.id);
                   ref.invalidate(guidedTemplatesProvider);
@@ -369,4 +380,142 @@ class _TemplatesList extends ConsumerWidget {
       ),
     );
   }
+}
+
+class GuidedTemplateVersionDraftDialog extends StatefulWidget {
+  const GuidedTemplateVersionDraftDialog({
+    required this.questions,
+    super.key,
+  });
+
+  final List<GuidedTemplateQuestion> questions;
+
+  @override
+  State<GuidedTemplateVersionDraftDialog> createState() =>
+      _GuidedTemplateVersionDraftDialogState();
+}
+
+class _GuidedTemplateVersionDraftDialogState
+    extends State<GuidedTemplateVersionDraftDialog> {
+  var _newQuestionCount = 0;
+  late final List<_TemplateQuestionDraft> _drafts = [
+    for (final question in widget.questions)
+      _TemplateQuestionDraft.fromQuestion(question),
+  ];
+
+  @override
+  void dispose() {
+    for (final draft in _drafts) {
+      draft.controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final questions = [
+      for (final (index, draft) in _drafts.indexed)
+        GuidedTemplateQuestion(
+          id: draft.id,
+          text: draft.controller.text.trim(),
+          scope: draft.scope,
+          orderIndex: index,
+          participantReference: draft.participantReference,
+          parentTemplateQuestionId: draft.parentTemplateQuestionId,
+        ),
+    ];
+    if (questions.isNotEmpty) Navigator.pop(context, questions);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSave = _drafts.isNotEmpty &&
+        _drafts.every((draft) => draft.controller.text.trim().isNotEmpty);
+    return AlertDialog(
+      title: const Text('Edit template questions'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (index, draft) in _drafts.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: TextField(
+                    key: ValueKey('template-question-${draft.id}'),
+                    controller: draft.controller,
+                    minLines: 1,
+                    maxLines: 4,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: 'Question ${index + 1} · ${draft.scope}',
+                    ),
+                  ),
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add question'),
+                  onPressed: () => setState(() {
+                    final id =
+                        'draft-${DateTime.now().microsecondsSinceEpoch}-${_newQuestionCount++}';
+                    _drafts.add(_TemplateQuestionDraft.newShared(id));
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: canSave ? _save : null,
+          child: const Text('Save new version'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TemplateQuestionDraft {
+  _TemplateQuestionDraft({
+    required this.id,
+    required this.controller,
+    required this.scope,
+    required this.participantReference,
+    required this.parentTemplateQuestionId,
+  });
+
+  factory _TemplateQuestionDraft.fromQuestion(
+    GuidedTemplateQuestion question,
+  ) {
+    return _TemplateQuestionDraft(
+      id: question.id,
+      controller: TextEditingController(text: question.text),
+      scope: question.scope,
+      participantReference: question.participantReference,
+      parentTemplateQuestionId: question.parentTemplateQuestionId,
+    );
+  }
+
+  factory _TemplateQuestionDraft.newShared(String id) {
+    return _TemplateQuestionDraft(
+      id: id,
+      controller: TextEditingController(),
+      scope: 'shared',
+      participantReference: null,
+      parentTemplateQuestionId: null,
+    );
+  }
+
+  final String id;
+  final TextEditingController controller;
+  final String scope;
+  final String? participantReference;
+  final String? parentTemplateQuestionId;
 }

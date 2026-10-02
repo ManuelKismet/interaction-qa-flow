@@ -163,7 +163,10 @@ async def test_template_versions_are_snapshotted_and_answers_start_empty(app_cli
         headers=headers(ids, "employee"),
         json={
             "name": "Exit Interview",
-            "questions": [{"text": "Why are you leaving?", "scope": "shared", "order_index": 0}],
+            "questions": [
+                {"text": "Why are you leaving?", "scope": "shared", "order_index": 0},
+                {"text": "What would make you stay?", "scope": "shared", "order_index": 1},
+            ],
         },
     )
     assert created.status_code == 201, created.text
@@ -172,14 +175,25 @@ async def test_template_versions_are_snapshotted_and_answers_start_empty(app_cli
     versioned = await client.post(
         f"/api/v1/guided/templates/{template['id']}/versions",
         headers=headers(ids, "employee"),
-        json={"questions": [{"text": "What should change?", "scope": "shared", "order_index": 0}]},
+        json={
+            "questions": [
+                {"text": "What should change?", "scope": "shared", "order_index": 0},
+                {"text": "What support would help?", "scope": "shared", "order_index": 1},
+            ]
+        },
     )
     assert versioned.status_code == 200 and versioned.json()["current_version"] == 2
     session_b = await create_session(client, ids, template_id=template["id"], title="Session B")
     a = await client.get(f"/api/v1/guided/sessions/{session_a['id']}", headers=headers(ids, "employee"))
     b = await client.get(f"/api/v1/guided/sessions/{session_b['id']}", headers=headers(ids, "employee"))
-    assert [item["text"] for item in a.json()["questions"]] == ["Why are you leaving?"]
-    assert [item["text"] for item in b.json()["questions"]] == ["What should change?"]
+    assert [item["text"] for item in a.json()["questions"]] == [
+        "Why are you leaving?",
+        "What would make you stay?",
+    ]
+    assert [item["text"] for item in b.json()["questions"]] == [
+        "What should change?",
+        "What support would help?",
+    ]
     assert a.json()["questions"][0]["answers"] == []
     assert a.json()["template_version_id"] != b.json()["template_version_id"]
 
