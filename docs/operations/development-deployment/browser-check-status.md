@@ -17,3 +17,7 @@ Safe diagnostics change is pushed on fix/development-auth-diagnostics at 4ba2933
 ### Instrumented secure browser attempt
 
 The refreshed diagnostic development release returned `auth/missing-password` after the secure credential submission. Firebase received no password; this is not evidence of an incorrect saved password. Source review confirms the password TextField uses `_password` and sign-in passes `_password.text` unchanged. Whether the value was omitted by the secure fill or lost in Flutter input handling is unresolved; no credential values were inspected. Stop automated sign-in retries. Browser acceptance and real App Check remain blocked pending direct user entry on the instrumented form.
+
+### Direct user entry and membership-loading regression
+
+Direct user sign-in progressed past the sign-in form but remained at the membership loading spinner. Cloud Run logs showed repeated GET /api/v1/auth/me responses of 400. The client globally sets Content-Type application/json; tenant enforcement attempted to parse an empty body. Independently reproduced with a freshly verified synthetic ID token: empty GET without JSON header = 200; same request with JSON header = 400 Malformed request body. This establishes successful identity verification followed by a body-parsing failure. Fix b9befa4 skips JSON parsing only for absent bodies, retaining nonempty malformed-body and cross-tenant rejection. All 57 backend tests pass (including three new regression cases). Development-only API rebuild is in progress; browser acceptance is not signed off.
