@@ -2,7 +2,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from app.ai.embedding_provider import get_embedding_provider
-from app.api.dependencies import DevelopmentIdentity, get_development_identity
+from app.api.dependencies import (
+    AuthenticatedIdentity,
+    DevelopmentIdentity,
+    get_development_identity,
+)
 from app.core.config import Settings, get_settings
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -129,15 +133,22 @@ async def search_questions(
 @router.post("", response_model=QuestionResponse, status_code=status.HTTP_201_CREATED)
 async def create_question(
     payload: QuestionCreate,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> QuestionResponse:
-    return await QuestionService(session).create(payload)
+    return await QuestionService(session).create(
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "author_id": identity.user_id,
+            }
+        )
+    )
 
 
 @router.get("", response_model=list[QuestionListItem])
 async def list_questions(
-    # TODO(auth): derive organisation_id from the authenticated identity.
-    organisation_id: UUID,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
     status_filter: QuestionStatus | None = Query(default=None, alias="status"),
@@ -147,7 +158,7 @@ async def list_questions(
     session: AsyncSession = Depends(get_session),
 ) -> list[QuestionListItem]:
     return await QuestionService(session).list(
-        organisation_id,
+        identity.organisation_id,
         offset,
         limit,
         status_filter,
@@ -160,47 +171,82 @@ async def list_questions(
 @router.get("/{question_id}", response_model=QuestionDetailResponse)
 async def get_question(
     question_id: UUID,
-    # TODO(auth): derive organisation_id from the authenticated identity.
-    organisation_id: UUID,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> QuestionDetailResponse:
-    return await QuestionService(session).get(question_id, organisation_id)
+    return await QuestionService(session).get(question_id, identity.organisation_id)
 
 
 @router.patch("/{question_id}", response_model=QuestionResponse)
 async def update_question(
     question_id: UUID,
     payload: QuestionUpdate,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> QuestionResponse:
-    return await QuestionService(session).update(question_id, payload)
+    return await QuestionService(session).update(
+        question_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )
 
 
 @router.post("/{question_id}/resolve", response_model=QuestionResponse)
 async def resolve_question(
     question_id: UUID,
     payload: QuestionResolve,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> QuestionResponse:
-    return await QuestionService(session).resolve(question_id, payload)
+    return await QuestionService(session).resolve(
+        question_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )
 
 
 @router.post("/{question_id}/reopen", response_model=QuestionResponse)
 async def reopen_question(
     question_id: UUID,
     payload: QuestionAction,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> QuestionResponse:
-    return await QuestionService(session).reopen(question_id, payload)
+    return await QuestionService(session).reopen(
+        question_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )
 
 
 @router.post("/{question_id}/archive", response_model=QuestionResponse)
 async def archive_question(
     question_id: UUID,
     payload: QuestionAction,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> QuestionResponse:
-    return await QuestionService(session).archive(question_id, payload)
+    return await QuestionService(session).archive(
+        question_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )
 
 
 @router.post(
@@ -211,19 +257,27 @@ async def archive_question(
 async def create_answer(
     question_id: UUID,
     payload: AnswerCreate,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> AnswerDetailResponse:
-    return await AnswerService(session).create(question_id, payload)
+    return await AnswerService(session).create(
+        question_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "author_id": identity.user_id,
+            }
+        ),
+    )
 
 
 @router.get("/{question_id}/answers", response_model=list[AnswerDetailResponse])
 async def list_answers(
     question_id: UUID,
-    # TODO(auth): derive organisation_id from the authenticated identity.
-    organisation_id: UUID,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> list[AnswerDetailResponse]:
-    return await AnswerService(session).list(question_id, organisation_id)
+    return await AnswerService(session).list(question_id, identity.organisation_id)
 
 
 @router.post(
@@ -234,16 +288,24 @@ async def list_answers(
 async def create_comment(
     question_id: UUID,
     payload: CommentCreate,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> CommentResponse:
-    return await CommentService(session).create(question_id, payload)
+    return await CommentService(session).create(
+        question_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "author_id": identity.user_id,
+            }
+        ),
+    )
 
 
 @router.get("/{question_id}/comments", response_model=list[CommentResponse])
 async def list_comments(
     question_id: UUID,
-    # TODO(auth): derive organisation_id from the authenticated identity.
-    organisation_id: UUID,
+    identity: AuthenticatedIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> list[CommentResponse]:
-    return await CommentService(session).list(question_id, organisation_id)
+    return await CommentService(session).list(question_id, identity.organisation_id)

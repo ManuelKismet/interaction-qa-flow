@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
-import 'package:int_qa_flow/core/config/app_config.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
 import 'package:int_qa_flow/features/governance/data/governance_repository.dart';
@@ -35,7 +35,9 @@ class _AdminPageState extends ConsumerState<AdminPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!(widget.adminOverride ?? AppConfig.developmentUserRole == 'admin')) {
+    final isAdmin = widget.adminOverride ??
+        ref.watch(currentMembershipProvider).valueOrNull?.role == 'admin';
+    if (!isAdmin) {
       return const Center(child: Text('Administrator access is required.'));
     }
     final owners = ref.watch(departmentOwnersProvider);

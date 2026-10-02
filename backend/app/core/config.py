@@ -46,7 +46,7 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Search thresholds must satisfy 0 <= related <= high <= 1"
             )
-        if "*" in self.cors_origins:
+        if any("*" in origin for origin in self.cors_origins):
             raise ValueError("CORS_ORIGINS must not include wildcard origins")
         return self
 

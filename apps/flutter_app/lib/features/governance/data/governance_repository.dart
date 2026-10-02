@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
-import 'package:int_qa_flow/core/config/app_config.dart';
 import 'package:int_qa_flow/features/governance/domain/governance_models.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
@@ -14,11 +13,6 @@ class GovernanceRepository {
   const GovernanceRepository(this._client);
 
   final Dio _client;
-
-  Options get _identity => Options(headers: {
-        'X-Organisation-ID': AppConfig.developmentOrganisationId,
-        'X-User-ID': AppConfig.developmentUserId,
-      });
 
   Future<void> verify(String answerId, {int? reviewDays}) => _mutate(
         '/api/v1/answers/$answerId/verify',
@@ -101,7 +95,6 @@ class GovernanceRepository {
     try {
       await _client.delete<void>(
         '/api/v1/departments/$departmentId/answer-owners/$userId',
-        options: _identity,
       );
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
@@ -133,7 +126,6 @@ class GovernanceRepository {
     try {
       await _client.delete<void>(
         '/api/v1/teams/$teamId/members/$userId',
-        options: _identity,
       );
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
@@ -189,7 +181,7 @@ class GovernanceRepository {
 
   Future<void> _mutate(String path, Map<String, dynamic> data) async {
     try {
-      await _client.post<void>(path, data: data, options: _identity);
+      await _client.post<void>(path, data: data);
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
     }
@@ -204,7 +196,6 @@ class GovernanceRepository {
       final response = await _client.get<List<dynamic>>(
         path,
         queryParameters: query,
-        options: _identity,
       );
       return (response.data ?? const [])
           .map((item) => parse(item as Map<String, dynamic>))

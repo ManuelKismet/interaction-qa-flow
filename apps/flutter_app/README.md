@@ -10,21 +10,47 @@ Start the API first, then run:
 flutter pub get
 flutter run -d chrome \
 	--dart-define=API_BASE_URL=http://localhost:8000 \
-	--dart-define=DEV_ORGANISATION_ID=<organisation-uuid> \
-	--dart-define=DEV_USER_ID=<user-uuid> \
-	--dart-define=DEV_USER_ROLE=<employee-answer_owner-or-admin>
+	--dart-define=FIREBASE_API_KEY=<dev-web-api-key> \
+	--dart-define=FIREBASE_AUTH_DOMAIN=intqaflow-dev.firebaseapp.com \
+	--dart-define=FIREBASE_PROJECT_ID=intqaflow-dev \
+	--dart-define=FIREBASE_APP_ID=1:398672910103:web:e968506023d8eab9290952 \
+	--dart-define=FIREBASE_MESSAGING_SENDER_ID=398672910103 \
+	--dart-define=RECAPTCHA_V3_SITE_KEY=<registered-app-check-site-key>
 ```
 
-The development identity values are temporary and will be replaced by
-authentication token claims. The Ask page uses them as temporary request headers
-for debounced semantic duplicate detection and never receives embedding vectors
-or provider credentials.
+The Firebase web API key and reCAPTCHA site key are public web configuration,
+not service credentials. Obtain the development web API key and the approved
+App Check site key from the private Codex handoff; do not add them to source
+control. The defaults are limited to the registered `intqaflow-dev` web app.
+The app requires these two values at startup and uses Firebase email/password
+sign-in. Firebase ID and App Check tokens are attached to API requests by the
+shared Dio client. User, organisation, and role are obtained from `/api/v1/auth/me`;
+the caller cannot choose them.
+
+To build the hosted web client, pass the same non-secret Firebase defines and
+the hosted API URL:
+
+```sh
+flutter build web --release \
+	--dart-define=API_BASE_URL=<hosted-development-api-url> \
+	--dart-define=FIREBASE_API_KEY=<dev-web-api-key> \
+	--dart-define=FIREBASE_AUTH_DOMAIN=intqaflow-dev.firebaseapp.com \
+	--dart-define=FIREBASE_PROJECT_ID=intqaflow-dev \
+	--dart-define=FIREBASE_APP_ID=1:398672910103:web:e968506023d8eab9290952 \
+	--dart-define=FIREBASE_MESSAGING_SENDER_ID=398672910103 \
+	--dart-define=RECAPTCHA_V3_SITE_KEY=<registered-app-check-site-key>
+```
+
+Use the same defines for the `flutter test` and `flutter analyze` CI/build
+environment as needed. Never use local development values to authorize a
+hosted service.
 
 Employees can see answer provenance and freshness, inspect version history, and
 submit update challenges. Department answer owners and admins additionally see
 the review queue and controls to verify/review answers and decide challenges.
-Admins can assign department owners. `DEV_USER_ROLE` controls presentation only;
-the API validates the stored role and department assignment for every action.
+Admins can assign department owners. Presentation uses the server-resolved
+membership role; the API validates role and department assignment for every
+action.
 
 Linked historical questions remain directly accessible and explain where the
 current canonical answer lives. Canonical pages show up to three alternate

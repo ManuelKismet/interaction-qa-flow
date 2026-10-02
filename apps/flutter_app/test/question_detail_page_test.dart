@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:int_qa_flow/core/config/app_config.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/questions/application/question_providers.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
@@ -25,7 +25,7 @@ void main() {
       body: 'The amount is incorrect.',
       status: 'open',
       author: UserSummary(
-        id: AppConfig.developmentUserId,
+        id: 'user-1',
         displayName: 'Question Author',
         role: 'employee',
       ),
@@ -47,6 +47,15 @@ void main() {
           questionDetailProvider(
             'question-1',
           ).overrideWith((ref) async => question),
+          currentMembershipProvider.overrideWith(
+            (ref) async => const ActiveMembership(
+              userId: 'user-1',
+              organisationId: 'organisation-1',
+              email: 'author@example.invalid',
+              displayName: 'Question Author',
+              role: 'employee',
+            ),
+          ),
           departmentsProvider.overrideWith((ref) async => [department]),
           teamsProvider.overrideWith((ref) async => [team]),
         ],

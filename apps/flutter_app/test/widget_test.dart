@@ -1,26 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/app.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 
 void main() {
-  testWidgets('shows IntQAFlow Knowledge and platform modules', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: IntQaFlowApp()));
+  testWidgets('shows email sign-in and password reset controls', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(null)),
+        ],
+        child: const IntQaFlowApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-    expect(find.text('IntQAFlow Knowledge'), findsOneWidget);
-    expect(find.text('What do you need to know?'), findsOneWidget);
-    expect(find.text('Ask a question'), findsOneWidget);
-    expect(find.text('Add detail (optional)'), findsOneWidget);
-    expect(find.text('Ask'), findsWidgets);
-    expect(find.text('Knowledge'), findsOneWidget);
-    expect(find.text('Questions'), findsOneWidget);
-    expect(find.text('Interact'), findsOneWidget);
-    expect(find.text('Review'), findsNothing);
-    expect(find.text('Admin'), findsNothing);
-
-    final platformDestinations = tester
-        .widgetList<NavigationDestination>(find.byType(NavigationDestination))
-        .map((destination) => destination.label);
-    expect(platformDestinations, isNot(contains('Questions')));
+    expect(find.text('Sign in to IntQAFlow'), findsOneWidget);
+    expect(find.text('Email'), findsOneWidget);
+    expect(find.text('Password'), findsOneWidget);
+    expect(find.text('Forgot password?'), findsOneWidget);
   });
 }

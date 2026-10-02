@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
-import 'package:int_qa_flow/core/config/app_config.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
 import 'package:int_qa_flow/features/governance/data/governance_repository.dart';
@@ -37,7 +37,10 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
   Widget build(BuildContext context) {
     final detail = ref.watch(questionDetailProvider(widget.questionId));
     return detail.when(
-      data: _buildDetail,
+      data: (question) => _buildDetail(
+        question,
+        ref.watch(currentMembershipProvider).valueOrNull,
+      ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stackTrace) => Center(
         child: Column(
@@ -56,15 +59,15 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     );
   }
 
-  Widget _buildDetail(QuestionDetail question) {
+  Widget _buildDetail(QuestionDetail question, ActiveMembership? membership) {
     final canResolve =
-        question.author.id == AppConfig.developmentUserId ||
-        AppConfig.developmentUserRole == 'admin';
+        question.author.id == membership?.userId ||
+        membership?.role == 'admin';
     final canCorrect = canResolve && question.status != 'archived';
     final canGovern = {
       'admin',
       'answer_owner',
-    }.contains(AppConfig.developmentUserRole);
+    }.contains(membership?.role);
     final otherAnswers = question.answers
         .where((answer) => !answer.isAccepted)
         .toList(growable: false);

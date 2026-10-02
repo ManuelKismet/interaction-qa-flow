@@ -17,7 +17,20 @@ app = FastAPI(title="IntQAFlow API", debug=settings.debug)
 if settings.app_env == "development":
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_origin_regex=(
+            r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+            if not settings.cors_origins
+            else None
+        ),
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+elif settings.cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
