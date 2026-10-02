@@ -14,6 +14,7 @@ from app.ai.embedding_service import EmbeddingService
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.question import Question, QuestionStatus
+from app.models.user import User
 from app.repositories.answer import AnswerRepository
 from app.repositories.department import DepartmentRepository
 from app.repositories.question import QuestionRepository
@@ -136,10 +137,10 @@ class QuestionService:
         canonical_question = None
         aliases = []
         if question.canonical_question_id:
-            canonical = await self.questions.get_for_organisation(
-                question.canonical_question_id, organisation_id
+            canonical = await self._visible_canonical_question(
+                question, organisation_id, actor
             )
-            if canonical and self.permissions.can_view_question(actor, canonical):
+            if canonical:
                 canonical_question = CanonicalQuestionSummary(
                     id=canonical.id, title=canonical.title
                 )
@@ -197,6 +198,29 @@ class QuestionService:
                 "aliases": aliases,
             }
         )
+
+    async def _visible_canonical_question(
+        self, question: Question, organisation_id: UUID, actor: User
+    ) -> Question | None:
+        immediate = None
+        seen = {question.id}
+        current = question
+        while current.canonical_question_id is not None:
+            canonical_id = current.canonical_question_id
+            if canonical_id in seen:
+                return None
+            canonical = await self.questions.get_for_organisation(
+                canonical_id, organisation_id
+            )
+            if not canonical or not self.permissions.can_view_question(
+                actor, canonical
+            ):
+                return None
+            if immediate is None:
+                immediate = canonical
+            seen.add(canonical.id)
+            current = canonical
+        return immediate
 
     async def update(self, question_id: UUID, data: QuestionUpdate) -> Question:
         question = await self._owned_question(question_id, data.organisation_id, data.user_id)

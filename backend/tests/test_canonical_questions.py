@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.answer import Answer, AnswerStatus
 from app.models.audit_event import AuditAction, AuditEvent
+from app.models.duplicate_suggestion import DuplicateSuggestion
 from app.models.question import Question, QuestionStatus, QuestionVisibility
 from app.services import canonical as canonical_module
 from tests.test_answer_governance import headers, seed_governance
@@ -284,6 +285,111 @@ async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(app_clie
         assert AuditAction.DUPLICATE_SUGGESTED.value in actions
         assert AuditAction.DUPLICATE_SUGGESTION_REJECTED.value in actions
         assert AuditAction.DUPLICATE_SUGGESTION_ACCEPTED.value in actions
+
+
+@pytest.mark.asyncio
+async def test_duplicate_suggestion_cannot_resolve_visible_alias_to_private_root(
+    app_client,
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    async with session_factory() as session:
+        private_root = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Private canonical root",
+            visibility=QuestionVisibility.PRIVATE,
+        )
+        session.add(private_root)
+        await session.flush()
+        visible_alias = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Visible alias of private root",
+            visibility=QuestionVisibility.ORGANISATION,
+            canonical_question_id=private_root.id,
+        )
+        visible_middle = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Visible intermediate alias",
+            visibility=QuestionVisibility.ORGANISATION,
+            canonical_question_id=private_root.id,
+        )
+        session.add_all([visible_alias, visible_middle])
+        await session.flush()
+        chained_alias = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Visible alias through intermediate",
+            visibility=QuestionVisibility.ORGANISATION,
+            canonical_question_id=visible_middle.id,
+        )
+        session.add(chained_alias)
+        await session.commit()
+        private_root_id = private_root.id
+        visible_alias_id = visible_alias.id
+        chained_alias_id = chained_alias.id
+
+    source_id = ids["finance_question"]
+    outsider = headers(ids, "people_owner")
+    for alias_id in (visible_alias_id, chained_alias_id):
+        denied = await client.post(
+            f"/api/v1/questions/{source_id}/duplicate-suggestions",
+            headers=outsider,
+            json={"suggested_canonical_question_id": str(alias_id)},
+        )
+        assert denied.status_code == 403, denied.text
+
+    async with session_factory() as session:
+        suggestions = await session.scalars(select(DuplicateSuggestion.id))
+        assert list(suggestions) == []
+
+    hidden_metadata = await client.get(
+        f"/api/v1/questions/{chained_alias_id}", headers=outsider
+    )
+    assert hidden_metadata.status_code == 200, hidden_metadata.text
+    assert hidden_metadata.json()["canonical_question"] is None
+
+    owner_suggestion = await client.post(
+        f"/api/v1/questions/{source_id}/duplicate-suggestions",
+        headers=headers(ids, "employee"),
+        json={"suggested_canonical_question_id": str(visible_alias_id)},
+    )
+    assert owner_suggestion.status_code == 201, owner_suggestion.text
+    assert owner_suggestion.json()["suggested_canonical_question_id"] == str(
+        private_root_id
+    )
+    assert owner_suggestion.json()["suggested_canonical_title"] == (
+        "Private canonical root"
+    )
+
+    visible_root, _ = await add_question(
+        session_factory,
+        ids,
+        "Visible canonical root",
+        author_key="employee",
+    )
+    async with session_factory() as session:
+        visible_target_alias = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Visible canonical alias",
+            visibility=QuestionVisibility.ORGANISATION,
+            canonical_question_id=visible_root,
+        )
+        session.add(visible_target_alias)
+        await session.commit()
+        visible_target_alias_id = visible_target_alias.id
+    visible_suggestion = await client.post(
+        f"/api/v1/questions/{source_id}/duplicate-suggestions",
+        headers=outsider,
+        json={"suggested_canonical_question_id": str(visible_target_alias_id)},
+    )
+    assert visible_suggestion.status_code == 201, visible_suggestion.text
+    assert visible_suggestion.json()["suggested_canonical_question_id"] == str(
+        visible_root
+    )
 
 
 @pytest.mark.asyncio

@@ -74,7 +74,7 @@ class CanonicalQuestionService:
             raise NotFoundError("Question not found")
         if question.canonical_question_id is None:
             raise ConflictError("Question is not linked to a canonical question")
-        root = await self._root(question, organisation_id)
+        root = await self._root(question, organisation_id, actor)
         await self._require_manager(actor, question, root)
         previous_root_id = question.canonical_question_id
         question.canonical_question_id = None
@@ -114,7 +114,7 @@ class CanonicalQuestionService:
             organisation_id=organisation_id,
             user_id=user_id,
         )
-        current_root = (await self._root(question, organisation_id)).id
+        current_root = (await self._root(question, organisation_id, actor)).id
         return [
             result
             for result in results
@@ -138,7 +138,7 @@ class CanonicalQuestionService:
             raise NotFoundError("Question not found")
         self.permissions.require_question_visibility(actor, question)
         self.permissions.require_question_visibility(actor, target)
-        target = await self._root(target, organisation_id)
+        target = await self._root(target, organisation_id, actor)
         if question.id == target.id or question.canonical_question_id == target.id:
             raise ConflictError("Question already resolves to this canonical question")
         suggestion = DuplicateSuggestion(
@@ -195,7 +195,7 @@ class CanonicalQuestionService:
         )
         if not question or not target:
             raise NotFoundError("Question not found")
-        target = await self._root(target, organisation_id)
+        target = await self._root(target, organisation_id, actor)
         await self._require_manager(actor, question, target)
         if accept:
             await self._merge(
@@ -233,7 +233,7 @@ class CanonicalQuestionService:
         )
         if not canonical:
             raise NotFoundError("Canonical question not found")
-        canonical = await self._root(canonical, organisation_id)
+        canonical = await self._root(canonical, organisation_id, actor)
         requested: list[Question] = []
         for question_id in dict.fromkeys(data.duplicate_question_ids):
             question = await self.canonical.question(
@@ -243,7 +243,7 @@ class CanonicalQuestionService:
                 raise NotFoundError("Duplicate question not found")
             if question.id == canonical.id:
                 raise ConflictError("A question cannot be merged into itself")
-            if (await self._root(question, organisation_id)).id == canonical.id:
+            if (await self._root(question, organisation_id, actor)).id == canonical.id:
                 raise ConflictError("Question is already linked to this canonical question")
             requested.append(question)
 
@@ -348,9 +348,12 @@ class CanonicalQuestionService:
             canonical_answer_id=canonical.accepted_answer_id,
         )
 
-    async def _root(self, question: Question, organisation_id: UUID) -> Question:
+    async def _root(
+        self, question: Question, organisation_id: UUID, actor: User
+    ) -> Question:
         seen = {question.id}
         current = question
+        self.permissions.require_question_visibility(actor, current)
         while current.canonical_question_id is not None:
             if current.canonical_question_id in seen:
                 raise ConflictError("Circular canonical question relationship detected")
@@ -360,6 +363,7 @@ class CanonicalQuestionService:
             )
             if not parent:
                 raise NotFoundError("Canonical question not found")
+            self.permissions.require_question_visibility(actor, parent)
             current = parent
         return current
 
