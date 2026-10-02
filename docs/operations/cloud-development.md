@@ -42,8 +42,7 @@ Prepared Copilot scope (not yet assigned):
 3. Add repeatable synthetic tenant/user seeding and verify Knowledge, Interact,
    Review and recursive participant branches against managed PostgreSQL.
 
-Pending infrastructure acceptance: database RUNNABLE status, database creation,
-pgvector installation, scoped database roles/credentials, Cloud Run container
+Pending infrastructure acceptance: Cloud Run container
 build and private service deployment, application Firebase integration, browser
 access rejection outside the permitted boundary, migrations and live checks.
 Do not publish the unauthenticated development-identity API to solve access.
@@ -74,4 +73,32 @@ return 401. UID maps to server-controlled membership, rejecting forged caller
 identity and cross-tenant access. Test session expiry and tenant isolation,
 then verify the actual browser-to-API flow. Never log tokens or secrets.
 
-Cloud SQL remains PENDING_CREATE. The application is not publicly deployed.
+Cloud SQL is RUNNABLE. Hosted intqaflow_dev created; pgvector 0.8.5 installed.
+All migrations completed through 0007. Runtime table reads succeed and schema
+creation is denied. SQLAlchemy runtime connection and API health smoke checks
+passed. No public listener opened. Runtime connection stored in Secret Manager
+as intqaflow-dev-database-url. Credentials stay in private mode-0600 files
+outside the repository. The application is not publicly deployed.
+
+## Prepared application handoff (not assigned)
+Title: Integrate development Firebase Auth and App Check into IntQAFlow
+
+Keep intqaflow-dev and the existing isolation branch; preserve the startup fix.
+Replace backend/app/api/dependencies.py caller identity with verified Firebase
+ID tokens. Add a unique Firebase UID mapping migration. Resolve active user,
+organisation and role from server-controlled membership. Protect all tenant
+and user administration endpoints; reject forged caller identity headers.
+
+In apps/flutter_app, initialize the registered dev Firebase app, implement
+email/password sign-in, sign-out, reset and current Bearer token attachment.
+Use explicit hosted dev CORS origins. Add App Check client attestation and
+custom-backend verification as a separate gate. Observe client traffic first;
+enforce after valid hosted traffic and rejection paths pass. Keep developer
+debug registration private. App Check does not replace user authentication.
+
+Acceptance: reject missing, expired, wrong-project user tokens; unmapped and
+inactive users; forged headers and cross-tenant requests. When enforced, reject
+missing, invalid and wrong-app App Check tokens. Test real Flutter auth and
+hosted database access. No production resources, secrets committed or tokens
+logged. Joint review before release. Copilot owns application coding under the
+agreed workflow; Codex owns configuration and environment setup.
