@@ -15,9 +15,11 @@ Verified in the hosted browser:
 
 Issues / unverified:
 - Reloading a session URL redirected to Knowledge; the session was reopened through Interact. Deep-link preservation needs investigation.
-- Attempted synthetic template creation was not visible in Templates or the New session selector. Do not mark creation/snapshot isolation passed.
+- Attempted synthetic template creation was not visible in Templates or the New session selector. Later log review found no POST create request. Automated input appeared in accessibility values but not in the rendered Flutter fields; treat this as an input/testing limitation until direct entry establishes behavior. Do not mark creation/snapshot isolation passed.
 - PDF output, template snapshot immutability, and multi-account live privacy/tenant checks remain unverified.
 - App Check server attestation remains unverified. Observation mode and successful browser API requests alone are insufficient evidence.
 - Codespace became stopped during checks. Restart accepted but remained on setup for several minutes; a clean stop/start recovery was initiated. Backend terminal/log access remains unavailable at this checkpoint.
 
 The JSON download timeout was a mistaken expectation about UI behavior, not an export failure: export content was subsequently validated through Copy.
+
+Codespace recovery: a clean GitHub stop/restart restored the remote terminal. Google Cloud active sign-in and Cloud Logging reads succeed. The temporary review venv was cleared by restart; dependencies were restored in the development worktree backend/.venv and all 57 tests pass again. Safe development App Check outcome logging is committed as 9236eb5 and its API update is in progress.
