@@ -35,8 +35,7 @@ IQ-01 remediation is implemented on the draft branch; joint review remains. Code
 application fixes and relevant tests; founder + Codex review together.
 
 Prepared Copilot scope (not yet assigned):
-1. Fix IQ-01 with the smallest supported-Python source change; run clean import
-   and the existing backend suite, without changing unrelated audit findings.
+1. Preserve and review the IQ-01 fix in f836415; import and 38 tests pass.
 2. Implement Firebase Auth in Flutter and validate Firebase ID tokens on the
    backend. Derive user/organisation/role from server-controlled membership;
    reject forged development identity headers and cross-tenant requests.
@@ -45,7 +44,7 @@ Prepared Copilot scope (not yet assigned):
 
 Pending infrastructure acceptance: database RUNNABLE status, database creation,
 pgvector installation, scoped database roles/credentials, Cloud Run container
-build and private service deployment, Firebase web app/provider setup, browser
+build and private service deployment, application Firebase integration, browser
 access rejection outside the permitted boundary, migrations and live checks.
 Do not publish the unauthenticated development-identity API to solve access.
 No production environment, application deployment or release was performed.
@@ -61,3 +60,18 @@ Do not print tokens, passwords or credential files. User login remains in
 the private Codespace for the authorized task; no credentials are committed.
 
 Firebase development web app verified ACTIVE: 1:398672910103:web:e968506023d8eab9290952.
+
+## Firebase authentication checkpoint
+Authentication initialized successfully. Configuration readback confirmed
+email/password enabled with passwordRequired=true. Anonymous and phone
+authentication are disabled. Authorized domains are only
+intqaflow-dev.firebaseapp.com and intqaflow-dev.web.app. No users created.
+
+Application acceptance: Flutter sign-in, sign-out and password reset; current
+Firebase Bearer tokens on API calls; backend verifies signature, expiry,
+audience and issuer. Missing, malformed, expired and wrong-project tokens
+return 401. UID maps to server-controlled membership, rejecting forged caller
+identity and cross-tenant access. Test session expiry and tenant isolation,
+then verify the actual browser-to-API flow. Never log tokens or secrets.
+
+Cloud SQL remains PENDING_CREATE. The application is not publicly deployed.
