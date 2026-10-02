@@ -374,7 +374,7 @@ class _TemplatesList extends ConsumerWidget {
     try {
       if (save == true) {
         final questions = [
-          for (final (index, draft) in drafts)
+          for (final (index, draft) in drafts.indexed)
             GuidedTemplateQuestion(
               id: draft.id,
               text: draft.controller.text.trim(),
