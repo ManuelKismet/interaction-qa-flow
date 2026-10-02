@@ -1,0 +1,9 @@
+{
+  "APP_ENV": "development",
+  "DEBUG": "false",
+  "EMBEDDING_PROVIDER": "fake",
+  "FIREBASE_PROJECT_ID": "intqaflow-dev",
+  "FIREBASE_WEB_APP_ID": "1:398672910103:web:e968506023d8eab9290952",
+  "APP_CHECK_MODE": "observe",
+  "CORS_ORIGINS": "[\"https://intqaflow-dev.web.app\", \"https://intqaflow-dev.firebaseapp.com\"]"
+}
