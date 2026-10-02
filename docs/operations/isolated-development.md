@@ -1,5 +1,9 @@
 # IntQAFlow private development isolation
 
+> Historical local/container preparation record. The founder subsequently
+> selected a hosted development backend. See [cloud-development.md](cloud-development.md)
+> for current cloud resources, budget, application gates and acceptance state.
+
 Updated 2026-10-02. Repository: ManuelKismet/interaction-qa-flow.
 Baseline: 0ff4ab941264604aedda368909961bdee602cb67.
 
