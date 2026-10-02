@@ -583,28 +583,76 @@ class GuidedFlowView extends StatelessWidget {
     if (questions.isEmpty) {
       return const Center(child: Text('No questions in this view.'));
     }
-    return ListView.builder(
+    final visibleQuestions = <_VisibleGuidedQuestion>[];
+    void append(
+      GuidedQuestion question, {
+      required int depth,
+      required List<int> path,
+      String? parentText,
+    }) {
+      visibleQuestions.add(
+        _VisibleGuidedQuestion(
+          question: question,
+          depth: depth,
+          path: path,
+          parentText: parentText,
+        ),
+      );
+      final answer = question.answerFor(participantId);
+      if (question.followUps.isEmpty ||
+          (answer?.branchesCollapsed ?? false)) {
+        return;
+      }
+      for (final (index, followUp) in question.followUps.indexed) {
+        append(
+          followUp,
+          depth: depth + 1,
+          path: [...path, index + 1],
+          parentText: question.text,
+        );
+      }
+    }
+
+    for (final (index, question) in questions.indexed) {
+      append(question, depth: 0, path: [index + 1]);
+    }
+    return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 60),
-      itemCount: questions.length,
-      itemBuilder: (context, index) => GuidedQuestionNode(
-        question: questions[index],
-        participantId: participantId!,
-        participantName: participantName ?? 'Participant',
-        depth: 0,
-        returnLabel: index + 1 < questions.length
-            ? 'Return to main path · ${questions[index + 1].text}'
-            : 'End of prepared path',
-        onEditing: onEditing,
-        onSaveQuestion: onSaveQuestion,
-        onSaveAnswer: onSaveAnswer,
-        onAddFollowUp: onAddFollowUp,
-        onToggleBranch: onToggleBranch,
-        onDelete: onDelete,
-        onKnowledgeSearch: onKnowledgeSearch,
-        onPropose: onPropose,
-      ),
+      children: [
+        for (final visible in visibleQuestions)
+          GuidedQuestionNode(
+            question: visible.question,
+            participantId: participantId!,
+            participantName: participantName ?? 'Participant',
+            depth: visible.depth,
+            path: visible.path,
+            parentText: visible.parentText,
+            onEditing: onEditing,
+            onSaveQuestion: onSaveQuestion,
+            onSaveAnswer: onSaveAnswer,
+            onAddFollowUp: onAddFollowUp,
+            onToggleBranch: onToggleBranch,
+            onDelete: onDelete,
+            onKnowledgeSearch: onKnowledgeSearch,
+            onPropose: onPropose,
+          ),
+      ],
     );
   }
+}
+
+class _VisibleGuidedQuestion {
+  const _VisibleGuidedQuestion({
+    required this.question,
+    required this.depth,
+    required this.path,
+    required this.parentText,
+  });
+
+  final GuidedQuestion question;
+  final int depth;
+  final List<int> path;
+  final String? parentText;
 }
 
 class GuidedQuestionNode extends StatelessWidget {
@@ -613,7 +661,8 @@ class GuidedQuestionNode extends StatelessWidget {
     required this.participantId,
     required this.participantName,
     required this.depth,
-    required this.returnLabel,
+    required this.path,
+    required this.parentText,
     required this.onEditing,
     required this.onSaveQuestion,
     required this.onSaveAnswer,
@@ -629,7 +678,8 @@ class GuidedQuestionNode extends StatelessWidget {
   final String participantId;
   final String participantName;
   final int depth;
-  final String returnLabel;
+  final List<int> path;
+  final String? parentText;
   final VoidCallback onEditing;
   final Future<void> Function(GuidedQuestion, String) onSaveQuestion;
   final Future<void> Function(GuidedQuestion, GuidedAnswer?, String)
@@ -653,138 +703,164 @@ class GuidedQuestionNode extends StatelessWidget {
         : question.scope == 'participant'
         ? 'Participant-specific'
         : 'Prepared · Shared';
-    return Padding(
-      padding: EdgeInsets.only(left: depth * 24.0, bottom: 18),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(left: BorderSide(color: accent, width: 3)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.only(left: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: accent,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
+    return _CappedBranchIndent(
+      depth: depth,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(color: accent, width: 3)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: accent,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Check Knowledge',
-                    icon: const Icon(Icons.manage_search_outlined),
-                    onPressed: () => onKnowledgeSearch(question),
-                  ),
-                  IconButton(
-                    tooltip: 'Delete question',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => onDelete(question),
-                  ),
-                ],
-              ),
-              _DebouncedField(
-                key: ValueKey('question-${question.id}-${question.text}'),
-                initialValue: question.text,
-                minLines: 1,
-                style: Theme.of(context).textTheme.titleMedium,
-                onEditing: onEditing,
-                onSave: (value) => onSaveQuestion(question, value),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Answer · $participantName',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              _DebouncedField(
-                key: ValueKey(
-                  'answer-${answer?.id ?? question.id}-${answer?.body ?? ''}',
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Check Knowledge',
+                      icon: const Icon(Icons.manage_search_outlined),
+                      onPressed: () => onKnowledgeSearch(question),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete question',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => onDelete(question),
+                    ),
+                  ],
                 ),
-                initialValue: answer?.body ?? '',
-                minLines: 2,
-                hintText: 'Record $participantName’s answer...',
-                onEditing: onEditing,
-                onSave: (value) => onSaveAnswer(question, answer, value),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  TextButton.icon(
-                    icon: const Icon(Icons.account_tree_outlined),
-                    label: const Text('Add follow-up'),
-                    onPressed: answer == null
-                        ? null
-                        : () => onAddFollowUp(answer),
-                  ),
-                  TextButton.icon(
-                    icon: const Icon(Icons.lightbulb_outline),
-                    label: const Text('Propose for Knowledge'),
-                    onPressed: answer == null || answer.body.trim().isEmpty
-                        ? null
-                        : () => onPropose(question, answer),
-                  ),
-                  if (question.followUps.isNotEmpty && answer != null)
-                    TextButton.icon(
-                      icon: Icon(
-                        answer.branchesCollapsed
-                            ? Icons.expand_more
-                            : Icons.expand_less,
-                      ),
-                      label: Text(
-                        answer.branchesCollapsed
-                            ? 'Expand branch'
-                            : 'Collapse branch',
-                      ),
-                      onPressed: () => onToggleBranch(answer),
+                Text(
+                  'Path ${path.join('.')} · $label',
+                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                ),
+                if (parentText != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Parent: $parentText',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.black54),
                     ),
-                ],
-              ),
-              if (question.followUps.isNotEmpty &&
-                  !(answer?.branchesCollapsed ?? false)) ...[
+                  ),
+                const SizedBox(height: 6),
+                _DebouncedField(
+                  key: ValueKey('question-${question.id}-${question.text}'),
+                  initialValue: question.text,
+                  minLines: 1,
+                  style: Theme.of(context).textTheme.titleMedium,
+                  onEditing: onEditing,
+                  onSave: (value) => onSaveQuestion(question, value),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Answer · $participantName',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                _DebouncedField(
+                  key: ValueKey(
+                    'answer-${answer?.id ?? question.id}-${answer?.body ?? ''}',
+                  ),
+                  initialValue: answer?.body ?? '',
+                  minLines: 2,
+                  hintText: 'Record $participantName’s answer...',
+                  onEditing: onEditing,
+                  onSave: (value) => onSaveAnswer(question, answer, value),
+                ),
                 const SizedBox(height: 8),
-                for (final followUp in question.followUps)
-                  GuidedQuestionNode(
-                    question: followUp,
-                    participantId: participantId,
-                    participantName: participantName,
-                    depth: depth + 1,
-                    returnLabel: 'Return to previous path',
-                    onEditing: onEditing,
-                    onSaveQuestion: onSaveQuestion,
-                    onSaveAnswer: onSaveAnswer,
-                    onAddFollowUp: onAddFollowUp,
-                    onToggleBranch: onToggleBranch,
-                    onDelete: onDelete,
-                    onKnowledgeSearch: onKnowledgeSearch,
-                    onPropose: onPropose,
-                  ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.subdirectory_arrow_left, size: 16),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          returnLabel,
-                          style: const TextStyle(color: Colors.black54),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.account_tree_outlined),
+                      label: const Text('Add follow-up'),
+                      onPressed: answer == null
+                          ? null
+                          : () => onAddFollowUp(answer),
+                    ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.lightbulb_outline),
+                      label: const Text('Propose for Knowledge'),
+                      onPressed: answer == null || answer.body.trim().isEmpty
+                          ? null
+                          : () => onPropose(question, answer),
+                    ),
+                    if (question.followUps.isNotEmpty && answer != null)
+                      TextButton.icon(
+                        icon: Icon(
+                          answer.branchesCollapsed
+                              ? Icons.expand_more
+                              : Icons.expand_less,
                         ),
+                        label: Text(
+                          answer.branchesCollapsed
+                              ? 'Expand branch (${question.followUps.length})'
+                              : 'Collapse branch (${question.followUps.length})',
+                        ),
+                        onPressed: () => onToggleBranch(answer),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
+                if (question.followUps.isNotEmpty &&
+                    !(answer?.branchesCollapsed ?? false)) ...[
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.subdirectory_arrow_left, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            parentText == null
+                                ? 'Return to main path'
+                                : 'Return to parent · $parentText',
+                            style: const TextStyle(color: Colors.black54),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _CappedBranchIndent extends StatelessWidget {
+  const _CappedBranchIndent({required this.depth, required this.child});
+
+  final int depth;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          final cap = constraints.maxWidth.isFinite
+              ? (constraints.maxWidth * 0.06).clamp(0.0, 28.0)
+              : 28.0;
+          final indent = (depth * 10.0).clamp(0.0, cap).toDouble();
+          return Padding(
+            padding: EdgeInsets.only(left: indent),
+            child: child,
+          );
+        },
+      );
 }
 
 class _DebouncedField extends StatefulWidget {
@@ -856,6 +932,34 @@ class GuidedReportView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visibleQuestions = <_VisibleReportQuestion>[];
+    void append(
+      GuidedQuestion question, {
+      required int depth,
+      required List<int> path,
+      String? parentText,
+    }) {
+      visibleQuestions.add(
+        _VisibleReportQuestion(
+          question: question,
+          depth: depth,
+          path: path,
+          parentText: parentText,
+        ),
+      );
+      for (final (index, followUp) in question.followUps.indexed) {
+        append(
+          followUp,
+          depth: depth + 1,
+          path: [...path, index + 1],
+          parentText: question.text,
+        );
+      }
+    }
+
+    for (final (index, question) in session.questions.indexed) {
+      append(question, depth: 0, path: [index + 1]);
+    }
     return ListView(
       padding: const EdgeInsets.all(32),
       children: [
@@ -871,15 +975,31 @@ class GuidedReportView extends StatelessWidget {
               : 'Active participant report',
         ),
         const SizedBox(height: 24),
-        for (final question in session.questions)
+        for (final visible in visibleQuestions)
           _ReportQuestion(
-            question: question,
+            question: visible.question,
             participants: session.participants,
-            depth: 0,
+            depth: visible.depth,
+            path: visible.path,
+            parentText: visible.parentText,
           ),
       ],
     );
   }
+}
+
+class _VisibleReportQuestion {
+  const _VisibleReportQuestion({
+    required this.question,
+    required this.depth,
+    required this.path,
+    required this.parentText,
+  });
+
+  final GuidedQuestion question;
+  final int depth;
+  final List<int> path;
+  final String? parentText;
 }
 
 class _ReportQuestion extends StatelessWidget {
@@ -887,45 +1007,54 @@ class _ReportQuestion extends StatelessWidget {
     required this.question,
     required this.participants,
     required this.depth,
+    required this.path,
+    required this.parentText,
   });
   final GuidedQuestion question;
   final List<GuidedParticipant> participants;
   final int depth;
+  final List<int> path;
+  final String? parentText;
 
   @override
   Widget build(BuildContext context) {
     String participantName(String id) =>
         participants.where((item) => item.id == id).firstOrNull?.name ??
         'Participant';
-    return Padding(
-      padding: EdgeInsets.only(left: depth * 24.0, bottom: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            depth == 0 ? question.text : 'Follow-up · ${question.text}',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 6),
-          if (question.answers.isEmpty)
-            const Text(
-              'No answer recorded.',
-              style: TextStyle(color: Colors.black54),
+    return _CappedBranchIndent(
+      depth: depth,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Path ${path.join('.')} · ${depth == 0 ? 'Question' : 'Follow-up'}',
+              style: const TextStyle(color: Colors.black54, fontSize: 12),
             ),
-          for (final answer in question.answers)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                '${participantName(answer.participantId)}: ${answer.body.isEmpty ? 'No answer recorded.' : answer.body}',
+            if (parentText != null)
+              Text(
+                'Parent: $parentText',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.black54),
               ),
-            ),
-          for (final followUp in question.followUps)
-            _ReportQuestion(
-              question: followUp,
-              participants: participants,
-              depth: depth + 1,
-            ),
-        ],
+            Text(question.text, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            if (question.answers.isEmpty)
+              const Text(
+                'No answer recorded.',
+                style: TextStyle(color: Colors.black54),
+              ),
+            for (final answer in question.answers)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '${participantName(answer.participantId)}: ${answer.body.isEmpty ? 'No answer recorded.' : answer.body}',
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

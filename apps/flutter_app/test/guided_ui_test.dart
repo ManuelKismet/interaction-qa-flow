@@ -68,6 +68,40 @@ Widget flow({GuidedQuestion question = shared, String participant = 'alice'}) {
   );
 }
 
+GuidedQuestion nestedQuestions(int depth) {
+  GuidedQuestion? child;
+  for (var index = depth; index >= 0; index--) {
+    final longText =
+        'Question $index · ${List.filled(18, 'detailed follow-up context').join(' ')}';
+    child = GuidedQuestion(
+      id: 'deep-$index',
+      text: longText,
+      scope: index == 0 ? 'shared' : 'participant',
+      source: index == 0 ? 'manual' : 'follow_up',
+      targetParticipantId: index == 0 ? null : 'alice',
+      answers: [
+        GuidedAnswer(
+          id: 'alice-$index',
+          questionId: 'deep-$index',
+          participantId: 'alice',
+          body:
+              'Alice answer $index · ${List.filled(12, 'long answer detail').join(' ')}',
+          branchesCollapsed: false,
+        ),
+        GuidedAnswer(
+          id: 'bob-$index',
+          questionId: 'deep-$index',
+          participantId: 'bob',
+          body: 'Bob answer $index',
+          branchesCollapsed: false,
+        ),
+      ],
+      followUps: child == null ? const [] : [child],
+    );
+  }
+  return child!;
+}
+
 void main() {
   testWidgets('active participant shows their shared answer and recursive branch', (tester) async {
     await tester.pumpWidget(flow());
@@ -136,4 +170,96 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(saves, 1);
   });
+
+  for (final width in [360.0, 768.0, 1366.0]) {
+    for (final depth in [0, 1, 3, 8, 12]) {
+      testWidgets(
+        'keeps depth $depth editor wide at $width logical pixels',
+        (tester) async {
+          tester.view.physicalSize = Size(width, 936);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final root = nestedQuestions(depth);
+          await tester.pumpWidget(flow(question: root));
+
+          final deepQuestion = find.byKey(
+            ValueKey('question-deep-$depth-${rootTextAtDepth(depth)}'),
+          );
+          await tester.scrollUntilVisible(
+            deepQuestion,
+            400,
+            maxScrolls: 40,
+          );
+          await tester.pumpAndSettle();
+
+          expect(deepQuestion, findsOneWidget);
+          expect(tester.getSize(deepQuestion).width, greaterThan(180));
+          expect(
+            find.textContaining(
+              'Path ${List.filled(depth + 1, '1').join('.')}',
+            ),
+            findsOneWidget,
+          );
+          if (depth > 0) {
+            expect(
+              find.text('Parent: ${rootTextAtDepth(depth - 1)}'),
+              findsOneWidget,
+            );
+          }
+          expect(find.text('Add follow-up'), findsWidgets);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets('report includes collapsed and deeply nested follow-ups', (
+    tester,
+  ) async {
+    final root = nestedQuestions(12);
+    final collapsedRoot = GuidedQuestion(
+      id: root.id,
+      text: root.text,
+      scope: root.scope,
+      source: root.source,
+      answers: [
+        for (final answer in root.answers)
+          GuidedAnswer(
+            id: answer.id,
+            questionId: answer.questionId,
+            participantId: answer.participantId,
+            body: answer.body,
+            branchesCollapsed: true,
+          ),
+      ],
+      followUps: root.followUps,
+    );
+    final session = GuidedSessionDetail(
+      id: 'session',
+      title: 'Session report',
+      status: 'completed',
+      visibility: 'private',
+      revision: 1,
+      updatedAt: DateTime.utc(2026),
+      participants: const [GuidedParticipant(id: 'alice', name: 'Alice')],
+      questions: [collapsedRoot],
+      preparedQuestionCount: 1,
+      followUpCount: 12,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GuidedReportView(session: session, allParticipants: true),
+        ),
+      ),
+    );
+
+    expect(find.text(rootTextAtDepth(12)), findsOneWidget);
+    expect(find.textContaining('Alice answer 12'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
+
+String rootTextAtDepth(int depth) =>
+    'Question $depth · ${List.filled(18, 'detailed follow-up context').join(' ')}';
