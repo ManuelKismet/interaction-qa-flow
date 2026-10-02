@@ -279,6 +279,7 @@ async def test_canonical_merge_preserves_team_and_search_returns_team(app_client
         clock=lambda: now,
     )
     service.permissions.actor = AsyncMock(return_value=actor)
+    service.search_repository.lexical_candidates = AsyncMock(return_value=[])
     service.search_repository.semantic_candidates = AsyncMock(
         return_value=[
             (

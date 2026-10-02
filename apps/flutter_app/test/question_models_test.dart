@@ -80,6 +80,7 @@ void main() {
       'matched_question_ids': ['question-1', 'question-2'],
       'matched_text': 'Where do I claim mileage?',
       'match_source': 'historical_question',
+      'match_method': 'semantic',
       'answer_id': 'answer-1',
       'title': 'How do I claim mileage?',
       'accepted_answer_body': 'Use the Finance form.',
@@ -117,6 +118,7 @@ void main() {
     expect(result.canonicalQuestionId, 'question-1');
     expect(result.matchedQuestionIds, hasLength(2));
     expect(result.matchSource, 'historical_question');
+    expect(result.matchMethod, 'semantic');
   });
 
   test('parses an open semantic search result without an answer', () {
@@ -129,6 +131,7 @@ void main() {
       'matched_question_ids': ['question-open'],
       'matched_text': 'How do I correct a mileage claim?',
       'match_source': 'canonical',
+      'match_method': 'keyword',
       'answer_id': null,
       'title': 'How do I correct a mileage claim?',
       'accepted_answer_body': null,
@@ -153,6 +156,7 @@ void main() {
     expect(result.acceptedAnswerBody, isNull);
     expect(result.answerId, isNull);
     expect(result.answerStatus, isNull);
+    expect(result.matchMethod, 'keyword');
   });
 
   test('parses a linked historical question', () {

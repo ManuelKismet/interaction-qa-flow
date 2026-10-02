@@ -13,15 +13,20 @@ class AskSuggestionsController
   extends AsyncNotifier<List<SemanticSearchResult>> {
   Timer? _debounce;
   String _latestQuery = '';
+  int _queryGeneration = 0;
 
   @override
   Future<List<SemanticSearchResult>> build() async {
-    ref.onDispose(() => _debounce?.cancel());
+    ref.onDispose(() {
+      _debounce?.cancel();
+      _queryGeneration++;
+    });
     return const [];
   }
 
   void queryChanged(String query) {
     _debounce?.cancel();
+    final generation = ++_queryGeneration;
     _latestQuery = query.trim();
     if (_latestQuery.length < 3) {
       state = const AsyncData([]);
@@ -32,14 +37,16 @@ class AskSuggestionsController
     final requestedQuery = _latestQuery;
     _debounce = Timer(
       const Duration(milliseconds: 350),
-      () => _search(requestedQuery),
+      () => _search(requestedQuery, generation),
     );
   }
 
-  Future<void> _search(String query) async {
+  Future<void> _search(String query, int generation) async {
     final result = await AsyncValue.guard(
       () => ref.read(questionsRepositoryProvider).searchQuestions(query),
     );
-    if (_latestQuery == query) state = result;
+    if (_queryGeneration == generation && _latestQuery == query) {
+      state = result;
+    }
   }
 }

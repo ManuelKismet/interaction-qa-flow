@@ -1,3 +1,4 @@
+import re
 from uuid import UUID
 
 from sqlalchemy import and_, case, func, or_, select
@@ -17,47 +18,28 @@ class SearchRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def semantic_candidates(
+    def _candidate_statement(
         self,
         *,
         organisation_id: UUID,
         actor: User,
-        query_text: str,
-        query_embedding: list[float],
-        embedding_model: str,
-        minimum_similarity: float,
-        limit: int,
         include_unanswered: bool = False,
-    ) -> list[
-        tuple[Question, Question, Answer | None, Department | None, Team | None, float, int]
-    ]:
+    ):
         canonical_question = aliased(Question)
         candidate_answer = aliased(Answer)
-        selected_answer_id = (
-            select(Answer.id)
-            .where(
-                Answer.question_id == canonical_question.id,
-                Answer.organisation_id == organisation_id,
-                Answer.status.in_(
-                    [
-                        AnswerStatus.VERIFIED,
-                        AnswerStatus.COMMUNITY,
-                        AnswerStatus.PROPOSED,
-                    ]
-                ),
-            )
-            .order_by(
-                case(
-                    (Answer.status == AnswerStatus.VERIFIED, 0),
-                    (Answer.id == canonical_question.accepted_answer_id, 1),
-                    (Answer.status == AnswerStatus.COMMUNITY, 2),
-                    else_=3,
-                ),
-                Answer.created_at.desc(),
-            )
-            .correlate(canonical_question)
-            .limit(1)
-            .scalar_subquery()
+        answer_statuses = [
+            AnswerStatus.VERIFIED,
+            AnswerStatus.COMMUNITY,
+            AnswerStatus.PROPOSED,
+        ]
+        answer_order = (
+            case((candidate_answer.status == AnswerStatus.VERIFIED, 0), else_=1),
+            case(
+                (candidate_answer.id == canonical_question.accepted_answer_id, 0),
+                else_=1,
+            ),
+            case((candidate_answer.status == AnswerStatus.COMMUNITY, 0), else_=1),
+            candidate_answer.created_at.desc(),
         )
         open_challenge_count = (
             select(func.count(AnswerChallenge.id))
@@ -69,7 +51,6 @@ class SearchRepository:
             .correlate(candidate_answer)
             .scalar_subquery()
         )
-        distance = QuestionEmbedding.embedding.cosine_distance(query_embedding)
         visibility = or_(
             Question.visibility == QuestionVisibility.ORGANISATION,
             and_(
@@ -108,13 +89,7 @@ class SearchRepository:
                 candidate_answer,
                 Department,
                 Team,
-                (1 - distance).label("similarity"),
                 open_challenge_count.label("open_challenge_count"),
-            )
-            .join(
-                QuestionEmbedding,
-                (QuestionEmbedding.question_id == Question.id)
-                & (QuestionEmbedding.organisation_id == organisation_id),
             )
             .join(
                 canonical_question,
@@ -122,10 +97,15 @@ class SearchRepository:
                 == func.coalesce(Question.canonical_question_id, Question.id),
             )
         )
+        answer_join = and_(
+            candidate_answer.question_id == canonical_question.id,
+            candidate_answer.organisation_id == organisation_id,
+            candidate_answer.status.in_(answer_statuses),
+        )
         statement = (
-            statement.outerjoin(candidate_answer, candidate_answer.id == selected_answer_id)
+            statement.outerjoin(candidate_answer, answer_join)
             if include_unanswered
-            else statement.join(candidate_answer, candidate_answer.id == selected_answer_id)
+            else statement.join(candidate_answer, answer_join)
         )
         eligible_statuses = [QuestionStatus.ANSWERED, QuestionStatus.RESOLVED]
         if include_unanswered:
@@ -146,29 +126,168 @@ class SearchRepository:
                 Question.organisation_id == organisation_id,
                 canonical_question.organisation_id == organisation_id,
                 canonical_question.canonical_question_id.is_(None),
-                QuestionEmbedding.embedding_model == embedding_model,
+                Question.status.in_(eligible_statuses),
                 canonical_question.status.in_(eligible_statuses),
+                visibility,
+                canonical_visibility,
+            )
+        )
+        return statement, canonical_question, answer_order
+
+    @staticmethod
+    def _tokens(query_text: str) -> list[str]:
+        return list(
+            dict.fromkeys(re.findall(r"[a-zA-Z0-9]+", query_text.lower()))
+        )[:40]
+
+    @staticmethod
+    def _candidate_rows(result):
+        return [
+            (
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                row[4],
+                float(row[6]),
+                int(row[5]),
+            )
+            for row in result
+        ]
+
+    async def semantic_candidates(
+        self,
+        *,
+        organisation_id: UUID,
+        actor: User,
+        query_text: str,
+        query_embedding: list[float],
+        embedding_model: str,
+        minimum_similarity: float,
+        limit: int,
+        include_unanswered: bool = False,
+    ) -> list[
+        tuple[Question, Question, Answer | None, Department | None, Team | None, float, int]
+    ]:
+        statement, _, answer_order = self._candidate_statement(
+            organisation_id=organisation_id,
+            actor=actor,
+            include_unanswered=include_unanswered,
+        )
+        distance = QuestionEmbedding.embedding.cosine_distance(query_embedding)
+        statement = (
+            statement.join(
+                QuestionEmbedding,
+                (QuestionEmbedding.question_id == Question.id)
+                & (QuestionEmbedding.organisation_id == organisation_id),
+            )
+            .add_columns((1 - distance).label("similarity"))
+            .where(
+                QuestionEmbedding.embedding_model == embedding_model,
                 or_(
                     distance <= 1 - minimum_similarity,
                     func.lower(func.trim(Question.title))
                     == query_text.strip().lower(),
                 ),
-                visibility,
-                canonical_visibility,
             )
-            .order_by(distance.asc())
+            .order_by(distance.asc(), *answer_order)
             .limit(limit)
         )
         result = await self.session.execute(statement)
-        return [
-            (
-                row.Question,
-                row[1],
-                row[2],
-                row.Department,
-                row.Team,
-                float(row.similarity),
-                int(row.open_challenge_count),
+        return self._candidate_rows(result)
+
+    async def lexical_candidates(
+        self,
+        *,
+        organisation_id: UUID,
+        actor: User,
+        query_text: str,
+        limit: int,
+        include_unanswered: bool = False,
+    ) -> list[
+        tuple[Question, Question, Answer | None, Department | None, Team | None, float, int]
+    ]:
+        tokens = self._tokens(query_text)
+        if not tokens and not query_text.strip():
+            return []
+
+        statement, canonical_question, answer_order = self._candidate_statement(
+            organisation_id=organisation_id,
+            actor=actor,
+            include_unanswered=include_unanswered,
+        )
+        exact_title = func.lower(func.trim(Question.title)) == query_text.strip().lower()
+        if self.session.get_bind().dialect.name == "postgresql" and tokens:
+            title_vector = func.setweight(
+                func.to_tsvector("simple", func.coalesce(Question.title, "")), "A"
             )
-            for row in result
-        ]
+            body_vector = func.setweight(
+                func.to_tsvector("simple", func.coalesce(Question.body, "")), "B"
+            )
+            document = title_vector.op("||")(body_vector)
+            search_document = func.to_tsvector(
+                "simple",
+                func.coalesce(Question.title, "")
+                + " "
+                + func.coalesce(Question.body, ""),
+            )
+            lexical_query = func.to_tsquery(
+                "simple", " | ".join(f"{token}:*" for token in tokens)
+            )
+            all_terms_query = func.to_tsquery(
+                "simple", " & ".join(f"{token}:*" for token in tokens)
+            )
+            text_match = search_document.op("@@")(lexical_query)
+            score = (
+                func.ts_rank_cd(document, lexical_query)
+                + func.ts_rank_cd(document, all_terms_query)
+                + case((exact_title, 10.0), else_=0.0)
+            )
+            identifier_matches = [
+                Question.title.ilike(f"%{token}%", escape="\\")
+                | Question.body.ilike(f"%{token}%", escape="\\")
+                for token in tokens
+            ]
+        else:
+            title_matches = [
+                func.lower(Question.title).contains(token) for token in tokens
+            ]
+            body_matches = [
+                func.lower(func.coalesce(Question.body, "")).contains(token)
+                for token in tokens
+            ]
+            text_match = (
+                or_(*title_matches, *body_matches) if tokens else exact_title
+            )
+            score = case((exact_title, 100.0), else_=0.0)
+            score += sum(
+                case((match, 10.0), else_=0.0) for match in title_matches
+            )
+            score += sum(case((match, 1.0), else_=0.0) for match in body_matches)
+            all_terms_match = (
+                and_(
+                    *(
+                        or_(title_match, body_match)
+                        for title_match, body_match in zip(
+                            title_matches, body_matches
+                        )
+                    )
+                )
+                if tokens
+                else exact_title
+            )
+            score += case((all_terms_match, 5.0), else_=0.0)
+            identifier_matches = []
+
+        statement = (
+            statement.add_columns(score.label("similarity"))
+            .where(or_(exact_title, text_match, *identifier_matches))
+            .order_by(
+                score.desc(),
+                *answer_order,
+                canonical_question.updated_at.desc(),
+            )
+            .limit(limit)
+        )
+        result = await self.session.execute(statement)
+        return self._candidate_rows(result)
