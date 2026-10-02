@@ -30,9 +30,9 @@ Current App Check provider readback returned HTTP 403; registration and
 enforcement are not verified. Diagnose API enablement/permissions before
 registration. No attestation provider or debug token has been created.
 
-## Exact access change awaiting founder approval
+## Approved development service identity
 
-Create development-only service account:
+Created and independently verified development-only service account:
 intqaflow-dev-api@intqaflow-dev.iam.gserviceaccount.com
 
 | Grant | Resource | Purpose |
@@ -43,9 +43,12 @@ intqaflow-dev-api@intqaflow-dev.iam.gserviceaccount.com
 This identity can connect to the dev database and obtain its runtime credential.
 It receives no Owner/Editor role, no project-wide secret access, no Firebase
 user-administration role and no downloadable service-account key.
-It is not attached to a deployed application. Creation/grants were blocked
-by automatic approval review and have not been applied. Readback confirms
-that this dedicated service account does not exist.
+The founder explicitly approved this account and the exact two grants on
+2026-10-02. Creation and both bindings succeeded. Independent IAM policy
+readback confirms this account has only roles/cloudsql.client at project
+scope and roles/secretmanager.secretAccessor on the named database secret.
+The account is enabled and has zero user-managed keys.
+It is not attached to a deployed application.
 
 ## Application configuration boundary
 
@@ -58,6 +61,7 @@ must be the registered development web app. Configure explicit development
 CORS origins; no wildcard and no production configuration.
 App Check enforcement awaits a configured client and valid-traffic checks.
 
-Environment configuration acceptance still pending: approved service identity
-and readback of its exact grants; App Check API/provider registration; final
-configuration mapping to reviewed application code. No deployment performed.
+Environment configuration acceptance still pending: App Check API/provider
+registration and final configuration mapping to reviewed application code.
+The approved service identity and its exact grants are verified.
+No deployment performed.
