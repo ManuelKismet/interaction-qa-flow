@@ -411,3 +411,156 @@ async def test_departmentless_legacy_session_is_not_shared_by_null_match(app_cli
         "/api/v1/guided/sessions", headers=read_headers(user_id)
     )
     assert all(item["id"] != str(session_id) for item in listing.json())
+
+
+@pytest.mark.asyncio
+async def test_private_interact_session_is_owner_only_even_for_admin(app_client) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    owner = headers(ids, "employee")
+    administrator = headers(ids, "admin")
+    private = await client.post(
+        "/api/v1/guided/sessions",
+        headers=owner,
+        json={"title": "Owner-only interview"},
+    )
+    assert private.status_code == 201, private.text
+    session_id = private.json()["id"]
+    session_path = f"/api/v1/guided/sessions/{session_id}"
+    participant = await client.post(
+        f"{session_path}/participants", headers=owner, json={"name": "Synthetic"}
+    )
+    assert participant.status_code == 201, participant.text
+    question = await client.post(
+        f"{session_path}/questions",
+        headers=owner,
+        json={"text": "Synthetic private question", "scope": "shared"},
+    )
+    assert question.status_code == 201, question.text
+    answer = await client.post(
+        f"/api/v1/guided/questions/{question.json()['id']}/answers",
+        headers=owner,
+        json={
+            "participant_id": participant.json()["id"],
+            "body": "Synthetic private answer",
+        },
+    )
+    assert answer.status_code == 200, answer.text
+
+    assert (
+        await client.get(session_path, headers=administrator)
+    ).status_code == 403
+    admin_list = await client.get("/api/v1/guided/sessions", headers=administrator)
+    assert admin_list.status_code == 200, admin_list.text
+    assert all(item["id"] != session_id for item in admin_list.json())
+    owner_list = await client.get("/api/v1/guided/sessions", headers=owner)
+    assert any(item["id"] == session_id for item in owner_list.json())
+    assert (
+        await client.get(f"{session_path}/revisions", headers=administrator)
+    ).status_code == 403
+    for export_format in ("json", "csv"):
+        assert (
+            await client.get(
+                f"{session_path}/export/{export_format}", headers=administrator
+            )
+        ).status_code == 403
+    assert (
+        await client.patch(
+            session_path, headers=administrator, json={"title": "Admin changed"}
+        )
+    ).status_code == 403
+    assert (
+        await client.post(f"{session_path}/start", headers=administrator)
+    ).status_code == 403
+    assert (
+        await client.post(
+            f"{session_path}/participants",
+            headers=administrator,
+            json={"name": "Admin-added"},
+        )
+    ).status_code == 403
+    assert (
+        await client.patch(
+            f"/api/v1/guided/participants/{participant.json()['id']}",
+            headers=administrator,
+            json={"name": "Admin changed"},
+        )
+    ).status_code == 403
+    assert (
+        await client.post(
+            f"{session_path}/questions",
+            headers=administrator,
+            json={"text": "Admin-added question", "scope": "shared"},
+        )
+    ).status_code == 403
+    assert (
+        await client.patch(
+            f"/api/v1/guided/answers/{answer.json()['id']}",
+            headers=administrator,
+            json={"body": "Admin changed"},
+        )
+    ).status_code == 403
+    assert (
+        await client.post(
+            f"/api/v1/guided/questions/{question.json()['id']}/knowledge-search",
+            headers=administrator,
+            json={"query": "private synthetic query"},
+        )
+    ).status_code == 403
+    assert (
+        await client.post(
+            "/api/v1/guided/knowledge-proposals",
+            headers=administrator,
+            json={
+                "guided_question_id": question.json()["id"],
+                "guided_answer_id": answer.json()["id"],
+            },
+        )
+    ).status_code == 403
+
+    owner_detail = await client.get(session_path, headers=owner)
+    assert owner_detail.status_code == 200, owner_detail.text
+    assert (
+        await client.get(f"{session_path}/revisions", headers=owner)
+    ).status_code == 200
+    for export_format in ("json", "csv"):
+        assert (
+            await client.get(
+                f"{session_path}/export/{export_format}", headers=owner
+            )
+        ).status_code == 200
+    owner_update = await client.patch(
+        session_path, headers=owner, json={"title": "Owner updated"}
+    )
+    assert owner_update.status_code == 200, owner_update.text
+
+    organisation_session = await client.post(
+        "/api/v1/guided/sessions",
+        headers=owner,
+        json={"title": "Organisation-visible", "visibility": "organisation"},
+    )
+    department_session = await client.post(
+        "/api/v1/guided/sessions",
+        headers=owner,
+        json={
+            "title": "Department-visible",
+            "department_id": str(ids["finance_department"]),
+            "visibility": "department",
+        },
+    )
+    assert organisation_session.status_code == 201, organisation_session.text
+    assert department_session.status_code == 201, department_session.text
+    assert (
+        await client.get(
+            f"/api/v1/guided/sessions/{organisation_session.json()['id']}",
+            headers=administrator,
+        )
+    ).status_code == 200
+    assert (
+        await client.get(
+            f"/api/v1/guided/sessions/{department_session.json()['id']}",
+            headers=administrator,
+        )
+    ).status_code == 200
+    outsider = headers(ids, "outsider", "other_organisation")
+    assert (await client.get(session_path, headers=outsider)).status_code == 404

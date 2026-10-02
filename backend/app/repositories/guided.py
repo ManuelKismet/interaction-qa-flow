@@ -63,7 +63,14 @@ class GuidedRepository:
                 )
             )
         statement = select(GuidedSession).where(GuidedSession.organisation_id == organisation_id)
-        if not is_admin:
+        if is_admin:
+            statement = statement.where(
+                or_(
+                    GuidedSession.visibility != GuidedSessionVisibility.PRIVATE,
+                    GuidedSession.created_by == user_id,
+                )
+            )
+        else:
             statement = statement.where(or_(*visibility))
         if status:
             statement = statement.where(GuidedSession.status == status)
