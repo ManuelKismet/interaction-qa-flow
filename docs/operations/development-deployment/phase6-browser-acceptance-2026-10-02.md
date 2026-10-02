@@ -17,12 +17,12 @@ Issues / unverified:
 - Reloading a session URL redirected to Knowledge; the session was reopened through Interact. Deep-link preservation needs investigation.
 - Attempted synthetic template creation was not visible in Templates or the New session selector. Later log review found no POST create request. Automated input appeared in accessibility values but not in the rendered Flutter fields; treat this as an input/testing limitation until direct entry establishes behavior. Do not mark creation/snapshot isolation passed.
 - PDF output, template snapshot immutability, and multi-account live privacy/tenant checks remain unverified.
-- App Check server attestation remains unverified. Observation mode and successful browser API requests alone are insufficient evidence.
-- Codespace became stopped during checks. Restart accepted but remained on setup for several minutes; a clean stop/start recovery was initiated. Backend terminal/log access remains unavailable at this checkpoint.
+- Real App Check server attestation passed on revision intqaflow-dev-api-00003-2bz; see the live evidence below. Enforcement remains observe.
+- Codespace stalled during the earlier checks; clean stop/start recovered terminal and Google Cloud access.
 
 The JSON download timeout was a mistaken expectation about UI behavior, not an export failure: export content was subsequently validated through Copy.
 
-Codespace recovery: a clean GitHub stop/restart restored the remote terminal. Google Cloud active sign-in and Cloud Logging reads succeed. The temporary review venv was cleared by restart; dependencies were restored in the development worktree backend/.venv and all 57 tests pass again. Safe development App Check outcome logging is committed as 9236eb5 and its API update is in progress.
+Codespace recovery: a clean GitHub stop/restart restored the remote terminal. Google Cloud active sign-in and Cloud Logging reads succeed. The temporary review venv was cleared by restart; dependencies were restored in the development worktree backend/.venv and all 57 tests pass again. Safe development App Check outcome logging is committed as 9236eb5 and its API update is live as revision intqaflow-dev-api-00003-2bz.
 
 
 Completed live App Check: revision intqaflow-dev-api-00003-2bz verified configured-web-app tokens from three fresh hosted-browser requests at 2026-10-02T21:44:50–52Z. Invalid App Check: 401. Foreign organisation: 403. Missing authentication: 401. Missing App Check: 200, expected in observe mode. Enforcement remains observe. All 57 backend tests passed. Template snapshot, PDF and multi-account browser checks remain unverified.
