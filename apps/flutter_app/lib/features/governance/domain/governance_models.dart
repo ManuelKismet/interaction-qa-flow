@@ -1,5 +1,36 @@
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
+class OrganisationMember {
+  const OrganisationMember({
+    required this.id,
+    required this.email,
+    required this.displayName,
+    required this.role,
+    required this.status,
+    this.departmentId,
+    this.departmentName,
+  });
+
+  factory OrganisationMember.fromJson(Map<String, dynamic> json) =>
+      OrganisationMember(
+        id: json['id'] as String,
+        email: json['email'] as String,
+        displayName: json['display_name'] as String,
+        role: json['role'] as String,
+        status: json['status'] as String,
+        departmentId: json['department_id'] as String?,
+        departmentName: json['department_name'] as String?,
+      );
+
+  final String id;
+  final String email;
+  final String displayName;
+  final String role;
+  final String status;
+  final String? departmentId;
+  final String? departmentName;
+}
+
 class AnswerChallenge {
   const AnswerChallenge({
     required this.id,

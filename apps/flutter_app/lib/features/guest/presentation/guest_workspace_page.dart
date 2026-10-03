@@ -1180,6 +1180,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             DropdownButtonFormField<String>(
               key: ValueKey(activeParticipantId),
               initialValue: activeParticipantId,
+              isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'Active participant',
                 helperText: 'Answers and individual questions are shown for this participant.',
@@ -1254,7 +1255,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             ),
           for (final question in questions)
             _GuestQuestionEditor(
-              key: ValueKey((question as Map<String, dynamic>)['id']),
+              key: ValueKey(question['id']),
               question: question,
               participants: activeParticipant == null
                   ? const []
@@ -1306,6 +1307,7 @@ class _GuestQuestionEditor extends StatefulWidget {
     required this.onUpdate,
     required this.onRemove,
     required this.makeQuestion,
+    this.nested = false,
     super.key,
   });
 
@@ -1314,6 +1316,7 @@ class _GuestQuestionEditor extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>> onUpdate;
   final VoidCallback onRemove;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
+  final bool nested;
 
   @override
   State<_GuestQuestionEditor> createState() => _GuestQuestionEditorState();
@@ -1329,13 +1332,7 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     final question = _copyMap(widget.question);
     final answers = question['answers'] as List? ?? <Map<String, dynamic>>[];
     question['answers'] = answers;
-    var answer = answers
-        .whereType<Map>()
-        .cast<Map<String, dynamic>?>()
-        .firstWhere(
-          (item) => item?['participant_id'] == participantId,
-          orElse: () => null,
-        );
+    var answer = _answerForParticipant(answers, participantId);
     if (answer == null) {
       answer = {
         'participant_id': participantId,
@@ -1355,13 +1352,7 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     final question = _copyMap(widget.question);
     final answers = question['answers'] as List? ?? <Map<String, dynamic>>[];
     question['answers'] = answers;
-    var answer = answers
-        .whereType<Map>()
-        .cast<Map<String, dynamic>?>()
-        .firstWhere(
-          (item) => item?['participant_id'] == participantId,
-          orElse: () => null,
-        );
+    var answer = _answerForParticipant(answers, participantId);
     if (answer == null) {
       answer = {
         'participant_id': participantId,
@@ -1389,45 +1380,62 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     final applicable = widget.participants.where((participant) {
       return scope == 'shared' || participant['id'] == target;
     });
-    return Card(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      margin: const EdgeInsets.only(top: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(text, style: Theme.of(context).textTheme.titleSmall),
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: 'Delete question and undo',
-                onPressed: widget.onRemove,
-                icon: const Icon(Icons.delete_outline),
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 440;
+        return Card(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          margin: const EdgeInsets.only(top: 12),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              vertical: 12,
+              horizontal: widget.nested && narrow ? 0 : 12,
             ),
-            Text(scope == 'shared' ? 'Shared question' : 'Participant-specific question'),
-            for (final participant in applicable)
-              _GuestAnswerEditor(
-                key: ValueKey('${id}_${participant['id']}'),
-                participant: participant,
-                answer: _answers
-                    .where((answer) => answer['participant_id'] == participant['id'])
-                    .firstOrNull,
-                onAnswerChanged: (body) => _updateAnswer(
-                  participant['id'] as String,
-                  body,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(text, style: Theme.of(context).textTheme.titleSmall),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    tooltip: 'Delete question and undo',
+                    onPressed: widget.onRemove,
+                    icon: const Icon(Icons.delete_outline),
+                  ),
                 ),
-                onAddFollowUp: (text) => _addFollowUp(
-                  participant['id'] as String,
-                  text,
+                Text(
+                  widget.nested
+                      ? 'Answer-owned follow-up'
+                      : scope == 'shared'
+                      ? 'Shared question'
+                      : 'Participant-specific question',
                 ),
-                onUpdate: _replaceAnswer,
-                makeQuestion: widget.makeQuestion,
-              ),
-          ],
-        ),
-      ),
+                for (final participant in applicable)
+                  _GuestAnswerEditor(
+                    key: ValueKey('${id}_${participant['id']}'),
+                    participant: participant,
+                    answer: _answers
+                        .where(
+                          (answer) =>
+                              answer['participant_id'] == participant['id'],
+                        )
+                        .firstOrNull,
+                    onAnswerChanged: (body) => _updateAnswer(
+                      participant['id'] as String,
+                      body,
+                    ),
+                    onAddFollowUp: (text) => _addFollowUp(
+                      participant['id'] as String,
+                      text,
+                    ),
+                    onUpdate: _replaceAnswer,
+                    makeQuestion: widget.makeQuestion,
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1447,6 +1455,18 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     question['answers'] = answers;
     widget.onUpdate(question);
   }
+}
+
+Map<String, dynamic>? _answerForParticipant(
+  List answers,
+  String participantId,
+) {
+  for (final item in answers) {
+    if (item is Map && item['participant_id'] == participantId) {
+      return item.cast<String, dynamic>();
+    }
+  }
+  return null;
 }
 
 class _GuestAnswerEditor extends StatefulWidget {
@@ -1527,53 +1547,79 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
             ),
             onChanged: widget.onAnswerChanged,
           ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                controller: _followUp,
-                  decoration: const InputDecoration(labelText: 'Follow-up question'),
-                onSubmitted: (_) => _addFollowUp(),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Add answer-owned follow-up',
-                onPressed: _addFollowUp,
-                icon: const Icon(Icons.add_comment_outlined),
-              ),
-              if (branches.isNotEmpty)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = [
                 IconButton(
-                  tooltip: collapsed ? 'Expand follow-ups' : 'Collapse follow-ups',
-                  onPressed: () {
-                    final updated = _copyMap(widget.answer!);
-                    updated['branches_collapsed'] = !collapsed;
-                    widget.onUpdate(updated);
-                  },
-                  icon: Icon(collapsed ? Icons.expand_more : Icons.expand_less),
+                  tooltip: 'Add answer-owned follow-up',
+                  onPressed: _addFollowUp,
+                  icon: const Icon(Icons.add_comment_outlined),
                 ),
-              if (branches.isNotEmpty)
-                Text('${branches.length} follow-ups'),
-            ],
+                if (branches.isNotEmpty)
+                  IconButton(
+                    tooltip: collapsed
+                        ? 'Expand follow-ups'
+                        : 'Collapse follow-ups',
+                    onPressed: () {
+                      final updated = _copyMap(widget.answer!);
+                      updated['branches_collapsed'] = !collapsed;
+                      widget.onUpdate(updated);
+                    },
+                    icon: Icon(
+                      collapsed ? Icons.expand_more : Icons.expand_less,
+                    ),
+                  ),
+                if (branches.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text('${branches.length} follow-ups'),
+                  ),
+              ];
+              final field = TextField(
+                controller: _followUp,
+                decoration: const InputDecoration(
+                  labelText: 'Follow-up question',
+                ),
+                onSubmitted: (_) => _addFollowUp(),
+              );
+              if (constraints.maxWidth < 440) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [field, Wrap(children: actions)],
+                );
+              }
+              return Row(
+                children: [Expanded(child: field), ...actions],
+              );
+            },
           ),
           if (branches.isNotEmpty && !collapsed)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Column(
-                children: [
-                  for (final branch in branches)
-                    _GuestQuestionEditor(
-                      key: ValueKey((branch as Map<String, dynamic>)['id']),
-                      question: branch,
-                      participants: [widget.participant],
-                      onRemove: () => _removeNestedBranch(branch),
-                      onUpdate: (updated) {
-                        final answer = _copyMap(widget.answer!);
-                        _replaceInQuestions(answer['follow_ups'] as List, updated);
-                        widget.onUpdate(answer);
-                      },
-                      makeQuestion: widget.makeQuestion,
-                    ),
-                ],
+            LayoutBuilder(
+              builder: (context, constraints) => Padding(
+                padding: EdgeInsets.only(
+                  left: constraints.maxWidth < 440 ? 0 : 8,
+                ),
+                child: Column(
+                  children: [
+                    for (final branch in branches)
+                      _GuestQuestionEditor(
+                        key: ValueKey((branch as Map<String, dynamic>)['id']),
+                        question: branch,
+                        participants: [widget.participant],
+                        nested: true,
+                        onRemove: () => _removeNestedBranch(branch),
+                        onUpdate: (updated) {
+                          final answer = _copyMap(widget.answer!);
+                          _replaceInQuestions(
+                            answer['follow_ups'] as List,
+                            updated,
+                          );
+                          widget.onUpdate(answer);
+                        },
+                        makeQuestion: widget.makeQuestion,
+                      ),
+                  ],
+                ),
               ),
             ),
         ],

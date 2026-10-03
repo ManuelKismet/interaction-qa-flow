@@ -211,6 +211,8 @@ void main() {
     );
     expect(selectedData.scope, 'Selected participant — Alice <A>');
     expect(selectedData.participantNames, ['Alice <A>']);
+    expect(selected, contains('Selected participant — Alice &lt;A&gt;'));
+    expect(selected, isNot(contains('Alice &amp;lt;A&amp;gt;')));
     expect(selectedData.questions.first.answers.single.participantName, 'Alice <A>');
     expect(
       selectedData.questions.first.answers.single.followUps.single.triggerAnswer,

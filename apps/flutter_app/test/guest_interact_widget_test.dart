@@ -59,6 +59,8 @@ void main() {
       );
 
       Future<void> showWorkspace() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
         await tester.pumpWidget(
           ProviderScope(
             overrides: [

@@ -152,11 +152,10 @@ Map<String, dynamic> _sessionQuestion(
       ? 'participant'
       : 'shared';
   final requestedTarget = question['target_participant_slot'];
-  final targetSlot = nested
-      ? answerOwnerSlot ?? fallbackSlot
-      : requestedTarget is String && participantIds.containsKey(requestedTarget)
-      ? requestedTarget
-      : fallbackSlot;
+  final targetSlot = answerOwnerSlot ??
+      (requestedTarget is String && participantIds.containsKey(requestedTarget)
+          ? requestedTarget
+          : fallbackSlot);
   final answerSlots = scope == 'participant'
       ? [targetSlot]
       : participantIds.keys.toList();

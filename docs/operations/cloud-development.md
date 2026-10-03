@@ -154,6 +154,45 @@ The Firebase UID is an identifier, not a token or credential. The script reads
 the database URL from the private runtime environment and prints no database
 configuration. Do not place that URL or ID token in source control.
 
+### Controlled organisation provisioning and membership
+
+Organisation creation has no public API or self-service bootstrap. An operator
+must use the private, authenticated runtime to provision a new organisation and
+its first admin from an existing Firebase account with a verified email. Review
+the target Firebase project, `APP_ENV`, database URL, organisation name/slug,
+verified admin email, and operator identifier before running the command.
+The transaction creates the organisation, active admin user, UID mapping, and
+`ORGANISATION_ADMIN_PROVISIONED` audit event. It rejects an existing slug or an
+account already mapped to an organisation. The operator value is recorded as
+metadata and must identify the human performing the controlled action.
+
+```sh
+cd backend
+python -m scripts.provision_organisation_admin \
+  --name "<organisation name>" \
+  --slug "<unique-lowercase-slug>" \
+  --admin-email "<verified-firebase-account-email>" \
+  --operator "<operator identifier>" \
+  --confirm-operator-provisioning
+```
+
+This command is an operator tool, not an application endpoint. It has not been
+run for any real organisation or account in this work. The development-only
+`seed_synthetic_membership` command remains restricted to the synthetic
+`intqaflow-dev` tenant and is not a production onboarding path.
+
+After provisioning, an organisation admin can use **Admin → Members** to add
+an existing Firebase account by verified email, assign its organisation role
+and primary department, or change those values for an active member. The API
+resolves the email through Firebase Admin, refuses unverified accounts, checks
+that target departments belong to the caller's organisation, and records
+member, role, and department changes in `audit_events`. The last active admin
+cannot be demoted. Role changes take effect on subsequent API requests because
+the role is read from the database membership. This screen does not send email
+invitations or create Firebase accounts; accounts must already exist and have
+verified email. Department/team membership is not an organisation role, and
+organisation admin does not bypass private owner-only content.
+
 ### Hosted browser-to-API acceptance matrix
 
 | Check | Expected result |
