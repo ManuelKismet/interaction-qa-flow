@@ -114,7 +114,9 @@ void main() {
         );
 
         navigatorKey.currentState!.pop();
-        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump();
         expect(find.byType(AlertDialog), findsNothing);
 
         if (action == 'Export') {
