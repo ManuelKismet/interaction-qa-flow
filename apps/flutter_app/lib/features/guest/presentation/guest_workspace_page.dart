@@ -1,17 +1,21 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:cross_file/cross_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
+import 'package:int_qa_flow/core/platform/pdf_download.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
+import 'package:share_plus/share_plus.dart';
 
 class GuestWorkspacePage extends ConsumerStatefulWidget {
   const GuestWorkspacePage({
@@ -134,132 +138,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     );
   }
 
-  Future<void> _exportBackup() async {
-    final data = _data;
-    if (data == null) return;
-    final backup = data.encodeBackup();
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Guest backup'),
-        content: SizedBox(
-          width: 640,
-          child: SingleChildScrollView(
-            child: SelectableText(backup),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: backup));
-              Navigator.pop(context);
-            },
-            child: const Text('Copy backup JSON'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _importBackup() async {
-    final controller = TextEditingController();
-    GuestWorkspaceData? imported;
-    String? error;
-    final text = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Preview local backup import'),
-          content: SizedBox(
-            width: 600,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Paste an IntQAFlow guest backup. Nothing changes until you '
-                  'review and confirm the selected items.',
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  minLines: 4,
-                  maxLines: 10,
-                  decoration: const InputDecoration(
-                    labelText: 'Backup JSON',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (value) {
-                    try {
-                      imported = GuestWorkspaceData.decodeBackup(value);
-                      error = null;
-                    } on Object {
-                      imported = null;
-                      error = 'The backup is not valid IntQAFlow guest JSON.';
-                    }
-                    setDialogState(() {});
-                  },
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                ],
-                if (imported != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${imported!.knowledge.length} Knowledge items, '
-                    '${imported!.sessions.length} Interact sessions and '
-                    '${imported!.templates.length} templates. '
-                    'All non-empty selections will be previewed next.',
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: imported == null
-                  ? null
-                  : () => Navigator.pop(context, controller.text),
-              child: const Text('Review selection'),
-            ),
-          ],
-        ),
-      ),
-    );
-    controller.dispose();
-    if (text == null || !mounted) return;
-    try {
-      imported = GuestWorkspaceData.decodeBackup(text);
-    } on Object {
-      return;
-    }
-    final selection = await showDialog<_GuestImportSelection>(
-      context: context,
-      builder: (context) => _GuestImportPreview(data: imported!),
-    );
-    if (selection == null || !mounted) return;
-    final result = await ref.read(guestWorkspaceStoreProvider).importSelected(
-      imported: imported!,
-      knowledgeIds: selection.knowledgeIds,
-      sessionIds: selection.sessionIds,
-      templateIds: selection.templateIds,
-    );
-    if (!mounted) return;
-    _save(result);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Selected work was added to this device.')),
-    );
-  }
-
   Future<void> _clearLocalCopy() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -267,7 +145,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         title: const Text('Clear this device’s guest work?'),
         content: const Text(
           'This permanently removes this browser’s local guest copy. '
-          'Export a backup first if you may need it. Shared group content is not changed.',
+          'Shared group content is not changed.',
         ),
         actions: [
           TextButton(
@@ -300,16 +178,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
             overflow: TextOverflow.ellipsis,
           ),
           actions: [
-            IconButton(
-              tooltip: 'Import backup',
-              onPressed: _data == null ? null : _importBackup,
-              icon: const Icon(Icons.file_upload_outlined),
-            ),
-            IconButton(
-              tooltip: 'Export backup',
-              onPressed: _data == null ? null : _exportBackup,
-              icon: const Icon(Icons.file_download_outlined),
-            ),
             if (widget.sharedIdentityActive)
               IconButton(
                 tooltip: 'Shared guest groups',
@@ -461,42 +329,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
             .where((participant) => participant['id'] == selectedParticipantId)
             .firstOrNull?['name'] as String? ??
         'Not selected';
-    await showDialog<void>(
+    final allParticipants = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Readable session report'),
+        title: const Text('Export session PDF'),
         content: Text(
-          'Stored locally on this device. Current participant: '
-          '$selectedParticipantName. '
-          'Choose whether to include this participant or everyone.',
+          'Stored locally on this device. Choose the participant scope to preview before exporting. Current participant: $selectedParticipantName.',
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              openPrintableReport(
-                buildGuestReportDocument(
-                  session: session,
-                  allParticipants: false,
-                  participantId: selectedParticipantId,
-                  generatedAt: DateTime.now().toUtc(),
-                ),
-              );
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Selected participant'),
           ),
           FilledButton(
-            onPressed: () {
-              openPrintableReport(
-                buildGuestReportDocument(
-                  session: session,
-                  allParticipants: true,
-                  participantId: selectedParticipantId,
-                  generatedAt: DateTime.now().toUtc(),
-                ),
-              );
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('All participants'),
           ),
           TextButton(
@@ -506,6 +352,177 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         ],
       ),
     );
+    if (allParticipants == null || !mounted) return;
+    final report = composeGuestReport(
+      session: session,
+      allParticipants: allParticipants,
+      participantId: selectedParticipantId,
+      exportedAt: DateTime.now().toUtc(),
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _GuestReportPreviewDialog(
+        report: report,
+        onDownload: () => _downloadPdf(report, session, allParticipants, selectedParticipantId),
+        onShare: () => _sharePdf(report, session, allParticipants, selectedParticipantId),
+        onPrintFallback: () => openPrintableReport(
+          buildGuestReportDocument(
+            session: session,
+            allParticipants: allParticipants,
+            participantId: selectedParticipantId,
+            generatedAt: report.exportedAt,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<Uint8List> _makePdf(GuestReportData report) =>
+      buildGuestReportPdf(report);
+
+  Future<void> _downloadPdf(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    try {
+      final bytes = await _makePdf(report);
+      final downloaded = await downloadPdf(bytes, guestReportFilename(report));
+      if (!downloaded && mounted) {
+        await _showPdfFallback(report, session, allParticipants, participantId);
+      }
+    } on Object {
+      if (mounted) {
+        await _showPdfFallback(report, session, allParticipants, participantId);
+      }
+    }
+  }
+
+  Future<void> _sharePdf(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Share a PDF copy?'),
+        content: const Text(
+          'Recipients can keep or forward this PDF. Removing their group access later cannot revoke a copy they downloaded.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final bytes = await _makePdf(report);
+      final renderBox = context.findRenderObject() as RenderBox?;
+      final origin = renderBox == null
+          ? null
+          : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          title: 'Share Interact PDF',
+          text: 'Portable PDF copy. Recipients may retain or forward it.',
+          files: [
+            XFile.fromData(bytes, mimeType: 'application/pdf'),
+          ],
+          fileNameOverrides: [guestReportFilename(report)],
+          downloadFallbackEnabled: false,
+          sharePositionOrigin: origin,
+        ),
+      );
+      if (result.status == ShareResultStatus.dismissed) return;
+      if (result.status == ShareResultStatus.unavailable) {
+        if (mounted) {
+          await _showPdfFallback(report, session, allParticipants, participantId);
+        }
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF sharing was opened.')),
+        );
+      }
+    } on Object {
+      if (mounted) {
+        await _showPdfFallback(report, session, allParticipants, participantId);
+      }
+    }
+  }
+
+  Future<void> _showPdfFallback(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('PDF action unavailable'),
+        content: const Text(
+          'This browser or device cannot complete that PDF action. Download the PDF and attach it using your preferred app, or use the print-to-PDF fallback.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'print'),
+            child: const Text('Print / Save PDF fallback'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'download'),
+            child: const Text('Download PDF'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'print') {
+      openPrintableReport(
+        buildGuestReportDocument(
+          session: session,
+          allParticipants: allParticipants,
+          participantId: participantId,
+          generatedAt: report.exportedAt,
+        ),
+      );
+    } else if (action == 'download') {
+      try {
+        final downloaded = await downloadPdf(
+          await _makePdf(report),
+          guestReportFilename(report),
+        );
+        if (!downloaded && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Direct download is unavailable on this device. Use the print fallback.'),
+            ),
+          );
+        }
+      } on Object {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF download could not be started.')),
+          );
+        }
+      }
+    }
   }
 
   bool get _canStartSharedGuestIdentity {
@@ -1126,18 +1143,21 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
               OutlinedButton.icon(
                 onPressed: () => widget.onPrint(activeParticipantId),
-                icon: const Icon(Icons.print_outlined),
-                label: const Text('Readable report / print'),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('Download / Share PDF'),
               ),
-              OutlinedButton.icon(
-                onPressed: _showJsonBackup,
-                icon: const Icon(Icons.data_object),
-                label: const Text('Session JSON backup'),
-              ),
-              TextButton.icon(
-                onPressed: widget.onDelete,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Delete session'),
+              PopupMenuButton<String>(
+                tooltip: 'More session actions',
+                onSelected: (value) {
+                  if (value == 'delete') widget.onDelete();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete session'),
+                  ),
+                ],
+                icon: const Icon(Icons.more_vert),
               ),
             ],
           ),
@@ -1263,32 +1283,6 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     );
   }
 
-  Future<void> _showJsonBackup() async {
-    final backup = const JsonEncoder.withIndent('  ').convert(widget.session);
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Session JSON backup'),
-        content: SizedBox(
-          width: 640,
-          child: SingleChildScrollView(child: SelectableText(backup)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: backup));
-              Navigator.pop(context);
-            },
-            child: const Text('Copy JSON'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _GuestQuestionEditor extends StatefulWidget {

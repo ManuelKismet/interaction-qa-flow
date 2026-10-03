@@ -1,8 +1,58 @@
-String buildGuestReportDocument({
+import 'dart:typed_data';
+
+import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+
+class GuestReportData {
+  const GuestReportData({
+    required this.title,
+    required this.scope,
+    required this.participantNames,
+    required this.exportedAt,
+    required this.questions,
+  });
+
+  final String title;
+  final String scope;
+  final List<String> participantNames;
+  final DateTime exportedAt;
+  final List<GuestReportQuestion> questions;
+}
+
+class GuestReportQuestion {
+  const GuestReportQuestion({
+    required this.path,
+    required this.text,
+    required this.answers,
+    this.triggerParticipant,
+    this.triggerAnswer,
+  });
+
+  final String path;
+  final String text;
+  final List<GuestReportAnswer> answers;
+  final String? triggerParticipant;
+  final String? triggerAnswer;
+}
+
+class GuestReportAnswer {
+  const GuestReportAnswer({
+    required this.participantName,
+    required this.body,
+    required this.followUps,
+  });
+
+  final String participantName;
+  final String body;
+  final List<GuestReportQuestion> followUps;
+}
+
+GuestReportData composeGuestReport({
   required Map<String, dynamic> session,
   required bool allParticipants,
   required String? participantId,
-  required DateTime generatedAt,
+  required DateTime exportedAt,
 }) {
   final participants = (session['participants'] as List? ?? const [])
       .whereType<Map>()
@@ -16,25 +66,22 @@ String buildGuestReportDocument({
   };
   String nameFor(String? id) => participantNames[id] ?? 'Participant';
 
-  List<String> renderQuestion(
+  List<GuestReportQuestion> renderQuestion(
     Map<String, dynamic> question, {
     required String path,
     required String? ownerId,
     required String? triggerAnswerBody,
     required bool nested,
   }) {
-    final questionId =
+    final targetId =
         question['target_participant_id'] ?? participants.firstOrNull?['id'];
     if (!allParticipants &&
         !nested &&
         question['scope'] == 'participant' &&
-        questionId != participantId) {
+        targetId != participantId) {
       return const [];
     }
-    final questionText = question['text'] as String? ?? '';
-    final indent = (path.split('.').length - 1) * 10;
-    final boundedIndent = indent.clamp(0, 28);
-    final answers = (question['answers'] as List? ?? const [])
+    final existingAnswers = (question['answers'] as List? ?? const [])
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
@@ -42,12 +89,12 @@ String buildGuestReportDocument({
         ? [ownerId].whereType<String>().toList()
         : allParticipants
         ? question['scope'] == 'participant'
-            ? [questionId].whereType<String>().toList()
+            ? [targetId].whereType<String>().toList()
             : [
                 ...participants
                     .map((participant) => participant['id'])
                     .whereType<String>(),
-                ...answers
+                ...existingAnswers
                     .map((answer) => answer['participant_id'])
                     .whereType<String>()
                     .where(
@@ -58,58 +105,55 @@ String buildGuestReportDocument({
               ]
         : [participantId].whereType<String>().toList();
     if (targetIds.isEmpty) targetIds.add('');
-    final visibleAnswers = [
-      for (final targetId in targetIds)
-        answers.firstWhere(
-          (answer) => answer['participant_id'] == targetId,
-          orElse: () => {
-            'participant_id': targetId,
-            'body': '',
-            'follow_ups': const [],
-          },
-        ),
-    ];
-    final triggerText = triggerAnswerBody?.trim().isNotEmpty == true
-        ? _escapeHtml(triggerAnswerBody!)
-        : 'Unanswered.';
-    final html = <String>[
-      '<section class="question${nested ? ' follow-up' : ''}" '
-      'style="margin-left: ${boundedIndent}px">',
-      '<p class="path">Path ${_escapeHtml(path)}${nested ? ' · Follow-up' : ''}</p>',
-      if (ownerId != null)
-        '<p class="context">Triggered by ${_escapeHtml(nameFor(ownerId))}: '
-        '$triggerText</p>',
-      '<h2>${_escapeHtml(questionText)}</h2>',
-    ];
-    for (final answer in visibleAnswers) {
-      final answerOwnerId = answer['participant_id'] as String?;
-      final body = answer['body'] as String? ?? '';
-      html.add(
-        '<article class="answer">'
-        '<h3>Answer — ${_escapeHtml(nameFor(answerOwnerId))}</h3>'
-        '<p>${body.trim().isEmpty ? '<span class="empty">Unanswered.</span>' : _escapeHtml(body)}</p>'
-        '</article>',
+
+    final answers = <GuestReportAnswer>[];
+    for (final target in targetIds) {
+      final answer = existingAnswers.firstWhere(
+        (item) => item['participant_id'] == target,
+        orElse: () => {
+          'participant_id': target,
+          'body': '',
+          'follow_ups': const [],
+        },
       );
-      for (final (index, followUp) in (answer['follow_ups'] as List? ?? const []).indexed) {
-        if (followUp is Map) {
-          html.addAll(
+      final answerBody = answer['body'] as String? ?? '';
+      final followUps = <GuestReportQuestion>[];
+      for (final (index, item) in (answer['follow_ups'] as List? ?? const [])
+          .indexed) {
+        if (item is Map) {
+          followUps.addAll(
             renderQuestion(
-              Map<String, dynamic>.from(followUp),
+              Map<String, dynamic>.from(item),
               path: '$path.${index + 1}',
-              ownerId: answerOwnerId,
-              triggerAnswerBody: body,
+              ownerId: answer['participant_id'] as String?,
+              triggerAnswerBody: answerBody,
               nested: true,
             ),
           );
         }
       }
+      answers.add(
+        GuestReportAnswer(
+          participantName: nameFor(answer['participant_id'] as String?),
+          body: answerBody,
+          followUps: followUps,
+        ),
+      );
     }
-    html.add('</section>');
-    return html;
+    return [
+      GuestReportQuestion(
+        path: path,
+        text: question['text'] as String? ?? '',
+        answers: answers,
+        triggerParticipant: ownerId == null ? null : nameFor(ownerId),
+        triggerAnswer: triggerAnswerBody,
+      ),
+    ];
   }
 
-  final questions = <String>[];
-  for (final (index, question) in (session['questions'] as List? ?? const []).indexed) {
+  final questions = <GuestReportQuestion>[];
+  for (final (index, question) in (session['questions'] as List? ?? const [])
+      .indexed) {
     if (question is Map) {
       questions.addAll(
         renderQuestion(
@@ -122,74 +166,266 @@ String buildGuestReportDocument({
       );
     }
   }
-  final scope = allParticipants
-      ? 'All participants'
-      : 'Selected participant — ${_escapeHtml(nameFor(participantId))}';
   final reportParticipants = allParticipants
       ? participants
       : participants
             .where((participant) => participant['id'] == participantId)
             .toList();
-  final participantList = reportParticipants
-      .map((participant) => _escapeHtml(participant['name'] as String? ?? 'Participant'))
+  return GuestReportData(
+    title: session['title'] as String? ?? 'Interact session',
+    scope: allParticipants
+        ? 'All participants'
+        : 'Selected participant — ${nameFor(participantId)}',
+    participantNames: [
+      for (final participant in reportParticipants)
+        participant['name'] as String? ?? 'Participant',
+    ],
+    exportedAt: exportedAt.toUtc(),
+    questions: questions,
+  );
+}
+
+Future<Uint8List> buildGuestReportPdf(GuestReportData report) async {
+  final fontBytes = await rootBundle.load('assets/fonts/DejaVuSans.ttf');
+  final font = pw.Font.ttf(fontBytes);
+  final pdf = pw.Document(
+    title: report.title,
+    subject: report.scope,
+    creator: 'IntQAFlow Interact',
+  );
+  final content = <pw.Widget>[
+    pw.Text(
+      report.title,
+      style: pw.TextStyle(font: font, fontSize: 22, color: PdfColors.blueGrey900),
+    ),
+    pw.SizedBox(height: 12),
+    pw.Text('Report scope: ${report.scope}', style: pw.TextStyle(font: font)),
+    pw.Text(
+      'Participants: ${report.participantNames.isEmpty ? 'Not selected' : report.participantNames.join(', ')}',
+      style: pw.TextStyle(font: font),
+    ),
+    pw.Text(
+      'Exported: ${report.exportedAt.toIso8601String()}',
+      style: pw.TextStyle(font: font),
+    ),
+    pw.SizedBox(height: 14),
+  ];
+
+  void addQuestion(GuestReportQuestion question, {required int depth}) {
+    final indent = (depth * 14).clamp(0, 42).toDouble();
+    content.add(
+      pw.Container(
+        margin: pw.EdgeInsets.only(left: indent, top: 12, bottom: 6),
+        padding: const pw.EdgeInsets.only(top: 8),
+        decoration: const pw.BoxDecoration(
+          border: pw.Border(top: pw.BorderSide(color: PdfColors.blueGrey200)),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              'Path ${question.path}${depth > 0 ? ' · Follow-up' : ''}',
+              style: pw.TextStyle(
+                font: font,
+                fontSize: 9,
+                color: PdfColors.blueGrey600,
+              ),
+            ),
+            if (question.triggerParticipant != null)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(top: 4),
+                child: pw.Text(
+                  'Follow-up prompted by ${question.triggerParticipant}: '
+                  '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
+                  style: pw.TextStyle(
+                    font: font,
+                    fontSize: 9,
+                    color: PdfColors.blueGrey600,
+                  ),
+                ),
+              ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 4, bottom: 6),
+              child: pw.Text(
+                question.text,
+                style: pw.TextStyle(font: font, fontSize: 15),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (question.answers.isEmpty) {
+      content.add(_pdfAnswer(font, 'Answer', 'Unanswered.', indent));
+      return;
+    }
+    for (final answer in question.answers) {
+      content.add(
+        _pdfAnswer(
+          font,
+          'Answer — ${answer.participantName}',
+          answer.body.trim().isEmpty ? 'Unanswered.' : answer.body,
+          indent,
+        ),
+      );
+      for (final followUp in answer.followUps) {
+        addQuestion(followUp, depth: depth + 1);
+      }
+    }
+  }
+
+  if (report.questions.isEmpty) {
+    content.add(
+      pw.Text('No questions are available in this report.', style: pw.TextStyle(font: font)),
+    );
+  } else {
+    for (final question in report.questions) {
+      addQuestion(question, depth: 0);
+    }
+  }
+  pdf.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(42, 42, 42, 48),
+      theme: pw.ThemeData.withFont(base: font, bold: font),
+      footer: (context) => pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text(
+          '${context.pageNumber} / ${context.pagesCount}',
+          style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey700),
+        ),
+      ),
+      build: (_) => content,
+    ),
+  );
+  return pdf.save();
+}
+
+pw.Widget _pdfAnswer(
+  pw.Font font,
+  String heading,
+  String body,
+  double indent,
+) => pw.Container(
+  margin: pw.EdgeInsets.only(left: indent, top: 4, bottom: 4),
+  padding: const pw.EdgeInsets.all(10),
+  decoration: pw.BoxDecoration(
+    color: PdfColors.grey100,
+    border: const pw.Border(
+      left: pw.BorderSide(color: PdfColors.blue, width: 3),
+    ),
+  ),
+  child: pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.Text(heading, style: pw.TextStyle(font: font, fontSize: 11)),
+      pw.SizedBox(height: 4),
+      pw.Text(body, style: pw.TextStyle(font: font, fontSize: 10)),
+    ],
+  ),
+);
+
+String guestReportFilename(GuestReportData report) {
+  final safeTitle = report.title
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  final date = report.exportedAt.toUtc().toIso8601String().substring(0, 10);
+  return '${safeTitle.isEmpty ? 'interact-report' : safeTitle}-$date.pdf';
+}
+
+String buildGuestReportDocument({
+  required Map<String, dynamic> session,
+  required bool allParticipants,
+  required String? participantId,
+  required DateTime generatedAt,
+}) {
+  final report = composeGuestReport(
+    session: session,
+    allParticipants: allParticipants,
+    participantId: participantId,
+    exportedAt: generatedAt,
+  );
+  String answerHtml(GuestReportAnswer answer, String path) {
+    final body = answer.body.trim().isEmpty
+        ? '<span class="empty">Unanswered.</span>'
+        : _escapeHtml(answer.body);
+    final children = <String>[
+      '<article class="answer"><h3>Answer — '
+          '${_escapeHtml(answer.participantName)}</h3><p>$body</p></article>',
+    ];
+    for (final followUp in answer.followUps) {
+      children.add(questionHtml(followUp, depth: path.split('.').length));
+    }
+    return children.join('\n');
+  }
+
+  String questionHtml(GuestReportQuestion question, {int depth = 0}) {
+    final indent = (depth * 10).clamp(0, 28);
+    final attribution = question.triggerParticipant == null
+        ? ''
+        : '<p class="context">Follow-up prompted by '
+              '${_escapeHtml(question.triggerParticipant!)}: '
+              '${question.triggerAnswer?.trim().isNotEmpty == true ? _escapeHtml(question.triggerAnswer!) : 'Unanswered.'}</p>';
+    final answers = question.answers.isEmpty
+        ? '<article class="answer"><h3>Answer</h3><p class="empty">Unanswered.</p></article>'
+        : question.answers
+              .map((answer) => answerHtml(answer, question.path))
+              .join('\n');
+    return '''
+<section class="question" style="margin-left: ${indent}px">
+  <p class="path">Path ${_escapeHtml(question.path)}</p>
+  $attribution
+  <h2>${_escapeHtml(question.text)}</h2>
+  $answers
+</section>''';
+  }
+
+  final participantList = report.participantNames
+      .map(_escapeHtml)
       .join(', ');
-  final title = session['title'] as String? ?? 'Interact session';
+  final questions = report.questions
+      .map((question) => questionHtml(question))
+      .join('\n');
   return '''<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>${_escapeHtml(title)} — Interact report</title>
+  <title>${_escapeHtml(report.title)} — Interact report</title>
   <style>
     :root { font-family: Arial, Helvetica, sans-serif; color: #202124; }
     body { margin: 0; background: #f1f3f4; }
-    .toolbar {
-      position: sticky; top: 0; display: flex; gap: 12px;
-      padding: 12px 24px; background: #fff; border-bottom: 1px solid #dadce0;
-    }
+    .toolbar { position: sticky; top: 0; padding: 12px 24px; background: #fff; }
     button { padding: 9px 16px; font: inherit; cursor: pointer; }
     main { max-width: 850px; margin: 24px auto; padding: 40px; background: #fff; }
     .metadata { line-height: 1.6; overflow-wrap: anywhere; }
     .question { margin-top: 24px; padding-top: 16px; border-top: 1px solid #dadce0; }
-    .question.follow-up { border-top-style: dashed; }
-    .question h2 { overflow-wrap: anywhere; }
-    .path, .context { color: #5f6368; font-size: 13px; overflow-wrap: anywhere; }
-    .answer {
-      margin: 12px 0; padding: 12px 16px; border-left: 3px solid #365f9f;
-      background: #f8f9fa; break-inside: avoid;
-    }
-    .answer p { margin: 0; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .question h2, .answer p { overflow-wrap: anywhere; white-space: pre-wrap; }
+    .path, .context { color: #5f6368; font-size: 13px; }
+    .answer { margin: 12px 0; padding: 12px 16px; border-left: 3px solid #365f9f; background: #f8f9fa; }
+    .answer p { line-height: 1.55; }
     .empty { color: #5f6368; font-style: italic; }
     @page { size: auto; margin: 18mm; }
-    @media print {
-      body { background: #fff; }
-      .toolbar { display: none; }
-      main { max-width: none; margin: 0; padding: 0; }
-    }
-    @media screen and (max-width: 600px) {
-      main { margin: 0; padding: 24px 18px; }
-      .toolbar { padding: 10px 12px; }
-    }
+    @media print { body { background: #fff; } .toolbar { display: none; } main { max-width: none; margin: 0; padding: 0; } }
+    @media screen and (max-width: 600px) { main { margin: 0; padding: 24px 18px; } }
   </style>
 </head>
 <body>
-  <nav class="toolbar" aria-label="Report actions">
-    <button type="button" onclick="window.print()">Print / Save PDF</button>
+  <nav class="toolbar" aria-label="PDF fallback">
+    <button type="button" onclick="window.print()">Print / Save PDF fallback</button>
     <button type="button" onclick="window.close()">Close preview</button>
   </nav>
   <main>
-    <h1>${_escapeHtml(title)}</h1>
+    <h1>${_escapeHtml(report.title)}</h1>
     <section class="metadata">
       <div><strong>Storage:</strong> Private on this device</div>
-      <div><strong>Report scope:</strong> ${_escapeHtml(scope)}</div>
+      <div><strong>Report scope:</strong> ${_escapeHtml(report.scope)}</div>
       <div><strong>Participants:</strong> $participantList</div>
-      <div><strong>Generated at (UTC):</strong>
-        ${_escapeHtml(generatedAt.toUtc().toIso8601String())}</div>
+      <div><strong>Exported:</strong> ${_escapeHtml(report.exportedAt.toIso8601String())}</div>
     </section>
-    ${questions.isEmpty
-      ? '<p class="empty">No questions are available in this report.</p>'
-      : questions.join('\n')}
+    ${questions.isEmpty ? '<p class="empty">No questions are available in this report.</p>' : questions}
   </main>
 </body>
 </html>''';
