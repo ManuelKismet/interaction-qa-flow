@@ -34,11 +34,18 @@ with sync_playwright() as p:
             session.wait_for()
             session.click()
             page.get_by_role("textbox",name="Prepared question",exact=True).fill("How does this layout handle a longer prepared question on a small screen?")
+            page.wait_for_timeout(800)
             page.get_by_role("button",name="Add shared question",exact=True).click()
+            page.wait_for_timeout(800)
+            for _ in range(5):
+                if page.get_by_role("textbox",name="Local answer",exact=True).count(): break
+                page.mouse.wheel(0,300); page.wait_for_timeout(400)
             answer=page.get_by_role("textbox",name="Local answer",exact=True)
             answer.first.fill("Local layout sample only. This content is not uploaded or shared.")
             page.get_by_role("textbox",name="Follow-up question",exact=True).first.fill("Can the participant see the parent answer and follow-up context?")
+            page.wait_for_timeout(800)
             page.get_by_role("button",name="Add answer-owned follow-up",exact=True).first.click()
+            page.wait_for_timeout(800)
             page.wait_for_timeout(500); capture("interact-editor")
             page.get_by_role("button",name="Download / Share PDF",exact=True).click()
             page.get_by_role("button",name="Selected participant",exact=True).click()
