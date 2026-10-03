@@ -64,8 +64,9 @@ with sync_playwright() as p:
             page.get_by_role("button",name="Save as local template",exact=True).evaluate("(el)=>el.click()")
             page.wait_for_timeout(500); capture("template-dialog")
             row["template_dialog_text"]=page.locator("body").inner_text()[-3500:]
-            page.keyboard.press("Escape")
-            page.get_by_role("button",name="Account",exact=True).evaluate("(el)=>el.click()")
+            page.get_by_role("button",name="Cancel",exact=True).evaluate("(el)=>el.click()")
+            page.wait_for_timeout(500)
+            page.get_by_role("button",name="Account",exact=False).evaluate("(el)=>el.click()")
             page.wait_for_timeout(500); capture("account-menu")
             row["account_menu_text"]=page.locator("body").inner_text()[-3500:]
             page.get_by_role("menuitem",name="Sign in",exact=True).evaluate("(el)=>el.click()")
