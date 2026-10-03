@@ -4,9 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 
 class SignInPage extends ConsumerStatefulWidget {
-  const SignInPage({this.linkGuestIdentity = false, super.key});
+  const SignInPage({
+    this.linkGuestIdentity = false,
+    this.createAccount = false,
+    super.key,
+  });
 
   final bool linkGuestIdentity;
+  final bool createAccount;
 
   @override
   ConsumerState<SignInPage> createState() => _SignInPageState();
@@ -24,7 +29,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   @override
   void initState() {
     super.initState();
-    _createAccountMode = widget.linkGuestIdentity;
+    _createAccountMode = widget.linkGuestIdentity || widget.createAccount;
   }
 
   @override
@@ -44,16 +49,49 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       final auth = ref.read(firebaseAuthProvider);
       if (_resetMode) {
         await auth.sendPasswordResetEmail(email: _email.text.trim());
+        if (!mounted) return;
         setState(() {
           _message = 'If that account exists, a reset email has been sent.';
         });
-      } else if (_createAccountMode && auth.currentUser?.isAnonymous == true) {
+      } else if (_createAccountMode && widget.linkGuestIdentity) {
+        final user = auth.currentUser;
+        if (user?.isAnonymous != true) {
+          setState(() {
+            _error =
+                'The guest identity is no longer available. Sign in or create a separate account instead.';
+          });
+          return;
+        }
         final credential = EmailAuthProvider.credential(
           email: _email.text.trim(),
           password: _password.text,
         );
-        await auth.currentUser!.linkWithCredential(credential);
+        await user!.linkWithCredential(credential);
       } else if (_createAccountMode) {
+        if (auth.currentUser?.isAnonymous == true) {
+          final switchIdentity = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Create a separate account?'),
+              content: const Text(
+                'This creates a new signed-in identity and does not transfer '
+                'the current guest group membership. Link guest recovery instead '
+                'to keep using this identity. Local work stays on this device.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Keep guest identity'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Create separate account'),
+                ),
+              ],
+            ),
+          );
+          if (switchIdentity != true || !mounted) return;
+        }
         await auth.createUserWithEmailAndPassword(
           email: _email.text.trim(),
           password: _password.text,
@@ -81,7 +119,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               ],
             ),
           );
-          if (switchIdentity != true) return;
+          if (switchIdentity != true || !mounted) return;
         }
         await auth.signInWithEmailAndPassword(
           email: _email.text.trim(),
@@ -137,8 +175,10 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                       _resetMode
                           ? 'Reset password'
                           : _createAccountMode
-                              ? 'Create or link an account'
-                              : 'Sign in to IntQAFlow',
+                            ? widget.linkGuestIdentity
+                                ? 'Link guest recovery'
+                                : 'Create an account'
+                            : 'Sign in to IntQAFlow',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: 20),
@@ -179,9 +219,10 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                             : _resetMode
                                 ? 'Send reset email'
                                 : _createAccountMode
-                                    ? ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true
-                                        ? 'Link recovery account'
-                                        : 'Create account'
+                                    ? widget.linkGuestIdentity &&
+                                              ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true
+                                          ? 'Link guest recovery'
+                                          : 'Create account'
                                     : 'Sign in',
                       ),
                     ),

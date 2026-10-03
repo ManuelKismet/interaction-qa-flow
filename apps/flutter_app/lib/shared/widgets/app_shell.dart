@@ -74,9 +74,61 @@ class AppShell extends ConsumerWidget {
     context.go(destinations[index].path);
   }
 
+  Widget _accountMenu(
+    WidgetRef ref,
+    ActiveMembership membership, {
+    bool showLabel = true,
+  }) =>
+      PopupMenuButton<String>(
+        tooltip: 'Account',
+        onSelected: (value) {
+          if (value == 'sign-out') {
+            ref.read(firebaseAuthProvider).signOut();
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            enabled: false,
+            child: SizedBox(
+              width: 260,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    membership.displayName,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(membership.email),
+                  Text('Organisation workspace · ${membership.role}'),
+                  const Text(
+                    'Guest-group roles are separate from organisation roles.',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: showLabel
+              ? const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.account_circle_outlined),
+                    SizedBox(width: 4),
+                    Text('Account'),
+                  ],
+                )
+              : const Icon(Icons.account_circle_outlined),
+          ),
+      );
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(currentMembershipProvider).value?.role ?? '';
+    final membership = ref.watch(currentMembershipProvider).value;
+    final role = membership?.role ?? '';
     final destinations = _destinations(role).where((destination) {
       return destination.path != '/review-queue' ||
           {'admin', 'answer_owner'}.contains(role);
@@ -91,11 +143,8 @@ class AppShell extends ConsumerWidget {
               backgroundColor: const Color(0xFFFFFBF4),
               title: const Text('IntQAFlow'),
               actions: [
-                IconButton(
-                  tooltip: 'Sign out',
-                  onPressed: () => ref.read(firebaseAuthProvider).signOut(),
-                  icon: const Icon(Icons.logout),
-                ),
+                if (membership != null)
+                  _accountMenu(ref, membership, showLabel: true),
               ],
             ),
       body: Row(
@@ -113,11 +162,13 @@ class AppShell extends ConsumerWidget {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                 ),
               ),
-              trailing: IconButton(
-                tooltip: 'Sign out',
-                onPressed: () => ref.read(firebaseAuthProvider).signOut(),
-                icon: const Icon(Icons.logout),
-              ),
+              trailing: membership == null
+                  ? null
+                  : _accountMenu(
+                      ref,
+                      membership,
+                      showLabel: MediaQuery.sizeOf(context).width >= 1100,
+                    ),
               destinations: [
                 for (final destination in destinations)
                   NavigationRailDestination(

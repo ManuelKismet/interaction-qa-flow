@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,11 +23,19 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
   const GuestWorkspacePage({
     required this.firebaseReady,
     this.sharedIdentityActive = false,
+    this.accountUser,
+    this.membershipStatus,
+    this.authUnavailable = false,
+    this.onRetryAccount,
     super.key,
   });
 
   final bool firebaseReady;
   final bool sharedIdentityActive;
+  final User? accountUser;
+  final AccountMembershipStatus? membershipStatus;
+  final bool authUnavailable;
+  final VoidCallback? onRetryAccount;
 
   @override
   ConsumerState<GuestWorkspacePage> createState() => _GuestWorkspacePageState();
@@ -129,14 +138,45 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     }
   }
 
-  Future<void> _openAccountAccess() async {
-    final linkGuestIdentity =
-        ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true;
+  Future<void> _openSignIn({
+    bool createAccount = false,
+    bool linkGuest = false,
+  }) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => SignInPage(linkGuestIdentity: linkGuestIdentity),
+        builder: (_) => SignInPage(
+          createAccount: createAccount,
+          linkGuestIdentity: linkGuest,
+        ),
       ),
     );
+  }
+
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: Text(
+          widget.sharedIdentityActive
+              ? 'This signs out of the shared guest identity. You may lose access to its groups unless recovery is linked or group administration is transferred. Local work stays on this device.'
+              : 'Your local guest work stays on this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await ref.read(firebaseAuthProvider).signOut();
+    }
   }
 
   Future<void> _clearLocalCopy() async {
@@ -169,6 +209,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
+    final existingGuestGroups = _hasSignedInNonGuestUser
+        ? ref.watch(currentGuestGroupsProvider).value ?? const []
+        : const <Map<String, dynamic>>[];
+    final canOpenGuestGroups =
+        widget.sharedIdentityActive || existingGuestGroups.isNotEmpty;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -179,7 +224,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
             overflow: TextOverflow.ellipsis,
           ),
           actions: [
-            if (widget.sharedIdentityActive)
+            if (canOpenGuestGroups)
               IconButton(
                 tooltip: 'Shared guest groups',
                 onPressed: () => Navigator.of(context).push<void>(
@@ -195,11 +240,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                 onPressed: _startSharedGuestIdentity,
                 icon: const Icon(Icons.cloud_upload_outlined),
               ),
-            IconButton(
-              tooltip: 'Sign in or create account',
-              onPressed: widget.firebaseReady ? _openAccountAccess : null,
-              icon: const Icon(Icons.login),
-            ),
+            _accountMenu(),
             PopupMenuButton<String>(
               tooltip: 'Guest workspace options',
               onSelected: (value) {
@@ -235,6 +276,25 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                     sharedIdentityActive: widget.sharedIdentityActive,
                     saveStatus: _saveStatus,
                   ),
+                  if (widget.authUnavailable)
+                    const _AccountMembershipNotice(
+                      text: 'Account status could not be verified. This workspace is local; organisation access is not assumed.',
+                    ),
+                  if (widget.membershipStatus ==
+                      AccountMembershipStatus.noMembership)
+                    const _AccountMembershipNotice(
+                      text: 'This signed-in account has no organisation membership. Creating an account does not enrol it. Guest groups are separate; only existing group access applies.',
+                    ),
+                  if (widget.membershipStatus ==
+                      AccountMembershipStatus.inactive)
+                    const _AccountMembershipNotice(
+                      text: 'This organisation membership is inactive. You can continue local work; contact your organisation administrator about access.',
+                    ),
+                  if (widget.membershipStatus ==
+                      AccountMembershipStatus.unavailable)
+                    const _AccountMembershipNotice(
+                      text: 'Organisation membership could not be verified. You can continue local work, but no organisation access is assumed.',
+                    ),
                   if (widget.firebaseReady &&
                       _hasSignedInNonGuestUser &&
                       !widget.sharedIdentityActive)
@@ -549,10 +609,126 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   }
 
   bool get _hasSignedInNonGuestUser {
-    final user = ref.read(firebaseAuthProvider).currentUser;
+    final user = _currentAccountUser;
     return user != null && !user.isAnonymous;
   }
 
+  User? get _currentAccountUser {
+    if (widget.accountUser != null) return widget.accountUser;
+    if (!widget.firebaseReady) return null;
+    return ref.read(firebaseAuthProvider).currentUser;
+  }
+
+  Widget _accountMenu() {
+    final user = _currentAccountUser;
+    final email = user?.email;
+    final registered = user != null && !user.isAnonymous;
+    final String stateText;
+    final String explanation;
+    if (widget.authUnavailable) {
+      stateText = 'Account status unavailable';
+      explanation =
+          'Sign-in status could not be checked. No organisation access is assumed; local work remains on this device.';
+    } else if (registered) {
+      stateText = switch (widget.membershipStatus) {
+        AccountMembershipStatus.noMembership => 'No organisation membership',
+        AccountMembershipStatus.inactive => 'Organisation membership inactive',
+        AccountMembershipStatus.unavailable =>
+          'Organisation membership unavailable',
+        _ => 'Registered account',
+      };
+      explanation = switch (widget.membershipStatus) {
+        AccountMembershipStatus.noMembership =>
+          'An account does not create an organisation membership. Guest groups are separate; only existing group access applies.',
+        AccountMembershipStatus.inactive =>
+          'Organisation access is inactive. Local work remains on this device.',
+        AccountMembershipStatus.unavailable =>
+          'Organisation access could not be verified. No organisation access is being assumed.',
+        _ => 'Organisation roles and guest-group roles are separate.',
+      };
+    } else if (widget.sharedIdentityActive) {
+      stateText = 'Shared guest identity';
+      explanation =
+          'Only work explicitly shared with a group is online. Guest groups do not grant organisation access.';
+    } else {
+      stateText = 'Local guest workspace';
+      explanation =
+          'Solo work stays in this browser until you explicitly share it.';
+    }
+
+    return PopupMenuButton<String>(
+      tooltip: 'Account',
+      onSelected: (action) {
+        if (action == 'sign-in') _openSignIn();
+        else if (action == 'create-account') {
+          _openSignIn(createAccount: true);
+        } else if (action == 'link-guest') {
+          _openSignIn(linkGuest: true);
+        } else if (action == 'retry-account') {
+          widget.onRetryAccount?.call();
+        } else if (action == 'sign-out') {
+          _signOut();
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          enabled: false,
+          child: SizedBox(
+            width: 260,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  stateText,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (email != null) Text(email),
+                Text(explanation),
+              ],
+            ),
+          ),
+        ),
+        if (!registered && widget.firebaseReady) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 'sign-in', child: Text('Sign in')),
+          const PopupMenuItem(
+            value: 'create-account',
+            child: Text('Create account'),
+          ),
+          if (widget.sharedIdentityActive)
+            const PopupMenuItem(
+              value: 'link-guest',
+              child: Text('Link guest recovery'),
+            ),
+        ],
+        if (widget.onRetryAccount != null) ...[
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'retry-account',
+              child: Text('Retry account check'),
+            ),
+        ],
+        if (user != null) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: 'sign-out',
+            child: Text('Sign out'),
+          ),
+        ],
+      ],
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.account_circle_outlined),
+            SizedBox(width: 4),
+            Text('Account'),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _GuestNotice extends StatelessWidget {
@@ -574,6 +750,20 @@ class _GuestNotice extends StatelessWidget {
           ? 'Guest-group membership is available for this Firebase identity. Local drafts stay on this device; only work explicitly shared with a group is online. $saveStatus'
           : 'Stored in this browser only. Clearing browser data or losing this device can erase it. $saveStatus',
     ),
+  );
+}
+
+class _AccountMembershipNotice extends StatelessWidget {
+  const _AccountMembershipNotice({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    child: Text(text),
   );
 }
 

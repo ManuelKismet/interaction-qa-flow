@@ -99,6 +99,8 @@ async def test_missing_and_invalid_identity_tokens_fail_closed(
 
     missing = await client.get("/api/v1/auth/me")
     assert missing.status_code == 401
+    missing_account_state = await client.get("/api/v1/account/state")
+    assert missing_account_state.status_code == 401
     unauthenticated_api = await client.get("/api/v1/teams")
     assert unauthenticated_api.status_code == 401
     bootstrap = await client.post(
@@ -117,6 +119,11 @@ async def test_missing_and_invalid_identity_tokens_fail_closed(
         headers={"Authorization": bearer_header()},
     )
     assert malformed.status_code == 401
+    malformed_account_state = await client.get(
+        "/api/v1/account/state",
+        headers={"Authorization": bearer_header()},
+    )
+    assert malformed_account_state.status_code == 401
 
     monkeypatch.setattr(
         dependencies,
@@ -182,6 +189,65 @@ async def test_unmapped_and_inactive_firebase_users_are_rejected(
 
 
 @pytest.mark.asyncio
+async def test_account_state_distinguishes_guest_unmapped_inactive_and_active(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    use_real_identity_dependencies()
+    monkeypatch.setattr(
+        dependencies,
+        "verify_id_token",
+        lambda *_: {
+            **valid_claims(),
+            "firebase": {"sign_in_provider": "password"},
+        },
+    )
+    headers = {"Authorization": bearer_header()}
+
+    unmapped = await client.get("/api/v1/account/state", headers=headers)
+    assert unmapped.status_code == 200
+    assert unmapped.json() == {"status": "no_membership"}
+    forged_identity = await client.get(
+        "/api/v1/account/state",
+        headers={
+            **headers,
+            "X-User-ID": str(uuid4()),
+            "X-Organisation-ID": str(uuid4()),
+            "X-User-Role": "admin",
+        },
+    )
+    assert forged_identity.status_code == 400
+
+    await seed_membership(session_factory, status="inactive")
+    inactive = await client.get("/api/v1/account/state", headers=headers)
+    assert inactive.status_code == 200
+    assert inactive.json() == {"status": "inactive"}
+
+    async with session_factory() as session:
+        user = await session.scalar(
+            select(User).where(User.email == "synthetic@example.invalid")
+        )
+        user.status = "active"
+        await session.commit()
+
+    active = await client.get("/api/v1/account/state", headers=headers)
+    assert active.status_code == 200
+    assert active.json() == {"status": "active"}
+
+    monkeypatch.setattr(
+        dependencies,
+        "verify_id_token",
+        lambda *_: {
+            **valid_claims(),
+            "firebase": {"sign_in_provider": "anonymous"},
+        },
+    )
+    guest = await client.get("/api/v1/account/state", headers=headers)
+    assert guest.status_code == 200
+    assert guest.json() == {"status": "shared_guest"}
+
+
+@pytest.mark.asyncio
 async def test_app_check_observation_allows_missing_but_rejects_invalid_tokens(
     app_client, monkeypatch
 ) -> None:
@@ -235,12 +301,22 @@ async def test_app_check_enforcement_rejects_missing_and_wrong_app(
 
     missing = await client.get("/api/v1/auth/me", headers=headers)
     assert missing.status_code == 401
+    missing_account_state = await client.get(
+        "/api/v1/account/state",
+        headers=headers,
+    )
+    assert missing_account_state.status_code == 401
 
     wrong_app = await client.get(
         "/api/v1/auth/me",
         headers={**headers, "X-Firebase-AppCheck": "validly-signed-wrong-app"},
     )
     assert wrong_app.status_code == 401
+    wrong_app_state = await client.get(
+        "/api/v1/account/state",
+        headers={**headers, "X-Firebase-AppCheck": "validly-signed-wrong-app"},
+    )
+    assert wrong_app_state.status_code == 401
 
     monkeypatch.setattr(
         dependencies,

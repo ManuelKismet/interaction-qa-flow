@@ -85,7 +85,9 @@ Dio createApiClient(
         try {
           final idToken = await tokenSource.idToken(forceRefresh: true);
           if (idToken == null) {
-            await tokenSource.signOut();
+            if (options.uri.path != '/api/v1/account/state') {
+              await tokenSource.signOut();
+            }
             handler.next(error);
             return;
           }
@@ -95,7 +97,10 @@ Dio createApiClient(
           handler.resolve(response);
         } on DioException catch (retryError) {
           if (retryError.response?.statusCode == 401 &&
-              options.uri.path != '/api/v1/auth/me') {
+              !{
+                '/api/v1/auth/me',
+                '/api/v1/account/state',
+              }.contains(options.uri.path)) {
             await tokenSource.signOut();
           }
           handler.next(retryError);
