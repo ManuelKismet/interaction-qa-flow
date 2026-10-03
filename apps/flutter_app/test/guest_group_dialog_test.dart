@@ -19,6 +19,9 @@ class _TestFirebaseAuth implements FirebaseAuth {
 
 class _TestUser implements User {
   @override
+  String get uid => 'test-anonymous-uid';
+
+  @override
   bool get isAnonymous => true;
 
   @override
@@ -106,7 +109,9 @@ void main() {
           isTrue,
         );
 
-        await tester.tap(find.text('Done'));
+        await tester.tap(
+          find.widgetWithText(FilledButton, 'Done').last,
+        );
         await tester.pump(const Duration(milliseconds: 300));
         expect(find.byType(AlertDialog), findsNothing);
 

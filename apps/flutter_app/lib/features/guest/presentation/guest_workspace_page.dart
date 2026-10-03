@@ -1885,100 +1885,113 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _openEntry(Map<String, dynamic> entry) async {
     final groupId = _groupId;
     if (groupId == null) return;
+    var entryDialogActive = true;
     await showDialog<void>(
       context: context,
-      builder: (entryDialogContext) => AlertDialog(
-        title: Text(entry['title'] as String? ?? 'Guest group entry'),
-        content: SizedBox(
-          width: 700,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              const JsonEncoder.withIndent('  ').convert(entry['data']),
+      builder: (entryDialogContext) => PopScope<void>(
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) entryDialogActive = false;
+        },
+        child: AlertDialog(
+          title: Text(entry['title'] as String? ?? 'Guest group entry'),
+          content: SizedBox(
+            width: 700,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                const JsonEncoder.withIndent('  ').convert(entry['data']),
+              ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => _run(() async {
-              final result = await _repository.exportEntry(
-                groupId: groupId,
-                entryId: entry['id'] as String,
-              );
-              if (entryDialogContext.mounted &&
-                  (ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
+          actions: [
+            TextButton(
+              onPressed: () => _run(() async {
+                final result = await _repository.exportEntry(
+                  groupId: groupId,
+                  entryId: entry['id'] as String,
+                );
+                if (entryDialogActive &&
+                    entryDialogContext.mounted &&
+                    (ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
+                  await showDialog<void>(
+                    context: entryDialogContext,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Authorized group export'),
+                      content: SizedBox(
+                        width: 640,
+                        child: SingleChildScrollView(
+                          child: SelectableText(const JsonEncoder.withIndent('  ').convert(result)),
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: const JsonEncoder.withIndent('  ').convert(result)));
+                            Navigator.pop(context);
+                          },
+                          child: const Text('Copy export'),
+                        ),
+                        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+                      ],
+                    ),
+                  );
+                }
+              }),
+              child: const Text('Export'),
+            ),
+            TextButton(
+              onPressed: () => _run(() async {
+                final history = await _repository.entryHistory(
+                  groupId: groupId,
+                  entryId: entry['id'] as String,
+                );
+                if (!entryDialogActive ||
+                    !entryDialogContext.mounted ||
+                    !(ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
+                  return;
+                }
                 await showDialog<void>(
                   context: entryDialogContext,
                   builder: (context) => AlertDialog(
-                    title: const Text('Authorized group export'),
+                    title: const Text('Entry revisions'),
                     content: SizedBox(
                       width: 640,
                       child: SingleChildScrollView(
-                        child: SelectableText(const JsonEncoder.withIndent('  ').convert(result)),
+                        child: SelectableText(const JsonEncoder.withIndent('  ').convert(history)),
                       ),
                     ),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: const JsonEncoder.withIndent('  ').convert(result)));
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Copy export'),
-                      ),
-                      FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
-                    ],
+                    actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
                   ),
                 );
-              }
-            }),
-            child: const Text('Export'),
-          ),
-          TextButton(
-            onPressed: () => _run(() async {
-              final history = await _repository.entryHistory(
-                groupId: groupId,
-                entryId: entry['id'] as String,
-              );
-              if (!entryDialogContext.mounted ||
-                  !(ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
-                return;
-              }
-              await showDialog<void>(
-                context: entryDialogContext,
-                builder: (context) => AlertDialog(
-                  title: const Text('Entry revisions'),
-                  content: SizedBox(
-                    width: 640,
-                    child: SingleChildScrollView(
-                      child: SelectableText(const JsonEncoder.withIndent('  ').convert(history)),
-                    ),
-                  ),
-                  actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
-                ),
-              );
-            }),
-            child: const Text('History'),
-          ),
-          if (_canEdit(entry))
-            TextButton(
-              onPressed: () {
-                Navigator.pop(entryDialogContext);
-                _editEntry(entry);
-              },
-              child: const Text('Edit'),
+              }),
+              child: const Text('History'),
             ),
-          if (_canEdit(entry))
-            TextButton(
+            if (_canEdit(entry))
+              TextButton(
+                onPressed: () {
+                  entryDialogActive = false;
+                  Navigator.pop(entryDialogContext);
+                  _editEntry(entry);
+                },
+                child: const Text('Edit'),
+              ),
+            if (_canEdit(entry))
+              TextButton(
+                onPressed: () {
+                  entryDialogActive = false;
+                  Navigator.pop(entryDialogContext);
+                  _deleteEntry(entry);
+                },
+                child: const Text('Delete'),
+              ),
+            FilledButton(
               onPressed: () {
+                entryDialogActive = false;
                 Navigator.pop(entryDialogContext);
-                _deleteEntry(entry);
               },
-              child: const Text('Delete'),
+              child: const Text('Done'),
             ),
-          FilledButton(
-            onPressed: () => Navigator.pop(entryDialogContext),
-            child: const Text('Done'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
