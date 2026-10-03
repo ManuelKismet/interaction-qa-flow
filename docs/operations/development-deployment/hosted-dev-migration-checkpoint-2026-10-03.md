@@ -1,5 +1,7 @@
 # Hosted development migration checkpoint
 
+> Historical migration-session record. For the current candidate, completed account cleanup, latest checks and continuation steps, read [the continuation checkpoint](continuation-checkpoint-2026-10-03.md). Its latest verification supersedes earlier test-state assumptions below; this document retains historical migration evidence.
+
 Recorded 2026-10-03 (Europe/London). The founder explicitly authorized applying migrations and deploying/testing directly in the existing hosted development environment. A disposable local database is optional and is not a prerequisite for this work. Production release remains separate.
 
 ## Environment and ownership
