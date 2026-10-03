@@ -2,6 +2,14 @@
 
 Current application candidate: PR #13, commit `abb224fee28355a671b9cd8828c090bdb86353b1` (Fix signup layout and admin widget test). Keep PR draft. No merge, production release or new deployment occurred during this verification.
 
+## Latest founder sequence and guest start — 3 October 2026 evening
+
+This section supersedes earlier sequencing text: **finish guest feature/function acceptance on the current served dev build while Copilot works; then pick up/review/independently verify Copilot's UI/UX commit; then signed-in user flows; then authorised admin flows.** Do not wait for Copilot before starting guest testing. Physical touch and Safari checks are deferred and are not blockers or claimed passes.
+
+Guest testing began in cloud browser tab21 at https://intqaflow-dev.web.app/. Fresh browser-local session **Guest acceptance 2026-10-03 2142** was created; adding Participant B resulted in two participants. Shared question **Which option did you choose?** was created. B's answer-owned **Why blue?** branch was absent from Participant 1 view and returned when switching to B. Independent answer fields observed, but complete answer retention is unresolved: automated text entry displayed values, then B's field appeared blank on return; distinguish input/coordinate mapping from app persistence before filing a defect. Page reload returned to Knowledge; reopening Interact shows the new two-participant session retained. Full question/answer/branch reload validation remains pending.
+
+No guest group enabled, cloud account created, content shared/deleted, or hosted configuration modified. Current served source SHA remains unidentified. Existing local content preserved. Continue guest Knowledge/search/edit, participant-targeted questions, nested branch answers/autosave/reload, template snapshot/reuse, backup/import, report scope/download and privacy checks. This is partial progress, not guest acceptance completion. Canonical UX task remains PR13 comment 5973278312; no new Copilot implementation checked yet.
+
 ## Latest progress and new-chat handoff — 3 October 2026 evening
 
 This section supersedes earlier UI review blockers; retain historical automated verification below.
