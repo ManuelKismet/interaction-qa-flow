@@ -18,6 +18,9 @@ class _TestUser extends Fake implements User {
   final bool isAnonymous;
 
   @override
+  String? get email => 'account@example.test';
+
+  @override
   String get uid => 'account-uid';
 
   final FirebaseAuthException? linkError;
