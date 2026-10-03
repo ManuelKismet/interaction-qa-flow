@@ -81,3 +81,6 @@ Restart recovery: founder explicitly requested machine restart and continuation.
 
 
 Viewer diagnosis after founder requested new-tab retry: browser rejection explicitly prohibited retry through alternate tabs/surfaces, so no rejected-destination retry attempted. Independent Codespace inspection found only 8080 forwarded after restart; 8767 viewer forwarding was absent. ss confirmed viewer listening on 127.0.0.1:8767 and VNC on 127.0.0.1:5997; Chromium-ready log persisted. Missing forwarding is a confirmed connection issue, not Firebase evidence. It does not prove the exact origin of the unsupported-protocol tab rejection. UI acceptance remains pending.
+
+
+Founder authorized restoring viewer port. Re-added localhost:8767 in existing Codespace Ports panel. Verified Ports lists 8080 and 8767, 8767 visibility Private, and running websockify process 1242 for loopback VNC:5997. This confirms port-forward repair and active viewer service, not browser connection or completion of remaining UI tests. No rejected viewer-tab retry attempted.
