@@ -40,3 +40,13 @@ Workflow: Copilot owns application corrections/tests, Codex owns environment and
 Desktop UI pass covers currently accessible unauthenticated/local surfaces. Mobile/narrow viewport has NOT been verified: browser F12 did not expose responsive controls through the available UI observation, and no viewport/emulation API is advertised. Do not substitute desktop zoom for mobile acceptance. Signed-in/admin screens and cloud group UI remain for the subsequent identity/guest phase, as they are not currently accessible without starting those flows. Long-content PDF pagination, native share, screen-reader use and comprehensive keyboard navigation remain pending. No production-ready signoff.
 
 Next: reconcile this log with existing guest UX/consolidated handoff (avoid duplicate fixes), resolve deployed candidate identity/configured build separately, finish supported UI coverage, then proceed to guest feature/functional acceptance only after this UI-stage review. User explicitly asked to keep this sequence.
+
+## Phone and iPad UI gate — founder correction
+
+Founder explicitly requested phone and iPad UI/UX review before guest feature testing. Preserve this order; do not advance to guest functional acceptance on the basis of desktop completion.
+
+Attempted browser responsive controls via Ctrl+Shift+I and Ctrl+Shift+M. Screenshots continued to show the unchanged 1363 × 936 desktop page; no device toolbar or narrowed viewport appeared. Available cloud-browser API has no viewport resize/device-emulation method. Native computer controls are disabled. Therefore this session cannot establish live phone/tablet UI results. No responsive pass is claimed.
+
+Required follow-up targets (planned, not executed): phone 390 × 844 and 360 × 800; representative iPad portrait 820 × 1180 and landscape 1180 × 820. Check Knowledge form/search, header and menus, Interact creation and participant controls, deep branches, template picker, PDF scope/preview/footer, sign-in/signup, scrolling and keyboard-obscured inputs. Record overflow, clipping, wrapping, touch targets and dismiss/back paths per viewport. These CSS viewport checks also do not substitute for physical iPad Safari, native share or software keyboard acceptance.
+
+Current stop point: UI-stage responsive review blocked by browser viewport capability. Guest feature/functional tests remain pending per founder sequence.
