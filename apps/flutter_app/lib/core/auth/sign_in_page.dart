@@ -92,10 +92,41 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           );
           if (switchIdentity != true || !mounted) return;
         }
-        await auth.createUserWithEmailAndPassword(
+        final credential = await auth.createUserWithEmailAndPassword(
           email: _email.text.trim(),
           password: _password.text,
         );
+        final user = credential.user;
+        if (user == null) {
+          if (!mounted) return;
+          setState(() {
+            _createAccountMode = false;
+            _message =
+                'Account created, but email verification could not be started. '
+                'Contact your administrator before requesting organisation access.';
+          });
+          return;
+        }
+        try {
+          await user.sendEmailVerification();
+          if (!mounted) return;
+          setState(() {
+            _createAccountMode = false;
+            _message =
+                'Account created. Check your email to verify it, then sign out '
+                'and sign in again before requesting organisation access. '
+                'Account creation does not add organisation membership.';
+          });
+        } on FirebaseAuthException {
+          if (!mounted) return;
+          setState(() {
+            _createAccountMode = false;
+            _message =
+                'Account created, but the verification email could not be sent. '
+                'Try again later or contact your administrator before requesting '
+                'organisation access.';
+          });
+        }
       } else {
         if (auth.currentUser?.isAnonymous == true) {
           final switchIdentity = await showDialog<bool>(

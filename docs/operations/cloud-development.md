@@ -138,10 +138,11 @@ the service, change IAM, or create cloud resources.
 
 Do not use a pre-created or synthetic account for live/manual browser testing.
 Use **Create account** in the app with a newly created, explicitly disposable
-email address, complete Firebase's email verification, sign out, and then use
-the normal **Sign in** flow. Confirm that `/api/v1/auth/me` reports no
-organisation membership until an administrator/operator explicitly provisions
-one. Account creation does not enroll users or grant guest-group access.
+email address. The app sends Firebase's verification email; complete
+verification, sign out, and then use the normal **Sign in** flow. Confirm that
+`/api/v1/auth/me` reports no organisation membership until an
+administrator/operator explicitly provisions one. Account creation does not
+enroll users or grant guest-group access.
 
 For a new disposable organisation, an authorized operator may use
 `scripts/provision_organisation_admin.py` with that verified Firebase account;
@@ -150,6 +151,8 @@ an existing organisation, an existing org admin uses **Admin → Members** to
 add the verified account or change its role/primary department. That endpoint
 resolves the account through Firebase Admin, verifies email, limits changes to
 the caller's organisation, and audits membership/role/department changes.
+The admin UI uses `POST /api/v1/auth/members` to add and
+`PATCH /api/v1/auth/members/{member_id}` to update a member.
 Verify the resulting role in `/api/v1/auth/me` after re-authentication or token
 refresh, and then exercise the admin UI. Never pass a caller-selected user,
 organisation, or role as proof of identity. These steps are procedures only;

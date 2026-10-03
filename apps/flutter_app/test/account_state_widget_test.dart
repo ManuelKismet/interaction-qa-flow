@@ -24,12 +24,27 @@ class _TestUser extends Fake implements User {
   String get uid => 'account-uid';
 
   final FirebaseAuthException? linkError;
+  int verificationEmailAttempts = 0;
+
+  @override
+  Future<void> sendEmailVerification([
+    ActionCodeSettings? actionCodeSettings,
+  ]) async {
+    verificationEmailAttempts++;
+  }
 
   @override
   Future<UserCredential> linkWithCredential(AuthCredential credential) async {
     if (linkError != null) throw linkError!;
     throw StateError('Unexpected account-link request.');
   }
+}
+
+class _TestUserCredential extends Fake implements UserCredential {
+  _TestUserCredential(this.user);
+
+  @override
+  final User? user;
 }
 
 class _TestFirebaseAuth extends Fake implements FirebaseAuth {
@@ -41,6 +56,7 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   int createAttempts = 0;
   int signInAttempts = 0;
   int signOutAttempts = 0;
+  UserCredential? createCredential;
 
   @override
   Future<UserCredential> createUserWithEmailAndPassword({
@@ -48,6 +64,7 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
     required String password,
   }) async {
     createAttempts++;
+    if (createCredential != null) return createCredential!;
     throw StateError('Unexpected account creation.');
   }
 
@@ -400,6 +417,37 @@ void main() {
     expect(auth.createAttempts, 0);
     expect(auth.signInAttempts, 0);
     expect(identical(auth.currentUser, user), isTrue);
+  });
+
+  testWidgets('account creation sends verification email', (tester) async {
+    final user = _TestUser(isAnonymous: false);
+    final auth = _TestFirebaseAuth(null)
+      ..createCredential = _TestUserCredential(user);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(auth),
+        ],
+        child: const MaterialApp(
+          home: SignInPage(createAccount: true),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'new@example.test');
+    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+
+    expect(auth.createAttempts, 1);
+    expect(user.verificationEmailAttempts, 1);
+    expect(
+      find.textContaining('Check your email to verify it'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('does not add organisation membership'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('separate account creation warns before leaving guest groups', (
