@@ -88,10 +88,11 @@ infer the user's formal department.
 - Import is a deliberate selection and confirmation. Local items remain in the
   browser after sharing, and Interact entries require explicit
   `share_with_group` confirmation. Exports cannot be revoked after download.
-- Group access expires after 90 days without an authorized request. There is no
-  scheduled physical purge for expired guest-group rows yet; database retention
-  cleanup must be configured and reviewed before the deployed service uses this
-  scope.
+- Group access expires after 90 days without an authorized request. The
+  `backend/app/maintenance/guest_retention.py` command supports bounded,
+  dry-run-first deletion of expired groups and their group-owned rows; no
+  scheduler is configured. Cleanup locks and rechecks each group before
+  deleting, and does not touch organisation or private-session data.
 - Registered organisation routes continue to resolve active Firebase UID
   mappings and retain the existing tenant, department, private-session,
   governance, and audit checks. A linked guest identity can access only its

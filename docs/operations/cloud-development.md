@@ -203,11 +203,13 @@ test the API with synthetic guest identities before hosting group data. This
 implementation did not change Firebase settings, IAM, App Check mode, Cloud
 SQL, or deployment state.
 
-Group access expires after 90 days without an authorized request, but physical
-purging of expired groups and their content/revisions has not been automated.
-Do not treat access expiry as deletion or promise that exported copies can be
-revoked. A reviewed retention/purge operation is a prerequisite before
-production use.
+Group access expires after 90 days without an authorized request. A bounded
+dry-run-first cleanup command is available at
+`backend/app/maintenance/guest_retention.py`; it is not scheduled or enabled by
+this implementation. See
+[`guest-group-retention.md`](guest-group-retention.md) for backup, recovery,
+permissions, and scheduler review requirements. Do not treat access expiry as
+deletion or promise that exported copies can be revoked.
 
 Backend guest-group tests use isolated SQLite and synthetic verified-token
 fixtures. PostgreSQL migration SQL generation was checked offline; no hosted
