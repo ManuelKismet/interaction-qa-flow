@@ -2,6 +2,21 @@
 
 Current application candidate: PR #13, commit `abb224fee28355a671b9cd8828c090bdb86353b1` (Fix signup layout and admin widget test). Keep PR draft. No merge, production release or new deployment occurred during this verification.
 
+## Latest progress and new-chat handoff — 3 October 2026 evening
+
+This section supersedes earlier UI review blockers; retain historical automated verification below.
+
+- **Completed:** accessible desktop UI review and corrected four-viewport Chromium review (390 × 844, 360 × 800, 820 × 1180, 1180 × 820), eight views each / 32 screenshots, no JavaScript page errors or blocked runner steps. Targeted 360-phone report scroll check passed: final nested answer reachable, report actions visible. PDF backdrop dismissal worked at every size.
+- **Findings sent to Copilot:** [PR13 implementation handoff](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-5973278312), covering UX-E01/E02/E03/E04/E05/E06/E09 confirmed changes and UX-E07/E08 investigations. Continue the existing draft PR from verified abb224f; avoid duplicate/competing implementations. Sending is confirmed; Copilot acknowledgement, new implementation commit and independent verification are pending.
+- **Evidence:** [UI/UX review log](ui-ux-clickthrough-2026-10-03-evening.md), [screenshots and results](responsive-evidence-2026-10-03/). Earlier coordinate/locator failures are harness limitations, not app defects. Initial small-phone report clipping is scrollable content, not missing data.
+- **Scope limit:** CSS viewport/render/navigation review is complete for these accessible views. Physical pointer/touch targets, iOS Safari/software keyboard, full keyboard/screen-reader accessibility, signed-in/admin surfaces, actual PDF download/share and functional template application remain unverified. No production readiness signoff.
+- **Build identity:** abb224f independently passed 82 backend and 79 Flutter tests and release JavaScript build; 12 analyzer infos remain. The current served dev UI source SHA is not independently identified. Earlier combined df6bcd3 deployment/smoke evidence must not be attributed to abb224f.
+- **Next:** inspect Copilot response/new exact SHA; independently verify submitted changes without repeating completed baseline checks unnecessarily. Resolve served candidate identity/configured development deployment before source-specific acceptance. Continue separate guest functional/privacy acceptance, then real signup/email verification/sign-in, no-membership state and authorised admin provisioning/UI. These phases were not completed by the viewport run.
+- **Infrastructure:** existing Codespace bookish-happiness-w974vpwgq7j3g95v restarted successfully. Isolated browser tools are installed; viewer service was running and port 8767 forwarding restored as Private. Cloud viewer navigation was rejected by browser URL policy; do not retry through alternate tabs/surfaces. Completed headless evidence is independent of that blocked viewer.
+- **Preserve:** existing work/untracked postgresql-migration-review-2026-10-03.md, local content, account cleanup and guest/private/group/org boundaries. Do not recreate removed hosted synthetic accounts or repeat cleanup. No merge, deployment, live admin grant or cloud/security/database changes authorised through this handoff.
+
+For a new chat: “Resume IntQAFlow from this checkpoint on chore/intqaflow-private-dev-isolation and PR13 handoff above. Automated desktop/phone/iPad UI review is complete and findings have been sent to Copilot. Check its new commit/status, verify changes, then continue guest → sign-in → admin acceptance with the stated boundaries.”
+
 ## Resume here
 
 1. Read this checkpoint and the final verification section below before running another cycle. Do not substitute an earlier commit's results.
