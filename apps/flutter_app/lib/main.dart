@@ -7,32 +7,21 @@ import 'package:int_qa_flow/core/config/app_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!AppConfig.isFirebaseConfigured) {
-    runApp(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Text('Firebase development configuration is incomplete.'),
-          ),
-        ),
-      ),
-    );
-    return;
+  var firebaseReady = false;
+  if (AppConfig.isFirebaseConfigured) {
+    try {
+      await Firebase.initializeApp(options: AppConfig.firebaseOptions);
+      await FirebaseAppCheck.instance.activate(
+        providerWeb: ReCaptchaEnterpriseProvider(AppConfig.recaptchaSiteKey),
+      );
+      firebaseReady = true;
+    } catch (_) {
+      firebaseReady = false;
+    }
   }
-  try {
-    await Firebase.initializeApp(options: AppConfig.firebaseOptions);
-    await FirebaseAppCheck.instance.activate(
-      providerWeb: ReCaptchaEnterpriseProvider(AppConfig.recaptchaSiteKey),
-    );
-  } catch (_) {
-    runApp(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(child: Text('Unable to initialize Firebase.')),
-        ),
-      ),
-    );
-    return;
-  }
-  runApp(const ProviderScope(child: IntQaFlowApp()));
+  runApp(
+    ProviderScope(
+      child: IntQaFlowApp(firebaseReady: firebaseReady),
+    ),
+  );
 }

@@ -83,7 +83,7 @@ Future<void> scrollToListItem(
     item,
     400,
     scrollable: scrollable,
-    maxScrolls: 40,
+    maxScrolls: 100,
   );
 }
 

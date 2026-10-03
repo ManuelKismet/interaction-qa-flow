@@ -1,0 +1,103 @@
+import 'dart:convert';
+
+class GuestWorkspaceData {
+  const GuestWorkspaceData({
+    this.knowledge = const [],
+    this.sessions = const [],
+    this.templates = const [],
+  });
+
+  factory GuestWorkspaceData.fromJson(Map<String, dynamic> json) {
+    if (json['schema_version'] != 1) {
+      throw const FormatException('Unsupported guest backup version.');
+    }
+    return GuestWorkspaceData(
+      knowledge: _maps(json['knowledge']),
+      sessions: _maps(json['sessions']),
+      templates: _maps(json['templates']),
+    );
+  }
+
+  final List<Map<String, dynamic>> knowledge;
+  final List<Map<String, dynamic>> sessions;
+  final List<Map<String, dynamic>> templates;
+
+  Map<String, dynamic> toJson() => {
+    'schema_version': 1,
+    'knowledge': knowledge,
+    'sessions': sessions,
+    'templates': templates,
+  };
+
+  String encodeBackup() => const JsonEncoder.withIndent('  ').convert(toJson());
+
+  factory GuestWorkspaceData.decodeBackup(String text) {
+    final decoded = jsonDecode(text);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Guest backup must contain a JSON object.');
+    }
+    return GuestWorkspaceData.fromJson(decoded);
+  }
+
+  GuestWorkspaceData copyWith({
+    List<Map<String, dynamic>>? knowledge,
+    List<Map<String, dynamic>>? sessions,
+    List<Map<String, dynamic>>? templates,
+  }) => GuestWorkspaceData(
+    knowledge: knowledge ?? this.knowledge,
+    sessions: sessions ?? this.sessions,
+    templates: templates ?? this.templates,
+  );
+
+  static List<Map<String, dynamic>> _maps(Object? value) {
+    if (value == null) return const [];
+    if (value is! List) {
+      throw const FormatException('Guest backup collections must be lists.');
+    }
+    return [
+      for (final item in value)
+        if (item is Map<String, dynamic>) item else
+          throw const FormatException('Guest backup entries must be objects.'),
+    ];
+  }
+}
+
+bool matchesGuestKeywordOrPrefix(
+  String query,
+  Map<String, dynamic> knowledgeItem,
+) {
+  final tokens = query.toLowerCase().trim().split(RegExp(r'\s+'));
+  if (tokens.isEmpty || tokens.first.isEmpty) return true;
+  final searchable = [
+    knowledgeItem['title'],
+    knowledgeItem['body'],
+    knowledgeItem['answer'],
+  ].whereType<String>().join(' ').toLowerCase();
+  final words = searchable.split(RegExp(r'[^a-z0-9_-]+'));
+  return tokens.every(
+    (token) =>
+        searchable.contains(token) || words.any((word) => word.startsWith(token)),
+  );
+}
+
+List<Map<String, dynamic>> mergeSelectedGuestItems({
+  required List<Map<String, dynamic>> existing,
+  required List<Map<String, dynamic>> imported,
+  required Set<String> selectedIds,
+}) {
+  final merged = [...existing];
+  final knownIds = existing.map((item) => item['id']).whereType<String>().toSet();
+  for (final item in imported) {
+    final id = item['id'];
+    if (id is String && selectedIds.contains(id) && knownIds.add(id)) {
+      merged.add(item);
+    }
+  }
+  return merged;
+}
+
+String newGuestItemId() {
+  final random = DateTime.now().microsecondsSinceEpoch;
+  return 'guest-${random.toRadixString(36)}';
+}
+

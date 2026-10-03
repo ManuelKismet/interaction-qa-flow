@@ -29,6 +29,12 @@ class AppShell extends ConsumerWidget {
       selectedIcon: Icons.account_tree,
     ),
     AppDestination(
+      label: 'Guest groups',
+      path: '/guest/groups',
+      icon: Icons.group_outlined,
+      selectedIcon: Icons.groups,
+    ),
+    AppDestination(
       label: 'Review',
       path: '/review-queue',
       icon: Icons.fact_check_outlined,
@@ -47,6 +53,7 @@ class AppShell extends ConsumerWidget {
     final selectedPath = switch (currentPath) {
       final path when path.startsWith('/questions') => '/',
       final path when path.startsWith('/guided') => '/guided',
+      final path when path.startsWith('/guest') => '/guest/groups',
       _ => currentPath,
     };
     if (currentPath == '/review-queue' &&

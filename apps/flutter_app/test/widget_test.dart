@@ -1,25 +1,26 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/app.dart';
-import 'package:int_qa_flow/core/auth/auth_providers.dart';
 
 void main() {
-  testWidgets('shows email sign-in and password reset controls', (tester) async {
+  testWidgets('opens the local guest workspace without a login gate', (
+    tester,
+  ) async {
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authStateProvider.overrideWith((ref) => Stream.value(null)),
-        ],
-        child: const IntQaFlowApp(),
+      const ProviderScope(
+        child: IntQaFlowApp(firebaseReady: false),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in to IntQAFlow'), findsOneWidget);
-    expect(find.text('Email'), findsOneWidget);
-    expect(find.text('Password'), findsOneWidget);
-    expect(find.text('Forgot password?'), findsOneWidget);
+    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+    expect(find.text('Knowledge'), findsOneWidget);
+    expect(find.text('Interact'), findsOneWidget);
+    expect(find.text('Sign in to IntQAFlow'), findsNothing);
+    expect(find.text('Search local Knowledge'), findsOneWidget);
+    expect(find.text('Create session locally'), findsNothing);
+    await tester.tap(find.text('Interact'));
+    await tester.pumpAndSettle();
+    expect(find.text('Create session locally'), findsOneWidget);
   });
 }
