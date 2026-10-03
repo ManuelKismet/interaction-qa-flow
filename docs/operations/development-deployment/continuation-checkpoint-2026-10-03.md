@@ -56,7 +56,7 @@ Preserve existing guest/private/group/org authorization boundaries, App Check ob
 - Backend pytest: **82 passed**, 1 deprecation warning, 19.46 seconds.
 - Flutter suite: **79 passed**, 0 failures, 56 seconds; both formerly failing tests pass.
 - Analyzer: **0 errors, 0 warnings, 12 informational notices**, 11.1 seconds, exit 1. Exact notices are listed above.
-- Release build: in progress when this intermediate checkpoint was written; final result will be updated before handoff.
-- Worktree/lockfile remained clean at the first post-resolution readback; final readback pending.
+- Release JavaScript web build: **pass**, 79.5 seconds, exit 0. Build output mentions WebAssembly dry-run warnings; this does not claim WebAssembly support.
+- Final worktree status and lockfile: clean; git diff --check passed. Flutter 3.41.4 / Dart 3.11.1.
 
 No application deployment, merge, migration apply, hosted-data modification, admin grant, IAM change or App Check change was performed in this verification.
