@@ -56,7 +56,7 @@ Preserve existing guest/private/group/org authorization boundaries, App Check ob
 - Backend pytest: **82 passed**, 1 deprecation warning, 19.46 seconds.
 - Flutter suite: **79 passed**, 0 failures, 56 seconds; both formerly failing tests pass.
 - Analyzer: **0 errors, 0 warnings, 12 informational notices**, 11.1 seconds, exit 1. Exact notices are listed above.
-- Release JavaScript web build: **pass**, 79.5 seconds, exit 0. Build output mentions WebAssembly dry-run warnings; this does not claim WebAssembly support.
+- Release JavaScript web build: **pass**, 79.5 seconds, exit 0. The optional WebAssembly dry run reported unexpected failure (241); JavaScript compilation succeeded. WebAssembly support is not verified, and that dry-run failure was not investigated in this cycle.
 - Final worktree status and lockfile: clean; git diff --check passed. Flutter 3.41.4 / Dart 3.11.1.
 
 No application deployment, merge, migration apply, hosted-data modification, admin grant, IAM change or App Check change was performed in this verification.
