@@ -16,7 +16,7 @@ try:
     children.append(subprocess.Popen(["websockify","--web=/usr/share/novnc","127.0.0.1:8767","127.0.0.1:5997"],stdout=log,stderr=log))
     os.environ["DISPLAY"]=":97"
     with sync_playwright() as p:
-        ctx=p.chromium.launch_persistent_context(str(root/"interactive-profile"),headless=False,viewport=None,locale="en-GB",args=["--window-size=1180,900","--window-position=0,0"])
+        ctx=p.chromium.launch_persistent_context(str(root/"interactive-profile"),headless=False,viewport=None,locale="en-GB",args=["--window-size=1180,900","--window-position=0,0","--disable-gpu","--use-angle=swiftshader"])
         page=ctx.pages[0]
         page.goto("https://intqaflow-dev.web.app/",wait_until="domcontentloaded")
         print("Interactive Chromium ready; VNC loopback only; forward 8767 privately.",flush=True)
