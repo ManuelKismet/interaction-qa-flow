@@ -226,7 +226,7 @@ Future<Uint8List> buildGuestReportPdf(GuestReportData report) async {
       style: pw.TextStyle(font: font),
     ),
     pw.Text(
-      'Exported: ${report.exportedAt.toIso8601String()}',
+      'Report prepared: ${report.exportedAt.toIso8601String()}',
       style: pw.TextStyle(font: font),
     ),
     pw.SizedBox(height: 14),
@@ -341,7 +341,7 @@ Future<Uint8List> buildGuestPortablePdf(
           style: pw.TextStyle(font: font),
         ),
         pw.Text(
-          'Exported: ${document.exportedAt.toIso8601String()}',
+          'Report prepared: ${document.exportedAt.toIso8601String()}',
           style: pw.TextStyle(font: font),
         ),
         pw.SizedBox(height: 16),
@@ -387,7 +387,7 @@ section { margin-top: 24px; border-top: 1px solid #bbb; padding-top: 12px; }
 <nav class="toolbar"><button onclick="window.print()">Print / Save PDF fallback</button></nav>
 <h1>${_escapeHtml(document.title)}</h1>
 <p>Report scope: ${_escapeHtml(document.scope)}<br>
-Exported: ${_escapeHtml(document.exportedAt.toIso8601String())}</p>
+Report prepared: ${_escapeHtml(document.exportedAt.toIso8601String())}</p>
 $sections
 </body></html>''';
 }
@@ -510,7 +510,7 @@ $followUps''';
       <div><strong>Storage:</strong> Private on this device</div>
       <div><strong>Report scope:</strong> ${_escapeHtml(report.scope)}</div>
       <div><strong>Participants:</strong> $participantList</div>
-      <div><strong>Exported:</strong> ${_escapeHtml(report.exportedAt.toIso8601String())}</div>
+      <div><strong>Report prepared:</strong> ${_escapeHtml(report.exportedAt.toIso8601String())}</div>
     </section>
     ${questions.isEmpty ? '<p class="empty">No questions are available in this report.</p>' : questions}
   </main>

@@ -207,16 +207,33 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () =>
+                                    Navigator.of(context).maybePop(),
+                                icon: const Icon(Icons.arrow_back),
+                                label: const Text('Back to guest workspace'),
+                              ),
+                            ),
                             Text(
                               _resetMode
                                   ? 'Reset password'
                                   : _createAccountMode
                                       ? widget.linkGuestIdentity
                                           ? 'Link guest recovery'
-                                          : 'Create an account'
+                                          : 'Create a separate account'
                                       : 'Sign in to IntQAFlow',
                               style: Theme.of(context).textTheme.headlineSmall,
                             ),
+                            if (_createAccountMode) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                widget.linkGuestIdentity
+                                    ? 'Linking recovery keeps this guest identity and its group access. It does not create a separate account or upload local work.'
+                                    : 'This creates a separate account. It does not transfer guest-group access or upload local work.',
+                              ),
+                            ],
                             const SizedBox(height: 20),
                             TextField(
                               controller: _email,
@@ -292,7 +309,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                                     ? 'Back to sign in'
                                     : _createAccountMode
                                         ? 'Back to sign in'
-                                        : 'Create account or link guest recovery',
+                                        : 'Create a separate account',
                               ),
                             ),
                             if (!_resetMode && !_createAccountMode)

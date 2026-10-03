@@ -10,7 +10,7 @@ void main() {
   testWidgets('long labels and nested branches fit a narrow guest layout', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(360, 900);
+    tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -39,7 +39,58 @@ void main() {
 
     expect(find.text('Active participant'), findsOneWidget);
     expect(find.text('Add shared question'), findsOneWidget);
+    expect(find.text('Add follow-up'), findsWidgets);
+    final participantGuidance = tester.widget<DropdownButtonFormField<String>>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is DropdownButtonFormField<String> &&
+            widget.decoration.labelText == 'Active participant',
+      ),
+    );
+    expect(participantGuidance.decoration.helperMaxLines, 3);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('desktop guest Knowledge and Interact forms stay readable width', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      GuestWorkspaceData(
+        templates: const [
+          {
+            'id': 'template-1',
+            'name': 'Interview template',
+            'questions': [],
+          },
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(_field('Search local Knowledge')).width, lessThanOrEqualTo(840));
+    await tester.tap(find.text('Interact').first);
+    await tester.pumpAndSettle();
+    expect(tester.getSize(_field('New Interact session')).width, lessThan(1040));
+    final templatePicker = find.byWidgetPredicate(
+      (widget) =>
+          widget is DropdownButtonFormField<String?> &&
+          widget.decoration.labelText == 'Optional local template',
+    );
+    expect(tester.getSize(templatePicker).width, lessThanOrEqualTo(1040));
   });
 
   testWidgets(
@@ -169,6 +220,62 @@ void main() {
       ),
       findsOneWidget,
     );
+    await tester.tap(find.descendant(of: preview, matching: find.text('Close')));
+    await tester.pumpAndSettle();
+    expect(find.text('Preview PDF'), findsNothing);
+  });
+
+  testWidgets('local JSON backup import previews and merges selected items', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'same-id', 'title': 'Keep existing copy'},
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy local JSON backup'), findsOneWidget);
+    await tester.tap(find.text('Import local JSON backup'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      _field('Paste backup JSON'),
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'same-id', 'title': 'Backup duplicate'},
+          {'id': 'new-id', 'title': 'New backup item'},
+        ],
+      ).encodeBackup(),
+    );
+    await tester.tap(find.text('Preview import'));
+    await tester.pumpAndSettle();
+    expect(find.text('Preview local backup import'), findsOneWidget);
+    await tester.tap(find.text('Import selected locally'));
+    await tester.pumpAndSettle();
+
+    final saved = await store.load();
+    expect(saved.knowledge.map((item) => item['title']), [
+      'Keep existing copy',
+      'New backup item',
+    ]);
   });
 }
 

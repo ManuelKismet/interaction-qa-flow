@@ -472,85 +472,116 @@ class _SessionHeader extends StatelessWidget {
       GuidedSaveState.failed => 'Save failed',
       GuidedSaveState.idle => '',
     };
+    final backButton = IconButton(
+      tooltip: 'Back to Interact',
+      icon: const Icon(Icons.arrow_back),
+      onPressed: onBack,
+    );
+    final sessionTitle = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          session.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        Text(
+          [
+            session.status,
+            session.visibility,
+            if (session.ownerText?.isNotEmpty == true) session.ownerText!,
+            if (session.contextReference?.isNotEmpty == true)
+              session.contextReference!,
+          ].join(' · '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+    final actions = <Widget>[
+      if (saveLabel.isNotEmpty)
+        SizedBox(
+          width: 72,
+          child: Text(
+            saveLabel,
+            textAlign: TextAlign.end,
+            style: const TextStyle(color: Colors.black54),
+          ),
+        ),
+      IconButton(
+        tooltip: 'Active participant report',
+        icon: Icon(
+          reportMode && !allParticipantsReport
+              ? Icons.edit_outlined
+              : Icons.description_outlined,
+        ),
+        onPressed: () => onToggleReport(false),
+      ),
+      IconButton(
+        tooltip: 'All participants report',
+        icon: const Icon(Icons.groups_outlined),
+        onPressed: () => onToggleReport(true),
+      ),
+      PopupMenuButton<String>(
+        tooltip: 'Export',
+        icon: const Icon(Icons.download_outlined),
+        onSelected: onExport,
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'json', child: Text('JSON')),
+          PopupMenuItem(value: 'csv', child: Text('CSV')),
+        ],
+      ),
+      IconButton(
+        tooltip: 'Save history',
+        icon: const Icon(Icons.history),
+        onPressed: onHistory,
+      ),
+      if (onPrint != null)
+        IconButton(
+          tooltip: 'Print / Save PDF',
+          icon: const Icon(Icons.print_outlined),
+          onPressed: onPrint,
+        ),
+      if (onTransition != null)
+        FilledButton(
+          onPressed: onTransition,
+          child: Text(session.status == 'draft' ? 'Start' : 'Complete'),
+        ),
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 24, 12),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Back to Interact',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: onBack,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 900) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  session.title,
-                  style: Theme.of(context).textTheme.headlineSmall,
+                Row(
+                  children: [
+                    backButton,
+                    const SizedBox(width: 8),
+                    Expanded(child: sessionTitle),
+                  ],
                 ),
-                Text(
-                  [
-                    session.status,
-                    session.visibility,
-                    if (session.ownerText?.isNotEmpty == true)
-                      session.ownerText!,
-                    if (session.contextReference?.isNotEmpty == true)
-                      session.contextReference!,
-                  ].join(' · '),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: actions,
                 ),
               ],
-            ),
-          ),
-          SizedBox(
-            width: 72,
-            child: Text(
-              saveLabel,
-              textAlign: TextAlign.end,
-              style: const TextStyle(color: Colors.black54),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Active participant report',
-            icon: Icon(
-              reportMode && !allParticipantsReport
-                  ? Icons.edit_outlined
-                  : Icons.description_outlined,
-            ),
-            onPressed: () => onToggleReport(false),
-          ),
-          IconButton(
-            tooltip: 'All participants report',
-            icon: const Icon(Icons.groups_outlined),
-            onPressed: () => onToggleReport(true),
-          ),
-          PopupMenuButton<String>(
-            tooltip: 'Export',
-            icon: const Icon(Icons.download_outlined),
-            onSelected: onExport,
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'json', child: Text('JSON')),
-              PopupMenuItem(value: 'csv', child: Text('CSV')),
+            );
+          }
+          return Row(
+            children: [
+              backButton,
+              const SizedBox(width: 8),
+              Expanded(child: sessionTitle),
+              ...actions,
             ],
-          ),
-          IconButton(
-            tooltip: 'Save history',
-            icon: const Icon(Icons.history),
-            onPressed: onHistory,
-          ),
-          if (onPrint != null)
-            IconButton(
-              tooltip: 'Print / Save PDF',
-              icon: const Icon(Icons.print_outlined),
-              onPressed: onPrint,
-            ),
-          if (onTransition != null)
-            FilledButton(
-              onPressed: onTransition,
-              child: Text(session.status == 'draft' ? 'Start' : 'Complete'),
-            ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -626,28 +657,33 @@ class GuidedFlowView extends StatelessWidget {
     for (final (index, question) in questions.indexed) {
       append(question, depth: 0, path: [index + 1]);
     }
-    return ListView(
-      key: const ValueKey('guided-flow-list'),
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 60),
-      children: [
-        for (final visible in visibleQuestions)
-          GuidedQuestionNode(
-            question: visible.question,
-            participantId: participantId!,
-            participantName: participantName ?? 'Participant',
-            depth: visible.depth,
-            path: visible.path,
-            parentText: visible.parentText,
-            onEditing: onEditing,
-            onSaveQuestion: onSaveQuestion,
-            onSaveAnswer: onSaveAnswer,
-            onAddFollowUp: onAddFollowUp,
-            onToggleBranch: onToggleBranch,
-            onDelete: onDelete,
-            onKnowledgeSearch: onKnowledgeSearch,
-            onPropose: onPropose,
-          ),
-      ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1100),
+        child: ListView(
+          key: const ValueKey('guided-flow-list'),
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 60),
+          children: [
+            for (final visible in visibleQuestions)
+              GuidedQuestionNode(
+                question: visible.question,
+                participantId: participantId!,
+                participantName: participantName ?? 'Participant',
+                depth: visible.depth,
+                path: visible.path,
+                parentText: visible.parentText,
+                onEditing: onEditing,
+                onSaveQuestion: onSaveQuestion,
+                onSaveAnswer: onSaveAnswer,
+                onAddFollowUp: onAddFollowUp,
+                onToggleBranch: onToggleBranch,
+                onDelete: onDelete,
+                onKnowledgeSearch: onKnowledgeSearch,
+                onPropose: onPropose,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -762,8 +798,7 @@ class GuidedQuestionNode extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         'Parent: $parentText',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        softWrap: true,
                         style: const TextStyle(color: Colors.black54),
                       ),
                     ),

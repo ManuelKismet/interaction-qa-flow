@@ -206,6 +206,126 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     _save(const GuestWorkspaceData());
   }
 
+  Future<void> _copyLocalBackup() async {
+    final data = _data;
+    if (data == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Copy local JSON backup?'),
+        content: const Text(
+          'The backup includes local Knowledge, participant names, answers, '
+          'follow-ups and templates. It is copied to this device’s clipboard; '
+          'nothing is uploaded.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Copy backup'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _autosaveTimer?.cancel();
+    try {
+      await ref.read(guestWorkspaceStoreProvider).save(data);
+      await Clipboard.setData(ClipboardData(text: data.encodeBackup()));
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to copy the local JSON backup.')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Local JSON backup copied to clipboard.')),
+    );
+  }
+
+  Future<void> _importLocalBackup() async {
+    final controller = TextEditingController();
+    try {
+      final submit = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          scrollable: true,
+          title: const Text('Import local JSON backup'),
+          content: SizedBox(
+            width: 560,
+            child: TextField(
+              controller: controller,
+              minLines: 4,
+              maxLines: 12,
+              decoration: const InputDecoration(
+                labelText: 'Paste backup JSON',
+                alignLabelWithHint: true,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Preview import'),
+            ),
+          ],
+        ),
+      );
+      if (submit != true || !mounted) return;
+      late final GuestWorkspaceData imported;
+      try {
+        imported = GuestWorkspaceData.decodeBackup(controller.text);
+      } on Object {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This is not a valid IntQAFlow local JSON backup.'),
+          ),
+        );
+        return;
+      }
+      final selection = await showDialog<_GuestImportSelection>(
+        context: context,
+        builder: (context) => _GuestImportPreview(
+          data: imported,
+          title: 'Preview local backup import',
+          confirmLabel: 'Import selected locally',
+        ),
+      );
+      if (selection == null || !mounted) return;
+      _autosaveTimer?.cancel();
+      final current = _data;
+      if (current != null) {
+        await ref.read(guestWorkspaceStoreProvider).save(current);
+      }
+      final merged = await ref.read(guestWorkspaceStoreProvider).importSelected(
+        imported: imported,
+        knowledgeIds: selection.knowledgeIds,
+        sessionIds: selection.sessionIds,
+        templateIds: selection.templateIds,
+      );
+      if (!mounted) return;
+      setState(() {
+        _data = merged;
+        _saveStatus = 'Saved on this device';
+        _loadError = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selected backup items imported locally.')),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final data = _data;
@@ -245,8 +365,19 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
               tooltip: 'Guest workspace options',
               onSelected: (value) {
                 if (value == 'clear') _clearLocalCopy();
+                if (value == 'backup') _copyLocalBackup();
+                if (value == 'import') _importLocalBackup();
               },
               itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'backup',
+                  child: Text('Copy local JSON backup'),
+                ),
+                PopupMenuItem(
+                  value: 'import',
+                  child: Text('Import local JSON backup'),
+                ),
+                PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'clear',
                   child: Text('Clear local guest copy'),
@@ -828,7 +959,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(controller: title, decoration: const InputDecoration(labelText: 'Question')),
+              const SizedBox(height: 12),
               TextField(controller: body, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Details')),
+              const SizedBox(height: 12),
               TextField(controller: answer, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Answer')),
             ],
           ),
@@ -863,65 +996,97 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     final matches = widget.items
         .where((item) => matchesGuestKeywordOrPrefix(query, item))
         .toList();
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        TextField(
-          controller: _query,
-          decoration: const InputDecoration(
-            labelText: 'Search local Knowledge',
-            helperText: 'Keyword and prefix search on this device; no semantic search.',
-            prefixIcon: Icon(Icons.search),
-          ),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 16),
-        Text('Add a local question', style: Theme.of(context).textTheme.titleMedium),
-        TextField(controller: _title, decoration: const InputDecoration(labelText: 'Question')),
-        TextField(controller: _body, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Details')),
-        TextField(controller: _answer, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Answer')),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.icon(
-            onPressed: _create,
-            icon: const Icon(Icons.add),
-            label: const Text('Save locally'),
-          ),
-        ),
-        const Divider(height: 28),
-        if (matches.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(24),
-            child: Text('No local matches. Shared organisation Knowledge is not shown here.'),
-          ),
-        for (final item in matches)
-          Card(
-            child: ListTile(
-              title: Text(item['title'] as String? ?? ''),
-              subtitle: Text(
-                [
-                  item['body'],
-                  item['answer'],
-                ].whereType<String>().where((text) => text.isNotEmpty).join('\n\n'),
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 840),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            TextField(
+              controller: _query,
+              decoration: const InputDecoration(
+                labelText: 'Search local Knowledge',
+                helperText:
+                    'Keyword and prefix search on this device; no semantic search.',
+                helperMaxLines: 3,
+                prefixIcon: Icon(Icons.search),
               ),
-              isThreeLine: true,
-              trailing: Wrap(
-                children: [
-                  IconButton(
-                    tooltip: 'Edit local Knowledge',
-                    onPressed: () => _edit(item),
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Remove local Knowledge',
-                    onPressed: () => widget.onDelete(item['id'] as String),
-                    icon: const Icon(Icons.delete_outline),
-                  ),
-                ],
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Add a local question',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            TextField(
+              controller: _title,
+              decoration: const InputDecoration(labelText: 'Question'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _body,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Details'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _answer,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Answer'),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: _create,
+                icon: const Icon(Icons.add),
+                label: const Text('Save locally'),
               ),
             ),
-          ),
-      ],
+            const Divider(height: 28),
+            if (matches.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No local matches. Shared organisation Knowledge is not shown here.',
+                ),
+              ),
+            for (final item in matches)
+              Card(
+                child: ListTile(
+                  title: Text(item['title'] as String? ?? ''),
+                  subtitle: Text(
+                    [
+                      item['body'],
+                      item['answer'],
+                    ].whereType<String>().where((text) => text.isNotEmpty).join(
+                      '\n\n',
+                    ),
+                  ),
+                  isThreeLine: true,
+                  trailing: Wrap(
+                    children: [
+                      IconButton(
+                        tooltip: 'Edit local Knowledge',
+                        onPressed: () => _edit(item),
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                      IconButton(
+                        tooltip: 'Remove local Knowledge',
+                        onPressed: () => widget.onDelete(item['id'] as String),
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+        ),
     );
   }
 }
@@ -1063,99 +1228,118 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
   }
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      Text(
-        'Interact sessions stay private on this device until you explicitly select one for a guest group.',
-        style: Theme.of(context).textTheme.bodyMedium,
-      ),
-      const SizedBox(height: 12),
-      if (widget.data.templates.isNotEmpty)
-        DropdownButtonFormField<String?>(
-          initialValue: _selectedTemplateId,
-          decoration: const InputDecoration(labelText: 'Optional local template'),
-          items: [
-            const DropdownMenuItem<String>(value: null, child: Text('Start blank')),
-            for (final template in widget.data.templates)
-              DropdownMenuItem(
-                value: template['id'] as String,
-                child: Text(template['name'] as String? ?? 'Local template'),
-              ),
-          ],
-          onChanged: (value) => setState(() => _selectedTemplateId = value),
-        ),
-      const SizedBox(height: 12),
-      LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth >= 680
-              ? (constraints.maxWidth - 12) / 2
-              : constraints.maxWidth;
-          return Wrap(
-            spacing: 12,
-            runSpacing: 12,
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1040),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
             children: [
-              SizedBox(
-                width: width,
-                child: TextField(
-                  controller: _newSessionTitle,
+              Text(
+                'Interact sessions stay private on this device until you explicitly select one for a guest group.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 12),
+              if (widget.data.templates.isNotEmpty)
+                DropdownButtonFormField<String?>(
+                  initialValue: _selectedTemplateId,
+                  isExpanded: true,
                   decoration: const InputDecoration(
-                    labelText: 'New Interact session',
+                    labelText: 'Optional local template',
                   ),
+                  items: [
+                    const DropdownMenuItem<String>(
+                      value: null,
+                      child: Text('Start blank'),
+                    ),
+                    for (final template in widget.data.templates)
+                      DropdownMenuItem(
+                        value: template['id'] as String,
+                        child: Text(
+                          template['name'] as String? ?? 'Local template',
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _selectedTemplateId = value),
+                ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.maxWidth >= 680
+                      ? (constraints.maxWidth - 12) / 2
+                      : constraints.maxWidth;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SizedBox(
+                        width: width,
+                        child: TextField(
+                          controller: _newSessionTitle,
+                          decoration: const InputDecoration(
+                            labelText: 'New Interact session',
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: TextField(
+                          controller: _newSessionParticipant,
+                          decoration: const InputDecoration(
+                            labelText: 'First participant',
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  onPressed: _createSession,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Create session locally'),
                 ),
               ),
-              SizedBox(
-                width: width,
-                child: TextField(
-                  controller: _newSessionParticipant,
-                  decoration: const InputDecoration(
-                    labelText: 'First participant',
-                  ),
+              const Divider(height: 28),
+              if (widget.data.sessions.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Create a local session to start capturing answers.'),
                 ),
-              ),
+              for (final session in widget.data.sessions)
+                _GuestSessionEditor(
+                  key: ValueKey(session['id']),
+                  session: session,
+                  onChange: _updateSession,
+                  onDelete: () => _deleteSession(session),
+                  onSaveTemplate: () => _saveTemplate(session),
+                  onPrint: (participantId) =>
+                      widget.onPrint(session, participantId),
+                  makeQuestion: _newQuestion,
+                ),
+              if (widget.data.templates.isNotEmpty) ...[
+                const Divider(height: 28),
+                Text(
+                  'Local templates',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                for (final template in widget.data.templates)
+                  ListTile(
+                    leading: const Icon(Icons.description_outlined),
+                    title: Text(template['name'] as String? ?? 'Template'),
+                    subtitle: Text(
+                      '${(template['questions'] as List? ?? const []).length} prepared questions',
+                    ),
+                  ),
+              ],
             ],
-          );
-        },
-      ),
-      const SizedBox(height: 12),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: FilledButton.icon(
-          onPressed: _createSession,
-          icon: const Icon(Icons.add),
-          label: const Text('Create session locally'),
-        ),
-      ),
-      const Divider(height: 28),
-      if (widget.data.sessions.isEmpty)
-        const Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('Create a local session to start capturing answers.'),
-        ),
-      for (final session in widget.data.sessions)
-        _GuestSessionEditor(
-          key: ValueKey(session['id']),
-          session: session,
-          onChange: _updateSession,
-          onDelete: () => _deleteSession(session),
-          onSaveTemplate: () => _saveTemplate(session),
-          onPrint: (participantId) => widget.onPrint(session, participantId),
-          makeQuestion: _newQuestion,
-        ),
-      if (widget.data.templates.isNotEmpty) ...[
-        const Divider(height: 28),
-        Text('Local templates', style: Theme.of(context).textTheme.titleMedium),
-        for (final template in widget.data.templates)
-          ListTile(
-            leading: const Icon(Icons.description_outlined),
-            title: Text(template['name'] as String? ?? 'Template'),
-            subtitle: Text(
-              '${(template['questions'] as List? ?? const []).length} prepared questions',
-            ),
           ),
-      ],
-    ],
-  );
+        ),
+      );
 }
 
 class _GuestSessionEditor extends StatefulWidget {
@@ -1377,6 +1561,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               decoration: const InputDecoration(
                 labelText: 'Active participant',
                 helperText: 'Answers and individual questions are shown for this participant.',
+                helperMaxLines: 3,
               ),
               items: [
                 for (final participant in participants)
@@ -1424,6 +1609,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             decoration: const InputDecoration(
               labelText: 'Prepared question',
               helperText: 'Shared questions get separate answers from each participant.',
+              helperMaxLines: 3,
             ),
           ),
           const SizedBox(height: 8),
@@ -1577,7 +1763,17 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 440;
         return Card(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          color: widget.nested
+              ? Theme.of(context).colorScheme.surfaceContainerHighest
+              : Theme.of(context).colorScheme.surfaceContainerLow,
+          shape: RoundedRectangleBorder(
+            side: BorderSide(
+              color: widget.nested
+                  ? Theme.of(context).colorScheme.outlineVariant
+                  : Colors.transparent,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
           margin: const EdgeInsets.only(top: 12),
           child: Padding(
             padding: EdgeInsets.symmetric(
@@ -1598,10 +1794,10 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
                 ),
                 Text(
                   widget.nested
-                      ? 'Answer-owned follow-up'
+                      ? 'Follow-up owned by ${widget.participants.firstOrNull?['name'] ?? 'participant'}’s answer'
                       : scope == 'shared'
                       ? 'Shared question'
-                      : 'Participant-specific question',
+                      : 'Question for ${widget.participants.firstOrNull?['name'] ?? 'participant'}',
                 ),
                 for (final participant in applicable)
                   _GuestAnswerEditor(
@@ -1725,10 +1921,26 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
     final collapsed = widget.answer?['branches_collapsed'] as bool? ?? false;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Answer — ${widget.participant['name']}'),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLowest,
+          border: Border(
+            left: BorderSide(
+              color: Theme.of(context).colorScheme.primary,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+          Text(
+            'Participant answer · ${widget.participant['name']}',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
           TextField(
             controller: _answer,
             focusNode: _answerFocus,
@@ -1740,13 +1952,17 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
             ),
             onChanged: widget.onAnswerChanged,
           ),
+          const SizedBox(height: 8),
           LayoutBuilder(
             builder: (context, constraints) {
               final actions = [
-                IconButton(
-                  tooltip: 'Add answer-owned follow-up',
-                  onPressed: _addFollowUp,
-                  icon: const Icon(Icons.add_comment_outlined),
+                Tooltip(
+                  message: 'Add answer-owned follow-up',
+                  child: FilledButton.tonalIcon(
+                    onPressed: _addFollowUp,
+                    icon: const Icon(Icons.add_comment_outlined),
+                    label: const Text('Add follow-up'),
+                  ),
                 ),
                 if (branches.isNotEmpty)
                   IconButton(
@@ -1778,11 +1994,22 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
               if (constraints.maxWidth < 440) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [field, Wrap(children: actions)],
+                  children: [
+                    field,
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(spacing: 8, runSpacing: 4, children: actions),
+                    ),
+                  ],
                 );
               }
               return Row(
-                children: [Expanded(child: field), ...actions],
+                children: [
+                  Expanded(child: field),
+                  const SizedBox(width: 8),
+                  Wrap(spacing: 4, children: actions),
+                ],
               );
             },
           ),
@@ -1815,7 +2042,9 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                 ),
               ),
             ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -3125,7 +3354,7 @@ class _GuestReportPreviewDialog extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           Text(
-            'Exported: ${report.exportedAt.toLocal()}',
+            'Report prepared: ${report.exportedAt.toLocal()}',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           Text(
@@ -3152,6 +3381,11 @@ class _GuestReportPreviewDialog extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close),
+            label: const Text('Close'),
+          ),
           TextButton(
             onPressed: onPrintFallback,
             child: const Text('Print / Save PDF fallback'),
@@ -3195,7 +3429,7 @@ class _GuestPortablePreviewDialog extends StatelessWidget {
         children: [
           Text(document.title, style: Theme.of(context).textTheme.titleLarge),
           Text('Portable copy · ${document.scope}'),
-          Text('Exported: ${document.exportedAt.toLocal()}'),
+          Text('Report prepared: ${document.exportedAt.toLocal()}'),
           const Text(
             'Some uncommon characters or emoji may not render in the PDF.',
           ),
@@ -3218,6 +3452,11 @@ class _GuestPortablePreviewDialog extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close),
+            label: const Text('Close'),
+          ),
           TextButton(
             onPressed: onPrintFallback,
             child: const Text('Print / Save PDF fallback'),
@@ -3370,6 +3609,12 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
       height: MediaQuery.sizeOf(context).height * 0.65,
       child: ListView(
         children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Selected items are added locally. Existing items with matching IDs are kept unchanged.',
+            ),
+          ),
           for (final item in widget.data.knowledge)
             CheckboxListTile(
               value: _knowledge.contains(item['id']),

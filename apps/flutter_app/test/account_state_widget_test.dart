@@ -8,6 +8,7 @@ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 
@@ -103,6 +104,7 @@ void main() {
     AccountMembershipStatus? membershipStatus,
     bool sharedIdentityActive = false,
     bool authUnavailable = false,
+    GuestWorkspaceStore? store,
     List<Map<String, dynamic>> existingGuestGroups =
         const <Map<String, dynamic>>[],
   }) async {
@@ -110,7 +112,7 @@ void main() {
       ProviderScope(
         overrides: [
           guestWorkspaceStoreProvider.overrideWithValue(
-            GuestWorkspaceStore(_MemoryGuestStorage()),
+            store ?? GuestWorkspaceStore(_MemoryGuestStorage()),
           ),
           currentGuestGroupsProvider.overrideWith(
             (ref) async => existingGuestGroups,
@@ -146,6 +148,37 @@ void main() {
       expect(find.text('Sign in'), findsOneWidget);
       expect(find.text('Create account'), findsOneWidget);
       expect(find.text('Sign out'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'sign-in return keeps guest workspace content available',
+    (tester) async {
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        const GuestWorkspaceData(
+          sessions: [
+            {'id': 'local-session', 'title': 'Work in progress'},
+          ],
+        ),
+      );
+      await pumpGuestWorkspace(tester, store: store);
+
+      await tester.tap(find.byTooltip('Account'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sign in'));
+      await tester.pumpAndSettle();
+      expect(find.text('Back to guest workspace'), findsOneWidget);
+
+      await tester.tap(find.text('Back to guest workspace'));
+      await tester.pumpAndSettle();
+      expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+      await tester.tap(find.text('Interact').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Work in progress'), findsOneWidget);
+
+      final saved = await store.load();
+      expect(saved.sessions.single['title'], 'Work in progress');
     },
   );
 
@@ -403,6 +436,10 @@ void main() {
         ),
       ),
     );
+    expect(
+      find.textContaining('Linking recovery keeps this guest identity'),
+      findsOneWidget,
+    );
     await tester.enterText(find.byType(TextField).first, 'account@example.test');
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
     await tester.tap(
@@ -432,6 +469,10 @@ void main() {
           home: SignInPage(createAccount: true),
         ),
       ),
+    );
+    expect(
+      find.textContaining('This creates a separate account. It does not transfer guest-group access'),
+      findsOneWidget,
     );
     await tester.enterText(find.byType(TextField).first, 'new@example.test');
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');

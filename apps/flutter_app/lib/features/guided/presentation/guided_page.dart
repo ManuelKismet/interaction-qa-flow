@@ -22,13 +22,15 @@ class GuidedPage extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(32, 28, 32, 12),
-            child: Row(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    'IntQAFlow Interact',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
+                Text(
+                  'IntQAFlow Interact',
+                  style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 Tooltip(
                   message: 'Import legacy Interact JSON',
@@ -37,7 +39,6 @@ class GuidedPage extends ConsumerWidget {
                     onPressed: () => _importLegacy(context, ref),
                   ),
                 ),
-                const SizedBox(width: 8),
                 FilledButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('New session'),
@@ -47,6 +48,7 @@ class GuidedPage extends ConsumerWidget {
             ),
           ),
           const TabBar(
+            isScrollable: true,
             tabs: [
               Tab(text: 'Active sessions'),
               Tab(text: 'Templates'),
@@ -91,10 +93,14 @@ class GuidedPage extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(controller: title, decoration: const InputDecoration(labelText: 'Session title')),
+                  const SizedBox(height: 12),
                   TextField(controller: owner, decoration: const InputDecoration(labelText: 'Owner (optional)')),
+                  const SizedBox(height: 12),
                   TextField(controller: reference, decoration: const InputDecoration(labelText: 'Context / reference')),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
                     initialValue: templateId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Start'),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Blank session')),
@@ -105,6 +111,7 @@ class GuidedPage extends ConsumerWidget {
                   ),
                   DropdownButtonFormField<String?>(
                     initialValue: departmentId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Department'),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('No department')),
@@ -114,6 +121,7 @@ class GuidedPage extends ConsumerWidget {
                   ),
                   DropdownButtonFormField<String?>(
                     initialValue: teamId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Team'),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('No team')),
@@ -123,6 +131,7 @@ class GuidedPage extends ConsumerWidget {
                   ),
                   DropdownButtonFormField<String>(
                     initialValue: visibility,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Visibility'),
                     items: const [
                       DropdownMenuItem(value: 'private', child: Text('Private')),
@@ -196,24 +205,34 @@ class _SessionsList extends StatelessWidget {
       ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
     if (loading && sessions.isEmpty) return const Center(child: CircularProgressIndicator());
     if (sessions.isEmpty) return const Center(child: Text('No sessions here yet.'));
-    return ListView.separated(
-      padding: const EdgeInsets.all(32),
-      itemCount: sessions.length,
-      separatorBuilder: (_, _) => const Divider(),
-      itemBuilder: (context, index) {
-        final session = sessions[index];
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          title: Text(session.title),
-          subtitle: Text([
-            session.status,
-            session.visibility,
-            if (session.contextReference?.isNotEmpty == true) session.contextReference!,
-          ].join(' · ')),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.go('/guided/sessions/${session.id}'),
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1040),
+        child: ListView.separated(
+          padding: const EdgeInsets.all(32),
+          itemCount: sessions.length,
+          separatorBuilder: (_, _) => const Divider(),
+          itemBuilder: (context, index) {
+            final session = sessions[index];
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 8,
+              ),
+              title: Text(session.title),
+              subtitle: Text([
+                session.status,
+                session.visibility,
+                if (session.contextReference?.isNotEmpty == true)
+                  session.contextReference!,
+              ].join(' · ')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.go('/guided/sessions/${session.id}'),
+            );
+          },
         );
-      },
+      ),
     );
   }
 }
@@ -227,58 +246,78 @@ class _TemplatesList extends ConsumerWidget {
     return templates.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const Center(child: Text('Unable to load templates.')),
-      data: (items) => ListView(
-        padding: const EdgeInsets.all(32),
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create template'),
-                  onPressed: () => _create(context, ref),
+      data: (items) => Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1040),
+          child: ListView(
+            padding: const EdgeInsets.all(32),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create template'),
+                      onPressed: () => _create(context, ref),
+                    ),
+                    IconButton(
+                      tooltip: 'Import templates',
+                      icon: const Icon(Icons.upload_file_outlined),
+                      onPressed: () => _import(context, ref),
+                    ),
+                    IconButton(
+                      tooltip: 'Export templates',
+                      icon: const Icon(Icons.download_outlined),
+                      onPressed: () => _export(context, ref),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  tooltip: 'Import templates',
-                  icon: const Icon(Icons.upload_file_outlined),
-                  onPressed: () => _import(context, ref),
-                ),
-                IconButton(
-                  tooltip: 'Export templates',
-                  icon: const Icon(Icons.download_outlined),
-                  onPressed: () => _export(context, ref),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (items.isEmpty) const Center(child: Text('No templates yet.')),
-          for (final item in items)
-            ListTile(
-              title: Text(item.name),
-              subtitle: Text('v${item.currentVersion} · ${item.questions.length} questions · ${item.status}'),
-              trailing: PopupMenuButton<String>(
-                onSelected: (action) async {
-                  final repository = ref.read(guidedRepositoryProvider);
-                  if (action == 'version') {
-                    await _saveVersion(context, ref, item);
-                    return;
-                  }
-                  if (action == 'duplicate') await repository.duplicateTemplate(item.id);
-                  if (action == 'archive') await repository.archiveTemplate(item.id);
-                  ref.invalidate(guidedTemplatesProvider);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'version', child: Text('Save as new version')),
-                  PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
-                  PopupMenuItem(value: 'archive', child: Text('Archive')),
-                ],
               ),
-              onTap: item.status == 'active' ? () => _start(context, ref, item) : null,
-            ),
-        ],
+              const SizedBox(height: 20),
+              if (items.isEmpty) const Center(child: Text('No templates yet.')),
+              for (final item in items)
+                ListTile(
+                  title: Text(item.name),
+                  subtitle: Text(
+                    'v${item.currentVersion} · ${item.questions.length} questions · ${item.status}',
+                  ),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (action) async {
+                      final repository = ref.read(guidedRepositoryProvider);
+                      if (action == 'version') {
+                        await _saveVersion(context, ref, item);
+                        return;
+                      }
+                      if (action == 'duplicate') {
+                        await repository.duplicateTemplate(item.id);
+                      }
+                      if (action == 'archive') {
+                        await repository.archiveTemplate(item.id);
+                      }
+                      ref.invalidate(guidedTemplatesProvider);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'version',
+                        child: Text('Save as new version'),
+                      ),
+                      PopupMenuItem(
+                        value: 'duplicate',
+                        child: Text('Duplicate'),
+                      ),
+                      PopupMenuItem(value: 'archive', child: Text('Archive')),
+                    ],
+                  ),
+                  onTap: item.status == 'active'
+                      ? () => _start(context, ref, item)
+                      : null,
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -310,6 +349,7 @@ class _TemplatesList extends ConsumerWidget {
           width: 520,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(controller: name, decoration: const InputDecoration(labelText: 'Template name')),
+            const SizedBox(height: 12),
             TextField(
               controller: questions,
               minLines: 5,

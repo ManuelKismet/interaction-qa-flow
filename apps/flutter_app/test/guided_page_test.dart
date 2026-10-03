@@ -29,9 +29,46 @@ class _TemplateTestRepository extends GuidedRepository {
 }
 
 void main() {
+  testWidgets('Interact navigation toolbar fits a phone viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    const template = GuidedTemplate(
+      id: 'template-1',
+      name: 'Template',
+      status: 'active',
+      currentVersion: 1,
+      questions: [],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          guidedRepositoryProvider.overrideWithValue(
+            _TemplateTestRepository(template),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: GuidedPage())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('IntQAFlow Interact'), findsOneWidget);
+    expect(find.text('New session'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('new template version uses edited draft and preserves snapshots', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     const originalQuestion = GuidedTemplateQuestion(
       id: 'question-1',
       text: 'Original template question',
@@ -66,6 +103,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Templates'));
     await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byType(ListView).first).width,
+      lessThanOrEqualTo(1040),
+    );
     await tester.tap(find.byType(PopupMenuButton<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save as new version'));

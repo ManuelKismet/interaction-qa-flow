@@ -175,6 +175,7 @@ void main() {
     );
 
     expect(selected, contains('Selected participant — Alice &lt;A&gt;'));
+    expect(selected, contains('Report prepared:'));
     expect(selected, contains('private Alice answer'));
     expect(selected, isNot(contains('private Bob answer')));
     expect(selected, isNot(contains('B &amp; B')));
