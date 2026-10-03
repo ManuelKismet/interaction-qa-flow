@@ -1,3 +1,5 @@
+import 'dart:js_interop';
+
 import 'package:web/web.dart' as web;
 
 void openPrintableReport(String documentHtml) {
@@ -8,6 +10,6 @@ void openPrintableReport(String documentHtml) {
   }
   final document = reportWindow.document;
   document.open();
-  document.write(documentHtml);
+  document.write(documentHtml.toJS);
   document.close();
 }
