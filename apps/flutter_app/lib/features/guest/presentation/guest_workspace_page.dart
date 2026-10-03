@@ -9,7 +9,9 @@ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
 
 class GuestWorkspacePage extends ConsumerStatefulWidget {
   const GuestWorkspacePage({
@@ -292,7 +294,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('IntQAFlow guest workspace'),
+          title: const Text(
+            'IntQAFlow guest workspace',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           actions: [
             IconButton(
               tooltip: 'Import backup',
@@ -438,26 +444,64 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     );
   }
 
-  Future<void> _printReport(Map<String, dynamic> session) async {
-    final report = const JsonEncoder.withIndent('  ').convert(session);
+  Future<void> _printReport(
+    Map<String, dynamic> session,
+    String? participantId,
+  ) async {
+    final participants = (session['participants'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final selectedParticipantId = participants.any(
+      (participant) => participant['id'] == participantId,
+    )
+        ? participantId
+        : participants.firstOrNull?['id'] as String?;
+    final selectedParticipantName = participants
+            .where((participant) => participant['id'] == selectedParticipantId)
+            .firstOrNull?['name'] as String? ??
+        'Not selected';
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${session['title']} report'),
-        content: SizedBox(
-          width: 640,
-          child: SingleChildScrollView(child: SelectableText(report)),
+        title: const Text('Readable session report'),
+        content: Text(
+          'Stored locally on this device. Current participant: '
+          '$selectedParticipantName. '
+          'Choose whether to include this participant or everyone.',
         ),
         actions: [
           TextButton(
             onPressed: () {
-              printCurrentPage();
+              openPrintableReport(
+                buildGuestReportDocument(
+                  session: session,
+                  allParticipants: false,
+                  participantId: selectedParticipantId,
+                  generatedAt: DateTime.now().toUtc(),
+                ),
+              );
+              Navigator.pop(context);
             },
-            child: const Text('Print / Save PDF'),
+            child: const Text('Selected participant'),
           ),
           FilledButton(
+            onPressed: () {
+              openPrintableReport(
+                buildGuestReportDocument(
+                  session: session,
+                  allParticipants: true,
+                  participantId: selectedParticipantId,
+                  generatedAt: DateTime.now().toUtc(),
+                ),
+              );
+              Navigator.pop(context);
+            },
+            child: const Text('All participants'),
+          ),
+          TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            child: const Text('Cancel'),
           ),
         ],
       ),
@@ -669,7 +713,7 @@ class _GuestInteractTab extends StatefulWidget {
   final GuestWorkspaceData data;
   final ValueChanged<GuestWorkspaceData> onChange;
   final ValueChanged<Map<String, dynamic>> onSaveTemplate;
-  final ValueChanged<Map<String, dynamic>> onPrint;
+  final void Function(Map<String, dynamic>, String?) onPrint;
 
   @override
   State<_GuestInteractTab> createState() => _GuestInteractTabState();
@@ -694,22 +738,22 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
     final template = widget.data.templates
         .where((item) => item['id'] == _selectedTemplateId)
         .firstOrNull;
-    final participantId = newGuestItemId();
-    final session = <String, dynamic>{
-      'id': newGuestItemId(),
-      'title': title,
-      'visibility': 'private_local',
-      'participants': [
-        {'id': participantId, 'name': participant},
-      ],
-      'questions': [
-        for (final question in (template?['questions'] as List? ?? const []))
-          _newQuestion(
-            (question as Map<String, dynamic>)['text'] as String? ?? '',
-            [participantId],
-          ),
-      ],
-    };
+    final session = template == null
+        ? <String, dynamic>{
+            'id': newGuestItemId(),
+            'title': title,
+            'visibility': 'private_local',
+            'participants': [
+              {'id': newGuestItemId(), 'name': participant},
+            ],
+            'questions': <Map<String, dynamic>>[],
+          }
+        : createGuestSessionFromTemplate(
+            template: template,
+            id: newGuestItemId(),
+            title: title,
+            firstParticipantName: participant,
+          );
     widget.onChange(
       widget.data.copyWith(sessions: [session, ...widget.data.sessions]),
     );
@@ -785,17 +829,13 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
     );
     name.dispose();
     if (value == null || value.isEmpty || !mounted) return;
-    final questions = (session['questions'] as List? ?? const [])
-        .map((question) => {
-          'id': newGuestItemId(),
-          'text': (question as Map<String, dynamic>)['text'],
-        })
-        .toList();
-    widget.onSaveTemplate({
-      'id': newGuestItemId(),
-      'name': value,
-      'questions': questions,
-    });
+    widget.onSaveTemplate(
+      createGuestTemplateFromSession(
+        session: session,
+        id: newGuestItemId(),
+        name: value,
+      ),
+    );
   }
 
   @override
@@ -821,14 +861,39 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
           ],
           onChanged: (value) => setState(() => _selectedTemplateId = value),
         ),
-      TextField(
-        controller: _newSessionTitle,
-        decoration: const InputDecoration(labelText: 'New Interact session'),
+      const SizedBox(height: 12),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth >= 680
+              ? (constraints.maxWidth - 12) / 2
+              : constraints.maxWidth;
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: width,
+                child: TextField(
+                  controller: _newSessionTitle,
+                  decoration: const InputDecoration(
+                    labelText: 'New Interact session',
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: width,
+                child: TextField(
+                  controller: _newSessionParticipant,
+                  decoration: const InputDecoration(
+                    labelText: 'First participant',
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
-      TextField(
-        controller: _newSessionParticipant,
-        decoration: const InputDecoration(labelText: 'First participant'),
-      ),
+      const SizedBox(height: 12),
       Align(
         alignment: Alignment.centerLeft,
         child: FilledButton.icon(
@@ -850,7 +915,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
           onChange: _updateSession,
           onDelete: () => _deleteSession(session),
           onSaveTemplate: () => _saveTemplate(session),
-          onPrint: () => widget.onPrint(session),
+          onPrint: (participantId) => widget.onPrint(session, participantId),
           makeQuestion: _newQuestion,
         ),
       if (widget.data.templates.isNotEmpty) ...[
@@ -884,7 +949,7 @@ class _GuestSessionEditor extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>> onChange;
   final VoidCallback onDelete;
   final VoidCallback onSaveTemplate;
-  final VoidCallback onPrint;
+  final ValueChanged<String?> onPrint;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
 
   @override
@@ -894,6 +959,24 @@ class _GuestSessionEditor extends StatefulWidget {
 class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   final _participant = TextEditingController();
   final _question = TextEditingController();
+  String? _selectedParticipantId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedParticipantId = _participants.firstOrNull?['id'] as String?;
+  }
+
+  @override
+  void didUpdateWidget(covariant _GuestSessionEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session['id'] != widget.session['id'] ||
+        !_participants.any(
+          (participant) => participant['id'] == _selectedParticipantId,
+        )) {
+      _selectedParticipantId = _participants.firstOrNull?['id'] as String?;
+    }
+  }
 
   @override
   void dispose() {
@@ -921,10 +1004,59 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       (session['participants'] as List).add({'id': id, 'name': name});
       final roots = session['questions'] as List;
       for (final root in roots) {
-        _ensureAnswer(root as Map<String, dynamic>, id);
+        final question = root as Map<String, dynamic>;
+        if (question['scope'] != 'participant') {
+          _ensureAnswer(question, id);
+        }
       }
     });
+    setState(() => _selectedParticipantId = id);
     _participant.clear();
+  }
+
+  Future<void> _renameActiveParticipant() async {
+    final participant = _participants
+        .where((item) => item['id'] == _selectedParticipantId)
+        .firstOrNull;
+    if (participant == null) return;
+    final name = TextEditingController(
+      text: participant['name'] as String? ?? '',
+    );
+    final updatedName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename participant'),
+        content: TextField(
+          controller: name,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Participant name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, name.text.trim()),
+            child: const Text('Save name locally'),
+          ),
+        ],
+      ),
+    );
+    name.dispose();
+    if (updatedName == null ||
+        updatedName.isEmpty ||
+        !mounted ||
+        participant['id'] is! String) {
+      return;
+    }
+    final participantId = participant['id'] as String;
+    _editSession((session) {
+      for (final item in session['participants'] as List) {
+        final current = item as Map<String, dynamic>;
+        if (current['id'] == participantId) current['name'] = updatedName;
+      }
+    });
   }
 
   void _addQuestion({required bool shared}) {
@@ -934,12 +1066,19 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
         .map((item) => item['id'] as String)
         .toList();
     if (participantIds.isEmpty) return;
+    final selectedParticipantId = participantIds.contains(
+      _selectedParticipantId,
+    )
+        ? _selectedParticipantId!
+        : participantIds.first;
     final question = widget.makeQuestion(
       text,
-      shared ? participantIds : [participantIds.first],
+      shared ? participantIds : [selectedParticipantId],
     );
     question['scope'] = shared ? 'shared' : 'participant';
-    if (!shared) question['target_participant_id'] = participantIds.first;
+    if (!shared) {
+      question['target_participant_id'] = selectedParticipantId;
+    }
     _editSession((session) => (session['questions'] as List).add(question));
     _question.clear();
   }
@@ -947,13 +1086,34 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   @override
   Widget build(BuildContext context) {
     final participants = _participants;
+    final activeParticipant = participants
+        .where((participant) => participant['id'] == _selectedParticipantId)
+        .firstOrNull ?? participants.firstOrNull;
+    final activeParticipantId = activeParticipant?['id'] as String?;
+    final questions = (widget.session['questions'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .where((question) {
+          if (question['scope'] != 'participant') return true;
+          final targetId = question['target_participant_id'] ??
+              participants.firstOrNull?['id'];
+          return targetId == activeParticipantId;
+        })
+        .toList();
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ExpansionTile(
-        initiallyExpanded: true,
-        title: Text(widget.session['title'] as String? ?? 'Local session'),
-        subtitle: Text('${participants.length} participants · Private on this device'),
-        childrenPadding: const EdgeInsets.all(12),
+        initiallyExpanded: false,
+        title: Text(
+          widget.session['title'] as String? ?? 'Local session',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '${participants.length} participants · Private on this device',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
         children: [
           Wrap(
             spacing: 8,
@@ -965,9 +1125,14 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 label: const Text('Save as local template'),
               ),
               OutlinedButton.icon(
-                onPressed: widget.onPrint,
+                onPressed: () => widget.onPrint(activeParticipantId),
                 icon: const Icon(Icons.print_outlined),
-                label: const Text('Report / Print'),
+                label: const Text('Readable report / print'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _showJsonBackup,
+                icon: const Icon(Icons.data_object),
+                label: const Text('Session JSON backup'),
               ),
               TextButton.icon(
                 onPressed: widget.onDelete,
@@ -976,11 +1141,39 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
             ],
           ),
-          for (final participant in participants)
-            Chip(
-              avatar: const Icon(Icons.person_outline, size: 18),
-              label: Text(participant['name'] as String? ?? 'Participant'),
+          if (participants.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              key: ValueKey(activeParticipantId),
+              initialValue: activeParticipantId,
+              decoration: const InputDecoration(
+                labelText: 'Active participant',
+                helperText: 'Answers and individual questions are shown for this participant.',
+              ),
+              items: [
+                for (final participant in participants)
+                  DropdownMenuItem(
+                    value: participant['id'] as String,
+                    child: Text(
+                      participant['name'] as String? ?? 'Participant',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (value) =>
+                  setState(() => _selectedParticipantId = value),
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _renameActiveParticipant,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Rename active participant'),
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
           Row(
             children: [
               Expanded(
@@ -997,12 +1190,18 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
           TextField(
             controller: _question,
-            decoration: const InputDecoration(labelText: 'Prepared question'),
+            decoration: const InputDecoration(
+              labelText: 'Prepared question',
+              helperText: 'Shared questions get separate answers from each participant.',
+            ),
           ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: [
               FilledButton.tonal(
                 onPressed: participants.isEmpty ? null : () => _addQuestion(shared: true),
@@ -1010,15 +1209,22 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
               FilledButton.tonal(
                 onPressed: participants.isEmpty ? null : () => _addQuestion(shared: false),
-                child: const Text('Add question for first participant'),
+                child: const Text('Add question for selected participant'),
               ),
             ],
           ),
-          for (final question in (widget.session['questions'] as List? ?? const []))
+          if (questions.isEmpty && participants.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text('No prepared questions for this participant yet.'),
+            ),
+          for (final question in questions)
             _GuestQuestionEditor(
               key: ValueKey((question as Map<String, dynamic>)['id']),
               question: question,
-              participants: participants,
+              participants: activeParticipant == null
+                  ? const []
+                  : [activeParticipant],
               onRemove: () => _removeRootQuestion(question),
               onUpdate: (updated) => _replaceQuestion(
                 widget.session,
@@ -1053,6 +1259,33 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             current.insert(index.clamp(0, current.length).toInt(), removed);
           }),
         ),
+      ),
+    );
+  }
+
+  Future<void> _showJsonBackup() async {
+    final backup = const JsonEncoder.withIndent('  ').convert(widget.session);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Session JSON backup'),
+        content: SizedBox(
+          width: 640,
+          child: SingleChildScrollView(child: SelectableText(backup)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: backup));
+              Navigator.pop(context);
+            },
+            child: const Text('Copy JSON'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
       ),
     );
   }
@@ -1132,7 +1365,10 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     }
     final followUps = answer['follow_ups'] as List? ?? <Map<String, dynamic>>[];
     answer['follow_ups'] = followUps;
-    followUps.add(widget.makeQuestion(text, [participantId]));
+    final followUp = widget.makeQuestion(text, [participantId]);
+    followUp['scope'] = 'participant';
+    followUp['target_participant_id'] = participantId;
+    followUps.add(followUp);
     widget.onUpdate(question);
   }
 
