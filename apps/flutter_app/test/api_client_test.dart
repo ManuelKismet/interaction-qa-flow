@@ -45,6 +45,22 @@ void main() {
     );
     client.close();
   });
+
+  test('keeps a linked guest identity after organisation membership lookup returns 401', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _unauthorized());
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await expectLater(
+      client.get<void>('/api/v1/auth/me'),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(tokens.forceRefreshCount, 1);
+    expect(tokens.signedOut, isFalse);
+    expect(adapter.requests.length, 2);
+    client.close();
+  });
 }
 
 class _FakeTokenSource implements ApiTokenSource {

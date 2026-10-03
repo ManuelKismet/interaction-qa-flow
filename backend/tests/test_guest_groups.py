@@ -53,6 +53,19 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
     install_test_tokens(monkeypatch)
     owner = await make_group(client, "guest-owner", "Field research")
     group_id = owner["id"]
+    async with session_factory() as db:
+        group_row = await db.scalar(
+            select(GuestGroup).where(GuestGroup.id == UUID(group_id))
+        )
+        group_row.expires_at = datetime.now(timezone.utc) + timedelta(days=1)
+        await db.commit()
+    listed_groups = await client.get(
+        "/api/v1/guest/groups", headers=bearer("guest-owner")
+    )
+    assert listed_groups.status_code == 200
+    assert datetime.fromisoformat(listed_groups.json()[0]["expires_at"]) > (
+        datetime.now(timezone.utc) + timedelta(days=89)
+    )
 
     invite_response = await client.post(
         f"/api/v1/guest/groups/{group_id}/invitations",
@@ -62,6 +75,24 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
     assert invite_response.status_code == 200, invite_response.text
     invitation = invite_response.json()
     token = invitation["token"]
+    active_invitations = await client.get(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("guest-owner"),
+    )
+    assert active_invitations.status_code == 200
+    assert active_invitations.json() == [
+        {
+            "id": invitation["id"],
+            "role": "contributor",
+            "expires_at": invitation["expires_at"],
+        }
+    ]
+    assert "token" not in active_invitations.json()[0]
+    hidden_invitations = await client.get(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("guest-outsider"),
+    )
+    assert hidden_invitations.status_code == 404
 
     preview = await client.post(
         "/api/v1/guest/invitations/preview",
@@ -235,6 +266,13 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
         headers=bearer("transfer-host"),
         json={"role": "viewer"},
     )
+    listed_invites = await client.get(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("transfer-host"),
+    )
+    assert listed_invites.status_code == 200
+    assert listed_invites.json()[0]["id"] == invite.json()["id"]
+    assert "token" not in listed_invites.json()[0]
     joined = await client.post(
         "/api/v1/guest/invitations/join",
         headers=bearer("transfer-viewer"),
@@ -251,6 +289,22 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
         json={"kind": "knowledge", "title": "No write", "data": {}},
     )
     assert denied.status_code == 403
+    revocable = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("transfer-host"),
+        json={"role": "contributor"},
+    )
+    revoked = await client.delete(
+        f"/api/v1/guest/groups/{group_id}/invitations/{revocable.json()['id']}",
+        headers=bearer("transfer-host"),
+    )
+    assert revoked.status_code == 204
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}/invitations",
+            headers=bearer("transfer-host"),
+        )
+    ).json() == []
 
     transfer = await client.post(
         f"/api/v1/guest/groups/{group_id}/transfer-administration",

@@ -170,6 +170,8 @@ class GuestService:
         await self._rate_limit(firebase_uid, "read")
         now = datetime.now(timezone.utc)
         rows = await self.guest.groups_for_member(firebase_uid, now)
+        for group, _member in rows:
+            group.expires_at = now + GUEST_GROUP_TTL
         groups = [self._group_dict(group, member) for group, member in rows]
         await self.guest.commit()
         return groups
@@ -224,6 +226,24 @@ class GuestService:
             "token": token,
             "expires_at": invitation.expires_at.isoformat(),
         }
+
+    async def list_invitations(
+        self, group_id: UUID, firebase_uid: str
+    ) -> list[dict[str, Any]]:
+        await self._group(group_id, firebase_uid, admin=True, lock=False)
+        await self._rate_limit(firebase_uid, "read")
+        invitations = await self.guest.active_invitations(
+            group_id, datetime.now(timezone.utc)
+        )
+        await self.guest.commit()
+        return [
+            {
+                "id": invitation.id,
+                "role": invitation.role,
+                "expires_at": invitation.expires_at.isoformat(),
+            }
+            for invitation in invitations
+        ]
 
     async def _invitation(self, token: str) -> GuestGroupInvitation | None:
         token_hash = hashlib.sha256(token.encode()).hexdigest()

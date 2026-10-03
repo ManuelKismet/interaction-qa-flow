@@ -94,7 +94,8 @@ Dio createApiClient(
           final response = await client.fetch<dynamic>(options);
           handler.resolve(response);
         } on DioException catch (retryError) {
-          if (retryError.response?.statusCode == 401) {
+          if (retryError.response?.statusCode == 401 &&
+              options.uri.path != '/api/v1/auth/me') {
             await tokenSource.signOut();
           }
           handler.next(retryError);

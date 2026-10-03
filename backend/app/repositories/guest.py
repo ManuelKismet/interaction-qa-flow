@@ -175,6 +175,21 @@ class GuestRepository:
             )
         ) or 0
 
+    async def active_invitations(
+        self, group_id: UUID, now: datetime
+    ) -> list[GuestGroupInvitation]:
+        rows = await self.session.scalars(
+            select(GuestGroupInvitation)
+            .where(
+                GuestGroupInvitation.group_id == group_id,
+                GuestGroupInvitation.revoked_at.is_(None),
+                GuestGroupInvitation.expires_at > now,
+                GuestGroupInvitation.redeemed_by_uid.is_(None),
+            )
+            .order_by(GuestGroupInvitation.expires_at)
+        )
+        return list(rows)
+
     async def member_count(self, group_id: UUID) -> int:
         return await self.session.scalar(
             select(func.count(GuestGroupMembership.id)).where(

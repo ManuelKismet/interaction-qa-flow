@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
+import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 
@@ -73,6 +74,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   }
 
   Future<void> _startSharedGuestIdentity() async {
+    final currentUser = ref.read(firebaseAuthProvider).currentUser;
+    if (currentUser != null && !currentUser.isAnonymous) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This account is not a guest identity. Its signed-in identity was left unchanged.',
+          ),
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -300,7 +312,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                 ),
                 icon: const Icon(Icons.group_outlined),
               )
-            else if (widget.firebaseReady)
+            else if (_canStartSharedGuestIdentity)
               IconButton(
                 tooltip: 'Enable shared guest groups',
                 onPressed: _startSharedGuestIdentity,
@@ -346,6 +358,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                     sharedIdentityActive: widget.sharedIdentityActive,
                     saveStatus: _saveStatus,
                   ),
+                  if (widget.firebaseReady &&
+                      _hasSignedInNonGuestUser &&
+                      !widget.sharedIdentityActive)
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        'Shared group creation and invitation redemption use a Firebase anonymous identity. This signed-in account was not switched or granted guest access.',
+                      ),
+                    ),
                   if (_loadError != null)
                     MaterialBanner(
                       content: Text(_loadError!),
@@ -441,6 +462,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     );
   }
 
+  bool get _canStartSharedGuestIdentity {
+    if (!widget.firebaseReady) return false;
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    return user == null || user.isAnonymous;
+  }
+
+  bool get _hasSignedInNonGuestUser {
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    return user != null && !user.isAnonymous;
+  }
+
 }
 
 class _GuestNotice extends StatelessWidget {
@@ -459,7 +491,7 @@ class _GuestNotice extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Text(
       sharedIdentityActive
-          ? 'Per-device guest identity active. Local drafts stay on this device; only work explicitly shared with a group is online. $saveStatus'
+          ? 'Guest-group membership is available for this Firebase identity. Local drafts stay on this device; only work explicitly shared with a group is online. $saveStatus'
           : 'Stored in this browser only. Clearing browser data or losing this device can erase it. Export a backup before you need to move it. $saveStatus',
     ),
   );
@@ -1330,22 +1362,891 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
   }
 }
 
-class SharedGuestGroupsPage extends StatelessWidget {
+class SharedGuestGroupsPage extends ConsumerStatefulWidget {
   const SharedGuestGroupsPage({super.key});
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Shared guest groups')),
-    body: const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Text(
-          'Shared group access is enabled for this device. Create or join a group '
-          'using its invitation after the guest-group API is available.',
-          textAlign: TextAlign.center,
+  ConsumerState<SharedGuestGroupsPage> createState() =>
+      _SharedGuestGroupsPageState();
+}
+
+class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+    with WidgetsBindingObserver {
+  final _search = TextEditingController();
+  List<Map<String, dynamic>> _groups = const [];
+  List<Map<String, dynamic>> _entries = const [];
+  List<Map<String, dynamic>> _invitations = const [];
+  Map<String, dynamic>? _group;
+  String? _groupId;
+  bool _busy = false;
+  String? _error;
+
+  GuestGroupRepository get _repository => ref.read(guestGroupRepositoryProvider);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadGroups());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) _loadGroups();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadGroups() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+      _groups = const [];
+      _group = null;
+      _entries = const [];
+      _invitations = const [];
+    });
+    try {
+      final groups = await _repository.listGroups();
+      final selected = groups.any((group) => group['id'] == _groupId)
+          ? _groupId
+          : groups.isEmpty
+          ? null
+          : groups.first['id'] as String;
+      if (!mounted) return;
+      setState(() {
+        _groups = groups;
+        _groupId = selected;
+      });
+      if (selected != null) {
+        await _loadGroup(selected);
+      } else {
+        setState(() {
+          _group = null;
+          _entries = const [];
+          _invitations = const [];
+        });
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _groups = const [];
+          _group = null;
+          _entries = const [];
+          _invitations = const [];
+          _error = _safeGuestError(error);
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _loadGroup(String groupId) async {
+    if (!mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _group = null;
+      _entries = const [];
+      _invitations = const [];
+      _groupId = groupId;
+    });
+    try {
+      final detail = await _repository.getGroup(groupId);
+      final entries = await _repository.searchEntries(
+        groupId: groupId,
+        query: _search.text,
+      );
+      final invitations = detail['role'] == 'admin'
+          ? await _repository.listInvitations(groupId)
+          : const <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() {
+        _groupId = groupId;
+        _group = detail;
+        _entries = entries;
+        _invitations = invitations;
+        _error = null;
+      });
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _safeGuestError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _createGroup() async {
+    final name = TextEditingController();
+    final displayName = TextEditingController();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create a shared guest group'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'This explicitly stores the group and membership online. '
+              'Only content you later choose to share is uploaded.',
+            ),
+            TextField(controller: name, decoration: const InputDecoration(labelText: 'Group name')),
+            TextField(
+              controller: displayName,
+              decoration: const InputDecoration(labelText: 'Your display name'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create group')),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) {
+      name.dispose();
+      displayName.dispose();
+      return;
+    }
+    final groupName = name.text.trim();
+    final memberName = displayName.text.trim();
+    name.dispose();
+    displayName.dispose();
+    if (groupName.isEmpty || memberName.isEmpty) return;
+    await _run(() async {
+      final group = await _repository.createGroup(
+        name: groupName,
+        displayName: memberName,
+      );
+      _groupId = group['id'] as String;
+      await _loadGroups();
+    });
+  }
+
+  Future<void> _joinByInvitation() async {
+    final token = TextEditingController();
+    final displayName = TextEditingController();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Join a guest group'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Paste an invitation token. Preview checks validity only and reveals no group content.'),
+            TextField(controller: token, decoration: const InputDecoration(labelText: 'Invitation token')),
+            TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Preview invitation')),
+        ],
+      ),
+    );
+    final inviteToken = token.text.trim();
+    final memberName = displayName.text.trim();
+    token.dispose();
+    displayName.dispose();
+    if (accepted != true || inviteToken.isEmpty || memberName.isEmpty || !mounted) return;
+    await _run(() async {
+      if (!await _repository.previewInvitation(inviteToken)) {
+        throw StateError('This invitation is unavailable, expired or revoked.');
+      }
+      final join = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Request to join?'),
+          content: const Text(
+            'The host must approve your membership. This request does not grant access to group content, and your display name is not identity verification.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Request access')),
+          ],
+        ),
+      );
+      if (join != true) return;
+      final membership = await _repository.joinInvitation(
+        token: inviteToken,
+        displayName: memberName,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              membership['status'] == 'pending'
+                  ? 'Join request sent; the host must approve before you can access content.'
+                  : 'Guest group membership confirmed.',
+            ),
+          ),
+        );
+      }
+      await _loadGroups();
+    });
+  }
+
+  Future<void> _createInvitation() async {
+    final groupId = _groupId;
+    if (groupId == null) return;
+    String role = 'contributor';
+    final selectedRole = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Create invitation'),
+          content: DropdownButtonFormField<String>(
+            initialValue: role,
+            decoration: const InputDecoration(labelText: 'New member role'),
+            items: const [
+              DropdownMenuItem(value: 'viewer', child: Text('Viewer — read only')),
+              DropdownMenuItem(value: 'contributor', child: Text('Contributor — own content')),
+              DropdownMenuItem(value: 'editor', child: Text('Editor — edit group content')),
+            ],
+            onChanged: (value) => setDialogState(() => role = value ?? role),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, role), child: const Text('Create')),
+          ],
         ),
       ),
+    );
+    if (selectedRole == null || !mounted) return;
+    await _run(() async {
+      final invitation = await _repository.createInvitation(
+        groupId: groupId,
+        role: selectedRole,
+      );
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Invitation created'),
+          content: SelectableText(
+            'Share this one-time token privately. It expires at ${invitation['expires_at']}. '
+            'The token is shown only now; revoke unused invitations from the group controls.\n\n${invitation['token']}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: invitation['token'] as String));
+                Navigator.pop(context);
+              },
+              child: const Text('Copy token'),
+            ),
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+          ],
+        ),
+      );
+      await _loadGroup(groupId);
+    });
+  }
+
+  Future<void> _showMembers() async {
+    final groupId = _groupId;
+    if (groupId == null || _group == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Guest group members'),
+        content: SizedBox(
+          width: 560,
+          height: MediaQuery.sizeOf(context).height * 0.65,
+          child: ListView(
+            children: [
+              for (final item in (_group!['members'] as List? ?? const [])
+                  .cast<Map<String, dynamic>>())
+                ListTile(
+                  title: Text(item['display_name'] as String? ?? 'Guest'),
+                  subtitle: Text('${item['role']} · ${item['status']}'),
+                  trailing: _group!['role'] == 'admin' &&
+                          item['status'] == 'pending'
+                      ? TextButton(
+                          onPressed: () => _run(() async {
+                            await _repository.approveMember(
+                              groupId: groupId,
+                              memberId: item['id'] as String,
+                            );
+                            await _loadGroup(groupId);
+                          }),
+                          child: const Text('Approve'),
+                        )
+                      : _group!['role'] == 'admin' &&
+                              item['role'] != 'admin' &&
+                              item['status'] == 'active'
+                          ? PopupMenuButton<String>(
+                              onSelected: (action) => _manageMemberAction(
+                                groupId,
+                                item,
+                                action,
+                              ),
+                              itemBuilder: (context) => [
+                                for (final role in const ['viewer', 'contributor', 'editor'])
+                                  if (role != item['role'])
+                                    PopupMenuItem(value: role, child: Text('Make $role')),
+                                const PopupMenuItem(
+                                  value: 'transfer_admin',
+                                  child: Text('Transfer admin role'),
+                                ),
+                                const PopupMenuDivider(),
+                                const PopupMenuItem(
+                                  value: 'remove',
+                                  child: Text('Remove member'),
+                                ),
+                              ],
+                            )
+                          : null,
+                ),
+              if (_group!['role'] == 'admin') ...[
+                const Divider(),
+                const Text('Active invitations'),
+                for (final invite in _invitations)
+                  ListTile(
+                    title: Text('${invite['role']} invitation'),
+                    subtitle: Text('Expires ${invite['expires_at']}'),
+                    trailing: IconButton(
+                      tooltip: 'Revoke invitation',
+                      icon: const Icon(Icons.link_off),
+                      onPressed: () => _run(() async {
+                        await _repository.revokeInvitation(
+                          groupId: groupId,
+                          invitationId: invite['id'] as String,
+                        );
+                        await _loadGroup(groupId);
+                      }),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          if (_group!['role'] == 'admin')
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _createInvitation();
+              },
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Invite member'),
+            ),
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _manageMemberAction(
+    String groupId,
+    Map<String, dynamic> member,
+    String action,
+  ) async {
+    if (action == 'transfer_admin' || action == 'remove') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            action == 'transfer_admin'
+                ? 'Transfer group administration?'
+                : 'Remove this guest member?',
+          ),
+          content: Text(action == 'transfer_admin'
+              ? '${member['display_name']} will become the administrator and you will become a contributor. This does not affect organisation roles.'
+              : '${member['display_name']} will lose access to this group on their next request. Already exported copies cannot be revoked.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(
+                action == 'transfer_admin' ? 'Transfer administration' : 'Remove member',
+              ),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    await _run(() async {
+      if (action == 'remove') {
+        await _repository.removeMember(
+          groupId: groupId,
+          memberId: member['id'] as String,
+        );
+      } else if (action == 'transfer_admin') {
+        await _repository.transferAdministration(
+          groupId: groupId,
+          memberId: member['id'] as String,
+        );
+      } else {
+        await _repository.changeMemberRole(
+          groupId: groupId,
+          memberId: member['id'] as String,
+          role: action,
+        );
+      }
+      await _loadGroup(groupId);
+    });
+  }
+
+  Future<void> _createKnowledge() async {
+    final groupId = _groupId;
+    if (groupId == null) return;
+    final title = TextEditingController();
+    final body = TextEditingController();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add shared Knowledge'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('This item will be stored online for approved group members.'),
+            TextField(controller: title, decoration: const InputDecoration(labelText: 'Title')),
+            TextField(
+              controller: body,
+              minLines: 3,
+              maxLines: 8,
+              decoration: const InputDecoration(labelText: 'Knowledge / answer'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Share with group')),
+        ],
+      ),
+    );
+    final itemTitle = title.text.trim();
+    final itemBody = body.text.trim();
+    title.dispose();
+    body.dispose();
+    if (accepted != true || itemTitle.isEmpty || itemBody.isEmpty || !mounted) return;
+    await _run(() async {
+      await _repository.createKnowledge(
+        groupId: groupId,
+        title: itemTitle,
+        body: itemBody,
+        answer: itemBody,
+      );
+      await _loadGroup(groupId);
+    });
+  }
+
+  Future<void> _shareSelectedLocalWork() async {
+    final groupId = _groupId;
+    if (groupId == null) return;
+    await _run(() async {
+      final local = await ref.read(guestWorkspaceStoreProvider).load();
+      final selection = await showDialog<_GuestImportSelection>(
+        context: context,
+        builder: (context) => _GuestImportPreview(
+          data: local,
+          title: 'Preview local work to share',
+          confirmLabel: 'Share selected with group',
+          includeTemplates: false,
+        ),
+      );
+      if (selection == null) return;
+      await _repository.importSelected(
+        groupId: groupId,
+        data: local,
+        knowledgeIds: selection.knowledgeIds,
+        sessionIds: selection.sessionIds,
+      );
+      await _loadGroup(groupId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Selected copies were shared. Your local work remains on this device.'),
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _openEntry(Map<String, dynamic> entry) async {
+    final groupId = _groupId;
+    if (groupId == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(entry['title'] as String? ?? 'Guest group entry'),
+        content: SizedBox(
+          width: 700,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              const JsonEncoder.withIndent('  ').convert(entry['data']),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => _run(() async {
+              final result = await _repository.exportEntry(
+                groupId: groupId,
+                entryId: entry['id'] as String,
+              );
+              if (mounted) {
+                await showDialog<void>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Authorized group export'),
+                    content: SizedBox(
+                      width: 640,
+                      child: SingleChildScrollView(
+                        child: SelectableText(const JsonEncoder.withIndent('  ').convert(result)),
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: const JsonEncoder.withIndent('  ').convert(result)));
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Copy export'),
+                      ),
+                      FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+                    ],
+                  ),
+                );
+              }
+            }),
+            child: const Text('Export'),
+          ),
+          TextButton(
+            onPressed: () => _run(() async {
+              final history = await _repository.entryHistory(
+                groupId: groupId,
+                entryId: entry['id'] as String,
+              );
+              if (!mounted) return;
+              await showDialog<void>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Entry revisions'),
+                  content: SizedBox(
+                    width: 640,
+                    child: SingleChildScrollView(
+                      child: SelectableText(const JsonEncoder.withIndent('  ').convert(history)),
+                    ),
+                  ),
+                  actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
+                ),
+              );
+            }),
+            child: const Text('History'),
+          ),
+          if (_canEdit(entry))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _editEntry(entry);
+              },
+              child: const Text('Edit'),
+            ),
+          if (_canEdit(entry))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _deleteEntry(entry);
+              },
+              child: const Text('Delete'),
+            ),
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+        ],
+      ),
+    );
+  }
+
+  bool _canEdit(Map<String, dynamic> entry) {
+    final role = _group?['role'];
+    final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
+    return role == 'admin' ||
+        role == 'editor' ||
+        (role == 'contributor' && entry['created_by_uid'] == uid);
+  }
+
+  Future<void> _editEntry(Map<String, dynamic> entry) async {
+    final groupId = _groupId;
+    if (groupId == null) return;
+    final title = TextEditingController(text: entry['title'] as String? ?? '');
+    final data = TextEditingController(
+      text: const JsonEncoder.withIndent('  ').convert(entry['data']),
+    );
+    final edited = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _GuestEntryEditDialog(title: title, data: data),
+    );
+    title.dispose();
+    data.dispose();
+    if (edited == null || !mounted) return;
+    await _run(() async {
+      await _repository.updateEntry(
+        groupId: groupId,
+        entryId: entry['id'] as String,
+        title: edited['title'] as String,
+        data: edited['data'] as Map<String, dynamic>,
+      );
+      await _loadGroup(groupId);
+    });
+  }
+
+  Future<void> _deleteEntry(Map<String, dynamic> entry) async {
+    final groupId = _groupId;
+    if (groupId == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete shared entry?'),
+        content: const Text('This removes it from the group for all members. Existing downloads cannot be revoked.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _run(() async {
+      await _repository.deleteEntry(
+        groupId: groupId,
+        entryId: entry['id'] as String,
+      );
+      await _loadGroup(groupId);
+    });
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await action();
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _safeGuestError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('Shared guest groups'),
+      actions: [
+        IconButton(
+          tooltip: 'Manage members and invitations',
+          onPressed: _group == null ? null : _showMembers,
+          icon: const Icon(Icons.group_outlined),
+        ),
+        IconButton(
+          tooltip: 'Refresh',
+          onPressed: _busy ? null : _loadGroups,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
     ),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Guest groups are separate from registered organisations. Group membership does not grant department, organisation, or private-session access. Content here is online only after you explicitly share it.',
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: _busy || !_canCreateOrJoin ? null : _createGroup,
+              icon: const Icon(Icons.add),
+              label: const Text('Create group'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _busy || !_canCreateOrJoin ? null : _joinByInvitation,
+              icon: const Icon(Icons.link),
+              label: const Text('Join with invitation'),
+            ),
+          ],
+        ),
+        if (!_canCreateOrJoin)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              'This linked account can keep using approved groups, but creating groups or redeeming invitations requires a Firebase anonymous guest identity.',
+            ),
+          ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          MaterialBanner(
+            content: Text(_error!),
+            actions: [TextButton(onPressed: _loadGroups, child: const Text('Retry'))],
+          ),
+        ],
+        if (_busy) const LinearProgressIndicator(),
+        if (_groups.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _groupId,
+            decoration: const InputDecoration(labelText: 'Your approved guest groups'),
+            items: [
+              for (final group in _groups)
+                DropdownMenuItem(
+                  value: group['id'] as String,
+                  child: Text('${group['name']} · ${group['role']}'),
+                ),
+            ],
+            onChanged: _busy ? null : (value) => value == null ? null : _loadGroup(value),
+          ),
+        ],
+        if (_group != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Approved members can access this group. Role: ${_group!['role']}. '
+            'Only admins manage membership and invitations.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _search,
+                  decoration: const InputDecoration(labelText: 'Search group content'),
+                  onSubmitted: (_) => _loadGroup(_groupId!),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Search',
+                onPressed: () => _loadGroup(_groupId!),
+                icon: const Icon(Icons.search),
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _canCreate ? _createKnowledge : null,
+                icon: const Icon(Icons.note_add_outlined),
+                label: const Text('Add shared Knowledge'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _canCreate ? _shareSelectedLocalWork : null,
+                icon: const Icon(Icons.cloud_upload_outlined),
+                label: const Text('Preview and share local work'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _group?['role'] == 'admin' ? _createInvitation : null,
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('Invite'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_entries.isEmpty)
+            const Text('No group content matches this search.')
+          else
+            for (final entry in _entries)
+              Card(
+                child: ListTile(
+                  leading: Icon(
+                    entry['kind'] == 'interact_session'
+                        ? Icons.account_tree_outlined
+                        : Icons.menu_book_outlined,
+                  ),
+                  title: Text(entry['title'] as String? ?? 'Shared content'),
+                  subtitle: Text(
+                    '${entry['kind']} · revision ${entry['revision']} · updated by a group member',
+                  ),
+                  onTap: () => _openEntry(entry),
+                ),
+              ),
+        ] else if (!_busy && _groups.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+              'No approved guest groups are linked to this device. Create a new group or request to join with an invitation. Pending requests cannot read group content.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+      ],
+    ),
+  );
+
+  bool get _canCreate =>
+      _group?['role'] == 'admin' ||
+      _group?['role'] == 'editor' ||
+      _group?['role'] == 'contributor';
+
+  bool get _canCreateOrJoin =>
+      ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true;
+}
+
+String _safeGuestError(Object error) {
+  final text = error.toString();
+  if (text.contains('429')) return 'Request limit reached. Wait before trying again.';
+  if (text.contains('403')) return 'This guest group action is not allowed for your role.';
+  if (text.contains('404')) return 'This group, invitation or entry is unavailable.';
+  if (text.contains('401')) return 'Guest identity is unavailable. Sign in again to continue.';
+  return 'The guest group request failed. Check your connection and try again.';
+}
+
+class _GuestEntryEditDialog extends StatefulWidget {
+  const _GuestEntryEditDialog({required this.title, required this.data});
+
+  final TextEditingController title;
+  final TextEditingController data;
+
+  @override
+  State<_GuestEntryEditDialog> createState() => _GuestEntryEditDialogState();
+}
+
+class _GuestEntryEditDialogState extends State<_GuestEntryEditDialog> {
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Edit shared group entry'),
+    content: SizedBox(
+      width: 640,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(controller: widget.title, decoration: const InputDecoration(labelText: 'Title')),
+          TextField(
+            controller: widget.data,
+            minLines: 8,
+            maxLines: 16,
+            decoration: const InputDecoration(labelText: 'Entry JSON'),
+          ),
+          if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      FilledButton(
+        onPressed: () {
+          try {
+            final decoded = jsonDecode(widget.data.text);
+            if (decoded is! Map<String, dynamic>) {
+              throw const FormatException('Entry data must be a JSON object.');
+            }
+            final title = widget.title.text.trim();
+            if (title.isEmpty) throw const FormatException('Title is required.');
+            Navigator.pop(context, {'title': title, 'data': decoded});
+          } on Object {
+            setState(() => _error = 'Enter a valid JSON object and a non-empty title.');
+          }
+        },
+        child: const Text('Save revision'),
+      ),
+    ],
   );
 }
 
@@ -1362,9 +2263,17 @@ class _GuestImportSelection {
 }
 
 class _GuestImportPreview extends StatefulWidget {
-  const _GuestImportPreview({required this.data});
+  const _GuestImportPreview({
+    required this.data,
+    this.title = 'Confirm selected local import',
+    this.confirmLabel = 'Import selected locally',
+    this.includeTemplates = true,
+  });
 
   final GuestWorkspaceData data;
+  final String title;
+  final String confirmLabel;
+  final bool includeTemplates;
 
   @override
   State<_GuestImportPreview> createState() => _GuestImportPreviewState();
@@ -1376,15 +2285,17 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
   late final Set<String> _sessions =
       widget.data.sessions.map((item) => item['id'] as String).toSet();
   late final Set<String> _templates =
-      widget.data.templates.map((item) => item['id'] as String).toSet();
+      widget.includeTemplates
+          ? widget.data.templates.map((item) => item['id'] as String).toSet()
+          : <String>{};
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Confirm selected local import'),
+    title: Text(widget.title),
     content: SizedBox(
       width: 560,
+      height: MediaQuery.sizeOf(context).height * 0.65,
       child: ListView(
-        shrinkWrap: true,
         children: [
           for (final item in widget.data.knowledge)
             CheckboxListTile(
@@ -1403,14 +2314,20 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
                 _toggle(_sessions, item['id'] as String, selected);
               }),
             ),
-          for (final item in widget.data.templates)
-            CheckboxListTile(
-              value: _templates.contains(item['id']),
-              title: Text(item['name'] as String? ?? 'Template'),
-              onChanged: (selected) => setState(() {
-                _toggle(_templates, item['id'] as String, selected);
-              }),
+          if (!widget.includeTemplates && widget.data.templates.isNotEmpty)
+            const ListTile(
+              leading: Icon(Icons.lock_outline),
+              title: Text('Local templates remain on this device'),
             ),
+          if (widget.includeTemplates)
+            for (final item in widget.data.templates)
+              CheckboxListTile(
+                value: _templates.contains(item['id']),
+                title: Text(item['name'] as String? ?? 'Template'),
+                onChanged: (selected) => setState(() {
+                  _toggle(_templates, item['id'] as String, selected);
+                }),
+              ),
         ],
       ),
     ),
@@ -1425,7 +2342,7 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
             templateIds: _templates,
           ),
         ),
-        child: const Text('Import selected locally'),
+        child: Text(widget.confirmLabel),
       ),
     ],
   );

@@ -185,3 +185,31 @@ service ADC verification require the Flutter SDK and private Codex runtime/site
 key; they remain pending. Do not enable App Check enforcement or deploy until
 those hosted checks pass. No production deployment, IAM change, credential
 retrieval, or cloud resource provisioning was performed.
+
+## Shared guest-group implementation checkpoint
+
+Shared guest groups are implemented in the application draft but are not
+enabled in hosted Firebase or deployed. The last verified Firebase checkpoint
+above has anonymous authentication disabled. The Flutter client requires the
+existing registered Firebase web configuration, App Check provider/site key,
+and API connection; guest API calls still pass through App Check. Local guest
+Knowledge and Interact remain available without those cloud services.
+
+Before hosted guest acceptance, the project owner must explicitly review and
+approve enabling Firebase anonymous authentication in the development project,
+then separately configure any required App Check web settings. Apply migration
+`0011_guest_groups` only through the reviewed development migration process and
+test the API with synthetic guest identities before hosting group data. This
+implementation did not change Firebase settings, IAM, App Check mode, Cloud
+SQL, or deployment state.
+
+Group access expires after 90 days without an authorized request, but physical
+purging of expired groups and their content/revisions has not been automated.
+Do not treat access expiry as deletion or promise that exported copies can be
+revoked. A reviewed retention/purge operation is a prerequisite before
+production use.
+
+Backend guest-group tests use isolated SQLite and synthetic verified-token
+fixtures. PostgreSQL migration SQL generation was checked offline; no hosted
+migration or Firebase emulator/browser acceptance was performed. Flutter
+analyzer, tests, and web build remain pending when the SDK is unavailable.

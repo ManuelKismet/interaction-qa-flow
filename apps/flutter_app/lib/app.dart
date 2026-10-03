@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/routing/app_router.dart';
 import 'package:int_qa_flow/core/theme/app_theme.dart';
-import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 
 class IntQaFlowApp extends ConsumerWidget {
@@ -24,13 +23,7 @@ class IntQaFlowApp extends ConsumerWidget {
         if (user == null || user.isAnonymous) {
           return _guestApp(firebaseReady, sharedIdentityActive: user?.isAnonymous ?? false);
         }
-        return ref.watch(currentGuestGroupsProvider).when(
-          loading: () => _guestApp(firebaseReady),
-          error: (_, _) => _membershipApp(ref, router, firebaseReady),
-          data: (groups) => groups.isNotEmpty
-              ? _guestApp(firebaseReady, sharedIdentityActive: true)
-              : _membershipApp(ref, router, firebaseReady),
-        );
+        return _membershipApp(ref, router, firebaseReady);
       },
     );
   }
@@ -41,7 +34,14 @@ class IntQaFlowApp extends ConsumerWidget {
     bool firebaseReady,
   ) => ref.watch(currentMembershipProvider).when(
         loading: () => _messageApp(const CircularProgressIndicator()),
-        error: (_, _) => _guestApp(firebaseReady),
+        error: (_, _) => ref.watch(currentGuestGroupsProvider).when(
+              data: (groups) => _guestApp(
+                firebaseReady,
+                sharedIdentityActive: groups.isNotEmpty,
+              ),
+              loading: () => _guestApp(firebaseReady),
+              error: (_, _) => _guestApp(firebaseReady),
+            ),
         data: (_) => MaterialApp.router(
           title: 'IntQAFlow',
           debugShowCheckedModeBanner: false,

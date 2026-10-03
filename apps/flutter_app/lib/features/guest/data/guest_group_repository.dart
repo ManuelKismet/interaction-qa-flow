@@ -113,6 +113,17 @@ class GuestGroupRepository {
     );
   });
 
+  Future<Map<String, dynamic>> transferAdministration({
+    required String groupId,
+    required String memberId,
+  }) => _request(() async {
+    final response = await _client.post<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId/transfer-administration',
+      queryParameters: {'member_id': memberId},
+    );
+    return response.data!;
+  });
+
   Future<void> revokeInvitation({
     required String groupId,
     required String invitationId,
@@ -121,6 +132,16 @@ class GuestGroupRepository {
       '/api/v1/guest/groups/$groupId/invitations/$invitationId',
     );
   });
+
+  Future<List<Map<String, dynamic>>> listInvitations(String groupId) =>
+      _request(() async {
+        final response = await _client.get<List<dynamic>>(
+          '/api/v1/guest/groups/$groupId/invitations',
+        );
+        return (response.data ?? const [])
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+      });
 
   Future<List<Map<String, dynamic>>> searchEntries({
     required String groupId,
@@ -152,6 +173,67 @@ class GuestGroupRepository {
     return response.data!;
   });
 
+  Future<Map<String, dynamic>> createInteractSession({
+    required String groupId,
+    required String title,
+    required Map<String, dynamic> session,
+  }) => _request(() async {
+    final response = await _client.post<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId/entries',
+      data: {
+        'kind': 'interact_session',
+        'title': title,
+        'data': session,
+        'share_with_group': true,
+      },
+    );
+    return response.data!;
+  });
+
+  Future<Map<String, dynamic>> updateEntry({
+    required String groupId,
+    required String entryId,
+    required String title,
+    required Map<String, dynamic> data,
+  }) => _request(() async {
+    final response = await _client.patch<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId/entries/$entryId',
+      data: {'title': title, 'data': data},
+    );
+    return response.data!;
+  });
+
+  Future<void> deleteEntry({
+    required String groupId,
+    required String entryId,
+  }) => _request(() async {
+    await _client.delete<void>(
+      '/api/v1/guest/groups/$groupId/entries/$entryId',
+    );
+  });
+
+  Future<List<Map<String, dynamic>>> entryHistory({
+    required String groupId,
+    required String entryId,
+  }) => _request(() async {
+    final response = await _client.get<List<dynamic>>(
+      '/api/v1/guest/groups/$groupId/entries/$entryId/history',
+    );
+    return (response.data ?? const [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  });
+
+  Future<Map<String, dynamic>> exportEntry({
+    required String groupId,
+    required String entryId,
+  }) => _request(() async {
+    final response = await _client.get<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId/entries/$entryId/export',
+    );
+    return response.data!;
+  });
+
   Future<List<Map<String, dynamic>>> importSelected({
     required String groupId,
     required GuestWorkspaceData data,
@@ -172,7 +254,7 @@ class GuestGroupRepository {
           {
             'kind': 'interact_session',
             'title': item['title'],
-            'data': item,
+            'data': {...item, 'visibility': 'guest_group'},
             'client_import_key': 'local-${item['id']}',
             'share_with_group': true,
           },

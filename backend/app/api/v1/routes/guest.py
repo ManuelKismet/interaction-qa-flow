@@ -87,6 +87,17 @@ async def create_invitation(
     )
 
 
+@router.get("/groups/{group_id}/invitations")
+async def list_invitations(
+    group_id: UUID,
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    return await GuestService(session).list_invitations(
+        group_id, identity.firebase_uid
+    )
+
+
 @router.delete(
     "/groups/{group_id}/invitations/{invitation_id}",
     status_code=status.HTTP_204_NO_CONTENT,

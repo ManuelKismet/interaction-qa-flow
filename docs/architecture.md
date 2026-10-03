@@ -71,6 +71,32 @@ infer the user's formal department.
 - Search returns canonical department/team metadata without weighting teams in
   ranking. Canonical merges preserve every historical question's team.
 
+## Guest access
+
+- Solo guest Knowledge, Interact sessions, templates, search, and backup/import
+  stay in browser-local storage; entering the guest workspace does not upload
+  drafts.
+- Shared guest groups are a separate persistence scope in
+  `backend/app/models/guest.py`, not an organisation or department. Their API
+  verifies Firebase ID tokens and App Check independently and derives access
+  from the Firebase UID's group membership; caller-supplied identity headers are
+  rejected.
+- Group roles and invitation approval are enforced by guest services on every
+  content, search, history, export, and membership request. Invitation previews
+  disclose validity only. Group membership does not grant organisation,
+  department, or private Interact access.
+- Import is a deliberate selection and confirmation. Local items remain in the
+  browser after sharing, and Interact entries require explicit
+  `share_with_group` confirmation. Exports cannot be revoked after download.
+- Group access expires after 90 days without an authorized request. There is no
+  scheduled physical purge for expired guest-group rows yet; database retention
+  cleanup must be configured and reviewed before the deployed service uses this
+  scope.
+- Registered organisation routes continue to resolve active Firebase UID
+  mappings and retain the existing tenant, department, private-session,
+  governance, and audit checks. A linked guest identity can access only its
+  existing group memberships.
+
 ## Semantic search
 
 - Canonical embedding input is the trimmed question title followed by the body,
