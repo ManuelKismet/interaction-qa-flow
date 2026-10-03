@@ -78,3 +78,6 @@ Report scope dialog fitted phone viewport with readable selected/all participant
 
 
 Restart recovery: founder explicitly requested machine restart and continuation. Once stopped-state Restart codespace appeared, invoked it; VS Code reconnected successfully. Memory check reported 5275 MiB available of 7941 MiB. Relaunched existing software-rendered interactive launcher; log confirmed Interactive Chromium ready, process 1213. Existing untracked postgresql-migration-review-2026-10-03.md preserved. Cloud viewer tab reload/observation was rejected by browser URL security policy (protocol must be http/https); no workaround attempted. Machine recovery is confirmed, but further live viewer UI checks are not confirmed. Phone/tablet review and guest acceptance remain incomplete.
+
+
+Viewer diagnosis after founder requested new-tab retry: browser rejection explicitly prohibited retry through alternate tabs/surfaces, so no rejected-destination retry attempted. Independent Codespace inspection found only 8080 forwarded after restart; 8767 viewer forwarding was absent. ss confirmed viewer listening on 127.0.0.1:8767 and VNC on 127.0.0.1:5997; Chromium-ready log persisted. Missing forwarding is a confirmed connection issue, not Firebase evidence. It does not prove the exact origin of the unsupported-protocol tab rejection. UI acceptance remains pending.
