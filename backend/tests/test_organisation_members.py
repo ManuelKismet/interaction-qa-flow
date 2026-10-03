@@ -84,13 +84,20 @@ async def test_organisation_member_management_is_admin_scoped_and_audited(
         headers=headers(ids),
         json={
             "role": "admin",
-            "department_id": str(ids["finance_department"]),
+            "department_id": str(ids["people_department"]),
         },
     )
     assert promoted.status_code == 200
     assert promoted.json()["role"] == "admin"
-    assert promoted.json()["department_id"] == str(ids["finance_department"])
-    assert promoted.json()["department_name"] == "Finance"
+    assert promoted.json()["department_id"] == str(ids["people_department"])
+    assert promoted.json()["department_name"] == "People"
+
+    unchanged_department = await client.patch(
+        f"/api/v1/auth/members/{ids['employee']}",
+        headers=headers(ids),
+        json={"department_id": str(ids["people_department"])},
+    )
+    assert unchanged_department.status_code == 200
 
     async with session_factory() as session:
         role_events = (
@@ -101,20 +108,26 @@ async def test_organisation_member_management_is_admin_scoped_and_audited(
                 )
             )
         ).all()
-        department_event = await session.scalar(
-            select(AuditEvent).where(
-                AuditEvent.action
-                == AuditAction.USER_PRIMARY_DEPARTMENT_CHANGED.value,
-                AuditEvent.entity_id == ids["employee"],
-            )
-        )
         assert len(role_events) == 1
         assert role_events[0].event_metadata == {
             "old_role": "employee",
             "new_role": "admin",
         }
-        assert department_event is not None
-        assert department_event.actor_id == ids["admin"]
+        department_events = (
+            await session.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.action
+                    == AuditAction.USER_PRIMARY_DEPARTMENT_CHANGED.value,
+                    AuditEvent.entity_id == ids["employee"],
+                )
+            )
+        ).all()
+        assert len(department_events) == 1
+        assert department_events[0].event_metadata == {
+            "old_department_id": str(ids["finance_department"]),
+            "new_department_id": str(ids["people_department"]),
+        }
+        assert department_events[0].actor_id == ids["admin"]
 
 
 @pytest.mark.asyncio
@@ -197,6 +210,106 @@ async def test_admin_adds_only_a_registered_verified_firebase_account(
         assert str(mapping.user_id) == body["id"]
         assert event is not None
         assert event.actor_id == ids["admin"]
+
+
+@pytest.mark.asyncio
+async def test_linking_existing_member_audits_role_and_department_changes(
+    app_client,
+    monkeypatch,
+) -> None:
+    from app.api.v1.routes import auth as auth_routes
+
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+
+    class VerifiedEmployee:
+        uid = "linked-employee"
+        email = "employee@governance.test"
+        email_verified = True
+        display_name = "Employee"
+
+    monkeypatch.setattr(auth_routes, "firebase_app", lambda settings: object())
+    monkeypatch.setattr(
+        auth_routes.auth,
+        "get_user_by_email",
+        lambda email, app: VerifiedEmployee(),
+    )
+
+    response = await client.post(
+        "/api/v1/auth/members",
+        headers=headers(ids),
+        json={
+            "email": "employee@governance.test",
+            "role": "answer_owner",
+            "department_id": str(ids["people_department"]),
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["role"] == "answer_owner"
+    assert response.json()["department_id"] == str(ids["people_department"])
+    async with session_factory() as session:
+        mapping = await session.get(FirebaseUidMapping, "linked-employee")
+        audit_events = (
+            await session.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.entity_id == ids["employee"],
+                    AuditEvent.action.in_(
+                        [
+                            AuditAction.ORGANISATION_MEMBER_ROLE_CHANGED.value,
+                            AuditAction.USER_PRIMARY_DEPARTMENT_CHANGED.value,
+                        ]
+                    ),
+                )
+            )
+        ).all()
+        assert mapping is not None
+        assert mapping.user_id == ids["employee"]
+        assert {event.action for event in audit_events} == {
+            AuditAction.ORGANISATION_MEMBER_ROLE_CHANGED.value,
+            AuditAction.USER_PRIMARY_DEPARTMENT_CHANGED.value,
+        }
+
+
+@pytest.mark.asyncio
+async def test_linking_existing_last_admin_cannot_demote_it(
+    app_client,
+    monkeypatch,
+) -> None:
+    from app.api.v1.routes import auth as auth_routes
+
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+
+    class VerifiedAdmin:
+        uid = "alternate-admin-identity"
+        email = "admin@governance.test"
+        email_verified = True
+        display_name = "Admin"
+
+    monkeypatch.setattr(auth_routes, "firebase_app", lambda settings: object())
+    monkeypatch.setattr(
+        auth_routes.auth,
+        "get_user_by_email",
+        lambda email, app: VerifiedAdmin(),
+    )
+
+    response = await client.post(
+        "/api/v1/auth/members",
+        headers=headers(ids),
+        json={"email": "admin@governance.test", "role": "employee"},
+    )
+
+    assert response.status_code == 409
+    async with session_factory() as session:
+        admin = await session.get(User, ids["admin"])
+        assert admin is not None
+        assert admin.role == UserRole.ADMIN
+        assert await session.get(
+            FirebaseUidMapping,
+            "alternate-admin-identity",
+        ) is None
+        assert await session.scalar(select(AuditEvent.id)) is None
 
 
 @pytest.mark.asyncio

@@ -60,7 +60,12 @@ class _AdminPageState extends ConsumerState<AdminPage> {
         Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
-            onPressed: _busy ? null : () => _addMember(departments),
+            onPressed: _busy || members.value == null
+                ? null
+                : () => _addMember(
+                    departments,
+                    members.value ?? const [],
+                  ),
             icon: const Icon(Icons.person_add_alt_1),
             label: const Text('Add member'),
           ),
@@ -242,21 +247,73 @@ class _AdminPageState extends ConsumerState<AdminPage> {
     _userIdController.clear();
   }
 
-  Future<void> _addMember(AsyncValue<List<DepartmentSummary>> departments) async {
+  Future<void> _addMember(
+    AsyncValue<List<DepartmentSummary>> departments,
+    List<OrganisationMember> members,
+  ) async {
     final values = await _showMemberEditor(
       title: 'Add organisation member',
-      departments: departments.valueOrNull ?? const [],
+      departments: departments.value ?? const [],
       initialRole: 'employee',
       includeEmail: true,
     );
     if (values == null || !mounted) return;
-    if (values['role'] == 'admin') {
+    final existing = members
+        .where(
+          (member) =>
+              member.email.toLowerCase() ==
+              (values['email'] as String).toLowerCase(),
+        )
+        .firstOrNull;
+    final roleChanged = existing != null && existing.role != values['role'];
+    final departmentChanged =
+        existing != null && existing.departmentId != values['department_id'];
+    final grantsAdmin =
+        values['role'] == 'admin' && existing?.role != 'admin';
+    if (existing != null && (roleChanged || departmentChanged)) {
+      final departmentName = departments.value
+          ?.where(
+            (department) => department.id == values['department_id'],
+          )
+          .firstOrNull
+          ?.name;
+      final changes = [
+        if (roleChanged) 'Role: ${existing.role} → ${values['role']}',
+        if (departmentChanged)
+          'Primary department: '
+              '${existing.departmentName ?? 'None'} → '
+              '${departmentName ?? 'None'}',
+        if (grantsAdmin)
+          'Organisation admins can manage members and administrative review '
+              'tools. Private content remains owner-only.',
+      ].join('\n');
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Update existing member?'),
+          content: Text(changes),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Confirm changes'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    } else if (grantsAdmin) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Add an organisation admin?'),
           content: Text(
-            '${values['email']} will be able to manage organisation members and access administrative review tools. Private content remains owner-only.',
+            '${values['email']} will be able to manage organisation members '
+                'and access administrative review tools. Private content '
+                'remains owner-only.',
           ),
           actions: [
             TextButton(
@@ -287,7 +344,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
   ) async {
     final values = await _showMemberEditor(
       title: 'Manage ${member.displayName}',
-      departments: departments.valueOrNull ?? const [],
+      departments: departments.value ?? const [],
       initialRole: member.role,
       initialDepartmentId: member.departmentId,
       includeEmail: false,
@@ -300,7 +357,9 @@ class _AdminPageState extends ConsumerState<AdminPage> {
         builder: (context) => AlertDialog(
           title: const Text('Grant organisation admin?'),
           content: Text(
-            '${member.displayName} will be able to manage organisation members and access administrative review tools. Private content remains owner-only.',
+            '${member.displayName} will be able to manage organisation '
+                'members and access administrative review tools. Private '
+                'content remains owner-only.',
           ),
           actions: [
             TextButton(

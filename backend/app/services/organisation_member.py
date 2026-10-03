@@ -32,6 +32,29 @@ class OrganisationMemberService:
                 detail="Organisation not found",
             )
 
+    async def _require_not_last_admin(
+        self,
+        organisation_id: UUID,
+        member: User,
+        new_role: UserRole,
+    ) -> None:
+        if member.role != UserRole.ADMIN or new_role == UserRole.ADMIN:
+            return
+        active_admins = await self.session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.organisation_id == organisation_id,
+                User.status == "active",
+                User.role == UserRole.ADMIN,
+            )
+        )
+        if (active_admins or 0) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The last active organisation admin cannot be demoted",
+            )
+
     async def list_members(
         self, organisation_id: UUID
     ) -> list[dict[str, object]]:
@@ -100,21 +123,11 @@ class OrganisationMemberService:
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail="Role cannot be null",
                 )
-            if member.role == UserRole.ADMIN and update.role != UserRole.ADMIN:
-                active_admins = await self.session.scalar(
-                    select(func.count())
-                    .select_from(User)
-                    .where(
-                        User.organisation_id == organisation_id,
-                        User.status == "active",
-                        User.role == UserRole.ADMIN,
-                    )
-                )
-                if (active_admins or 0) <= 1:
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="The last active organisation admin cannot be demoted",
-                    )
+            await self._require_not_last_admin(
+                organisation_id,
+                member,
+                update.role,
+            )
             if member.role != update.role:
                 self.session.add(
                     AuditEvent(
@@ -239,9 +252,49 @@ class OrganisationMemberService:
                     detail="This email is already linked to an organisation account",
                 )
             member = existing
-            member.display_name = display_name or email
-            member.role = update.role
-            member.department_id = update.department_id
+            await self._require_not_last_admin(
+                organisation_id,
+                member,
+                update.role,
+            )
+            if member.role != update.role:
+                self.session.add(
+                    AuditEvent(
+                        organisation_id=organisation_id,
+                        actor_id=actor_id,
+                        action=AuditAction.ORGANISATION_MEMBER_ROLE_CHANGED.value,
+                        entity_type="user",
+                        entity_id=member.id,
+                        event_metadata={
+                            "old_role": member.role.value,
+                            "new_role": update.role.value,
+                        },
+                    )
+                )
+                member.role = update.role
+            if member.department_id != update.department_id:
+                self.session.add(
+                    AuditEvent(
+                        organisation_id=organisation_id,
+                        actor_id=actor_id,
+                        action=AuditAction.USER_PRIMARY_DEPARTMENT_CHANGED.value,
+                        entity_type="user",
+                        entity_id=member.id,
+                        event_metadata={
+                            "old_department_id": (
+                                str(member.department_id)
+                                if member.department_id
+                                else None
+                            ),
+                            "new_department_id": (
+                                str(update.department_id)
+                                if update.department_id
+                                else None
+                            ),
+                        },
+                    )
+                )
+                member.department_id = update.department_id
         else:
             member = User(
                 organisation_id=organisation_id,
