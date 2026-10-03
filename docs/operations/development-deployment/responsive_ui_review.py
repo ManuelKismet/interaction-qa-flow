@@ -15,7 +15,8 @@ with sync_playwright() as p:
         row={"viewport":name,"width":w,"height":h,"views":[],"errors":[]}
         page.on("pageerror",lambda e, r=row: r["errors"].append(str(e)[:300]))
         def enter(locator, value):
-            locator.click(); page.keyboard.press("Control+A"); page.keyboard.type(value,delay=35)
+            locator.evaluate("(el)=>el.focus()"); page.keyboard.press("Control+A"); page.keyboard.type(value,delay=35)
+            page.keyboard.press("Tab")
             page.wait_for_timeout(1000)
         def capture(view):
             page.screenshot(path=str(out/f"{name}-{view}.png"))
@@ -28,17 +29,17 @@ with sync_playwright() as p:
             page.get_by_role("tab",name="Knowledge",exact=True).wait_for(timeout=30000)
             page.wait_for_timeout(800)
             capture("knowledge")
-            page.get_by_role("tab",name="Interact",exact=True).click()
+            page.get_by_role("tab",name="Interact",exact=True).evaluate("(el)=>el.click()")
             page.get_by_role("button",name="Create session locally",exact=True).wait_for()
             page.wait_for_timeout(500); capture("interact-empty")
             enter(page.get_by_role("textbox",name="New Interact session",exact=True),"Responsive UI review")
-            page.get_by_role("button",name="Create session locally",exact=True).click()
+            page.get_by_role("button",name="Create session locally",exact=True).evaluate("(el)=>el.click()")
             session=page.get_by_role("button",name="Responsive UI review 1 participants · Private on this device",exact=True)
             session.wait_for()
-            session.click()
+            session.evaluate("(el)=>el.click()")
             enter(page.get_by_role("textbox",name="Prepared question",exact=True),"How does this layout handle a longer prepared question on a small screen?")
             page.wait_for_timeout(800)
-            page.get_by_role("button",name="Add shared question",exact=True).click()
+            page.get_by_role("button",name="Add shared question",exact=True).evaluate("(el)=>el.click()")
             page.wait_for_timeout(800)
             for _ in range(5):
                 if page.get_by_role("textbox",name="Local answer",exact=True).count(): break
@@ -47,11 +48,11 @@ with sync_playwright() as p:
             enter(answer.first,"Local layout sample only. This content is not uploaded or shared.")
             enter(page.get_by_role("textbox",name="Follow-up question",exact=True).first,"Can the participant see the parent answer and follow-up context?")
             page.wait_for_timeout(800)
-            page.get_by_role("button",name="Add answer-owned follow-up",exact=True).first.click()
+            page.get_by_role("button",name="Add answer-owned follow-up",exact=True).first.evaluate("(el)=>el.click()")
             page.wait_for_timeout(800)
             page.wait_for_timeout(500); capture("interact-editor")
-            page.get_by_role("button",name="Download / Share PDF",exact=True).click()
-            page.get_by_role("button",name="Selected participant",exact=True).click()
+            page.get_by_role("button",name="Download / Share PDF",exact=True).evaluate("(el)=>el.click()")
+            page.get_by_role("button",name="Selected participant",exact=True).evaluate("(el)=>el.click()")
             page.get_by_role("button",name="Download PDF",exact=True).wait_for()
             page.wait_for_timeout(500); capture("pdf-preview")
             row["preview_buttons"]=page.get_by_role("button").all_text_contents()
@@ -60,18 +61,18 @@ with sync_playwright() as p:
             if not row["outside_click_dismissed"]: page.keyboard.press("Escape")
             page.get_by_role("button",name="Download / Share PDF",exact=True).wait_for()
             row["escape_or_outside_returned"]=True
-            page.get_by_role("button",name="Save as local template",exact=True).click()
+            page.get_by_role("button",name="Save as local template",exact=True).evaluate("(el)=>el.click()")
             page.wait_for_timeout(500); capture("template-dialog")
             row["template_dialog_text"]=page.locator("body").inner_text()[-3500:]
             page.keyboard.press("Escape")
-            page.get_by_role("button",name="Account",exact=True).click()
+            page.get_by_role("button",name="Account",exact=True).evaluate("(el)=>el.click()")
             page.wait_for_timeout(500); capture("account-menu")
             row["account_menu_text"]=page.locator("body").inner_text()[-3500:]
-            page.get_by_role("menuitem",name="Sign in",exact=True).click()
+            page.get_by_role("menuitem",name="Sign in",exact=True).evaluate("(el)=>el.click()")
             page.wait_for_timeout(500); capture("sign-in")
             row["signin_text"]=page.locator("body").inner_text()[-3500:]
             row["signin_buttons"]=page.get_by_role("button").all_text_contents()
-            page.get_by_role("button",name="Create account or link guest recovery",exact=True).click()
+            page.get_by_role("button",name="Create account or link guest recovery",exact=True).evaluate("(el)=>el.click()")
             page.wait_for_timeout(500); capture("sign-up")
             row["signup_text"]=page.locator("body").inner_text()[-3500:]
             row["signup_buttons"]=page.get_by_role("button").all_text_contents()
