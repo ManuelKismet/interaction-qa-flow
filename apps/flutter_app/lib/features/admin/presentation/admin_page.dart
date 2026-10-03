@@ -9,9 +9,7 @@ import 'package:int_qa_flow/features/governance/domain/governance_models.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 class AdminPage extends ConsumerStatefulWidget {
-  const AdminPage({super.key, this.adminOverride});
-
-  final bool? adminOverride;
+  const AdminPage({super.key});
 
   @override
   ConsumerState<AdminPage> createState() => _AdminPageState();
@@ -35,7 +33,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = widget.adminOverride ??
+    final isAdmin =
         ref.watch(currentMembershipProvider).value?.role == 'admin';
     if (!isAdmin) {
       return const Center(child: Text('Administrator access is required.'));

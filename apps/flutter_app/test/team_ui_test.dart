@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/admin/presentation/admin_page.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/ask/presentation/ask_page.dart';
@@ -42,6 +43,15 @@ void main() {
       (tester) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        currentMembershipProvider.overrideWith(
+          (ref) async => const ActiveMembership(
+            userId: 'admin-user',
+            organisationId: 'test-organisation',
+            email: 'admin@example.test',
+            displayName: 'Test Admin',
+            role: 'admin',
+          ),
+        ),
         departmentsProvider.overrideWith((ref) async => const [finance]),
         teamsProvider.overrideWith((ref) async => const [payroll]),
       ],
@@ -71,7 +81,7 @@ void main() {
         teamMembersProvider(payroll.id).overrideWith((ref) async => const []),
       ],
       child: const MaterialApp(
-        home: Scaffold(body: AdminPage(adminOverride: true)),
+        home: Scaffold(body: AdminPage()),
       ),
     ));
     await tester.pumpAndSettle();
