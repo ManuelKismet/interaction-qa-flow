@@ -191,106 +191,126 @@ class _SignInPageState extends ConsumerState<SignInPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      _resetMode
-                          ? 'Reset password'
-                          : _createAccountMode
-                            ? widget.linkGuestIdentity
-                                ? 'Link guest recovery'
-                                : 'Create an account'
-                            : 'Sign in to IntQAFlow',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(labelText: 'Email'),
-                    ),
-                    if (!_resetMode) ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _password,
-                        obscureText: true,
-                        autofillHints: const [AutofillHints.password],
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                        ),
-                        onSubmitted: (_) => _submit(),
-                      ),
-                    ],
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(_error!, style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      )),
-                    ],
-                    if (_message != null) ...[
-                      const SizedBox(height: 12),
-                      Text(_message!),
-                    ],
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: _busy ? null : _submit,
-                      child: Text(
-                        _busy
-                            ? 'Please wait…'
-                            : _resetMode
-                                ? 'Send reset email'
-                                : _createAccountMode
-                                    ? widget.linkGuestIdentity &&
-                                              ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Card(
+                      margin: const EdgeInsets.all(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              _resetMode
+                                  ? 'Reset password'
+                                  : _createAccountMode
+                                      ? widget.linkGuestIdentity
                                           ? 'Link guest recovery'
-                                          : 'Create account'
-                                    : 'Sign in',
+                                          : 'Create an account'
+                                      : 'Sign in to IntQAFlow',
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                            const SizedBox(height: 20),
+                            TextField(
+                              controller: _email,
+                              keyboardType: TextInputType.emailAddress,
+                              autofillHints: const [AutofillHints.email],
+                              decoration: const InputDecoration(
+                                labelText: 'Email',
+                              ),
+                            ),
+                            if (!_resetMode) ...[
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _password,
+                                obscureText: true,
+                                autofillHints: const [AutofillHints.password],
+                                decoration: const InputDecoration(
+                                  labelText: 'Password',
+                                ),
+                                onSubmitted: (_) => _submit(),
+                              ),
+                            ],
+                            if (_error != null) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                _error!,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                              ),
+                            ],
+                            if (_message != null) ...[
+                              const SizedBox(height: 12),
+                              Text(_message!),
+                            ],
+                            const SizedBox(height: 20),
+                            FilledButton(
+                              onPressed: _busy ? null : _submit,
+                              child: Text(
+                                _busy
+                                    ? 'Please wait…'
+                                    : _resetMode
+                                        ? 'Send reset email'
+                                        : _createAccountMode
+                                            ? widget.linkGuestIdentity &&
+                                                    ref
+                                                            .read(
+                                                              firebaseAuthProvider,
+                                                            )
+                                                            .currentUser
+                                                            ?.isAnonymous ==
+                                                        true
+                                                ? 'Link guest recovery'
+                                                : 'Create account'
+                                            : 'Sign in',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => setState(() {
+                                      if (_resetMode) {
+                                        _resetMode = false;
+                                      } else if (_createAccountMode) {
+                                        _createAccountMode = false;
+                                      } else {
+                                        _createAccountMode = true;
+                                      }
+                                      _error = null;
+                                      _message = null;
+                                    }),
+                              child: Text(
+                                _resetMode
+                                    ? 'Back to sign in'
+                                    : _createAccountMode
+                                        ? 'Back to sign in'
+                                        : 'Create account or link guest recovery',
+                              ),
+                            ),
+                            if (!_resetMode && !_createAccountMode)
+                              TextButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => setState(() {
+                                        _resetMode = true;
+                                        _error = null;
+                                        _message = null;
+                                      }),
+                                child: const Text('Forgot password?'),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() {
-                                if (_resetMode) {
-                                  _resetMode = false;
-                                } else if (_createAccountMode) {
-                                  _createAccountMode = false;
-                                } else {
-                                  _createAccountMode = true;
-                                }
-                                _error = null;
-                                _message = null;
-                              }),
-                      child: Text(
-                        _resetMode
-                            ? 'Back to sign in'
-                            : _createAccountMode
-                                ? 'Back to sign in'
-                                : 'Create account or link guest recovery',
-                      ),
-                    ),
-                    if (!_resetMode && !_createAccountMode)
-                      TextButton(
-                        onPressed: _busy
-                            ? null
-                            : () => setState(() {
-                                  _resetMode = true;
-                                  _error = null;
-                                  _message = null;
-                                }),
-                        child: const Text('Forgot password?'),
-                      ),
-                  ],
+                  ),
                 ),
               ),
             ),

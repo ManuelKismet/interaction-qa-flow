@@ -72,6 +72,15 @@ void main() {
       (tester) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        currentMembershipProvider.overrideWith(
+          (ref) async => const ActiveMembership(
+            userId: 'admin-user',
+            organisationId: 'test-organisation',
+            email: 'admin@example.test',
+            displayName: 'Test Admin',
+            role: 'admin',
+          ),
+        ),
         departmentsProvider.overrideWith((ref) async => const [finance]),
         teamsProvider.overrideWith((ref) async => const [payroll]),
         departmentOwnersProvider.overrideWith((ref) async => const []),
