@@ -110,6 +110,42 @@ void main() {
       expect(find.text('Bob follow-up'), findsOneWidget);
     },
   );
+
+  testWidgets('PDF report preview uses the active participant scope', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(GuestWorkspaceData(sessions: [_twoParticipantSession()]));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Interact').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Two-person interview'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Download / Share PDF'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Selected participant'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Preview PDF'), findsOneWidget);
+    expect(find.text('Alice answer'), findsOneWidget);
+    expect(find.text('Bob answer'), findsNothing);
+    expect(find.text('Share PDF'), findsOneWidget);
+    expect(find.text('Download PDF'), findsOneWidget);
+    expect(find.text('Print / Save PDF fallback'), findsOneWidget);
+  });
 }
 
 Finder _field(String label) => find.byWidgetPredicate(

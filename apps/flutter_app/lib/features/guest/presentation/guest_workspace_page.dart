@@ -387,9 +387,22 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     String? participantId,
   ) async {
     try {
-      final bytes = await _makePdf(report);
-      final downloaded = await downloadPdf(bytes, guestReportFilename(report));
-      if (!downloaded && mounted) {
+      final status = await _downloadPdfOrShareFile(
+        await _makePdf(report),
+        guestReportFilename(report),
+      );
+      if (status == ShareResultStatus.dismissed) return;
+      if (status == ShareResultStatus.success) {
+        if (!kIsWeb && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Choose a destination in the system sheet to save the PDF.'),
+            ),
+          );
+        }
+        return;
+      }
+      if (mounted) {
         await _showPdfFallback(report, session, allParticipants, participantId);
       }
     } on Object {
@@ -504,11 +517,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       );
     } else if (action == 'download') {
       try {
-        final downloaded = await downloadPdf(
+        final status = await _downloadPdfOrShareFile(
           await _makePdf(report),
           guestReportFilename(report),
         );
-        if (!downloaded && mounted) {
+        if (status == ShareResultStatus.dismissed) return;
+        if (status != ShareResultStatus.success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Direct download is unavailable on this device. Use the print fallback.'),
@@ -555,7 +569,7 @@ class _GuestNotice extends StatelessWidget {
     child: Text(
       sharedIdentityActive
           ? 'Guest-group membership is available for this Firebase identity. Local drafts stay on this device; only work explicitly shared with a group is online. $saveStatus'
-          : 'Stored in this browser only. Clearing browser data or losing this device can erase it. Export a backup before you need to move it. $saveStatus',
+          : 'Stored in this browser only. Clearing browser data or losing this device can erase it. $saveStatus',
     ),
   );
 }
@@ -2122,11 +2136,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           title: Text(entry['title'] as String? ?? 'Guest group entry'),
           content: SizedBox(
             width: 700,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                const JsonEncoder.withIndent('  ').convert(entry['data']),
-              ),
-            ),
+            child: _GuestGroupEntryContent(entry: entry),
           ),
           actions: [
             TextButton(
@@ -2138,31 +2148,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 if (entryDialogActive &&
                     entryDialogContext.mounted &&
                     (ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
-                  await showDialog<void>(
-                    context: entryDialogContext,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Authorized group export'),
-                      content: SizedBox(
-                        width: 640,
-                        child: SingleChildScrollView(
-                          child: SelectableText(const JsonEncoder.withIndent('  ').convert(result)),
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: const JsonEncoder.withIndent('  ').convert(result)));
-                            Navigator.pop(context);
-                          },
-                          child: const Text('Copy export'),
-                        ),
-                        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
-                      ],
-                    ),
-                  );
+                  entryDialogActive = false;
+                  Navigator.pop(entryDialogContext);
+                  await _exportAuthorizedGroupEntry(result);
                 }
               }),
-              child: const Text('Export'),
+              child: const Text('Download / Share PDF'),
             ),
             TextButton(
               onPressed: () => _run(() async {
@@ -2181,8 +2172,17 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                     title: const Text('Entry revisions'),
                     content: SizedBox(
                       width: 640,
-                      child: SingleChildScrollView(
-                        child: SelectableText(const JsonEncoder.withIndent('  ').convert(history)),
+                      height: MediaQuery.sizeOf(context).height * 0.55,
+                      child: ListView(
+                        children: [
+                          for (final revision in history)
+                            ListTile(
+                              title: Text(
+                                'Revision ${revision['revision']} · ${revision['title']}',
+                              ),
+                              subtitle: const Text('Updated by a group member'),
+                            ),
+                        ],
                       ),
                     ),
                     actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
@@ -2222,6 +2222,240 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     await entryDialog.whenComplete(() => entryDialogActive = false);
   }
 
+  Future<void> _exportAuthorizedGroupEntry(
+    Map<String, dynamic> entry,
+  ) async {
+    final title = entry['title'] as String? ?? 'Guest group entry';
+    final data = entry['data'] is Map
+        ? Map<String, dynamic>.from(entry['data'] as Map)
+        : <String, dynamic>{};
+    if (entry['kind'] == 'interact_session') {
+      final participants = (data['participants'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      final scope = await showDialog<String>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Choose report scope'),
+          children: [
+            for (final participant in participants)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(
+                  context,
+                  participant['id'] as String?,
+                ),
+                child: Text(
+                  'Selected participant — ${participant['name'] ?? 'Participant'}',
+                ),
+              ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, '*'),
+              child: const Text('All participants'),
+            ),
+          ],
+        ),
+      );
+      if (scope == null || !mounted) return;
+      final allParticipants = scope == '*';
+      final participantId = allParticipants
+          ? participants.firstOrNull?['id'] as String?
+          : scope;
+      final session = {...data, 'title': title};
+      final report = composeGuestReport(
+        session: session,
+        allParticipants: allParticipants,
+        participantId: participantId,
+        exportedAt: DateTime.now().toUtc(),
+      );
+      await showDialog<void>(
+        context: context,
+        builder: (context) => _GuestReportPreviewDialog(
+          report: report,
+          onDownload: () => _downloadAuthorizedReport(
+            report,
+            session,
+            allParticipants,
+            participantId,
+          ),
+          onShare: () => _shareAuthorizedReport(
+            report,
+            session,
+            allParticipants,
+            participantId,
+          ),
+          onPrintFallback: () => openPrintableReport(
+            buildGuestReportDocument(
+              session: session,
+              allParticipants: allParticipants,
+              participantId: participantId,
+              generatedAt: report.exportedAt,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final document = GuestPortableDocument(
+      title: title,
+      scope: 'Authorized guest-group Knowledge entry',
+      exportedAt: DateTime.now().toUtc(),
+      sections: [
+        if (data['body'] is String)
+          GuestPortableSection(heading: 'Knowledge', body: data['body'] as String),
+        if (data['answer'] is String)
+          GuestPortableSection(heading: 'Answer', body: data['answer'] as String),
+      ],
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _GuestPortablePreviewDialog(
+        document: document,
+        onDownload: () => _downloadPortableDocument(document),
+        onShare: () => _sharePortableDocument(document),
+        onPrintFallback: () =>
+            openPrintableReport(buildGuestPortableHtml(document)),
+      ),
+    );
+  }
+
+  Future<void> _downloadAuthorizedReport(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    final document = buildGuestReportDocument(
+      session: session,
+      allParticipants: allParticipants,
+      participantId: participantId,
+      generatedAt: report.exportedAt,
+    );
+    try {
+      final status = await _downloadPdfOrShareFile(
+        await buildGuestReportPdf(report),
+        guestReportFilename(report),
+      );
+      if (status == ShareResultStatus.success ||
+          status == ShareResultStatus.dismissed) {
+        return;
+      }
+    } on Object {
+      // Fall through to the print-to-PDF fallback.
+    }
+    openPrintableReport(document);
+  }
+
+  Future<void> _shareAuthorizedReport(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    final confirmed = await _confirmPortableCopy();
+    if (confirmed != true || !mounted) return;
+    try {
+      final bytes = await buildGuestReportPdf(report);
+      final renderBox = context.findRenderObject() as RenderBox?;
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          title: 'Share Interact PDF',
+          text: 'Portable PDF copy. Recipients may retain or forward it.',
+          files: [XFile.fromData(bytes, mimeType: 'application/pdf')],
+          fileNameOverrides: [guestReportFilename(report)],
+          downloadFallbackEnabled: false,
+          sharePositionOrigin: renderBox == null
+              ? null
+              : renderBox.localToGlobal(Offset.zero) & renderBox.size,
+        ),
+      );
+      if (result.status == ShareResultStatus.dismissed) return;
+      if (result.status == ShareResultStatus.unavailable) {
+        await _downloadAuthorizedReport(
+          report,
+          session,
+          allParticipants,
+          participantId,
+        );
+      }
+    } on Object {
+      await _downloadAuthorizedReport(
+        report,
+        session,
+        allParticipants,
+        participantId,
+      );
+    }
+  }
+
+  Future<void> _downloadPortableDocument(
+    GuestPortableDocument document,
+  ) async {
+    try {
+      final status = await _downloadPdfOrShareFile(
+        await buildGuestPortablePdf(document),
+        guestPortableFilename(document),
+      );
+      if (status == ShareResultStatus.success ||
+          status == ShareResultStatus.dismissed) {
+        return;
+      }
+    } on Object {
+      // Fall through to the print-to-PDF fallback.
+    }
+    openPrintableReport(buildGuestPortableHtml(document));
+  }
+
+  Future<void> _sharePortableDocument(
+    GuestPortableDocument document,
+  ) async {
+    final confirmed = await _confirmPortableCopy();
+    if (confirmed != true || !mounted) return;
+    try {
+      final bytes = await buildGuestPortablePdf(document);
+      final renderBox = context.findRenderObject() as RenderBox?;
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          title: 'Share PDF',
+          text: 'Portable PDF copy. Recipients may retain or forward it.',
+          files: [XFile.fromData(bytes, mimeType: 'application/pdf')],
+          fileNameOverrides: [guestPortableFilename(document)],
+          downloadFallbackEnabled: false,
+          sharePositionOrigin: renderBox == null
+              ? null
+              : renderBox.localToGlobal(Offset.zero) & renderBox.size,
+        ),
+      );
+      if (result.status == ShareResultStatus.dismissed) return;
+      if (result.status == ShareResultStatus.unavailable) {
+        await _downloadPortableDocument(document);
+      }
+    } on Object {
+      await _downloadPortableDocument(document);
+    }
+  }
+
+  Future<bool?> _confirmPortableCopy() => showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Share a PDF copy?'),
+      content: const Text(
+        'Recipients can keep or forward this PDF. Removing their group access later cannot revoke a copy they downloaded.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Continue'),
+        ),
+      ],
+    ),
+  );
+
   bool _canEdit(Map<String, dynamic> entry) {
     final role = _group?['role'];
     final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
@@ -2234,22 +2468,42 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final groupId = _groupId;
     if (groupId == null) return;
     final title = TextEditingController(text: entry['title'] as String? ?? '');
-    final data = TextEditingController(
-      text: const JsonEncoder.withIndent('  ').convert(entry['data']),
+    final sourceData = entry['data'] is Map
+        ? Map<String, dynamic>.from(entry['data'] as Map)
+        : <String, dynamic>{};
+    final body = TextEditingController(text: sourceData['body'] as String? ?? '');
+    final answer = TextEditingController(
+      text: sourceData['answer'] as String? ?? '',
     );
-    final edited = await showDialog<Map<String, dynamic>>(
+    final accepted = await showDialog<bool>(
       context: context,
-      builder: (context) => _GuestEntryEditDialog(title: title, data: data),
+      builder: (context) => _GuestEntryEditDialog(
+        title: title,
+        body: body,
+        answer: answer,
+        editKnowledge: entry['kind'] != 'interact_session',
+      ),
     );
+    final editedTitle = title.text.trim();
+    final editedBody = body.text.trim();
+    final editedAnswer = answer.text.trim();
     title.dispose();
-    data.dispose();
-    if (edited == null || !mounted) return;
+    body.dispose();
+    answer.dispose();
+    if (accepted != true || editedTitle.isEmpty || !mounted) return;
+    final updatedData = entry['kind'] == 'interact_session'
+        ? sourceData
+        : {
+            ...sourceData,
+            'body': editedBody,
+            'answer': editedAnswer,
+          };
     await _run(() async {
       await _repository.updateEntry(
         groupId: groupId,
         entryId: entry['id'] as String,
-        title: edited['title'] as String,
-        data: edited['data'] as Map<String, dynamic>,
+        title: editedTitle,
+        data: updatedData,
       );
       await _loadGroup(groupId);
     });
@@ -2455,19 +2709,42 @@ String _safeGuestError(Object error) {
   return 'The guest group request failed. Check your connection and try again.';
 }
 
+Future<ShareResultStatus?> _downloadPdfOrShareFile(
+  Uint8List bytes,
+  String filename,
+) async {
+  if (await downloadPdf(bytes, filename)) return ShareResultStatus.success;
+  if (kIsWeb) return null;
+  final result = await SharePlus.instance.share(
+    ShareParams(
+      title: 'Save PDF',
+      text: 'Choose a destination to save or share this PDF.',
+      files: [XFile.fromData(bytes, mimeType: 'application/pdf')],
+      fileNameOverrides: [filename],
+      downloadFallbackEnabled: false,
+    ),
+  );
+  return result.status;
+}
+
 class _GuestEntryEditDialog extends StatefulWidget {
-  const _GuestEntryEditDialog({required this.title, required this.data});
+  const _GuestEntryEditDialog({
+    required this.title,
+    required this.body,
+    required this.answer,
+    required this.editKnowledge,
+  });
 
   final TextEditingController title;
-  final TextEditingController data;
+  final TextEditingController body;
+  final TextEditingController answer;
+  final bool editKnowledge;
 
   @override
   State<_GuestEntryEditDialog> createState() => _GuestEntryEditDialogState();
 }
 
 class _GuestEntryEditDialogState extends State<_GuestEntryEditDialog> {
-  String? _error;
-
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Edit shared group entry'),
@@ -2477,35 +2754,321 @@ class _GuestEntryEditDialogState extends State<_GuestEntryEditDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(controller: widget.title, decoration: const InputDecoration(labelText: 'Title')),
-          TextField(
-            controller: widget.data,
-            minLines: 8,
-            maxLines: 16,
-            decoration: const InputDecoration(labelText: 'Entry JSON'),
-          ),
-          if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (widget.editKnowledge) ...[
+            TextField(
+              controller: widget.body,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(labelText: 'Knowledge'),
+            ),
+            TextField(
+              controller: widget.answer,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(labelText: 'Answer'),
+            ),
+          ] else
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text('Interact questions and answers are unchanged.'),
+            ),
         ],
       ),
     ),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
       FilledButton(
-        onPressed: () {
-          try {
-            final decoded = jsonDecode(widget.data.text);
-            if (decoded is! Map<String, dynamic>) {
-              throw const FormatException('Entry data must be a JSON object.');
-            }
-            final title = widget.title.text.trim();
-            if (title.isEmpty) throw const FormatException('Title is required.');
-            Navigator.pop(context, {'title': title, 'data': decoded});
-          } on Object {
-            setState(() => _error = 'Enter a valid JSON object and a non-empty title.');
-          }
-        },
+        onPressed: () => Navigator.pop(context, true),
         child: const Text('Save revision'),
       ),
     ],
+  );
+}
+
+class _GuestReportPreviewDialog extends StatelessWidget {
+  const _GuestReportPreviewDialog({
+    required this.report,
+    required this.onDownload,
+    required this.onShare,
+    required this.onPrintFallback,
+  });
+
+  final GuestReportData report;
+  final VoidCallback onDownload;
+  final VoidCallback onShare;
+  final VoidCallback onPrintFallback;
+
+  Widget _question(BuildContext context, GuestReportQuestion question, int depth) {
+    final indent = (depth * 12).clamp(0, 36).toDouble();
+    return Padding(
+      padding: EdgeInsets.only(left: indent, top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Question ${question.path}${depth > 0 ? ' · Follow-up' : ''}',
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+          if (question.triggerParticipant != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Follow-up prompted by ${question.triggerParticipant}: '
+                '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: SelectableText(
+              question.text,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          if (question.answers.isEmpty)
+            const ListTile(title: Text('Answer'), subtitle: Text('Unanswered.')),
+          for (final answer in question.answers) ...[
+            Card(
+              margin: EdgeInsets.only(left: indent, top: 8),
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Answer — ${answer.participantName}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      answer.body.trim().isEmpty ? 'Unanswered.' : answer.body,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            for (final followUp in answer.followUps)
+              _question(context, followUp, depth + 1),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Preview PDF'),
+    content: SizedBox(
+      width: 720,
+      height: MediaQuery.sizeOf(context).height * 0.62,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Portable copy · ${report.scope}',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          Text(
+            'Participants: ${report.participantNames.isEmpty ? 'Not selected' : report.participantNames.join(', ')}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            'Exported: ${report.exportedAt.toLocal()}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            'Some uncommon characters or emoji may not render in the PDF.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const Divider(),
+          Expanded(
+            child: ListView(
+              children: report.questions.isEmpty
+                  ? const [Text('No questions are available in this report.')]
+                  : [
+                      for (final question in report.questions)
+                        _question(context, question, 0),
+                    ],
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          TextButton(
+            onPressed: onPrintFallback,
+            child: const Text('Print / Save PDF fallback'),
+          ),
+          OutlinedButton.icon(
+            onPressed: onShare,
+            icon: const Icon(Icons.share_outlined),
+            label: const Text('Share PDF'),
+          ),
+          FilledButton.icon(
+            onPressed: onDownload,
+            icon: const Icon(Icons.download_outlined),
+            label: const Text('Download PDF'),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+class _GuestPortablePreviewDialog extends StatelessWidget {
+  const _GuestPortablePreviewDialog({
+    required this.document,
+    required this.onDownload,
+    required this.onShare,
+    required this.onPrintFallback,
+  });
+
+  final GuestPortableDocument document;
+  final VoidCallback onDownload;
+  final VoidCallback onShare;
+  final VoidCallback onPrintFallback;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Preview PDF'),
+    content: SizedBox(
+      width: 720,
+      height: MediaQuery.sizeOf(context).height * 0.62,
+      child: ListView(
+        children: [
+          Text(document.title, style: Theme.of(context).textTheme.titleLarge),
+          Text('Portable copy · ${document.scope}'),
+          Text('Exported: ${document.exportedAt.toLocal()}'),
+          const Text(
+            'Some uncommon characters or emoji may not render in the PDF.',
+          ),
+          const Divider(),
+          for (final section in document.sections) ...[
+            Text(section.heading, style: Theme.of(context).textTheme.titleMedium),
+            SelectableText(
+              section.body.trim().isEmpty ? 'Not provided.' : section.body,
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (document.sections.isEmpty)
+            const Text('No report content is available.'),
+        ],
+      ),
+    ),
+    actions: [
+      Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          TextButton(
+            onPressed: onPrintFallback,
+            child: const Text('Print / Save PDF fallback'),
+          ),
+          OutlinedButton.icon(
+            onPressed: onShare,
+            icon: const Icon(Icons.share_outlined),
+            label: const Text('Share PDF'),
+          ),
+          FilledButton.icon(
+            onPressed: onDownload,
+            icon: const Icon(Icons.download_outlined),
+            label: const Text('Download PDF'),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+class _GuestGroupEntryContent extends StatelessWidget {
+  const _GuestGroupEntryContent({required this.entry});
+
+  final Map<String, dynamic> entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = entry['data'] is Map
+        ? Map<String, dynamic>.from(entry['data'] as Map)
+        : <String, dynamic>{};
+    if (entry['kind'] != 'interact_session') {
+      return ListView(
+        shrinkWrap: true,
+        children: [
+          for (final item in [
+            ('Knowledge', data['body']),
+            ('Answer', data['answer']),
+          ])
+            if (item.$2 is String && (item.$2 as String).isNotEmpty) ...[
+              Text(item.$1, style: Theme.of(context).textTheme.titleSmall),
+              SelectableText(item.$2 as String),
+              const SizedBox(height: 12),
+            ],
+        ],
+      );
+    }
+    final report = composeGuestReport(
+      session: {
+        ...data,
+        'title': entry['title'] as String? ?? 'Interact session',
+      },
+      allParticipants: true,
+      participantId: null,
+      exportedAt: DateTime.now().toUtc(),
+    );
+    return ListView(
+      shrinkWrap: true,
+      children: [
+        Text(
+          'All participants · ${report.participantNames.join(', ')}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        for (final question in report.questions)
+          _GuestEntryQuestionContent(question: question, depth: 0),
+      ],
+    );
+  }
+}
+
+class _GuestEntryQuestionContent extends StatelessWidget {
+  const _GuestEntryQuestionContent({
+    required this.question,
+    required this.depth,
+  });
+
+  final GuestReportQuestion question;
+  final int depth;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(left: (depth * 12).clamp(0, 36).toDouble(), top: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(question.text, style: Theme.of(context).textTheme.titleSmall),
+        if (question.triggerParticipant != null)
+          Text(
+            'Follow-up prompted by ${question.triggerParticipant}: '
+            '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
+          ),
+        if (question.answers.isEmpty) const Text('Unanswered.'),
+        for (final answer in question.answers) ...[
+          Text('Answer — ${answer.participantName}'),
+          SelectableText(answer.body.trim().isEmpty ? 'Unanswered.' : answer.body),
+          for (final followUp in answer.followUps)
+            _GuestEntryQuestionContent(
+              question: followUp,
+              depth: depth + 1,
+            ),
+        ],
+      ],
+    ),
   );
 }
 

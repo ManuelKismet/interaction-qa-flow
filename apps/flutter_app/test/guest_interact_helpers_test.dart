@@ -196,6 +196,31 @@ void main() {
       contains('Triggered by Alice &lt;A&gt;: private Alice branch answer'),
     );
     expect(all, contains('All participants'));
+
+    final selectedData = composeGuestReport(
+      session: session,
+      allParticipants: false,
+      participantId: 'alice-id',
+      exportedAt: DateTime.utc(2026, 10, 3),
+    );
+    final allData = composeGuestReport(
+      session: session,
+      allParticipants: true,
+      participantId: 'alice-id',
+      exportedAt: DateTime.utc(2026, 10, 3),
+    );
+    expect(selectedData.scope, 'Selected participant — Alice <A>');
+    expect(selectedData.participantNames, ['Alice <A>']);
+    expect(selectedData.questions.first.answers.single.participantName, 'Alice <A>');
+    expect(
+      selectedData.questions.first.answers.single.followUps.single.triggerAnswer,
+      'private Alice answer',
+    );
+    expect(allData.participantNames, ['Alice <A>', 'B & B']);
+    expect(allData.questions.first.answers.map((answer) => answer.participantName), [
+      'Alice <A>',
+      'B & B',
+    ]);
   });
 
   test('guest report escapes all user-controlled HTML text', () {
@@ -232,6 +257,63 @@ void main() {
     expect(html, contains('A &amp; &lt;B&gt;'));
     expect(html, isNot(contains('<script>')));
     expect(html, isNot(contains('<img src=x')));
+  });
+
+  test('PDF reports are valid portable documents with safe filenames', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final report = composeGuestReport(
+      session: _sessionFixture(),
+      allParticipants: false,
+      participantId: 'alice-id',
+      exportedAt: DateTime.utc(2026, 10, 3),
+    );
+
+    final pdf = await buildGuestReportPdf(report);
+
+    expect(String.fromCharCodes(pdf.take(5)), '%PDF-');
+    expect(pdf.length, greaterThan(1000));
+    expect(guestReportFilename(report), 'two-person-interview-2026-10-03.pdf');
+
+    final portablePdf = await buildGuestPortablePdf(
+      GuestPortableDocument(
+        title: 'Shared guide',
+        scope: 'Authorized guest-group Knowledge entry',
+        exportedAt: DateTime.utc(2026, 10, 3),
+        sections: const [
+          GuestPortableSection(heading: 'Answer', body: 'A readable answer'),
+        ],
+      ),
+    );
+    expect(String.fromCharCodes(portablePdf.take(5)), '%PDF-');
+    expect(
+      guestPortableFilename(
+        GuestPortableDocument(
+          title: 'Shared guide',
+          scope: 'Authorized guest-group Knowledge entry',
+          exportedAt: DateTime.utc(2026, 10, 3),
+          sections: const [],
+        ),
+      ),
+      'shared-guide-2026-10-03.pdf',
+    );
+  });
+
+  test('Knowledge PDF fallback escapes content and keeps a readable scope', () {
+    final html = buildGuestPortableHtml(
+      GuestPortableDocument(
+        title: '<Shared> guide',
+        scope: 'Authorized group entry',
+        exportedAt: DateTime.utc(2026, 10, 3),
+        sections: const [
+          GuestPortableSection(heading: 'Answer', body: '<script>no</script>'),
+        ],
+      ),
+    );
+
+    expect(html, contains('&lt;Shared&gt; guide'));
+    expect(html, contains('&lt;script&gt;no&lt;/script&gt;'));
+    expect(html, contains('Authorized group entry'));
+    expect(html, isNot(contains('<script>no')));
   });
 }
 

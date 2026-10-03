@@ -48,6 +48,27 @@ class GuestReportAnswer {
   final List<GuestReportQuestion> followUps;
 }
 
+class GuestPortableSection {
+  const GuestPortableSection({required this.heading, required this.body});
+
+  final String heading;
+  final String body;
+}
+
+class GuestPortableDocument {
+  const GuestPortableDocument({
+    required this.title,
+    required this.scope,
+    required this.exportedAt,
+    required this.sections,
+  });
+
+  final String title;
+  final String scope;
+  final DateTime exportedAt;
+  final List<GuestPortableSection> sections;
+}
+
 GuestReportData composeGuestReport({
   required Map<String, dynamic> session,
   required bool allParticipants,
@@ -212,51 +233,38 @@ Future<Uint8List> buildGuestReportPdf(GuestReportData report) async {
   ];
 
   void addQuestion(GuestReportQuestion question, {required int depth}) {
-    final indent = (depth * 14).clamp(0, 42).toDouble();
     content.add(
-      pw.Container(
-        margin: pw.EdgeInsets.only(left: indent, top: 12, bottom: 6),
-        padding: const pw.EdgeInsets.only(top: 8),
-        decoration: const pw.BoxDecoration(
-          border: pw.Border(top: pw.BorderSide(color: PdfColors.blueGrey200)),
-        ),
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
+      pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(height: 10),
+          pw.Text(
+            'Path ${question.path}${depth > 0 ? ' · Follow-up' : ''}',
+            style: pw.TextStyle(
+              font: font,
+              fontSize: 9,
+              color: PdfColors.blueGrey600,
+            ),
+          ),
+          if (question.triggerParticipant != null)
             pw.Text(
-              'Path ${question.path}${depth > 0 ? ' · Follow-up' : ''}',
+              'Follow-up prompted by ${question.triggerParticipant}: '
+              '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
               style: pw.TextStyle(
                 font: font,
                 fontSize: 9,
                 color: PdfColors.blueGrey600,
               ),
             ),
-            if (question.triggerParticipant != null)
-              pw.Padding(
-                padding: const pw.EdgeInsets.only(top: 4),
-                child: pw.Text(
-                  'Follow-up prompted by ${question.triggerParticipant}: '
-                  '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
-                  style: pw.TextStyle(
-                    font: font,
-                    fontSize: 9,
-                    color: PdfColors.blueGrey600,
-                  ),
-                ),
-              ),
-            pw.Padding(
-              padding: const pw.EdgeInsets.only(top: 4, bottom: 6),
-              child: pw.Text(
-                question.text,
-                style: pw.TextStyle(font: font, fontSize: 15),
-              ),
-            ),
-          ],
-        ),
+          pw.Text(
+            question.text,
+            style: pw.TextStyle(font: font, fontSize: 15),
+          ),
+        ],
       ),
     );
     if (question.answers.isEmpty) {
-      content.add(_pdfAnswer(font, 'Answer', 'Unanswered.', indent));
+      content.add(_pdfAnswer(font, 'Answer', 'Unanswered.'));
       return;
     }
     for (final answer in question.answers) {
@@ -265,7 +273,6 @@ Future<Uint8List> buildGuestReportPdf(GuestReportData report) async {
           font,
           'Answer — ${answer.participantName}',
           answer.body.trim().isEmpty ? 'Unanswered.' : answer.body,
-          indent,
         ),
       );
       for (final followUp in answer.followUps) {
@@ -301,36 +308,117 @@ Future<Uint8List> buildGuestReportPdf(GuestReportData report) async {
   return pdf.save();
 }
 
+Future<Uint8List> buildGuestPortablePdf(
+  GuestPortableDocument document,
+) async {
+  final fontBytes = await rootBundle.load('assets/fonts/DejaVuSans.ttf');
+  final font = pw.Font.ttf(fontBytes);
+  final pdf = pw.Document(
+    title: document.title,
+    subject: document.scope,
+    creator: 'IntQAFlow',
+  );
+  pdf.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(42, 42, 42, 48),
+      theme: pw.ThemeData.withFont(base: font, bold: font),
+      footer: (context) => pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Text(
+          '${context.pageNumber} / ${context.pagesCount}',
+          style: pw.TextStyle(font: font, fontSize: 9),
+        ),
+      ),
+      build: (_) => [
+        pw.Text(
+          document.title,
+          style: pw.TextStyle(font: font, fontSize: 22),
+        ),
+        pw.SizedBox(height: 8),
+        pw.Text(
+          'Report scope: ${document.scope}',
+          style: pw.TextStyle(font: font),
+        ),
+        pw.Text(
+          'Exported: ${document.exportedAt.toIso8601String()}',
+          style: pw.TextStyle(font: font),
+        ),
+        pw.SizedBox(height: 16),
+        for (final section in document.sections) ...[
+          pw.Text(
+            section.heading,
+            style: pw.TextStyle(font: font, fontSize: 15),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            section.body.trim().isEmpty ? 'Not provided.' : section.body,
+            style: pw.TextStyle(font: font, fontSize: 11),
+          ),
+          pw.SizedBox(height: 14),
+        ],
+        if (document.sections.isEmpty)
+          pw.Text(
+            'No report content is available.',
+            style: pw.TextStyle(font: font),
+          ),
+      ],
+    ),
+  );
+  return pdf.save();
+}
+
+String buildGuestPortableHtml(GuestPortableDocument document) {
+  final sections = document.sections.map((section) {
+    return '<section><h2>${_escapeHtml(section.heading)}</h2><p>${_escapeHtml(section.body.trim().isEmpty ? 'Not provided.' : section.body)}</p></section>';
+  }).join('\n');
+  return '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${_escapeHtml(document.title)} — PDF fallback</title>
+<style>
+body { max-width: 850px; margin: 24px auto; padding: 32px; font: 16px Arial, sans-serif; line-height: 1.55; }
+p { white-space: pre-wrap; overflow-wrap: anywhere; }
+section { margin-top: 24px; border-top: 1px solid #bbb; padding-top: 12px; }
+.toolbar { position: sticky; top: 0; background: white; padding: 12px; }
+@page { margin: 18mm; }
+@media print { .toolbar { display: none; } body { margin: 0; padding: 0; } }
+</style></head><body>
+<nav class="toolbar"><button onclick="window.print()">Print / Save PDF fallback</button></nav>
+<h1>${_escapeHtml(document.title)}</h1>
+<p>Report scope: ${_escapeHtml(document.scope)}<br>
+Exported: ${_escapeHtml(document.exportedAt.toIso8601String())}</p>
+$sections
+</body></html>''';
+}
+
 pw.Widget _pdfAnswer(
   pw.Font font,
   String heading,
   String body,
-  double indent,
-) => pw.Container(
-  margin: pw.EdgeInsets.only(left: indent, top: 4, bottom: 4),
-  padding: const pw.EdgeInsets.all(10),
-  decoration: pw.BoxDecoration(
-    color: PdfColors.grey100,
-    border: const pw.Border(
-      left: pw.BorderSide(color: PdfColors.blue, width: 3),
-    ),
-  ),
-  child: pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.start,
-    children: [
-      pw.Text(heading, style: pw.TextStyle(font: font, fontSize: 11)),
-      pw.SizedBox(height: 4),
-      pw.Text(body, style: pw.TextStyle(font: font, fontSize: 10)),
-    ],
-  ),
+) => pw.Column(
+  crossAxisAlignment: pw.CrossAxisAlignment.start,
+  children: [
+    pw.SizedBox(height: 6),
+    pw.Text(heading, style: pw.TextStyle(font: font, fontSize: 11)),
+    pw.Text(body, style: pw.TextStyle(font: font, fontSize: 10)),
+    pw.SizedBox(height: 6),
+  ],
 );
 
 String guestReportFilename(GuestReportData report) {
-  final safeTitle = report.title
+  return _pdfFilename(report.title, report.exportedAt);
+}
+
+String guestPortableFilename(GuestPortableDocument document) =>
+    _pdfFilename(document.title, document.exportedAt);
+
+String _pdfFilename(String title, DateTime exportedAt) {
+  final safeTitle = title
       .toLowerCase()
       .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
       .replaceAll(RegExp(r'^-+|-+$'), '');
-  final date = report.exportedAt.toUtc().toIso8601String().substring(0, 10);
+  final date = exportedAt.toUtc().toIso8601String().substring(0, 10);
   return '${safeTitle.isEmpty ? 'interact-report' : safeTitle}-$date.pdf';
 }
 
