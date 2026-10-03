@@ -25,6 +25,12 @@ class AuthenticatedIdentity:
     role: str
 
 
+@dataclass(frozen=True)
+class GuestIdentity:
+    firebase_uid: str
+    sign_in_provider: str
+
+
 DevelopmentIdentity = AuthenticatedIdentity
 
 
@@ -96,6 +102,43 @@ async def get_development_identity(
         email=user.email,
         display_name=user.display_name,
         role=user.role.value,
+    )
+
+
+async def get_guest_identity(
+    authorization: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> GuestIdentity:
+    parts = authorization.split(None, 1) if authorization else []
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise unauthorized()
+    token = parts[1].strip()
+    if not token:
+        raise unauthorized()
+
+    try:
+        claims = verify_id_token(token, settings)
+    except (FirebaseError, ValueError, TypeError):
+        raise unauthorized() from None
+
+    firebase_claims = claims.get("firebase")
+    sign_in_provider = (
+        firebase_claims.get("sign_in_provider")
+        if isinstance(firebase_claims, dict)
+        else None
+    )
+    if (
+        claims.get("aud") != settings.firebase_project_id
+        or claims.get("iss")
+        != f"https://securetoken.google.com/{settings.firebase_project_id}"
+        or not isinstance(claims.get("sub"), str)
+        or not claims["sub"]
+        or not isinstance(sign_in_provider, str)
+    ):
+        raise unauthorized()
+    return GuestIdentity(
+        firebase_uid=claims["sub"],
+        sign_in_provider=sign_in_provider,
     )
 
 

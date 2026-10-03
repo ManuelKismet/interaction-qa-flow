@@ -33,6 +33,14 @@ from app.models.guided import (
     KnowledgeProposal,
     KnowledgeProposalStatus,
 )
+from app.models.guest import (
+    GuestActionRateLimit,
+    GuestGroup,
+    GuestGroupEntry,
+    GuestGroupEntryRevision,
+    GuestGroupInvitation,
+    GuestGroupMembership,
+)
 from app.models.organisation import Organisation
 from app.models.question import Question, QuestionStatus, QuestionVisibility
 from app.models.question_embedding import QuestionEmbedding
@@ -72,6 +80,12 @@ __all__ = [
     "GuidedTemplateQuestion",
     "GuidedTemplateStatus",
     "GuidedTemplateVersion",
+    "GuestActionRateLimit",
+    "GuestGroup",
+    "GuestGroupEntry",
+    "GuestGroupEntryRevision",
+    "GuestGroupInvitation",
+    "GuestGroupMembership",
     "KnowledgeProposal",
     "KnowledgeProposalStatus",
     "Organisation",
