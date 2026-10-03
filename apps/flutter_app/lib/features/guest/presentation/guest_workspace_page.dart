@@ -1667,13 +1667,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                   trailing: _group!['role'] == 'admin' &&
                           item['status'] == 'pending'
                       ? TextButton(
-                          onPressed: () => _run(() async {
-                            await _repository.approveMember(
-                              groupId: groupId,
-                              memberId: item['id'] as String,
-                            );
-                            await _loadGroup(groupId);
-                          }),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _run(() async {
+                              await _repository.approveMember(
+                                groupId: groupId,
+                                memberId: item['id'] as String,
+                              );
+                              await _loadGroup(groupId);
+                            });
+                          },
                           child: const Text('Approve'),
                         )
                       : _group!['role'] == 'admin' &&
@@ -1712,13 +1715,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                     trailing: IconButton(
                       tooltip: 'Revoke invitation',
                       icon: const Icon(Icons.link_off),
-                      onPressed: () => _run(() async {
-                        await _repository.revokeInvitation(
-                          groupId: groupId,
-                          invitationId: invite['id'] as String,
-                        );
-                        await _loadGroup(groupId);
-                      }),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _run(() async {
+                          await _repository.revokeInvitation(
+                            groupId: groupId,
+                            invitationId: invite['id'] as String,
+                          );
+                          await _loadGroup(groupId);
+                        });
+                      },
                     ),
                   ),
               ],
@@ -1746,6 +1752,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     Map<String, dynamic> member,
     String action,
   ) async {
+    Navigator.of(context).pop();
     if (action == 'transfer_admin' || action == 'remove') {
       final confirmed = await showDialog<bool>(
         context: context,

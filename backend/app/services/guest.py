@@ -240,7 +240,7 @@ class GuestService:
             {
                 "id": invitation.id,
                 "role": invitation.role,
-                "expires_at": invitation.expires_at.isoformat(),
+                "expires_at": _utc(invitation.expires_at).isoformat(),
             }
             for invitation in invitations
         ]
