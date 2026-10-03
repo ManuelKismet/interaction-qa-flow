@@ -6,6 +6,7 @@ import 'package:int_qa_flow/features/ask/presentation/ask_page.dart';
 import 'package:int_qa_flow/features/governance/presentation/review_queue_page.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_page.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_session_page.dart';
+import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 import 'package:int_qa_flow/features/questions/presentation/question_detail_page.dart';
 import 'package:int_qa_flow/features/questions/presentation/questions_page.dart';
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
@@ -49,6 +50,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin',
             builder: (context, state) => const AdminPage(),
+          ),
+          GoRoute(
+            path: '/guest/groups',
+            builder: (context, state) => const SharedGuestGroupsPage(),
           ),
         ],
       ),

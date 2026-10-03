@@ -8,6 +8,7 @@ import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
+import 'package:int_qa_flow/features/guided/presentation/guided_report_document.dart';
 
 class GuidedSessionPage extends ConsumerStatefulWidget {
   const GuidedSessionPage({required this.sessionId, super.key});
@@ -27,7 +28,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   GuidedSessionQuery get _query => (
     sessionId: widget.sessionId,
     participantId: _allParticipantsReport ? null : _participantId,
-    viewMode: _viewMode,
+    viewMode: _reportMode ? GuidedViewMode.allRelevant : _viewMode,
   );
 
   void _refresh() => ref.invalidate(guidedSessionProvider);
@@ -91,7 +92,16 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
               }),
               onExport: (format) => _export(session, format),
               onHistory: _history,
-              onPrint: _reportMode ? printCurrentPage : null,
+              onPrint: _reportMode
+                  ? () => openPrintableReport(
+                      buildGuidedReportDocument(
+                        session: session,
+                        allParticipants: _allParticipantsReport,
+                        participantId: _participantId,
+                        generatedAt: DateTime.now(),
+                      ),
+                    )
+                  : null,
               onTransition: session.status == 'draft'
                   ? () => _transition('start')
                   : session.status == 'active'
@@ -286,8 +296,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     await ref
         .read(guidedRepositoryProvider)
         .setQuestionDeleted(question.id, true);
-    _refresh();
     if (!mounted) return;
+    _refresh();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -301,7 +311,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
             await ref
                 .read(guidedRepositoryProvider)
                 .setQuestionDeleted(question.id, false);
-            _refresh();
+            if (mounted) _refresh();
           },
         ),
       ),
@@ -706,136 +716,142 @@ class GuidedQuestionNode extends StatelessWidget {
         : 'Prepared · Shared';
     return _CappedBranchIndent(
       depth: depth,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 18),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: accent, width: 3)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: accent,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
+      child: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: accent, width: 3)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: accent,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Check Knowledge',
+                        icon: const Icon(Icons.manage_search_outlined),
+                        onPressed: () => onKnowledgeSearch(question),
+                      ),
+                      IconButton(
+                        tooltip: 'Delete question',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => onDelete(question),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    'Path ${path.join('.')} · $label',
+                    style: const TextStyle(color: Colors.black54, fontSize: 12),
+                  ),
+                  if (parentText != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Parent: $parentText',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.black54),
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Check Knowledge',
-                      icon: const Icon(Icons.manage_search_outlined),
-                      onPressed: () => onKnowledgeSearch(question),
-                    ),
-                    IconButton(
-                      tooltip: 'Delete question',
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => onDelete(question),
-                    ),
-                  ],
-                ),
-                Text(
-                  'Path ${path.join('.')} · $label',
-                  style: const TextStyle(color: Colors.black54, fontSize: 12),
-                ),
-                if (parentText != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Parent: $parentText',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.black54),
-                    ),
+                  const SizedBox(height: 6),
+                  _DebouncedField(
+                    key: ValueKey('question-${question.id}-${question.text}'),
+                    initialValue: question.text,
+                    minLines: 1,
+                    style: Theme.of(context).textTheme.titleMedium,
+                    onEditing: onEditing,
+                    onSave: (value) => onSaveQuestion(question, value),
                   ),
-                const SizedBox(height: 6),
-                _DebouncedField(
-                  key: ValueKey('question-${question.id}-${question.text}'),
-                  initialValue: question.text,
-                  minLines: 1,
-                  style: Theme.of(context).textTheme.titleMedium,
-                  onEditing: onEditing,
-                  onSave: (value) => onSaveQuestion(question, value),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Answer · $participantName',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                _DebouncedField(
-                  key: ValueKey(
-                    'answer-${answer?.id ?? question.id}-${answer?.body ?? ''}',
+                  const SizedBox(height: 10),
+                  Text(
+                    'Answer · $participantName',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  initialValue: answer?.body ?? '',
-                  minLines: 2,
-                  hintText: 'Record $participantName’s answer...',
-                  onEditing: onEditing,
-                  onSave: (value) => onSaveAnswer(question, answer, value),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    TextButton.icon(
-                      icon: const Icon(Icons.account_tree_outlined),
-                      label: const Text('Add follow-up'),
-                      onPressed: answer == null
-                          ? null
-                          : () => onAddFollowUp(answer),
+                  _DebouncedField(
+                    key: ValueKey(
+                      'answer-${answer?.id ?? question.id}-${answer?.body ?? ''}',
                     ),
-                    TextButton.icon(
-                      icon: const Icon(Icons.lightbulb_outline),
-                      label: const Text('Propose for Knowledge'),
-                      onPressed: answer == null || answer.body.trim().isEmpty
-                          ? null
-                          : () => onPropose(question, answer),
-                    ),
-                    if (question.followUps.isNotEmpty && answer != null)
-                      TextButton.icon(
-                        icon: Icon(
-                          answer.branchesCollapsed
-                              ? Icons.expand_more
-                              : Icons.expand_less,
-                        ),
-                        label: Text(
-                          answer.branchesCollapsed
-                              ? 'Expand branch (${question.followUps.length})'
-                              : 'Collapse branch (${question.followUps.length})',
-                        ),
-                        onPressed: () => onToggleBranch(answer),
-                      ),
-                  ],
-                ),
-                if (question.followUps.isNotEmpty &&
-                    !(answer?.branchesCollapsed ?? false)) ...[
+                    initialValue: answer?.body ?? '',
+                    minLines: 2,
+                    hintText: 'Record $participantName’s answer...',
+                    onEditing: onEditing,
+                    onSave: (value) => onSaveAnswer(question, answer, value),
+                  ),
                   const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.subdirectory_arrow_left, size: 16),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            parentText == null
-                                ? 'Return to main path'
-                                : 'Return to parent · $parentText',
-                            style: const TextStyle(color: Colors.black54),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.account_tree_outlined),
+                        label: const Text('Add follow-up'),
+                        onPressed: answer == null
+                            ? null
+                            : () => onAddFollowUp(answer),
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.lightbulb_outline),
+                        label: const Text('Propose for Knowledge'),
+                        onPressed:
+                            answer == null || answer.body.trim().isEmpty
+                            ? null
+                            : () => onPropose(question, answer),
+                      ),
+                      if (question.followUps.isNotEmpty && answer != null)
+                        TextButton.icon(
+                          icon: Icon(
+                            answer.branchesCollapsed
+                                ? Icons.expand_more
+                                : Icons.expand_less,
                           ),
+                          label: Text(
+                            answer.branchesCollapsed
+                                ? 'Expand branch'
+                                : 'Collapse branch',
+                          ),
+                          onPressed: () => onToggleBranch(answer),
                         ),
-                      ],
-                    ),
+                      if (question.followUps.isNotEmpty && answer != null)
+                        Text('${question.followUps.length} follow-ups'),
+                    ],
                   ),
+                  if (question.followUps.isNotEmpty &&
+                      !(answer?.branchesCollapsed ?? false)) ...[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.subdirectory_arrow_left, size: 16),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              parentText == null
+                                  ? 'Return to main path'
+                                  : 'Return to parent · $parentText',
+                              style: const TextStyle(color: Colors.black54),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -854,9 +870,9 @@ class _CappedBranchIndent extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (context, constraints) {
           final cap = constraints.maxWidth.isFinite
-              ? (constraints.maxWidth * 0.06).clamp(0.0, 28.0)
-              : 28.0;
-          final indent = (depth * 10.0).clamp(0.0, cap).toDouble();
+              ? (constraints.maxWidth * 0.02).clamp(0.0, 8.0)
+              : 8.0;
+          final indent = (depth * 4.0).clamp(0.0, cap).toDouble();
           return Padding(
             padding: EdgeInsets.only(left: indent),
             child: child,
@@ -1026,37 +1042,43 @@ class _ReportQuestion extends StatelessWidget {
         'Participant';
     return _CappedBranchIndent(
       depth: depth,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Path ${path.join('.')} · ${depth == 0 ? 'Question' : 'Follow-up'}',
-              style: const TextStyle(color: Colors.black54, fontSize: 12),
-            ),
-            if (parentText != null)
+      child: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                'Parent: $parentText',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.black54),
+                'Path ${path.join('.')} · ${depth == 0 ? 'Question' : 'Follow-up'}',
+                style: const TextStyle(color: Colors.black54, fontSize: 12),
               ),
-            Text(question.text, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 6),
-            if (question.answers.isEmpty)
-              const Text(
-                'No answer recorded.',
-                style: TextStyle(color: Colors.black54),
-              ),
-            for (final answer in question.answers)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  '${participantName(answer.participantId)}: ${answer.body.isEmpty ? 'No answer recorded.' : answer.body}',
+              if (parentText != null)
+                Text(
+                  'Parent: $parentText',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.black54),
                 ),
+              Text(
+                question.text,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-          ],
+              const SizedBox(height: 6),
+              if (question.answers.isEmpty)
+                const Text(
+                  'No answer recorded.',
+                  style: TextStyle(color: Colors.black54),
+                ),
+              for (final answer in question.answers)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '${participantName(answer.participantId)}: ${answer.body.isEmpty ? 'No answer recorded.' : answer.body}',
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
