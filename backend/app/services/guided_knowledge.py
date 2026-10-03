@@ -7,7 +7,11 @@ from app.ai.embedding_provider import EmbeddingProvider, get_embedding_provider
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
 from app.models.audit_event import AuditAction, AuditEvent
-from app.models.guided import KnowledgeProposal, KnowledgeProposalStatus
+from app.models.guided import (
+    GuidedSessionVisibility,
+    KnowledgeProposal,
+    KnowledgeProposalStatus,
+)
 from app.models.question import QuestionVisibility
 from app.models.user import UserRole
 from app.repositories.governance import GovernanceRepository
@@ -62,8 +66,11 @@ class GuidedKnowledgeService:
         session = await self.guided.guided_session(question.session_id, organisation_id)
         if not session:
             raise NotFoundError("Guided session not found")
-        if actor.id != session.created_by and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError("Only the session owner or an admin can propose its knowledge")
+        if actor.id != session.created_by and (
+            session.visibility == GuidedSessionVisibility.PRIVATE
+            or actor.role != UserRole.ADMIN
+        ):
+            raise PermissionDeniedError("Only the session owner can use private-session content")
         if not answer.body.strip():
             raise ConflictError("An empty answer cannot be proposed as knowledge")
         department_id = data.department_id if data.department_id is not None else session.department_id
@@ -144,9 +151,13 @@ class GuidedKnowledgeService:
         guided_session = await self.guided.guided_session(question.session_id, organisation_id)
         actor = await self.permissions.actor(user_id, organisation_id)
         if not guided_session or (
-            actor.id != guided_session.created_by and actor.role != UserRole.ADMIN
+            actor.id != guided_session.created_by
+            and (
+                guided_session.visibility == GuidedSessionVisibility.PRIVATE
+                or actor.role != UserRole.ADMIN
+            )
         ):
-            raise PermissionDeniedError("Only the session owner or an admin can search from this question")
+            raise PermissionDeniedError("Only the session owner can use private-session content")
         return await self.search(query or question.text, organisation_id, user_id, limit)
 
     async def decide(

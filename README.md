@@ -103,19 +103,9 @@ cd backend
 
 From the repository root:
 
-```sh
-cd apps/flutter_app
-flutter pub get
-flutter run -d chrome \
-	--dart-define=API_BASE_URL=http://localhost:8000 \
-	--dart-define=DEV_ORGANISATION_ID=<organisation-uuid> \
-	--dart-define=DEV_USER_ID=<user-uuid> \
-	--dart-define=DEV_USER_ROLE=<employee-answer_owner-or-admin>
-```
-
-The development IDs are temporary. They require matching organisation and user
-rows in PostgreSQL and will be replaced by token-derived identity when
-authentication is implemented.
+See [`apps/flutter_app/README.md`](apps/flutter_app/README.md) for local and
+hosted build configuration. The app uses Firebase email/password
+authentication; never pass caller-selected user, organisation, or role IDs.
 
 Run Flutter checks with:
 
@@ -129,7 +119,7 @@ flutter build web
 ## Current API
 
 - `GET /health`
-- `POST /api/v1/organisations`
+- `GET /api/v1/auth/me`
 - `POST /api/v1/departments`
 - `GET /api/v1/departments`
 - `GET /api/v1/teams`
@@ -179,13 +169,15 @@ flutter build web
 - Interact participant, question, answer, and recursive follow-up operations
 - Interact-to-Knowledge search and proposal review operations
 
-Question lists support `status`, `department_id`, `team_id`, `author_id`, `offset`, and
-`limit` query parameters. `organisation_id` remains an explicit development
-parameter until authentication is implemented.
+All `/api/v1` routes require a verified Firebase ID token mapped to an active
+server-side membership and a distinct App Check gate. Tenant scope is derived
+from that membership; organisation creation is a private operator operation,
+not an API endpoint.
 
-Semantic search accepts `{ "query": "...", "limit": 5 }`. During development,
-the caller identity is supplied in `X-Organisation-ID` and `X-User-ID` headers;
-these headers will be replaced by authenticated claims. Search returns answered
+Question lists support `status`, `department_id`, `team_id`, `author_id`, `offset`, and
+`limit` query parameters. Tenant selection is not caller-controlled.
+
+Semantic search accepts `{ "query": "...", "limit": 5 }`. Search returns answered
 or resolved questions with eligible answers that the caller may access.
 Knowledge Ask sends `include_unanswered: true` so duplicate prevention also
 returns accessible open questions. Normalized exact-title matches are retained

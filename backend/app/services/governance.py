@@ -186,6 +186,7 @@ class GovernanceService:
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
+        self.permissions.require_question_visibility(actor, question)
         await self.permissions.require_answer_manager(actor, question, self.governance)
 
         now = datetime.now(UTC)
@@ -377,6 +378,27 @@ class GovernanceService:
                 organisation_id, department_ids, suggestion_status
             )
         )
+        challenges = [
+            row
+            for row in challenges
+            if self.permissions.can_view_question(actor, row[2])
+        ]
+        due_answers = [
+            row
+            for row in due_answers
+            if self.permissions.can_view_question(actor, row[1])
+        ]
+        community_answers = [
+            row
+            for row in community_answers
+            if self.permissions.can_view_question(actor, row[1])
+        ]
+        suggestion_rows = [
+            row
+            for row in suggestion_rows
+            if self.permissions.can_view_question(actor, row[1])
+            and self.permissions.can_view_question(actor, row[2])
+        ]
         items: list[ReviewQueueItem] = []
         if item_type in (None, ReviewQueueType.CHALLENGE):
             items.extend(

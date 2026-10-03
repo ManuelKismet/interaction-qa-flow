@@ -109,20 +109,31 @@ async def list_versions(
 async def update_answer(
     answer_id: UUID,
     payload: AnswerUpdate,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> AnswerDetailResponse:
-    return await AnswerService(session).update(answer_id, payload)
+    return await AnswerService(session).update(
+        answer_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )
 
 
 @router.delete("/{answer_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_answer(
     answer_id: UUID,
-    # TODO(auth): derive organisation_id and user_id from the authenticated identity.
-    organisation_id: UUID,
-    user_id: UUID,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    await AnswerService(session).delete(answer_id, organisation_id, user_id)
+    await AnswerService(session).delete(
+        answer_id,
+        identity.organisation_id,
+        identity.user_id,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -130,6 +141,15 @@ async def delete_answer(
 async def react_to_answer(
     answer_id: UUID,
     payload: ReactionCreate,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> ReactionResponse:
-    return await AnswerService(session).react(answer_id, payload)
+    return await AnswerService(session).react(
+        answer_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )

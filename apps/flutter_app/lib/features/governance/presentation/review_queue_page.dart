@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:int_qa_flow/core/config/app_config.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
@@ -28,7 +28,8 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!{'admin', 'answer_owner'}.contains(AppConfig.developmentUserRole)) {
+    final role = ref.watch(currentMembershipProvider).value?.role;
+    if (!{'admin', 'answer_owner'}.contains(role)) {
       return const Center(child: Text('You do not have access to this queue.'));
     }
     final queue = ref.watch(reviewQueueProvider(_filter));
@@ -146,7 +147,7 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
             error: (_, _) =>
                 const Center(child: Text('Unable to load the review queue.')),
           ),
-          if (AppConfig.developmentUserRole == 'admin') ...[
+          if (role == 'admin') ...[
             const SizedBox(height: 32),
             Text(
               'Interact proposals for Knowledge',
