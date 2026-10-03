@@ -10,7 +10,7 @@ results=[]
 with sync_playwright() as p:
     browser=p.chromium.launch(headless=True)
     for name,w,h in [("phone390",390,844),("phone360",360,800),("ipadportrait",820,1180),("ipadlandscape",1180,820)]:
-        ctx=browser.new_context(viewport={"width":w,"height":h},device_scale_factor=1)
+        ctx=browser.new_context(viewport={"width":w,"height":h},device_scale_factor=1,locale="en-GB")
         page=ctx.new_page()
         row={"viewport":name,"width":w,"height":h,"views":[],"errors":[]}
         page.on("pageerror",lambda e: row["errors"].append(str(e)[:300]))
