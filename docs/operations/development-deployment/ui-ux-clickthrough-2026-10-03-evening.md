@@ -84,3 +84,23 @@ Viewer diagnosis after founder requested new-tab retry: browser rejection explic
 
 
 Founder authorized restoring viewer port. Re-added localhost:8767 in existing Codespace Ports panel. Verified Ports lists 8080 and 8767, 8767 visibility Private, and running websockify process 1242 for loopback VNC:5997. This confirms port-forward repair and active viewer service, not browser connection or completion of remaining UI tests. No rejected viewer-tab retry attempted.
+
+
+## Completed corrected viewport run
+
+Saved evidence: [responsive-evidence-2026-10-03](responsive-evidence-2026-10-03/), including results.json and 32 screenshots. Four contexts completed without blocked steps or JavaScript page errors:
+
+| CSS viewport | Views completed | Preview outside-click dismissal |
+| --- | --- | --- |
+| Phone 390 × 844 | Knowledge, empty Interact, sample editor, PDF preview, template dialog, Account menu, Sign in, Create account | Worked |
+| Phone 360 × 800 | Same eight views | Worked |
+| iPad portrait 820 × 1180 | Same eight views | Worked |
+| iPad landscape 1180 × 820 | Same eight views | Worked |
+
+Headless Chromium 140, locale en-GB, scale factor 1. This is resized desktop Chromium, not physical iOS Safari. Runner uses focused DOM input and semantic activation after a coordinate-click diagnostic opened the participant dropdown instead of the off-screen answer. Earlier locator failures therefore must not be logged as functional defects. This method establishes render/navigation coverage; it does not establish accurate touch hit targets or pointer-coordinate acceptance.
+
+Visual inspection included narrow phone editor/report/auth/template dialog, portrait editor/sign-in/report and landscape Knowledge/report. Forms and PDF actions wrap/stack within phone widths; tablet portrait/landscape render successfully. Participant and shared-question helper text truncate with ellipsis (UX-E09). Tablet Knowledge/forms retain excessive width (UX-E01). Knowledge and editor fields still touch (UX-E02), and nested editor hierarchy/add-follow-up icon grouping still needs polish (UX-E03). Sign-in/signup cards are constrained and fit the inspected narrow screens, but lack a visible return-to-guest control (UX-E04); signup has Back to sign in. Combined signup/guest-recovery wording remains UX-E05.
+
+UX-E06 update: explicit Close is still absent, but clicking the report backdrop outside its bounds dismissed the preview in all four contexts and returned to the editor. Missing Close is a discoverability improvement, not proof of a trapped modal. The 360-phone preview initially hides the final follow-up answer below its clipped content region; targeted internal scrolling verification is in progress. Fresh report timestamps were generated; saved-session timestamp investigation UX-E07 remains separate.
+
+No credentials entered, registered accounts created, cloud groups enabled, report files downloaded/shared, app changes merged or environment deployed. Synthetic local-only content exists only in isolated review contexts. Template save dialog was cancelled; applying saved templates, physical keyboard obstruction, iOS Safari/native share, comprehensive accessibility and signed-in/admin screens remain outside this completed viewport run. No production-readiness signoff. Guest functional/privacy testing is a separate next phase.
