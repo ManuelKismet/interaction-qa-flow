@@ -248,7 +248,7 @@ Future<Uint8List> buildGuestReportPdf(GuestReportData report) async {
           ),
           if (question.triggerParticipant != null)
             pw.Text(
-              'Follow-up prompted by ${question.triggerParticipant}: '
+              'Triggered by ${question.triggerParticipant}: '
               '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
               style: pw.TextStyle(
                 font: font,
@@ -438,7 +438,7 @@ String buildGuestReportDocument({
     final indent = (depth * 10).clamp(0, 28);
     final attribution = question.triggerParticipant == null
         ? ''
-        : '<p class="context">Follow-up prompted by '
+        : '<p class="context">Triggered by '
               '${_escapeHtml(question.triggerParticipant!)}: '
               '${question.triggerAnswer?.trim().isNotEmpty == true ? _escapeHtml(question.triggerAnswer!) : 'Unanswered.'}</p>';
     final answers = question.answers.isEmpty

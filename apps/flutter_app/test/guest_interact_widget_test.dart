@@ -141,12 +141,34 @@ void main() {
     await tester.tap(find.text('Selected participant'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Preview PDF'), findsOneWidget);
-    expect(find.text('Alice answer'), findsOneWidget);
-    expect(find.text('Bob answer'), findsNothing);
-    expect(find.text('Share PDF'), findsOneWidget);
-    expect(find.text('Download PDF'), findsOneWidget);
-    expect(find.text('Print / Save PDF fallback'), findsOneWidget);
+    final preview = find.ancestor(
+      of: find.text('Preview PDF'),
+      matching: find.byType(AlertDialog),
+    );
+    expect(preview, findsOneWidget);
+    expect(
+      find.descendant(of: preview, matching: find.text('Alice answer')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: preview, matching: find.text('Bob answer')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: preview, matching: find.text('Share PDF')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: preview, matching: find.text('Download PDF')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: preview,
+        matching: find.text('Print / Save PDF fallback'),
+      ),
+      findsOneWidget,
+    );
   });
 }
 

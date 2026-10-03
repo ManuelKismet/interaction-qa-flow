@@ -86,6 +86,12 @@ void main() {
     );
     expect(find.text('Teams'), findsOneWidget);
     expect(find.text('Create team'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Payroll'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Payroll'));
     await tester.pumpAndSettle();
     expect(find.text('Add member'), findsNWidgets(2));

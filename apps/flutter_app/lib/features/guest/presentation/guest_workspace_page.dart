@@ -442,6 +442,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
 
     try {
       final bytes = await _makePdf(report);
+      if (!mounted) return;
       final renderBox = context.findRenderObject() as RenderBox?;
       final origin = renderBox == null
           ? null
@@ -459,6 +460,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         ),
       );
       if (result.status == ShareResultStatus.dismissed) return;
+      if (!mounted) return;
       if (result.status == ShareResultStatus.unavailable) {
         if (mounted) {
           await _showPdfFallback(report, session, allParticipants, participantId);
@@ -2410,6 +2412,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (confirmed != true || !mounted) return;
     try {
       final bytes = await buildGuestReportPdf(report);
+      if (!mounted) return;
       final renderBox = context.findRenderObject() as RenderBox?;
       final result = await SharePlus.instance.share(
         ShareParams(
@@ -2424,6 +2427,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         ),
       );
       if (result.status == ShareResultStatus.dismissed) return;
+      if (!mounted) return;
       if (result.status == ShareResultStatus.unavailable) {
         await _downloadAuthorizedReport(
           report,
@@ -2433,12 +2437,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         );
       }
     } on Object {
-      await _downloadAuthorizedReport(
-        report,
-        session,
-        allParticipants,
-        participantId,
-      );
+      if (mounted) {
+        await _downloadAuthorizedReport(
+          report,
+          session,
+          allParticipants,
+          participantId,
+        );
+      }
     }
   }
 
@@ -2467,6 +2473,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (confirmed != true || !mounted) return;
     try {
       final bytes = await buildGuestPortablePdf(document);
+      if (!mounted) return;
       final renderBox = context.findRenderObject() as RenderBox?;
       final result = await SharePlus.instance.share(
         ShareParams(
@@ -2481,11 +2488,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         ),
       );
       if (result.status == ShareResultStatus.dismissed) return;
+      if (!mounted) return;
       if (result.status == ShareResultStatus.unavailable) {
         await _downloadPortableDocument(document);
       }
     } on Object {
-      await _downloadPortableDocument(document);
+      if (mounted) await _downloadPortableDocument(document);
     }
   }
 
@@ -2866,7 +2874,7 @@ class _GuestReportPreviewDialog extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'Follow-up prompted by ${question.triggerParticipant}: '
+                'Triggered by ${question.triggerParticipant}: '
                 '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -3107,7 +3115,7 @@ class _GuestEntryQuestionContent extends StatelessWidget {
         Text(question.text, style: Theme.of(context).textTheme.titleSmall),
         if (question.triggerParticipant != null)
           Text(
-            'Follow-up prompted by ${question.triggerParticipant}: '
+            'Triggered by ${question.triggerParticipant}: '
             '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
           ),
         if (question.answers.isEmpty) const Text('Unanswered.'),
