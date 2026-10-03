@@ -2,6 +2,8 @@ import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
 
+void printCurrentPage() => web.window.print();
+
 void openPrintableReport(String documentHtml) {
   final reportWindow = web.window.open('', '_blank');
   if (reportWindow == null) {
