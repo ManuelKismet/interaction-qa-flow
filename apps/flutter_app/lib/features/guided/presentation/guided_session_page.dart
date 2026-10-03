@@ -860,9 +860,9 @@ class _CappedBranchIndent extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (context, constraints) {
           final cap = constraints.maxWidth.isFinite
-              ? (constraints.maxWidth * 0.06).clamp(0.0, 28.0)
-              : 28.0;
-          final indent = (depth * 10.0).clamp(0.0, cap).toDouble();
+              ? (constraints.maxWidth * 0.02).clamp(0.0, 8.0)
+              : 8.0;
+          final indent = (depth * 4.0).clamp(0.0, cap).toDouble();
           return Padding(
             padding: EdgeInsets.only(left: indent),
             child: child,

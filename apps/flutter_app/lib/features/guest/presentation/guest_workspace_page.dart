@@ -1887,7 +1887,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (groupId == null) return;
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (entryDialogContext) => AlertDialog(
         title: Text(entry['title'] as String? ?? 'Guest group entry'),
         content: SizedBox(
           width: 700,
@@ -1904,9 +1904,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 groupId: groupId,
                 entryId: entry['id'] as String,
               );
-              if (mounted) {
+              if (entryDialogContext.mounted &&
+                  (ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
                 await showDialog<void>(
-                  context: context,
+                  context: entryDialogContext,
                   builder: (context) => AlertDialog(
                     title: const Text('Authorized group export'),
                     content: SizedBox(
@@ -1937,9 +1938,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 groupId: groupId,
                 entryId: entry['id'] as String,
               );
-              if (!mounted) return;
+              if (!entryDialogContext.mounted ||
+                  !(ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
+                return;
+              }
               await showDialog<void>(
-                context: context,
+                context: entryDialogContext,
                 builder: (context) => AlertDialog(
                   title: const Text('Entry revisions'),
                   content: SizedBox(
@@ -1957,7 +1961,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           if (_canEdit(entry))
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(entryDialogContext);
                 _editEntry(entry);
               },
               child: const Text('Edit'),
@@ -1965,12 +1969,15 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           if (_canEdit(entry))
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(entryDialogContext);
                 _deleteEntry(entry);
               },
               child: const Text('Delete'),
             ),
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+          FilledButton(
+            onPressed: () => Navigator.pop(entryDialogContext),
+            child: const Text('Done'),
+          ),
         ],
       ),
     );

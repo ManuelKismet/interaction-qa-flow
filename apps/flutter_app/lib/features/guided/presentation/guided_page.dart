@@ -288,113 +288,15 @@ class _TemplatesList extends ConsumerWidget {
     WidgetRef ref,
     GuidedTemplate template,
   ) async {
-    final drafts = [
-      for (final question in template.questions)
-        _TemplateVersionDraftQuestion.existing(question),
-    ];
-    final questionsWithChildren = template.questions
-        .map((question) => question.parentTemplateQuestionId)
-        .whereType<String>()
-        .toSet();
-    final save = await showDialog<bool>(
+    final questions = await showDialog<List<GuidedTemplateQuestion>>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          final canSave =
-              drafts.isNotEmpty &&
-              drafts.every((draft) => draft.controller.text.trim().isNotEmpty);
-          return AlertDialog(
-            title: Text('Edit questions for v${template.currentVersion + 1}'),
-            content: SizedBox(
-              width: 600,
-              height: 520,
-              child: ListView(
-                children: [
-                  for (final draft in drafts)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              key: ValueKey('template-question-${draft.id}'),
-                              controller: draft.controller,
-                              decoration: InputDecoration(
-                                labelText: draft.source?.scope == 'participant'
-                                    ? 'Participant question'
-                                    : 'Shared question',
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: questionsWithChildren.contains(draft.id)
-                                ? 'Remove child questions first'
-                                : 'Remove draft question',
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: questionsWithChildren.contains(draft.id)
-                                ? null
-                                : () => setState(() {
-                                    drafts.remove(draft);
-                                    draft.controller.dispose();
-                                  }),
-                          ),
-                        ],
-                      ),
-                    ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add shared question'),
-                      onPressed: () => setState(() {
-                        drafts.add(_TemplateVersionDraftQuestion.newShared());
-                      }),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: canSave
-                    ? () => Navigator.pop(context, true)
-                    : null,
-                child: const Text('Save new version'),
-              ),
-            ],
-          );
-        },
-      ),
+      builder: (_) => _TemplateVersionDialog(template: template),
     );
-    try {
-      if (save == true) {
-        final questions = [
-          for (var index = 0; index < drafts.length; index++)
-            GuidedTemplateQuestion(
-              id: drafts[index].id,
-              text: drafts[index].controller.text.trim(),
-              scope: drafts[index].source?.scope ?? 'shared',
-              orderIndex: index,
-              participantReference: drafts[index].source?.participantReference,
-              parentTemplateQuestionId:
-                  drafts[index].source?.parentTemplateQuestionId,
-            ),
-        ];
-        await ref
-            .read(guidedRepositoryProvider)
-            .versionTemplate(template.id, questions);
-        ref.invalidate(guidedTemplatesProvider);
-      }
-    } finally {
-      for (final draft in drafts) {
-        draft.controller.dispose();
-      }
-    }
+    if (questions == null) return;
+    await ref
+        .read(guidedRepositoryProvider)
+        .versionTemplate(template.id, questions);
+    ref.invalidate(guidedTemplatesProvider);
   }
 
   Future<void> _create(BuildContext context, WidgetRef ref) async {
@@ -502,4 +404,119 @@ class _TemplateVersionDraftQuestion {
   final String id;
   final GuidedTemplateQuestion? source;
   final TextEditingController controller;
+}
+
+class _TemplateVersionDialog extends StatefulWidget {
+  const _TemplateVersionDialog({required this.template});
+
+  final GuidedTemplate template;
+
+  @override
+  State<_TemplateVersionDialog> createState() => _TemplateVersionDialogState();
+}
+
+class _TemplateVersionDialogState extends State<_TemplateVersionDialog> {
+  late final List<_TemplateVersionDraftQuestion> _drafts = [
+    for (final question in widget.template.questions)
+      _TemplateVersionDraftQuestion.existing(question),
+  ];
+
+  late final Set<String> _questionsWithChildren = widget.template.questions
+      .map((question) => question.parentTemplateQuestionId)
+      .whereType<String>()
+      .toSet();
+
+  @override
+  void dispose() {
+    for (final draft in _drafts) {
+      draft.controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final questions = [
+      for (var index = 0; index < _drafts.length; index++)
+        GuidedTemplateQuestion(
+          id: _drafts[index].id,
+          text: _drafts[index].controller.text.trim(),
+          scope: _drafts[index].source?.scope ?? 'shared',
+          orderIndex: index,
+          participantReference: _drafts[index].source?.participantReference,
+          parentTemplateQuestionId:
+              _drafts[index].source?.parentTemplateQuestionId,
+        ),
+    ];
+    Navigator.pop(context, questions);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSave =
+        _drafts.isNotEmpty &&
+        _drafts.every((draft) => draft.controller.text.trim().isNotEmpty);
+    return AlertDialog(
+      title: Text('Edit questions for v${widget.template.currentVersion + 1}'),
+      content: SizedBox(
+        width: 600,
+        height: 520,
+        child: ListView(
+          children: [
+            for (final draft in _drafts)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: ValueKey('template-question-${draft.id}'),
+                        controller: draft.controller,
+                        decoration: InputDecoration(
+                          labelText: draft.source?.scope == 'participant'
+                              ? 'Participant question'
+                              : 'Shared question',
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: _questionsWithChildren.contains(draft.id)
+                          ? 'Remove child questions first'
+                          : 'Remove draft question',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: _questionsWithChildren.contains(draft.id)
+                          ? null
+                          : () => setState(() {
+                              _drafts.remove(draft);
+                              draft.controller.dispose();
+                            }),
+                    ),
+                  ],
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Add shared question'),
+                onPressed: () => setState(() {
+                  _drafts.add(_TemplateVersionDraftQuestion.newShared());
+                }),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: canSave ? _save : null,
+          child: const Text('Save new version'),
+        ),
+      ],
+    );
+  }
 }
