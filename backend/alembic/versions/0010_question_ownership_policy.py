@@ -91,7 +91,8 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE questions
-        SET status_before_archive = CASE
+        SET status_before_archive = CAST(
+            CASE
                 WHEN accepted_answer_id IS NOT NULL OR resolved_at IS NOT NULL
                     THEN 'resolved'
                 WHEN EXISTS (
@@ -100,7 +101,8 @@ def upgrade() -> None:
                       AND answers.organisation_id = questions.organisation_id
                 ) THEN 'answered'
                 ELSE 'open'
-            END
+            END AS question_status
+        )
         WHERE status = 'archived'
         """
     )
