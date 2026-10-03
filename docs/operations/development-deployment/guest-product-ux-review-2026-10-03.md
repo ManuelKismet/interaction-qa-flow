@@ -62,3 +62,7 @@ Existing live API privacy record reports 26 passing checks with three real anony
 This available cloud browser has one profile. Another tab reuses the same persisted Firebase guest identity; it is not a second participant/device security test. No browser isolation API was advertised. Do not clear the existing workspace to manufacture another identity. Pending: independent guest identity, host approval, viewer/contributor/admin actions, removal, expired/revoked/replayed invitations and two-group/organisation matrix on the final deployed candidate.
 
 Still pending: full local answer/edit/nested/deletion-undo scenarios, backup round trip and invalid-import atomicity, narrow-width UI, readable/rendered PDF, and registered identity/linking/cache transitions. Sign-in remains deferred by founder. No cleanup apply, scheduler, IAM, App Check mode change, paid provider, merge or production release.
+
+## Additional browser validation
+
+Entered malformed synthetic backup text in Import backup. The visible form reports The backup is not valid IntQAFlow guest JSON and Review selection remains disabled. Cancelled without importing. This confirms malformed-JSON UI rejection, not successful round-trip import or deeper schema/atomicity acceptance. Screenshot: intqaflow-guest-import-validation-1791036605108.jpg.
