@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 
 class SignInPage extends ConsumerStatefulWidget {
-  const SignInPage({super.key});
+  const SignInPage({this.linkGuestIdentity = false, super.key});
+
+  final bool linkGuestIdentity;
 
   @override
   ConsumerState<SignInPage> createState() => _SignInPageState();
@@ -17,6 +19,13 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   bool _busy = false;
   String? _message;
   String? _error;
+  bool _createAccountMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _createAccountMode = widget.linkGuestIdentity;
+  }
 
   @override
   void dispose() {
@@ -38,7 +47,42 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         setState(() {
           _message = 'If that account exists, a reset email has been sent.';
         });
+      } else if (_createAccountMode && auth.currentUser?.isAnonymous == true) {
+        final credential = EmailAuthProvider.credential(
+          email: _email.text.trim(),
+          password: _password.text,
+        );
+        await auth.currentUser!.linkWithCredential(credential);
+      } else if (_createAccountMode) {
+        await auth.createUserWithEmailAndPassword(
+          email: _email.text.trim(),
+          password: _password.text,
+        );
       } else {
+        if (auth.currentUser?.isAnonymous == true) {
+          final switchIdentity = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Switch from this guest identity?'),
+              content: const Text(
+                'Signing in to a different account will not move this guest '
+                'group membership. Link a new account for recovery, or transfer '
+                'group administration explicitly before switching.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Keep guest identity'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Switch account'),
+                ),
+              ],
+            ),
+          );
+          if (switchIdentity != true) return;
+        }
         await auth.signInWithEmailAndPassword(
           email: _email.text.trim(),
           password: _password.text,
@@ -51,6 +95,9 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       if (diagnostics) debugPrint('Firebase authentication failed: auth/$code');
       if (!mounted) return;
       final message = switch (code) {
+        'email-already-in-use' || 'credential-already-in-use' ||
+        'provider-already-linked' =>
+          'That account could not be linked. This guest identity remains active; an existing account is never linked or granted group access automatically.',
         'network-request-failed' =>
           'Unable to reach the sign-in service. Check your connection and try again.',
         'too-many-requests' =>
@@ -87,7 +134,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      _resetMode ? 'Reset password' : 'Sign in to IntQAFlow',
+                      _resetMode
+                          ? 'Reset password'
+                          : _createAccountMode
+                              ? 'Create or link an account'
+                              : 'Sign in to IntQAFlow',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: 20),
@@ -127,21 +178,46 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                             ? 'Please wait…'
                             : _resetMode
                                 ? 'Send reset email'
-                                : 'Sign in',
+                                : _createAccountMode
+                                    ? ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true
+                                        ? 'Link recovery account'
+                                        : 'Create account'
+                                    : 'Sign in',
                       ),
                     ),
                     TextButton(
                       onPressed: _busy
                           ? null
                           : () => setState(() {
-                                _resetMode = !_resetMode;
+                                if (_resetMode) {
+                                  _resetMode = false;
+                                } else if (_createAccountMode) {
+                                  _createAccountMode = false;
+                                } else {
+                                  _createAccountMode = true;
+                                }
                                 _error = null;
                                 _message = null;
                               }),
                       child: Text(
-                        _resetMode ? 'Back to sign in' : 'Forgot password?',
+                        _resetMode
+                            ? 'Back to sign in'
+                            : _createAccountMode
+                                ? 'Back to sign in'
+                                : 'Create account or link guest recovery',
                       ),
                     ),
+                    if (!_resetMode && !_createAccountMode)
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                  _resetMode = true;
+                                  _error = null;
+                                  _message = null;
+                                }),
+                        child: const Text('Forgot password?'),
+                      ),
                   ],
                 ),
               ),
