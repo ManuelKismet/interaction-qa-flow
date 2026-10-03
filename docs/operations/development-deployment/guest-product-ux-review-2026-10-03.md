@@ -66,3 +66,26 @@ Still pending: full local answer/edit/nested/deletion-undo scenarios, backup rou
 ## Additional browser validation
 
 Entered malformed synthetic backup text in Import backup. The visible form reports The backup is not valid IntQAFlow guest JSON and Review selection remains disabled. Cancelled without importing. This confirms malformed-JSON UI rejection, not successful round-trip import or deeper schema/atomicity acceptance. Screenshot: intqaflow-guest-import-validation-1791036605108.jpg.
+
+## Organisation, department, team and guest-group access review
+
+Source checked on combined deployed candidate df6bcd3: PermissionService, QuestionVisibility, GuidedService._require_view/_owned_session, TeamService, department routes, mounted v1 router and guest routes. This is source review, not fresh registered-browser acceptance.
+
+Confirmed current behavior:
+- Registered Firebase identity must resolve active server-controlled organisation/user/role membership. Signup alone does not enrol an organisation; organisation creation route file is not mounted in the protected v1 router. Complete customer-facing organisation invitation/provisioning UX is not established by this review.
+- Organisation admins create departments/teams and add/remove team members. Users currently have one nullable primary department and can belong to multiple teams. Teams may have a parent department or be cross-functional.
+- Knowledge visibility is organisation, department or private only. Organisation content is visible to active members of that org; department content requires the actor's matching non-null primary department; private content requires its author. A team_id tag does NOT restrict Knowledge to that team's members. Another team in the same department can read department-visible content.
+- Interact adds team visibility. Owner can view own session; matching team membership grants team-session read; matching primary department grants department-session read; organisation visibility grants org read. Organisation admin can view non-private sessions, including team/department sessions; private sessions remain owner-only. Viewing does not grant editing: current _owned_session limits session mutation to owner or admin of a non-private session.
+- Department/answer-owner governance is a separate server-controlled grant; team membership does not grant verification authority. Metadata listing can expose names of org teams/departments without granting access to their content.
+- Guest groups use separate guest memberships/invitations/roles, not organisation teams/departments. Current guest create/join endpoints explicitly require anonymous Firebase provider. A linked registered identity can continue authorized existing memberships, but arbitrary registered identities cannot currently create/join guest groups through those endpoints. Account UX must accurately disclose this limitation; do not silently switch identities.
+
+Finding: inconsistent scope support between Knowledge and Interact makes team privacy easy to misunderstand. Current team-tagged Knowledge must not be presented as team-private. Admin non-private Interact access needs explicit disclosure rather than a blanket only team members claim. Registered organisation enrolment and department assignment UI need a separate end-to-end review.
+
+Recommendation for founder review, NOT an implemented permission change:
+- One clear Sharing control with Private / Team / Department / Organisation, plus a who-can-access summary, once both modules truly implement those scopes.
+- Add genuine team visibility to Knowledge before offering team-private sharing. Team membership does not imply access to all parent-department content, and department membership does not imply access to each team. Choose whether the existing primary-department model is sufficient; do not silently introduce multiple departments.
+- Private owner-only. Disclose and decide admin handling for non-private scopes. Separate read/contribute/edit/manage membership/verify permissions. Use organisation-admin-approved onboarding/membership, with no self-selected privilege or auto-enrolment by signup/email domain.
+- Apply identical membership rules to search, lists, direct IDs, aliases/canonical links, attachments/children, history and exports; membership removal should deny subsequent requests and clear inaccessible cached views. Downloaded copies cannot be revoked.
+- Keep guest groups out of formal org privilege, and avoid adding a third organisational group concept if teams already cover collaboration.
+
+Acceptance: users in Team A and B in the same department, another department, multi-team user, departmentless user, owner, org admin and foreign-org member. Check positive/negative reads and changes across both modules, search/direct/history/export, removal and visibility changes. This organisation matrix remains pending while registered sign-in is deferred.
