@@ -50,3 +50,16 @@ Attempted browser responsive controls via Ctrl+Shift+I and Ctrl+Shift+M. Screens
 Required follow-up targets (planned, not executed): phone 390 × 844 and 360 × 800; representative iPad portrait 820 × 1180 and landscape 1180 × 820. Check Knowledge form/search, header and menus, Interact creation and participant controls, deep branches, template picker, PDF scope/preview/footer, sign-in/signup, scrolling and keyboard-obscured inputs. Record overflow, clipping, wrapping, touch targets and dismiss/back paths per viewport. These CSS viewport checks also do not substitute for physical iPad Safari, native share or software keyboard acceptance.
 
 Current stop point: UI-stage responsive review blocked by browser viewport capability. Guest feature/functional tests remain pending per founder sequence.
+
+
+## Codespace responsive review and interactive continuation
+
+Founder authorized an isolated Codespace browser setup. Machine reports 2 CPUs and 7941 MiB RAM; latest check showed 1476 MiB available, no swap. Playwright 1.55 / Chromium shell installed outside the app workspace. Signed Debian runtime packages installed; unrelated Yarn repository signature failure was not bypassed. Browser context explicitly uses en-GB after an initial locale startup error.
+
+Actual CSS viewport screenshots were captured at 390 × 844, 360 × 800, 820 × 1180 and 1180 × 820. Knowledge and empty Interact rendered at all four sizes; 390-phone and landscape-iPad editor/PDF previews were captured. Initial 360-phone and portrait-iPad runner interactions timed out without JavaScript page errors; these are incomplete automation paths, not confirmed app failures. Stabilized rerun remains partial. Document scroll width matched viewport width in captures; Flutter canvas overflow still requires visual inspection.
+
+Visual observations: phone PDF actions stack vertically and report question text wraps; therefore describing the phone screen as merely a stretched desktop is inaccurate. Knowledge search helper and Interact participant/shared-question helper text truncate with ellipses on phone (UX-E09: wrap explanatory text at narrow widths). UX-E02 touching input spacing persists on phone; UX-E06 missing visible preview close remains particularly relevant for touch. Landscape tablet retains wide fields (UX-E01). Newly generated preview showed a fresh evening timestamp; UX-E07 remains specific to the existing saved-session case and is not a universal stale-export defect.
+
+Founder requested interactive review instead of screenshots alone. Installing a minimal virtual display/noVNC stack and full Chromium in the isolated tools environment, with one browser instance and private Codespace forwarding. No interactive session is yet verified. Screenshot contexts use synthetic local layout sample data only; no account or cloud group creation, no sharing, no guest functional/privacy acceptance.
+
+Remaining gate: finish interactive phone/tablet menus, forms, branches, preview dismiss/scroll, templates and unauthenticated account navigation. Real iOS Safari, touch behavior and software keyboard remain separate device checks. Guest feature testing stays pending until this UI pass is complete. Served build SHA still unverified.
