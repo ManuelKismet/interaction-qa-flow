@@ -2,6 +2,18 @@
 
 Current application candidate: PR #13, commit `abb224fee28355a671b9cd8828c090bdb86353b1` (Fix signup layout and admin widget test). Keep PR draft. No merge, production release or new deployment occurred during this verification.
 
+## Paused for founder break — 3 October 2026, 22:09 London
+
+Testing is paused at founder request. No background testing or new fix cycle started. This updates the existing handoff; no separate checkpoint document created.
+
+**Resume first:** reopen the existing guest-local session “Guest acceptance 2026-10-03 2142” on https://intqaflow-dev.web.app/ and verify actual answer save/retention for each participant and nested follow-up before and after switching/reload. Existing session, second participant, shared question and participant-specific follow-up visibility were observed; complete answer persistence remains unresolved, not a passed check or confirmed app defect. No backend-write result establishes this browser-local acceptance. Preserve existing local content; do not recreate removed hosted synthetic identities.
+
+Continue remaining guest feature/function checks with explicit results and evidence. Finish guest acceptance first, then inspect the latest Copilot UI/UX response and exact commit on draft PR13, independently verify that source and affected flows, then signed-in user and authorised admin acceptance. Physical touch/Safari checks are deferred and not blockers. No new Copilot commit/status was checked during this pause; abb224f remains the last independently verified candidate, not proof of current PR head or served dev SHA.
+
+**New-chat starting instruction:** “Resume IntQAFlow from docs/operations/development-deployment/continuation-checkpoint-2026-10-03.md on chore/intqaflow-private-dev-isolation. We paused during guest testing with answer retention unresolved. Preserve the existing guest session. Finish guest flows, then review Copilot PR13 UX changes, then signed-in and admin flows.”
+
+Read the completed viewport review and Copilot handoff linked below; do not repeat the old browser setup/cleanup or reclassify earlier runner failures as app bugs. No production signoff, merge, deploy, account creation, admin grant or cloud change occurred during this pause.
+
 ## Latest founder sequence and guest start — 3 October 2026 evening
 
 This section supersedes earlier sequencing text: **finish guest feature/function acceptance on the current served dev build while Copilot works; then pick up/review/independently verify Copilot's UI/UX commit; then signed-in user flows; then authorised admin flows.** Do not wait for Copilot before starting guest testing. Physical touch and Safari checks are deferred and are not blockers or claimed passes.
