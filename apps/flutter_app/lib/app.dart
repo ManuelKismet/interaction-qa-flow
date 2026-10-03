@@ -118,6 +118,7 @@ class _RegisteredAccountApp extends ConsumerWidget {
     final status = ref.watch(accountMembershipStatusProvider);
     return status.when(
       loading: () => _statusApp(
+        context,
         'Checking organisation membership',
         'Your account is signed in. Organisation access is being verified.',
         onSignOut: () => ref.read(firebaseAuthProvider).signOut(),
@@ -142,6 +143,7 @@ class _RegisteredAccountApp extends ConsumerWidget {
         }
         return ref.watch(currentMembershipProvider).when(
           loading: () => _statusApp(
+            context,
             'Loading organisation workspace',
             'Your account is signed in. Loading your verified workspace access.',
             onSignOut: () => ref.read(firebaseAuthProvider).signOut(),
@@ -168,6 +170,7 @@ class _RegisteredAccountApp extends ConsumerWidget {
   }
 
   MaterialApp _statusApp(
+    BuildContext context,
     String title,
     String message, {
     required VoidCallback onSignOut,
