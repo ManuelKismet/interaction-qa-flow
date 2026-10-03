@@ -87,13 +87,17 @@ void main() {
       'does not open $action result after the entry dialog is dismissed',
       (tester) async {
         final repository = _PendingEntryRepository();
+        final navigatorKey = GlobalKey<NavigatorState>();
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
               firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
               guestGroupRepositoryProvider.overrideWithValue(repository),
             ],
-            child: const MaterialApp(home: SharedGuestGroupsPage()),
+            child: MaterialApp(
+              navigatorKey: navigatorKey,
+              home: const SharedGuestGroupsPage(),
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -109,9 +113,7 @@ void main() {
           isTrue,
         );
 
-        await tester.tap(
-          find.widgetWithText(FilledButton, 'Done').last,
-        );
+        navigatorKey.currentState!.pop();
         await tester.pump(const Duration(milliseconds: 300));
         expect(find.byType(AlertDialog), findsNothing);
 

@@ -1886,13 +1886,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final groupId = _groupId;
     if (groupId == null) return;
     var entryDialogActive = true;
-    await showDialog<void>(
+    final entryDialog = showDialog<void>(
       context: context,
-      builder: (entryDialogContext) => PopScope<void>(
-        onPopInvokedWithResult: (didPop, _) {
-          if (didPop) entryDialogActive = false;
-        },
-        child: AlertDialog(
+      builder: (entryDialogContext) => AlertDialog(
           title: Text(entry['title'] as String? ?? 'Guest group entry'),
           content: SizedBox(
             width: 700,
@@ -1991,9 +1987,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
               child: const Text('Done'),
             ),
           ],
-        ),
       ),
     );
+    await entryDialog.whenComplete(() => entryDialogActive = false);
   }
 
   bool _canEdit(Map<String, dynamic> entry) {
