@@ -68,6 +68,25 @@ Widget flow({GuidedQuestion question = shared, String participant = 'alice'}) {
   );
 }
 
+Future<void> scrollToListItem(
+  WidgetTester tester,
+  Finder item, {
+  required String listKey,
+}) async {
+  final scrollable = find
+      .descendant(
+        of: find.byKey(ValueKey(listKey)),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  await tester.scrollUntilVisible(
+    item,
+    400,
+    scrollable: scrollable,
+    maxScrolls: 40,
+  );
+}
+
 GuidedQuestion nestedQuestions(int depth) {
   GuidedQuestion? child;
   for (var index = depth; index >= 0; index--) {
@@ -108,9 +127,19 @@ void main() {
 
     expect(find.text('I received an email.'), findsOneWidget);
     expect(find.text('I received a phone call.'), findsNothing);
+    await scrollToListItem(
+      tester,
+      find.byKey(const ValueKey('question-follow-Who sent the email?')),
+      listKey: 'guided-flow-list',
+    );
     expect(find.text('Who sent the email?'), findsOneWidget);
+    expect(find.textContaining('Return to parent'), findsOneWidget);
+    await scrollToListItem(
+      tester,
+      find.byKey(const ValueKey('question-nested-Which Finance employee?')),
+      listKey: 'guided-flow-list',
+    );
     expect(find.text('Which Finance employee?'), findsOneWidget);
-    expect(find.textContaining('Return to'), findsWidgets);
   });
 
   testWidgets('switching participant selects the other shared answer', (tester) async {
@@ -186,10 +215,10 @@ void main() {
           final deepQuestion = find.byKey(
             ValueKey('question-deep-$depth-${rootTextAtDepth(depth)}'),
           );
-          await tester.scrollUntilVisible(
+          await scrollToListItem(
+            tester,
             deepQuestion,
-            400,
-            maxScrolls: 40,
+            listKey: 'guided-flow-list',
           );
           await tester.pumpAndSettle();
 
@@ -255,6 +284,11 @@ void main() {
       ),
     );
 
+    await scrollToListItem(
+      tester,
+      find.text(rootTextAtDepth(12)),
+      listKey: 'guided-report-list',
+    );
     expect(find.text(rootTextAtDepth(12)), findsOneWidget);
     expect(find.textContaining('Alice answer 12'), findsOneWidget);
     expect(tester.takeException(), isNull);

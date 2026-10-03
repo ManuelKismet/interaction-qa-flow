@@ -627,6 +627,7 @@ class GuidedFlowView extends StatelessWidget {
       append(question, depth: 0, path: [index + 1]);
     }
     return ListView(
+      key: const ValueKey('guided-flow-list'),
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 60),
       children: [
         for (final visible in visibleQuestions)
@@ -726,7 +727,9 @@ class GuidedQuestionNode extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       label,
@@ -736,7 +739,6 @@ class GuidedQuestionNode extends StatelessWidget {
                         fontSize: 12,
                       ),
                     ),
-                    const Spacer(),
                     IconButton(
                       tooltip: 'Check Knowledge',
                       icon: const Icon(Icons.manage_search_outlined),
@@ -971,6 +973,7 @@ class GuidedReportView extends StatelessWidget {
       append(question, depth: 0, path: [index + 1]);
     }
     return ListView(
+      key: const ValueKey('guided-report-list'),
       padding: const EdgeInsets.all(32),
       children: [
         Text(session.title, style: Theme.of(context).textTheme.headlineMedium),
