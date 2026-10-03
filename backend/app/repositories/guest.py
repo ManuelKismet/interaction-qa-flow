@@ -143,6 +143,7 @@ class GuestRepository:
                 GuestGroup.expires_at > now,
             )
             .order_by(GuestGroup.name)
+            .with_for_update(of=GuestGroup)
         )
         return list(result.all())
 
