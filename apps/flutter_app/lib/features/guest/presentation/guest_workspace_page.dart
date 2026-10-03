@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -2304,9 +2305,15 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       );
       if (scope == null || !mounted) return;
       final allParticipants = scope == '*';
-      final participantId = allParticipants
-          ? participants.firstOrNull?['id'] as String?
-          : scope;
+      final Object? firstParticipantId = participants.firstOrNull?['id'];
+      final String? participantId;
+      if (allParticipants) {
+        participantId = firstParticipantId is String
+            ? firstParticipantId
+            : null;
+      } else {
+        participantId = scope;
+      }
       final session = {...data, 'title': title};
       final report = composeGuestReport(
         session: session,

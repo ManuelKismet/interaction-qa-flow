@@ -434,20 +434,6 @@ String buildGuestReportDocument({
     participantId: participantId,
     exportedAt: generatedAt,
   );
-  String answerHtml(GuestReportAnswer answer, String path) {
-    final body = answer.body.trim().isEmpty
-        ? '<span class="empty">Unanswered.</span>'
-        : _escapeHtml(answer.body);
-    final children = <String>[
-      '<article class="answer"><h3>Answer — '
-          '${_escapeHtml(answer.participantName)}</h3><p>$body</p></article>',
-    ];
-    for (final followUp in answer.followUps) {
-      children.add(questionHtml(followUp, depth: path.split('.').length));
-    }
-    return children.join('\n');
-  }
-
   String questionHtml(GuestReportQuestion question, {int depth = 0}) {
     final indent = (depth * 10).clamp(0, 28);
     final attribution = question.triggerParticipant == null
@@ -458,7 +444,20 @@ String buildGuestReportDocument({
     final answers = question.answers.isEmpty
         ? '<article class="answer"><h3>Answer</h3><p class="empty">Unanswered.</p></article>'
         : question.answers
-              .map((answer) => answerHtml(answer, question.path))
+              .map((answer) {
+                final body = answer.body.trim().isEmpty
+                    ? '<span class="empty">Unanswered.</span>'
+                    : _escapeHtml(answer.body);
+                final followUps = answer.followUps
+                    .map(
+                      (followUp) =>
+                          questionHtml(followUp, depth: depth + 1),
+                    )
+                    .join('\n');
+                return '''
+<article class="answer"><h3>Answer — ${_escapeHtml(answer.participantName)}</h3><p>$body</p></article>
+$followUps''';
+              })
               .join('\n');
     return '''
 <section class="question" style="margin-left: ${indent}px">
