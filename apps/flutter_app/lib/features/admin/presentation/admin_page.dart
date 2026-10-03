@@ -67,7 +67,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                     members.value ?? const [],
                   ),
             icon: const Icon(Icons.person_add_alt_1),
-            label: const Text('Add member'),
+            label: const Text('Add organisation member'),
           ),
         ),
         members.when(
@@ -627,7 +627,7 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
             FilledButton.icon(
               onPressed: _busy ? null : _add,
               icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Add member'),
+              label: const Text('Add team member'),
             ),
           ],
         ),

@@ -78,7 +78,21 @@ void main() {
 
     expect(find.text('Departments'), findsOneWidget);
     expect(find.text('Members'), findsOneWidget);
-    expect(find.text('Add member'), findsOneWidget);
+    final addOrganisationMember =
+        find.widgetWithText(FilledButton, 'Add organisation member');
+    expect(addOrganisationMember, findsOneWidget);
+    await tester.tap(addOrganisationMember);
+    await tester.pumpAndSettle();
+    final organisationMemberDialog = find.byType(AlertDialog);
+    expect(
+      find.descendant(
+        of: organisationMemberDialog,
+        matching: find.text('Add organisation member'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
     expect(find.text('Member One'), findsOneWidget);
     expect(
       find.text('member@example.test · employee · Finance'),
@@ -92,8 +106,18 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
+    final payrollTile = find.ancestor(
+      of: find.text('Payroll'),
+      matching: find.byType(ExpansionTile),
+    );
     await tester.tap(find.text('Payroll'));
     await tester.pumpAndSettle();
-    expect(find.text('Add member'), findsNWidgets(2));
+    expect(
+      find.descendant(
+        of: payrollTile,
+        matching: find.widgetWithText(FilledButton, 'Add team member'),
+      ),
+      findsOneWidget,
+    );
   });
 }

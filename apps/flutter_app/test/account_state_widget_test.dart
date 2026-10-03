@@ -12,17 +12,10 @@ import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dar
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 
 class _TestUser extends Fake implements User {
-  _TestUser({
-    required this.isAnonymous,
-    this.email = 'account@example.test',
-    this.linkError,
-  });
+  _TestUser({required this.isAnonymous, this.linkError});
 
   @override
   final bool isAnonymous;
-
-  @override
-  final String? email;
 
   @override
   String get uid => 'account-uid';
@@ -127,7 +120,7 @@ void main() {
         find.textContaining('Stored in this browser only.'),
         findsOneWidget,
       );
-      await tester.tap(find.text('Account'));
+      await tester.tap(find.byTooltip('Account'));
       await tester.pumpAndSettle();
       expect(find.text('Local guest workspace'), findsOneWidget);
       expect(find.text('Sign in'), findsOneWidget);
@@ -145,7 +138,7 @@ void main() {
       sharedIdentityActive: true,
     );
 
-    await tester.tap(find.text('Account'));
+    await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
     expect(find.text('Shared guest identity'), findsOneWidget);
     expect(find.text('Link guest recovery'), findsOneWidget);
@@ -247,7 +240,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Account'));
+    await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
     expect(find.text('Member One'), findsOneWidget);
     expect(find.text('member@example.test'), findsOneWidget);

@@ -183,7 +183,7 @@ Future<void> _selectParticipant(WidgetTester tester, String name) async {
   final selector = find.byWidgetPredicate(
     (widget) =>
         widget is DropdownButtonFormField<String> &&
-        widget.decoration?.labelText == 'Active participant',
+        widget.decoration.labelText == 'Active participant',
   );
   await tester.tap(selector);
   await tester.pumpAndSettle();
