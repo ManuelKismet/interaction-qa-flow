@@ -4,12 +4,14 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 parser=argparse.ArgumentParser()
 parser.add_argument("--output",required=True)
+parser.add_argument("--viewport")
 args=parser.parse_args()
 out=Path(args.output); out.mkdir(parents=True,exist_ok=True)
 results=[]
 with sync_playwright() as p:
     browser=p.chromium.launch(headless=True)
     for name,w,h in [("phone390",390,844),("phone360",360,800),("ipadportrait",820,1180),("ipadlandscape",1180,820)]:
+        if args.viewport and name != args.viewport: continue
         ctx=browser.new_context(viewport={"width":w,"height":h},device_scale_factor=1,locale="en-GB")
         page=ctx.new_page()
         row={"viewport":name,"width":w,"height":h,"views":[],"errors":[]}
@@ -55,6 +57,8 @@ with sync_playwright() as p:
             page.get_by_role("button",name="Selected participant",exact=True).evaluate("(el)=>el.click()")
             page.get_by_role("button",name="Download PDF",exact=True).wait_for()
             page.wait_for_timeout(500); capture("pdf-preview")
+            page.mouse.move(w//2,h//2); page.mouse.wheel(0,650); page.wait_for_timeout(500)
+            capture("pdf-preview-scrolled")
             row["preview_buttons"]=page.get_by_role("button").all_text_contents()
             page.mouse.click(5,h//2); page.wait_for_timeout(500)
             row["outside_click_dismissed"]=not page.get_by_role("button",name="Download PDF",exact=True).count()
