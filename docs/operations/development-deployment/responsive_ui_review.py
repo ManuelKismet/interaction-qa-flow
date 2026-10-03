@@ -15,7 +15,7 @@ with sync_playwright() as p:
         row={"viewport":name,"width":w,"height":h,"views":[],"errors":[]}
         page.on("pageerror",lambda e, r=row: r["errors"].append(str(e)[:300]))
         def enter(locator, value):
-            locator.click(); locator.press("Control+A"); locator.press_sequentially(value,delay=35)
+            locator.click(); page.keyboard.press("Control+A"); page.keyboard.type(value,delay=35)
             page.wait_for_timeout(1000)
         def capture(view):
             page.screenshot(path=str(out/f"{name}-{view}.png"))
@@ -67,7 +67,7 @@ with sync_playwright() as p:
             page.get_by_role("button",name="Account",exact=True).click()
             page.wait_for_timeout(500); capture("account-menu")
             row["account_menu_text"]=page.locator("body").inner_text()[-3500:]
-            page.get_by_text("Sign in",exact=True).click()
+            page.get_by_role("menuitem",name="Sign in",exact=True).click()
             page.wait_for_timeout(500); capture("sign-in")
             row["signin_text"]=page.locator("body").inner_text()[-3500:]
             row["signin_buttons"]=page.get_by_role("button").all_text_contents()
