@@ -6,7 +6,9 @@ import 'package:int_qa_flow/app.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 
 void main() {
-  testWidgets('shows email sign-in and password reset controls', (tester) async {
+  testWidgets('opens the local guest workspace without a login gate', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -17,9 +19,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in to IntQAFlow'), findsOneWidget);
-    expect(find.text('Email'), findsOneWidget);
-    expect(find.text('Password'), findsOneWidget);
-    expect(find.text('Forgot password?'), findsOneWidget);
+    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+    expect(find.text('Knowledge'), findsOneWidget);
+    expect(find.text('Interact'), findsOneWidget);
+    expect(find.byTooltip('Sign in or create account'), findsOneWidget);
   });
 }

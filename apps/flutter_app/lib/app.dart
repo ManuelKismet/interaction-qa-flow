@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/routing/app_router.dart';
 import 'package:int_qa_flow/core/theme/app_theme.dart';
+import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 
 class IntQaFlowApp extends ConsumerWidget {

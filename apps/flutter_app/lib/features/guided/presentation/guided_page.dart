@@ -374,15 +374,15 @@ class _TemplatesList extends ConsumerWidget {
     try {
       if (save == true) {
         final questions = [
-          for (final (index, draft) in drafts.indexed)
+          for (var index = 0; index < drafts.length; index++)
             GuidedTemplateQuestion(
-              id: draft.id,
-              text: draft.controller.text.trim(),
-              scope: draft.source?.scope ?? 'shared',
+              id: drafts[index].id,
+              text: drafts[index].controller.text.trim(),
+              scope: drafts[index].source?.scope ?? 'shared',
               orderIndex: index,
-              participantReference: draft.source?.participantReference,
+              participantReference: drafts[index].source?.participantReference,
               parentTemplateQuestionId:
-                  draft.source?.parentTemplateQuestionId,
+                  drafts[index].source?.parentTemplateQuestionId,
             ),
         ];
         await ref

@@ -251,6 +251,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       sessionIds: selection.sessionIds,
       templateIds: selection.templateIds,
     );
+    if (!mounted) return;
     _save(result);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Selected work was added to this device.')),
@@ -280,6 +281,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     );
     if (confirmed != true) return;
     await ref.read(guestWorkspaceStoreProvider).clear();
+    if (!mounted) return;
     _save(const GuestWorkspaceData());
   }
 
@@ -580,7 +582,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     title.dispose();
     body.dispose();
     answer.dispose();
-    if (updated != null && updated['title'].toString().isNotEmpty) {
+    if (updated != null &&
+        updated['title'].toString().isNotEmpty &&
+        mounted) {
       widget.onUpdate(updated);
     }
   }
@@ -780,7 +784,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
       ),
     );
     name.dispose();
-    if (value == null || value.isEmpty) return;
+    if (value == null || value.isEmpty || !mounted) return;
     final questions = (session['questions'] as List? ?? const [])
         .map((question) => {
           'id': newGuestItemId(),
@@ -1260,7 +1264,6 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final participantId = widget.participant['id'] as String;
     final branches = widget.answer?['follow_ups'] as List? ?? const [];
     final collapsed = widget.answer?['branches_collapsed'] as bool? ?? false;
     return Padding(
@@ -1558,6 +1561,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (!await _repository.previewInvitation(inviteToken)) {
         throw StateError('This invitation is unavailable, expired or revoked.');
       }
+      if (!mounted) return;
       final join = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1623,6 +1627,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         groupId: groupId,
         role: selectedRole,
       );
+      if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1849,6 +1854,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (groupId == null) return;
     await _run(() async {
       final local = await ref.read(guestWorkspaceStoreProvider).load();
+      if (!mounted) return;
       final selection = await showDialog<_GuestImportSelection>(
         context: context,
         builder: (context) => _GuestImportPreview(
@@ -1858,7 +1864,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           includeTemplates: false,
         ),
       );
-      if (selection == null) return;
+      if (selection == null || !mounted) return;
       await _repository.importSelected(
         groupId: groupId,
         data: local,
