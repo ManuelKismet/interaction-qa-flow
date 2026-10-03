@@ -122,6 +122,7 @@ async def seed_governance(session_factory):
             "admin": admin.id,
             "outsider": outsider.id,
             "finance_department": finance.id,
+            "people_department": people.id,
             "finance_question": finance_question.id,
             "finance_answer": finance_answer.id,
             "replacement_answer": replacement_answer.id,

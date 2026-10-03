@@ -1,0 +1,254 @@
+import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+
+Map<String, dynamic> createGuestTemplateFromSession({
+  required Map<String, dynamic> session,
+  required String id,
+  required String name,
+}) {
+  final participants = (session['participants'] as List? ?? const [])
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .toList();
+  final participantSlots = <String, String>{
+    for (final (index, participant) in participants.indexed)
+      if (participant['id'] is String)
+        participant['id'] as String: 'slot-${index + 1}',
+  };
+  final slots = [
+    for (var index = 0; index < participants.length; index++)
+      {'id': 'slot-${index + 1}', 'label': 'Participant ${index + 1}'},
+  ];
+  if (slots.isEmpty) {
+    slots.add({'id': 'slot-1', 'label': 'Participant 1'});
+  }
+  return {
+    'id': id,
+    'name': name,
+    'participant_slots': slots,
+    'questions': [
+      for (final question in session['questions'] as List? ?? const [])
+        if (question is Map)
+          _templateQuestion(
+            Map<String, dynamic>.from(question),
+            participantSlots,
+          ),
+    ],
+  };
+}
+
+Map<String, dynamic> createGuestSessionFromTemplate({
+  required Map<String, dynamic> template,
+  required String id,
+  required String title,
+  required String firstParticipantName,
+}) {
+  final slots = _templateSlots(template);
+  final participantIds = <String, String>{
+    for (final slot in slots)
+      slot['id']!: newGuestItemId(),
+  };
+  final participants = [
+    for (final (index, slot) in slots.indexed)
+      {
+        'id': participantIds[slot['id']],
+        'name': index == 0
+            ? firstParticipantName
+            : 'Participant ${index + 1}',
+      },
+  ];
+  final fallbackSlot = slots.first['id']!;
+  return {
+    'id': id,
+    'title': title,
+    'visibility': 'private_local',
+    'participants': participants,
+    'questions': [
+      for (final question in template['questions'] as List? ?? const [])
+        if (question is Map)
+          _sessionQuestion(
+            Map<String, dynamic>.from(question),
+            participantIds,
+            fallbackSlot,
+          ),
+    ],
+  };
+}
+
+Map<String, dynamic> _templateQuestion(
+  Map<String, dynamic> question,
+  Map<String, String> participantSlots, {
+  String? answerOwnerSlot,
+}) {
+  final nested = answerOwnerSlot != null;
+  final scope = nested
+      ? 'participant'
+      : question['scope'] == 'participant'
+      ? 'participant'
+      : 'shared';
+  final targetId = question['target_participant_id'];
+  final targetSlot = nested
+      ? answerOwnerSlot
+      : targetId is String
+      ? participantSlots[targetId]
+      : null;
+  final allSlots = participantSlots.values.toList();
+  if (allSlots.isEmpty) allSlots.add('slot-1');
+  final targetSlots = scope == 'participant'
+      ? [targetSlot ?? allSlots.first]
+      : allSlots;
+  final existingAnswers = (question['answers'] as List? ?? const [])
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .toList();
+  final answersBySlot = {
+    for (final answer in existingAnswers)
+      if (answer['participant_id'] is String &&
+          participantSlots.containsKey(answer['participant_id']))
+        participantSlots[answer['participant_id'] as String]!: answer,
+  };
+  return {
+    'id': newGuestItemId(),
+    'text': question['text'] as String? ?? '',
+    'scope': scope,
+    if (scope == 'participant') 'target_participant_slot': targetSlots.first,
+    'answers': [
+      for (final slot in targetSlots)
+        _templateAnswer(
+          answersBySlot[slot],
+          slot,
+          participantSlots,
+        ),
+    ],
+  };
+}
+
+Map<String, dynamic> _templateAnswer(
+  Map<String, dynamic>? answer,
+  String slot,
+  Map<String, String> participantSlots,
+) => {
+  'participant_slot': slot,
+  'follow_ups': [
+    for (final followUp in answer?['follow_ups'] as List? ?? const [])
+      if (followUp is Map)
+        _templateQuestion(
+          Map<String, dynamic>.from(followUp),
+          participantSlots,
+          answerOwnerSlot: slot,
+        ),
+  ],
+};
+
+Map<String, dynamic> _sessionQuestion(
+  Map<String, dynamic> question,
+  Map<String, String> participantIds,
+  String fallbackSlot, {
+  String? answerOwnerSlot,
+}) {
+  final nested = answerOwnerSlot != null;
+  final scope = nested
+      ? 'participant'
+      : question['scope'] == 'participant'
+      ? 'participant'
+      : 'shared';
+  final requestedTarget = question['target_participant_slot'];
+  final targetSlot = answerOwnerSlot ??
+      (requestedTarget is String && participantIds.containsKey(requestedTarget)
+          ? requestedTarget
+          : fallbackSlot);
+  final answerSlots = scope == 'participant'
+      ? [targetSlot]
+      : participantIds.keys.toList();
+  final answersBySlot = {
+    for (final answer in question['answers'] as List? ?? const [])
+      if (answer is Map && answer['participant_slot'] is String)
+        answer['participant_slot'] as String: Map<String, dynamic>.from(answer),
+  };
+  final directFollowUps = question['follow_ups'] as List? ?? const [];
+  return {
+    'id': newGuestItemId(),
+    'text': question['text'] as String? ?? '',
+    'scope': scope,
+    if (scope == 'participant')
+      'target_participant_id': participantIds[targetSlot],
+    'answers': [
+      for (final slot in answerSlots)
+        _sessionAnswer(
+          answersBySlot[slot],
+          slot,
+          participantIds,
+          fallbackSlot,
+          directFollowUps,
+        ),
+    ],
+  };
+}
+
+Map<String, dynamic> _sessionAnswer(
+  Map<String, dynamic>? answer,
+  String slot,
+  Map<String, String> participantIds,
+  String fallbackSlot,
+  List directFollowUps,
+) => {
+  'participant_id': participantIds[slot] ?? participantIds[fallbackSlot],
+  'body': '',
+  'branches_collapsed': false,
+  'follow_ups': [
+    for (final followUp in answer?['follow_ups'] as List? ?? directFollowUps)
+      if (followUp is Map)
+        _sessionQuestion(
+          Map<String, dynamic>.from(followUp),
+          participantIds,
+          fallbackSlot,
+          answerOwnerSlot: slot,
+        ),
+  ],
+};
+
+List<Map<String, String>> _templateSlots(Map<String, dynamic> template) {
+  final slots = (template['participant_slots'] as List? ?? const [])
+      .whereType<Map>()
+      .map((item) => Map<String, String>.fromEntries(
+            item.entries.where((entry) => entry.value is String).map(
+                  (entry) => MapEntry(entry.key.toString(), entry.value as String),
+                ),
+          ))
+      .where((slot) => slot['id']?.isNotEmpty == true)
+      .toList();
+  final references = <String>{};
+  void collect(Map<String, dynamic> question) {
+    final target = question['target_participant_slot'];
+    if (target is String) references.add(target);
+    for (final answer in question['answers'] as List? ?? const []) {
+      if (answer is! Map) continue;
+      final slot = answer['participant_slot'];
+      if (slot is String) references.add(slot);
+      for (final followUp in answer['follow_ups'] as List? ?? const []) {
+        if (followUp is Map) collect(Map<String, dynamic>.from(followUp));
+      }
+    }
+  }
+
+  for (final question in template['questions'] as List? ?? const []) {
+    if (question is Map) collect(Map<String, dynamic>.from(question));
+  }
+  if (slots.isEmpty) {
+    slots.addAll([
+      for (final (index, id) in references.indexed)
+        {'id': id, 'label': 'Participant ${index + 1}'},
+    ]);
+  } else {
+    for (final id in references) {
+      if (slots.any((slot) => slot['id'] == id)) continue;
+      slots.add({
+        'id': id,
+        'label': 'Participant ${slots.length + 1}',
+      });
+    }
+  }
+  if (slots.isEmpty) {
+    slots.add({'id': 'slot-1', 'label': 'Participant 1'});
+  }
+  return slots;
+}

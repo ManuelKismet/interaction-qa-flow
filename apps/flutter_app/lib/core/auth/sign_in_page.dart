@@ -4,9 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 
 class SignInPage extends ConsumerStatefulWidget {
-  const SignInPage({this.linkGuestIdentity = false, super.key});
+  const SignInPage({
+    this.linkGuestIdentity = false,
+    this.createAccount = false,
+    super.key,
+  });
 
   final bool linkGuestIdentity;
+  final bool createAccount;
 
   @override
   ConsumerState<SignInPage> createState() => _SignInPageState();
@@ -24,7 +29,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   @override
   void initState() {
     super.initState();
-    _createAccountMode = widget.linkGuestIdentity;
+    _createAccountMode = widget.linkGuestIdentity || widget.createAccount;
   }
 
   @override
@@ -44,20 +49,84 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       final auth = ref.read(firebaseAuthProvider);
       if (_resetMode) {
         await auth.sendPasswordResetEmail(email: _email.text.trim());
+        if (!mounted) return;
         setState(() {
           _message = 'If that account exists, a reset email has been sent.';
         });
-      } else if (_createAccountMode && auth.currentUser?.isAnonymous == true) {
+      } else if (_createAccountMode && widget.linkGuestIdentity) {
+        final user = auth.currentUser;
+        if (user?.isAnonymous != true) {
+          setState(() {
+            _error =
+                'The guest identity is no longer available. Sign in or create a separate account instead.';
+          });
+          return;
+        }
         final credential = EmailAuthProvider.credential(
           email: _email.text.trim(),
           password: _password.text,
         );
-        await auth.currentUser!.linkWithCredential(credential);
+        await user!.linkWithCredential(credential);
       } else if (_createAccountMode) {
-        await auth.createUserWithEmailAndPassword(
+        if (auth.currentUser?.isAnonymous == true) {
+          final switchIdentity = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Create a separate account?'),
+              content: const Text(
+                'This creates a new signed-in identity and does not transfer '
+                'the current guest group membership. Link guest recovery instead '
+                'to keep using this identity. Local work stays on this device.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Keep guest identity'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Create separate account'),
+                ),
+              ],
+            ),
+          );
+          if (switchIdentity != true || !mounted) return;
+        }
+        final credential = await auth.createUserWithEmailAndPassword(
           email: _email.text.trim(),
           password: _password.text,
         );
+        final user = credential.user;
+        if (user == null) {
+          if (!mounted) return;
+          setState(() {
+            _createAccountMode = false;
+            _message =
+                'Account created, but email verification could not be started. '
+                'Contact your administrator before requesting organisation access.';
+          });
+          return;
+        }
+        try {
+          await user.sendEmailVerification();
+          if (!mounted) return;
+          setState(() {
+            _createAccountMode = false;
+            _message =
+                'Account created. Check your email to verify it, then sign out '
+                'and sign in again before requesting organisation access. '
+                'Account creation does not add organisation membership.';
+          });
+        } on FirebaseAuthException {
+          if (!mounted) return;
+          setState(() {
+            _createAccountMode = false;
+            _message =
+                'Account created, but the verification email could not be sent. '
+                'Try again later or contact your administrator before requesting '
+                'organisation access.';
+          });
+        }
       } else {
         if (auth.currentUser?.isAnonymous == true) {
           final switchIdentity = await showDialog<bool>(
@@ -81,7 +150,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               ],
             ),
           );
-          if (switchIdentity != true) return;
+          if (switchIdentity != true || !mounted) return;
         }
         await auth.signInWithEmailAndPassword(
           email: _email.text.trim(),
@@ -122,103 +191,126 @@ class _SignInPageState extends ConsumerState<SignInPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              margin: const EdgeInsets.all(24),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      _resetMode
-                          ? 'Reset password'
-                          : _createAccountMode
-                              ? 'Create or link an account'
-                              : 'Sign in to IntQAFlow',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(labelText: 'Email'),
-                    ),
-                    if (!_resetMode) ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _password,
-                        obscureText: true,
-                        autofillHints: const [AutofillHints.password],
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Card(
+                      margin: const EdgeInsets.all(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              _resetMode
+                                  ? 'Reset password'
+                                  : _createAccountMode
+                                      ? widget.linkGuestIdentity
+                                          ? 'Link guest recovery'
+                                          : 'Create an account'
+                                      : 'Sign in to IntQAFlow',
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                            const SizedBox(height: 20),
+                            TextField(
+                              controller: _email,
+                              keyboardType: TextInputType.emailAddress,
+                              autofillHints: const [AutofillHints.email],
+                              decoration: const InputDecoration(
+                                labelText: 'Email',
+                              ),
+                            ),
+                            if (!_resetMode) ...[
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _password,
+                                obscureText: true,
+                                autofillHints: const [AutofillHints.password],
+                                decoration: const InputDecoration(
+                                  labelText: 'Password',
+                                ),
+                                onSubmitted: (_) => _submit(),
+                              ),
+                            ],
+                            if (_error != null) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                _error!,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                              ),
+                            ],
+                            if (_message != null) ...[
+                              const SizedBox(height: 12),
+                              Text(_message!),
+                            ],
+                            const SizedBox(height: 20),
+                            FilledButton(
+                              onPressed: _busy ? null : _submit,
+                              child: Text(
+                                _busy
+                                    ? 'Please wait…'
+                                    : _resetMode
+                                        ? 'Send reset email'
+                                        : _createAccountMode
+                                            ? widget.linkGuestIdentity &&
+                                                    ref
+                                                            .read(
+                                                              firebaseAuthProvider,
+                                                            )
+                                                            .currentUser
+                                                            ?.isAnonymous ==
+                                                        true
+                                                ? 'Link guest recovery'
+                                                : 'Create account'
+                                            : 'Sign in',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => setState(() {
+                                      if (_resetMode) {
+                                        _resetMode = false;
+                                      } else if (_createAccountMode) {
+                                        _createAccountMode = false;
+                                      } else {
+                                        _createAccountMode = true;
+                                      }
+                                      _error = null;
+                                      _message = null;
+                                    }),
+                              child: Text(
+                                _resetMode
+                                    ? 'Back to sign in'
+                                    : _createAccountMode
+                                        ? 'Back to sign in'
+                                        : 'Create account or link guest recovery',
+                              ),
+                            ),
+                            if (!_resetMode && !_createAccountMode)
+                              TextButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => setState(() {
+                                        _resetMode = true;
+                                        _error = null;
+                                        _message = null;
+                                      }),
+                                child: const Text('Forgot password?'),
+                              ),
+                          ],
                         ),
-                        onSubmitted: (_) => _submit(),
-                      ),
-                    ],
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(_error!, style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      )),
-                    ],
-                    if (_message != null) ...[
-                      const SizedBox(height: 12),
-                      Text(_message!),
-                    ],
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: _busy ? null : _submit,
-                      child: Text(
-                        _busy
-                            ? 'Please wait…'
-                            : _resetMode
-                                ? 'Send reset email'
-                                : _createAccountMode
-                                    ? ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true
-                                        ? 'Link recovery account'
-                                        : 'Create account'
-                                    : 'Sign in',
                       ),
                     ),
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() {
-                                if (_resetMode) {
-                                  _resetMode = false;
-                                } else if (_createAccountMode) {
-                                  _createAccountMode = false;
-                                } else {
-                                  _createAccountMode = true;
-                                }
-                                _error = null;
-                                _message = null;
-                              }),
-                      child: Text(
-                        _resetMode
-                            ? 'Back to sign in'
-                            : _createAccountMode
-                                ? 'Back to sign in'
-                                : 'Create account or link guest recovery',
-                      ),
-                    ),
-                    if (!_resetMode && !_createAccountMode)
-                      TextButton(
-                        onPressed: _busy
-                            ? null
-                            : () => setState(() {
-                                  _resetMode = true;
-                                  _error = null;
-                                  _message = null;
-                                }),
-                        child: const Text('Forgot password?'),
-                      ),
-                  ],
+                  ),
                 ),
               ),
             ),

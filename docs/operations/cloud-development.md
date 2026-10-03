@@ -1,6 +1,6 @@
 # IntQAFlow hosted development checkpoint
 
-Updated 2026-10-02. Founder authorized a real hosted development backend,
+Updated 2026-10-03. Founder authorized a real hosted development backend,
 Google Cloud/Firebase access, and a GBP 25 monthly backend spending allowance.
 Knowledge and Interact remain one platform. Production comes later.
 
@@ -39,8 +39,8 @@ Prepared Copilot scope (not yet assigned):
 2. Implement Firebase Auth in Flutter and validate Firebase ID tokens on the
    backend. Derive user/organisation/role from server-controlled membership;
    reject forged development identity headers and cross-tenant requests.
-3. Add repeatable synthetic tenant/user seeding and verify Knowledge, Interact,
-   Review and recursive participant branches against managed PostgreSQL.
+3. Exercise Knowledge, Interact, Review and recursive participant branches with
+   a freshly registered account and explicitly provisioned membership.
 
 Pending infrastructure acceptance: Cloud Run container
 build and private service deployment, application Firebase integration, browser
@@ -134,31 +134,101 @@ the service, change IAM, or create cloud resources.
   The client sends refreshed ID and App Check tokens and obtains its active
   membership from `/api/v1/auth/me`.
 
-### Private synthetic tenant seed
+### Manual account acceptance and account inventory
 
-Create the dedicated synthetic Firebase user in the private development
-project, then use its Firebase UID with the API database URL already supplied
-to the private Codex runtime. The procedure is repeatable, restricted in code
-to `APP_ENV=development` and project `intqaflow-dev`, and only creates a fixed
-synthetic tenant/admin. It does not create a Firebase account or credentials.
-Never use a real person's UID, email, or data.
+Do not use a pre-created or synthetic account for live/manual browser testing.
+Use **Create account** in the app with a newly created, explicitly disposable
+email address. The app sends Firebase's verification email; complete
+verification, sign out, and then use the normal **Sign in** flow. Confirm that
+`/api/v1/auth/me` reports no organisation membership until an
+administrator/operator explicitly provisions one. Account creation does not
+enroll users or grant guest-group access.
+
+For a new disposable organisation, an authorized operator may use
+`scripts/provision_organisation_admin.py` with that verified Firebase account;
+the command creates the tenant and first admin and writes an audit event. For
+an existing organisation, an existing org admin uses **Admin → Members** to
+add the verified account or change its role/primary department. That endpoint
+resolves the account through Firebase Admin, verifies email, limits changes to
+the caller's organisation, and audits membership/role/department changes.
+The admin UI uses `POST /api/v1/auth/members` to add and
+`PATCH /api/v1/auth/members/{member_id}` to update a member.
+Verify the resulting role in `/api/v1/auth/me` after re-authentication or token
+refresh, and then exercise the admin UI. Never pass a caller-selected user,
+organisation, or role as proof of identity. These steps are procedures only;
+this change did not create accounts, memberships, or grants.
+
+Repository inventory (source inspection only; no hosted Firebase Auth or
+database listing was accessed):
+
+| Identifier | Definition and persistence |
+| --- | --- |
+| `synthetic-admin@invalid.example`, display name `Synthetic Development Admin`, tenant slug `synthetic-development` (tenant UUID `3efed8c4-6ba8-5656-bad6-105211c41151`) | Defined by the removed `backend/scripts/seed_synthetic_membership.py`. When run, it wrote a synthetic admin row and a Firebase-UID mapping to whichever configured database it targeted. Its user UUID depends on the supplied Firebase UID. It did not create a Firebase Auth account. The repository cannot establish whether this script was run against hosted development. |
+| Firebase Auth account/UID previously described as the “dedicated synthetic Firebase user” | An old procedure asked an operator to create one, but this repository contains no corresponding actual Firebase email or UID. The seed script accepted a UID parameter; its value and whether an account exists are unknown here. |
+| `synthetic@example.invalid` / UID `synthetic-user-uid` | `backend/tests/test_firebase_auth.py` fixture only: rows go into the per-test in-memory SQLite database, and token verification is monkeypatched. Not a Firebase Auth account or hosted membership. |
+| `new-member@example.test` / UID `verified-new-user` | `backend/tests/test_organisation_members.py` fixture only: Firebase Admin account lookup is monkeypatched and membership rows use the test's in-memory SQLite database. Not a Firebase Auth account or hosted membership. |
+| `unverified@example.test` / UID `unverified-user`; `employee@governance.test` / UID `linked-employee`; `admin@governance.test` / UID `alternate-admin-identity` | `backend/tests/test_organisation_members.py` fixtures only. Firebase Admin lookup is monkeypatched; identities/memberships exist only in the isolated API test database. |
+| `test@example.invalid` / UID `test-uid`; `test-<provider>-<uid>` bearer tokens | `backend/tests/conftest.py` and `backend/tests/test_guest_groups.py` fixtures only. The app dependencies are overridden or Firebase token verification is monkeypatched; database state is isolated SQLite. |
+| `account@example.test` / UID `account-uid`; `test-anonymous-uid`; `admin@example.test` / UID `admin-user`; `member@example.test` / `member-1` | Flutter `Fake`/test-double identities or mocked membership-provider data in widget tests, with FirebaseAuth/provider overrides. They never authenticate with Firebase. |
+| Other `*.example.test`, `*.example.invalid`, and `*.governance.test` emails, including `registered@example.invalid` | Backend fixtures in per-test in-memory SQLite or mocked Firebase Admin lookup; not live Firebase users. Guest IDs such as `guest-owner`, `guest-outsider`, `guest-joiner`, `guest-other`, `guest-editor`, `transfer-host`, `transfer-viewer`, `registered-org-user`, `new-anonymous-user`, `invite-host`, and `invite-joiner` are fabricated token subjects in guest API tests with token verification monkeypatched. |
+| Admin UI shortcut `AdminPage(adminOverride: true)` | Removed from production widget API. Admin widget tests now supply a mocked `ActiveMembership` provider; this tests rendering/controls only, not authentication or server authorization. |
+
+The repository does not provide evidence of which Firebase users or rows
+currently exist in the hosted project. No live account or database record was
+deleted. Cleanup must be performed by the project owner/operator only after
+inventorying Firebase Auth users and database mappings in the approved project:
+match the exact synthetic email/display name, tenant slug/UUID, and associated
+UID mapping; inspect all referencing rows/data and confirm the account is
+disposable; export/audit as required; then remove only the confirmed synthetic
+Auth user (if one exists) and its associated synthetic tenant/user/mapping data
+through the reviewed retention/backup procedure. Do not delete by email alone,
+remove an unknown UID, or delete real users or unrelated tenant data.
+
+### Controlled organisation provisioning and membership
+
+Organisation creation has no public API or self-service bootstrap. An operator
+must use the private, authenticated runtime to provision a new organisation and
+its first admin from an existing Firebase account with a verified email. Review
+the target Firebase project, `APP_ENV`, database URL, organisation name/slug,
+verified admin email, and operator identifier before running the command.
+The transaction creates the organisation, active admin user, UID mapping, and
+`ORGANISATION_ADMIN_PROVISIONED` audit event. It rejects an existing slug or an
+account already mapped to an organisation. The operator value is recorded as
+metadata and must identify the human performing the controlled action.
 
 ```sh
 cd backend
-APP_ENV=development FIREBASE_PROJECT_ID=intqaflow-dev \
-  python -m scripts.seed_synthetic_membership \
-  --firebase-uid <synthetic-firebase-uid> --confirm-development
+python -m scripts.provision_organisation_admin \
+  --name "<organisation name>" \
+  --slug "<unique-lowercase-slug>" \
+  --admin-email "<verified-firebase-account-email>" \
+  --operator "<operator identifier>" \
+  --confirm-operator-provisioning
 ```
 
-The Firebase UID is an identifier, not a token or credential. The script reads
-the database URL from the private runtime environment and prints no database
-configuration. Do not place that URL or ID token in source control.
+This command is an operator tool, not an application endpoint. It has not been
+run for any real organisation or account in this work. The old
+`seed_synthetic_membership` helper has been removed; do not recreate its
+synthetic admin shortcut or use it for live acceptance.
+
+After provisioning, an organisation admin can use **Admin → Members** to add
+an existing Firebase account by verified email, assign its organisation role
+and primary department, or change those values for an active member. The API
+resolves the email through Firebase Admin, refuses unverified accounts, checks
+that target departments belong to the caller's organisation, and records
+member, role, and department changes in `audit_events`. The last active admin
+cannot be demoted. Role changes take effect on subsequent API requests because
+the role is read from the database membership. This screen does not send email
+invitations or create Firebase accounts; accounts must already exist and have
+verified email. Department/team membership is not an organisation role, and
+organisation admin does not bypass private owner-only content.
 
 ### Hosted browser-to-API acceptance matrix
 
 | Check | Expected result |
 | --- | --- |
-| Sign in at `intqaflow-dev.web.app` with the seeded synthetic account; load Knowledge and Interact | `/api/v1/auth/me` succeeds; API calls carry current ID and App Check tokens |
+| Create a fresh account through the app, verify its email, sign out, and sign in normally; before explicit provisioning load Knowledge/Interact local workspace | Firebase auth state is real; no membership or org access is assumed |
+| Provision the verified test account through the authorized first-admin operator command or have an existing org admin add it in **Admin → Members** | `/api/v1/auth/me` reports the explicitly assigned org and role; admin UI is available only for an admin membership |
 | Sign out, then reload or call a protected API | UI returns to sign-in; protected API returns 401 without an ID token |
 | Missing, malformed, expired, wrong-project ID token | API returns 401 |
 | Valid Firebase UID without an active mapping | API returns 401 |
@@ -171,20 +241,32 @@ configuration. Do not place that URL or ID token in source control.
 
 ### Validation and pending cloud checks
 
-The local synthetic-token tests cover membership resolution, invalid claims,
+The local fake-token tests cover membership resolution, invalid claims,
 expired tokens, inactive/unmapped users, forged development headers, tenant
 scoping, role restriction, and App Check observation/enforcement. PostgreSQL 16
 with pgvector accepted migrations 0001–0008 on a disposable local database; the
-synthetic seed completed twice idempotently there. The backend suite reports 46
+old synthetic seed completed twice idempotently there. This is historical local
+database evidence only and does not establish hosted account/database state; the
+seeder is removed. The backend suite reports 46
 passed and one existing guided-proposal test failure. That same
 `MissingGreenlet` failure reproduces on base commit `80dc87d` with the currently
 resolved dependency versions, so it is not introduced by this change.
 
 Flutter tests/analyzer/release build, actual hosted browser-to-API tests, and
 service ADC verification require the Flutter SDK and private Codex runtime/site
-key; they remain pending. Do not enable App Check enforcement or deploy until
-those hosted checks pass. No production deployment, IAM change, credential
-retrieval, or cloud resource provisioning was performed.
+key; they remain pending. Automated tests currently use fake Firebase users or
+monkeypatched token verification and do not cover real sign-up/sign-in. Add a
+separate Flutter integration/E2E suite using a disposable Firebase Auth
+emulator (not currently configured in this repository) or an explicitly
+provisioned disposable dev account, a real backend token-verification path, and
+membership setup through the authorized operator or org-admin flow. It must
+cover sign-up, verification, sign-out/sign-in, no-membership state, explicit
+role assignment, admin UI visibility, and cleanup of only test-created data.
+The Flutter package currently has no `integration_test` dependency or E2E
+runner. Do not convert widget mocks into claims of real-auth coverage. Do not
+enable App Check enforcement or deploy until hosted checks pass. No production
+deployment, IAM change, credential retrieval, or cloud resource provisioning
+was performed.
 
 ## Shared guest-group implementation checkpoint
 
@@ -198,8 +280,9 @@ Knowledge and Interact remain available without those cloud services.
 Before hosted guest acceptance, the project owner must explicitly review and
 approve enabling Firebase anonymous authentication in the development project,
 then separately configure any required App Check web settings. Apply migration
-`0011_guest_groups` only through the reviewed development migration process and
-test the API with synthetic guest identities before hosting group data. This
+`0011_guest_groups` only through the reviewed development migration process.
+Guest-group API tests use isolated synthetic token fixtures; live acceptance
+must use a newly registered Firebase identity through the normal UI. This
 implementation did not change Firebase settings, IAM, App Check mode, Cloud
 SQL, or deployment state.
 
@@ -211,7 +294,8 @@ this implementation. See
 permissions, and scheduler review requirements. Do not treat access expiry as
 deletion or promise that exported copies can be revoked.
 
-Backend guest-group tests use isolated SQLite and synthetic verified-token
-fixtures. PostgreSQL migration SQL generation was checked offline; no hosted
-migration or Firebase emulator/browser acceptance was performed. Flutter
-analyzer, tests, and web build remain pending when the SDK is unavailable.
+Backend guest-group tests use isolated SQLite and monkeypatched synthetic
+verified-token fixtures. PostgreSQL migration SQL generation was checked
+offline; no hosted migration or Firebase emulator/browser acceptance was
+performed. Flutter analyzer, tests, and web build remain pending when the SDK
+is unavailable.

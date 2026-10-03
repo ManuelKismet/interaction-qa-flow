@@ -82,7 +82,7 @@ class _PendingEntryRepository extends GuestGroupRepository {
 }
 
 void main() {
-  for (final action in ['Export', 'History']) {
+  for (final action in ['Download / Share PDF', 'History']) {
     testWidgets(
       'does not open $action result after the entry dialog is dismissed',
       (tester) async {
@@ -104,10 +104,10 @@ void main() {
 
         await tester.tap(find.text('Shared entry'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text(action));
+        await tester.tap(find.text(action).last);
         await tester.pump();
         expect(
-          action == 'Export'
+          action == 'Download / Share PDF'
               ? repository.exportRequested
               : repository.historyRequested,
           isTrue,
@@ -119,7 +119,7 @@ void main() {
         await tester.pump();
         expect(find.byType(AlertDialog), findsNothing);
 
-        if (action == 'Export') {
+        if (action == 'Download / Share PDF') {
           repository.exportResult.complete({'answer': 'Authorized export'});
         } else {
           repository.historyResult.complete([

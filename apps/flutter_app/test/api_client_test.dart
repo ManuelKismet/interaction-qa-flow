@@ -61,6 +61,22 @@ void main() {
     expect(adapter.requests.length, 2);
     client.close();
   });
+
+  test('keeps signed-in identity when account-state lookup cannot be verified', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _unauthorized());
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await expectLater(
+      client.get<void>('/api/v1/account/state'),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(tokens.forceRefreshCount, 1);
+    expect(tokens.signedOut, isFalse);
+    expect(adapter.requests.length, 2);
+    client.close();
+  });
 }
 
 class _FakeTokenSource implements ApiTokenSource {

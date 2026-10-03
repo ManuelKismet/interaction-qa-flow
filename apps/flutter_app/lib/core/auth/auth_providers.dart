@@ -21,6 +21,30 @@ final currentMembershipProvider = FutureProvider.autoDispose<ActiveMembership>(
   },
 );
 
+enum AccountMembershipStatus {
+  active,
+  noMembership,
+  inactive,
+  unavailable,
+}
+
+final accountMembershipStatusProvider =
+    FutureProvider.autoDispose<AccountMembershipStatus>((ref) async {
+      final user = ref.watch(authStateProvider).value;
+      if (user == null || user.isAnonymous) {
+        throw StateError('A registered Firebase identity is required.');
+      }
+      final response = await ref
+          .watch(apiClientProvider)
+          .get<Map<String, dynamic>>('/api/v1/account/state');
+      return switch (response.data?['status']) {
+        'active' => AccountMembershipStatus.active,
+        'no_membership' => AccountMembershipStatus.noMembership,
+        'inactive' => AccountMembershipStatus.inactive,
+        _ => throw const FormatException('Unknown account membership state.'),
+      };
+    });
+
 class ActiveMembership {
   const ActiveMembership({
     required this.userId,

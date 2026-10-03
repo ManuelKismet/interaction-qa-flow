@@ -1,25 +1,41 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:cross_file/cross_file.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
+import 'package:int_qa_flow/core/platform/pdf_download.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
+import 'package:share_plus/share_plus.dart';
 
 class GuestWorkspacePage extends ConsumerStatefulWidget {
   const GuestWorkspacePage({
     required this.firebaseReady,
     this.sharedIdentityActive = false,
+    this.accountUser,
+    this.membershipStatus,
+    this.authUnavailable = false,
+    this.onRetryAccount,
     super.key,
   });
 
   final bool firebaseReady;
   final bool sharedIdentityActive;
+  final User? accountUser;
+  final AccountMembershipStatus? membershipStatus;
+  final bool authUnavailable;
+  final VoidCallback? onRetryAccount;
 
   @override
   ConsumerState<GuestWorkspacePage> createState() => _GuestWorkspacePageState();
@@ -122,140 +138,45 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     }
   }
 
-  Future<void> _openAccountAccess() async {
-    final linkGuestIdentity =
-        ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true;
+  Future<void> _openSignIn({
+    bool createAccount = false,
+    bool linkGuest = false,
+  }) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => SignInPage(linkGuestIdentity: linkGuestIdentity),
+        builder: (_) => SignInPage(
+          createAccount: createAccount,
+          linkGuestIdentity: linkGuest,
+        ),
       ),
     );
   }
 
-  Future<void> _exportBackup() async {
-    final data = _data;
-    if (data == null) return;
-    final backup = data.encodeBackup();
-    await showDialog<void>(
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Guest backup'),
-        content: SizedBox(
-          width: 640,
-          child: SingleChildScrollView(
-            child: SelectableText(backup),
-          ),
+        title: const Text('Sign out?'),
+        content: Text(
+          widget.sharedIdentityActive
+              ? 'This signs out of the shared guest identity. You may lose access to its groups unless recovery is linked or group administration is transferred. Local work stays on this device.'
+              : 'Your local guest work stays on this device.',
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: backup));
-              Navigator.pop(context);
-            },
-            child: const Text('Copy backup JSON'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sign out'),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _importBackup() async {
-    final controller = TextEditingController();
-    GuestWorkspaceData? imported;
-    String? error;
-    final text = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Preview local backup import'),
-          content: SizedBox(
-            width: 600,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Paste an IntQAFlow guest backup. Nothing changes until you '
-                  'review and confirm the selected items.',
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  minLines: 4,
-                  maxLines: 10,
-                  decoration: const InputDecoration(
-                    labelText: 'Backup JSON',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (value) {
-                    try {
-                      imported = GuestWorkspaceData.decodeBackup(value);
-                      error = null;
-                    } on Object {
-                      imported = null;
-                      error = 'The backup is not valid IntQAFlow guest JSON.';
-                    }
-                    setDialogState(() {});
-                  },
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                ],
-                if (imported != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${imported!.knowledge.length} Knowledge items, '
-                    '${imported!.sessions.length} Interact sessions and '
-                    '${imported!.templates.length} templates. '
-                    'All non-empty selections will be previewed next.',
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: imported == null
-                  ? null
-                  : () => Navigator.pop(context, controller.text),
-              child: const Text('Review selection'),
-            ),
-          ],
-        ),
-      ),
-    );
-    controller.dispose();
-    if (text == null || !mounted) return;
-    try {
-      imported = GuestWorkspaceData.decodeBackup(text);
-    } on Object {
-      return;
+    if (confirmed == true && mounted) {
+      await ref.read(firebaseAuthProvider).signOut();
     }
-    final selection = await showDialog<_GuestImportSelection>(
-      context: context,
-      builder: (context) => _GuestImportPreview(data: imported!),
-    );
-    if (selection == null || !mounted) return;
-    final result = await ref.read(guestWorkspaceStoreProvider).importSelected(
-      imported: imported!,
-      knowledgeIds: selection.knowledgeIds,
-      sessionIds: selection.sessionIds,
-      templateIds: selection.templateIds,
-    );
-    if (!mounted) return;
-    _save(result);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Selected work was added to this device.')),
-    );
   }
 
   Future<void> _clearLocalCopy() async {
@@ -265,7 +186,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         title: const Text('Clear this device’s guest work?'),
         content: const Text(
           'This permanently removes this browser’s local guest copy. '
-          'Export a backup first if you may need it. Shared group content is not changed.',
+          'Shared group content is not changed.',
         ),
         actions: [
           TextButton(
@@ -288,23 +209,22 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
+    final existingGuestGroups = _hasSignedInNonGuestUser
+        ? ref.watch(currentGuestGroupsProvider).value ?? const []
+        : const <Map<String, dynamic>>[];
+    final canOpenGuestGroups =
+        widget.sharedIdentityActive || existingGuestGroups.isNotEmpty;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('IntQAFlow guest workspace'),
+          title: const Text(
+            'IntQAFlow guest workspace',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           actions: [
-            IconButton(
-              tooltip: 'Import backup',
-              onPressed: _data == null ? null : _importBackup,
-              icon: const Icon(Icons.file_upload_outlined),
-            ),
-            IconButton(
-              tooltip: 'Export backup',
-              onPressed: _data == null ? null : _exportBackup,
-              icon: const Icon(Icons.file_download_outlined),
-            ),
-            if (widget.sharedIdentityActive)
+            if (canOpenGuestGroups)
               IconButton(
                 tooltip: 'Shared guest groups',
                 onPressed: () => Navigator.of(context).push<void>(
@@ -320,11 +240,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                 onPressed: _startSharedGuestIdentity,
                 icon: const Icon(Icons.cloud_upload_outlined),
               ),
-            IconButton(
-              tooltip: 'Sign in or create account',
-              onPressed: widget.firebaseReady ? _openAccountAccess : null,
-              icon: const Icon(Icons.login),
-            ),
+            _accountMenu(),
             PopupMenuButton<String>(
               tooltip: 'Guest workspace options',
               onSelected: (value) {
@@ -360,6 +276,25 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                     sharedIdentityActive: widget.sharedIdentityActive,
                     saveStatus: _saveStatus,
                   ),
+                  if (widget.authUnavailable)
+                    const _AccountMembershipNotice(
+                      text: 'Account status could not be verified. This workspace is local; organisation access is not assumed.',
+                    ),
+                  if (widget.membershipStatus ==
+                      AccountMembershipStatus.noMembership)
+                    const _AccountMembershipNotice(
+                      text: 'This signed-in account has no organisation membership. Creating an account does not enrol it. Guest groups are separate; only existing group access applies.',
+                    ),
+                  if (widget.membershipStatus ==
+                      AccountMembershipStatus.inactive)
+                    const _AccountMembershipNotice(
+                      text: 'This organisation membership is inactive. You can continue local work; contact your organisation administrator about access.',
+                    ),
+                  if (widget.membershipStatus ==
+                      AccountMembershipStatus.unavailable)
+                    const _AccountMembershipNotice(
+                      text: 'Organisation membership could not be verified. You can continue local work, but no organisation access is assumed.',
+                    ),
                   if (widget.firebaseReady &&
                       _hasSignedInNonGuestUser &&
                       !widget.sharedIdentityActive)
@@ -438,30 +373,233 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     );
   }
 
-  Future<void> _printReport(Map<String, dynamic> session) async {
-    final report = const JsonEncoder.withIndent('  ').convert(session);
-    await showDialog<void>(
+  Future<void> _printReport(
+    Map<String, dynamic> session,
+    String? participantId,
+  ) async {
+    final participants = (session['participants'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final selectedParticipantId = participants.any(
+      (participant) => participant['id'] == participantId,
+    )
+        ? participantId
+        : participants.firstOrNull?['id'] as String?;
+    final selectedParticipantName = participants
+            .where((participant) => participant['id'] == selectedParticipantId)
+            .firstOrNull?['name'] as String? ??
+        'Not selected';
+    final allParticipants = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${session['title']} report'),
-        content: SizedBox(
-          width: 640,
-          child: SingleChildScrollView(child: SelectableText(report)),
+        title: const Text('Export session PDF'),
+        content: Text(
+          'Stored locally on this device. Choose the participant scope to preview before exporting. Current participant: $selectedParticipantName.',
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              printCurrentPage();
-            },
-            child: const Text('Print / Save PDF'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Selected participant'),
           ),
           FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('All participants'),
+          ),
+          TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            child: const Text('Cancel'),
           ),
         ],
       ),
     );
+    if (allParticipants == null || !mounted) return;
+    final report = composeGuestReport(
+      session: session,
+      allParticipants: allParticipants,
+      participantId: selectedParticipantId,
+      exportedAt: DateTime.now().toUtc(),
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _GuestReportPreviewDialog(
+        report: report,
+        onDownload: () => _downloadPdf(report, session, allParticipants, selectedParticipantId),
+        onShare: () => _sharePdf(report, session, allParticipants, selectedParticipantId),
+        onPrintFallback: () => openPrintableReport(
+          buildGuestReportDocument(
+            session: session,
+            allParticipants: allParticipants,
+            participantId: selectedParticipantId,
+            generatedAt: report.exportedAt,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<Uint8List> _makePdf(GuestReportData report) =>
+      buildGuestReportPdf(report);
+
+  Future<void> _downloadPdf(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    try {
+      final status = await _downloadPdfOrShareFile(
+        await _makePdf(report),
+        guestReportFilename(report),
+      );
+      if (status == ShareResultStatus.dismissed) return;
+      if (status == ShareResultStatus.success) {
+        if (!kIsWeb && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Choose a destination in the system sheet to save the PDF.'),
+            ),
+          );
+        }
+        return;
+      }
+      if (mounted) {
+        await _showPdfFallback(report, session, allParticipants, participantId);
+      }
+    } on Object {
+      if (mounted) {
+        await _showPdfFallback(report, session, allParticipants, participantId);
+      }
+    }
+  }
+
+  Future<void> _sharePdf(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Share a PDF copy?'),
+        content: const Text(
+          'Recipients can keep or forward this PDF. Removing their group access later cannot revoke a copy they downloaded.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final bytes = await _makePdf(report);
+      if (!mounted) return;
+      final renderBox = context.findRenderObject() as RenderBox?;
+      final origin = renderBox == null
+          ? null
+          : renderBox.localToGlobal(Offset.zero) & renderBox.size;
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          title: 'Share Interact PDF',
+          text: 'Portable PDF copy. Recipients may retain or forward it.',
+          files: [
+            XFile.fromData(bytes, mimeType: 'application/pdf'),
+          ],
+          fileNameOverrides: [guestReportFilename(report)],
+          downloadFallbackEnabled: false,
+          sharePositionOrigin: origin,
+        ),
+      );
+      if (result.status == ShareResultStatus.dismissed) return;
+      if (!mounted) return;
+      if (result.status == ShareResultStatus.unavailable) {
+        if (mounted) {
+          await _showPdfFallback(report, session, allParticipants, participantId);
+        }
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF sharing was opened.')),
+        );
+      }
+    } on Object {
+      if (mounted) {
+        await _showPdfFallback(report, session, allParticipants, participantId);
+      }
+    }
+  }
+
+  Future<void> _showPdfFallback(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('PDF action unavailable'),
+        content: const Text(
+          'This browser or device cannot complete that PDF action. Download the PDF and attach it using your preferred app, or use the print-to-PDF fallback.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'print'),
+            child: const Text('Print / Save PDF fallback'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'download'),
+            child: const Text('Download PDF'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'print') {
+      openPrintableReport(
+        buildGuestReportDocument(
+          session: session,
+          allParticipants: allParticipants,
+          participantId: participantId,
+          generatedAt: report.exportedAt,
+        ),
+      );
+    } else if (action == 'download') {
+      try {
+        final status = await _downloadPdfOrShareFile(
+          await _makePdf(report),
+          guestReportFilename(report),
+        );
+        if (status == ShareResultStatus.dismissed) return;
+        if (status != ShareResultStatus.success && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Direct download is unavailable on this device. Use the print fallback.'),
+            ),
+          );
+        }
+      } on Object {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF download could not be started.')),
+          );
+        }
+      }
+    }
   }
 
   bool get _canStartSharedGuestIdentity {
@@ -471,10 +609,126 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   }
 
   bool get _hasSignedInNonGuestUser {
-    final user = ref.read(firebaseAuthProvider).currentUser;
+    final user = _currentAccountUser;
     return user != null && !user.isAnonymous;
   }
 
+  User? get _currentAccountUser {
+    if (widget.accountUser != null) return widget.accountUser;
+    if (!widget.firebaseReady) return null;
+    return ref.read(firebaseAuthProvider).currentUser;
+  }
+
+  Widget _accountMenu() {
+    final user = _currentAccountUser;
+    final email = user?.email;
+    final registered = user != null && !user.isAnonymous;
+    final String stateText;
+    final String explanation;
+    if (widget.authUnavailable) {
+      stateText = 'Account status unavailable';
+      explanation =
+          'Sign-in status could not be checked. No organisation access is assumed; local work remains on this device.';
+    } else if (registered) {
+      stateText = switch (widget.membershipStatus) {
+        AccountMembershipStatus.noMembership => 'No organisation membership',
+        AccountMembershipStatus.inactive => 'Organisation membership inactive',
+        AccountMembershipStatus.unavailable =>
+          'Organisation membership unavailable',
+        _ => 'Registered account',
+      };
+      explanation = switch (widget.membershipStatus) {
+        AccountMembershipStatus.noMembership =>
+          'An account does not create an organisation membership. Guest groups are separate; only existing group access applies.',
+        AccountMembershipStatus.inactive =>
+          'Organisation access is inactive. Local work remains on this device.',
+        AccountMembershipStatus.unavailable =>
+          'Organisation access could not be verified. No organisation access is being assumed.',
+        _ => 'Organisation roles and guest-group roles are separate.',
+      };
+    } else if (widget.sharedIdentityActive) {
+      stateText = 'Shared guest identity';
+      explanation =
+          'Only work explicitly shared with a group is online. Guest groups do not grant organisation access.';
+    } else {
+      stateText = 'Local guest workspace';
+      explanation =
+          'Solo work stays in this browser until you explicitly share it.';
+    }
+
+    return PopupMenuButton<String>(
+      tooltip: 'Account',
+      onSelected: (action) {
+        if (action == 'sign-in') _openSignIn();
+        else if (action == 'create-account') {
+          _openSignIn(createAccount: true);
+        } else if (action == 'link-guest') {
+          _openSignIn(linkGuest: true);
+        } else if (action == 'retry-account') {
+          widget.onRetryAccount?.call();
+        } else if (action == 'sign-out') {
+          _signOut();
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          enabled: false,
+          child: SizedBox(
+            width: 260,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  stateText,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (email != null) Text(email),
+                Text(explanation),
+              ],
+            ),
+          ),
+        ),
+        if (!registered && widget.firebaseReady) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 'sign-in', child: Text('Sign in')),
+          const PopupMenuItem(
+            value: 'create-account',
+            child: Text('Create account'),
+          ),
+          if (widget.sharedIdentityActive)
+            const PopupMenuItem(
+              value: 'link-guest',
+              child: Text('Link guest recovery'),
+            ),
+        ],
+        if (widget.onRetryAccount != null) ...[
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'retry-account',
+              child: Text('Retry account check'),
+            ),
+        ],
+        if (user != null) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: 'sign-out',
+            child: Text('Sign out'),
+          ),
+        ],
+      ],
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.account_circle_outlined),
+            SizedBox(width: 4),
+            Text('Account'),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _GuestNotice extends StatelessWidget {
@@ -494,8 +748,22 @@ class _GuestNotice extends StatelessWidget {
     child: Text(
       sharedIdentityActive
           ? 'Guest-group membership is available for this Firebase identity. Local drafts stay on this device; only work explicitly shared with a group is online. $saveStatus'
-          : 'Stored in this browser only. Clearing browser data or losing this device can erase it. Export a backup before you need to move it. $saveStatus',
+          : 'Stored in this browser only. Clearing browser data or losing this device can erase it. $saveStatus',
     ),
+  );
+}
+
+class _AccountMembershipNotice extends StatelessWidget {
+  const _AccountMembershipNotice({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    child: Text(text),
   );
 }
 
@@ -669,7 +937,7 @@ class _GuestInteractTab extends StatefulWidget {
   final GuestWorkspaceData data;
   final ValueChanged<GuestWorkspaceData> onChange;
   final ValueChanged<Map<String, dynamic>> onSaveTemplate;
-  final ValueChanged<Map<String, dynamic>> onPrint;
+  final void Function(Map<String, dynamic>, String?) onPrint;
 
   @override
   State<_GuestInteractTab> createState() => _GuestInteractTabState();
@@ -694,22 +962,22 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
     final template = widget.data.templates
         .where((item) => item['id'] == _selectedTemplateId)
         .firstOrNull;
-    final participantId = newGuestItemId();
-    final session = <String, dynamic>{
-      'id': newGuestItemId(),
-      'title': title,
-      'visibility': 'private_local',
-      'participants': [
-        {'id': participantId, 'name': participant},
-      ],
-      'questions': [
-        for (final question in (template?['questions'] as List? ?? const []))
-          _newQuestion(
-            (question as Map<String, dynamic>)['text'] as String? ?? '',
-            [participantId],
-          ),
-      ],
-    };
+    final session = template == null
+        ? <String, dynamic>{
+            'id': newGuestItemId(),
+            'title': title,
+            'visibility': 'private_local',
+            'participants': [
+              {'id': newGuestItemId(), 'name': participant},
+            ],
+            'questions': <Map<String, dynamic>>[],
+          }
+        : createGuestSessionFromTemplate(
+            template: template,
+            id: newGuestItemId(),
+            title: title,
+            firstParticipantName: participant,
+          );
     widget.onChange(
       widget.data.copyWith(sessions: [session, ...widget.data.sessions]),
     );
@@ -785,17 +1053,13 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
     );
     name.dispose();
     if (value == null || value.isEmpty || !mounted) return;
-    final questions = (session['questions'] as List? ?? const [])
-        .map((question) => {
-          'id': newGuestItemId(),
-          'text': (question as Map<String, dynamic>)['text'],
-        })
-        .toList();
-    widget.onSaveTemplate({
-      'id': newGuestItemId(),
-      'name': value,
-      'questions': questions,
-    });
+    widget.onSaveTemplate(
+      createGuestTemplateFromSession(
+        session: session,
+        id: newGuestItemId(),
+        name: value,
+      ),
+    );
   }
 
   @override
@@ -821,14 +1085,39 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
           ],
           onChanged: (value) => setState(() => _selectedTemplateId = value),
         ),
-      TextField(
-        controller: _newSessionTitle,
-        decoration: const InputDecoration(labelText: 'New Interact session'),
+      const SizedBox(height: 12),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth >= 680
+              ? (constraints.maxWidth - 12) / 2
+              : constraints.maxWidth;
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: width,
+                child: TextField(
+                  controller: _newSessionTitle,
+                  decoration: const InputDecoration(
+                    labelText: 'New Interact session',
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: width,
+                child: TextField(
+                  controller: _newSessionParticipant,
+                  decoration: const InputDecoration(
+                    labelText: 'First participant',
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
-      TextField(
-        controller: _newSessionParticipant,
-        decoration: const InputDecoration(labelText: 'First participant'),
-      ),
+      const SizedBox(height: 12),
       Align(
         alignment: Alignment.centerLeft,
         child: FilledButton.icon(
@@ -850,7 +1139,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
           onChange: _updateSession,
           onDelete: () => _deleteSession(session),
           onSaveTemplate: () => _saveTemplate(session),
-          onPrint: () => widget.onPrint(session),
+          onPrint: (participantId) => widget.onPrint(session, participantId),
           makeQuestion: _newQuestion,
         ),
       if (widget.data.templates.isNotEmpty) ...[
@@ -884,7 +1173,7 @@ class _GuestSessionEditor extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>> onChange;
   final VoidCallback onDelete;
   final VoidCallback onSaveTemplate;
-  final VoidCallback onPrint;
+  final ValueChanged<String?> onPrint;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
 
   @override
@@ -894,6 +1183,24 @@ class _GuestSessionEditor extends StatefulWidget {
 class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   final _participant = TextEditingController();
   final _question = TextEditingController();
+  String? _selectedParticipantId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedParticipantId = _participants.firstOrNull?['id'] as String?;
+  }
+
+  @override
+  void didUpdateWidget(covariant _GuestSessionEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session['id'] != widget.session['id'] ||
+        !_participants.any(
+          (participant) => participant['id'] == _selectedParticipantId,
+        )) {
+      _selectedParticipantId = _participants.firstOrNull?['id'] as String?;
+    }
+  }
 
   @override
   void dispose() {
@@ -921,10 +1228,59 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       (session['participants'] as List).add({'id': id, 'name': name});
       final roots = session['questions'] as List;
       for (final root in roots) {
-        _ensureAnswer(root as Map<String, dynamic>, id);
+        final question = root as Map<String, dynamic>;
+        if (question['scope'] != 'participant') {
+          _ensureAnswer(question, id);
+        }
       }
     });
+    setState(() => _selectedParticipantId = id);
     _participant.clear();
+  }
+
+  Future<void> _renameActiveParticipant() async {
+    final participant = _participants
+        .where((item) => item['id'] == _selectedParticipantId)
+        .firstOrNull;
+    if (participant == null) return;
+    final name = TextEditingController(
+      text: participant['name'] as String? ?? '',
+    );
+    final updatedName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename participant'),
+        content: TextField(
+          controller: name,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Participant name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, name.text.trim()),
+            child: const Text('Save name locally'),
+          ),
+        ],
+      ),
+    );
+    name.dispose();
+    if (updatedName == null ||
+        updatedName.isEmpty ||
+        !mounted ||
+        participant['id'] is! String) {
+      return;
+    }
+    final participantId = participant['id'] as String;
+    _editSession((session) {
+      for (final item in session['participants'] as List) {
+        final current = item as Map<String, dynamic>;
+        if (current['id'] == participantId) current['name'] = updatedName;
+      }
+    });
   }
 
   void _addQuestion({required bool shared}) {
@@ -934,12 +1290,19 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
         .map((item) => item['id'] as String)
         .toList();
     if (participantIds.isEmpty) return;
+    final selectedParticipantId = participantIds.contains(
+      _selectedParticipantId,
+    )
+        ? _selectedParticipantId!
+        : participantIds.first;
     final question = widget.makeQuestion(
       text,
-      shared ? participantIds : [participantIds.first],
+      shared ? participantIds : [selectedParticipantId],
     );
     question['scope'] = shared ? 'shared' : 'participant';
-    if (!shared) question['target_participant_id'] = participantIds.first;
+    if (!shared) {
+      question['target_participant_id'] = selectedParticipantId;
+    }
     _editSession((session) => (session['questions'] as List).add(question));
     _question.clear();
   }
@@ -947,13 +1310,34 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   @override
   Widget build(BuildContext context) {
     final participants = _participants;
+    final activeParticipant = participants
+        .where((participant) => participant['id'] == _selectedParticipantId)
+        .firstOrNull ?? participants.firstOrNull;
+    final activeParticipantId = activeParticipant?['id'] as String?;
+    final questions = (widget.session['questions'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .where((question) {
+          if (question['scope'] != 'participant') return true;
+          final targetId = question['target_participant_id'] ??
+              participants.firstOrNull?['id'];
+          return targetId == activeParticipantId;
+        })
+        .toList();
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ExpansionTile(
-        initiallyExpanded: true,
-        title: Text(widget.session['title'] as String? ?? 'Local session'),
-        subtitle: Text('${participants.length} participants · Private on this device'),
-        childrenPadding: const EdgeInsets.all(12),
+        initiallyExpanded: false,
+        title: Text(
+          widget.session['title'] as String? ?? 'Local session',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '${participants.length} participants · Private on this device',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
         children: [
           Wrap(
             spacing: 8,
@@ -965,22 +1349,59 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 label: const Text('Save as local template'),
               ),
               OutlinedButton.icon(
-                onPressed: widget.onPrint,
-                icon: const Icon(Icons.print_outlined),
-                label: const Text('Report / Print'),
+                onPressed: () => widget.onPrint(activeParticipantId),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('Download / Share PDF'),
               ),
-              TextButton.icon(
-                onPressed: widget.onDelete,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Delete session'),
+              PopupMenuButton<String>(
+                tooltip: 'More session actions',
+                onSelected: (value) {
+                  if (value == 'delete') widget.onDelete();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete session'),
+                  ),
+                ],
+                icon: const Icon(Icons.more_vert),
               ),
             ],
           ),
-          for (final participant in participants)
-            Chip(
-              avatar: const Icon(Icons.person_outline, size: 18),
-              label: Text(participant['name'] as String? ?? 'Participant'),
+          if (participants.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              key: ValueKey(activeParticipantId),
+              initialValue: activeParticipantId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Active participant',
+                helperText: 'Answers and individual questions are shown for this participant.',
+              ),
+              items: [
+                for (final participant in participants)
+                  DropdownMenuItem(
+                    value: participant['id'] as String,
+                    child: Text(
+                      participant['name'] as String? ?? 'Participant',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (value) =>
+                  setState(() => _selectedParticipantId = value),
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _renameActiveParticipant,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Rename active participant'),
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
           Row(
             children: [
               Expanded(
@@ -997,12 +1418,18 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
           TextField(
             controller: _question,
-            decoration: const InputDecoration(labelText: 'Prepared question'),
+            decoration: const InputDecoration(
+              labelText: 'Prepared question',
+              helperText: 'Shared questions get separate answers from each participant.',
+            ),
           ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: [
               FilledButton.tonal(
                 onPressed: participants.isEmpty ? null : () => _addQuestion(shared: true),
@@ -1010,15 +1437,22 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
               FilledButton.tonal(
                 onPressed: participants.isEmpty ? null : () => _addQuestion(shared: false),
-                child: const Text('Add question for first participant'),
+                child: const Text('Add question for selected participant'),
               ),
             ],
           ),
-          for (final question in (widget.session['questions'] as List? ?? const []))
+          if (questions.isEmpty && participants.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text('No prepared questions for this participant yet.'),
+            ),
+          for (final question in questions)
             _GuestQuestionEditor(
-              key: ValueKey((question as Map<String, dynamic>)['id']),
+              key: ValueKey(question['id']),
               question: question,
-              participants: participants,
+              participants: activeParticipant == null
+                  ? const []
+                  : [activeParticipant],
               onRemove: () => _removeRootQuestion(question),
               onUpdate: (updated) => _replaceQuestion(
                 widget.session,
@@ -1056,6 +1490,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       ),
     );
   }
+
 }
 
 class _GuestQuestionEditor extends StatefulWidget {
@@ -1065,6 +1500,7 @@ class _GuestQuestionEditor extends StatefulWidget {
     required this.onUpdate,
     required this.onRemove,
     required this.makeQuestion,
+    this.nested = false,
     super.key,
   });
 
@@ -1073,6 +1509,7 @@ class _GuestQuestionEditor extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>> onUpdate;
   final VoidCallback onRemove;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
+  final bool nested;
 
   @override
   State<_GuestQuestionEditor> createState() => _GuestQuestionEditorState();
@@ -1088,13 +1525,7 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     final question = _copyMap(widget.question);
     final answers = question['answers'] as List? ?? <Map<String, dynamic>>[];
     question['answers'] = answers;
-    var answer = answers
-        .whereType<Map>()
-        .cast<Map<String, dynamic>?>()
-        .firstWhere(
-          (item) => item?['participant_id'] == participantId,
-          orElse: () => null,
-        );
+    var answer = _answerForParticipant(answers, participantId);
     if (answer == null) {
       answer = {
         'participant_id': participantId,
@@ -1114,13 +1545,7 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     final question = _copyMap(widget.question);
     final answers = question['answers'] as List? ?? <Map<String, dynamic>>[];
     question['answers'] = answers;
-    var answer = answers
-        .whereType<Map>()
-        .cast<Map<String, dynamic>?>()
-        .firstWhere(
-          (item) => item?['participant_id'] == participantId,
-          orElse: () => null,
-        );
+    var answer = _answerForParticipant(answers, participantId);
     if (answer == null) {
       answer = {
         'participant_id': participantId,
@@ -1132,7 +1557,10 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     }
     final followUps = answer['follow_ups'] as List? ?? <Map<String, dynamic>>[];
     answer['follow_ups'] = followUps;
-    followUps.add(widget.makeQuestion(text, [participantId]));
+    final followUp = widget.makeQuestion(text, [participantId]);
+    followUp['scope'] = 'participant';
+    followUp['target_participant_id'] = participantId;
+    followUps.add(followUp);
     widget.onUpdate(question);
   }
 
@@ -1145,45 +1573,62 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     final applicable = widget.participants.where((participant) {
       return scope == 'shared' || participant['id'] == target;
     });
-    return Card(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      margin: const EdgeInsets.only(top: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(text, style: Theme.of(context).textTheme.titleSmall),
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: 'Delete question and undo',
-                onPressed: widget.onRemove,
-                icon: const Icon(Icons.delete_outline),
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 440;
+        return Card(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          margin: const EdgeInsets.only(top: 12),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              vertical: 12,
+              horizontal: widget.nested && narrow ? 0 : 12,
             ),
-            Text(scope == 'shared' ? 'Shared question' : 'Participant-specific question'),
-            for (final participant in applicable)
-              _GuestAnswerEditor(
-                key: ValueKey('${id}_${participant['id']}'),
-                participant: participant,
-                answer: _answers
-                    .where((answer) => answer['participant_id'] == participant['id'])
-                    .firstOrNull,
-                onAnswerChanged: (body) => _updateAnswer(
-                  participant['id'] as String,
-                  body,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(text, style: Theme.of(context).textTheme.titleSmall),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    tooltip: 'Delete question and undo',
+                    onPressed: widget.onRemove,
+                    icon: const Icon(Icons.delete_outline),
+                  ),
                 ),
-                onAddFollowUp: (text) => _addFollowUp(
-                  participant['id'] as String,
-                  text,
+                Text(
+                  widget.nested
+                      ? 'Answer-owned follow-up'
+                      : scope == 'shared'
+                      ? 'Shared question'
+                      : 'Participant-specific question',
                 ),
-                onUpdate: _replaceAnswer,
-                makeQuestion: widget.makeQuestion,
-              ),
-          ],
-        ),
-      ),
+                for (final participant in applicable)
+                  _GuestAnswerEditor(
+                    key: ValueKey('${id}_${participant['id']}'),
+                    participant: participant,
+                    answer: _answers
+                        .where(
+                          (answer) =>
+                              answer['participant_id'] == participant['id'],
+                        )
+                        .firstOrNull,
+                    onAnswerChanged: (body) => _updateAnswer(
+                      participant['id'] as String,
+                      body,
+                    ),
+                    onAddFollowUp: (text) => _addFollowUp(
+                      participant['id'] as String,
+                      text,
+                    ),
+                    onUpdate: _replaceAnswer,
+                    makeQuestion: widget.makeQuestion,
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1203,6 +1648,18 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
     question['answers'] = answers;
     widget.onUpdate(question);
   }
+}
+
+Map<String, dynamic>? _answerForParticipant(
+  List answers,
+  String participantId,
+) {
+  for (final item in answers) {
+    if (item is Map && item['participant_id'] == participantId) {
+      return item.cast<String, dynamic>();
+    }
+  }
+  return null;
 }
 
 class _GuestAnswerEditor extends StatefulWidget {
@@ -1283,53 +1740,79 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
             ),
             onChanged: widget.onAnswerChanged,
           ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                controller: _followUp,
-                  decoration: const InputDecoration(labelText: 'Follow-up question'),
-                onSubmitted: (_) => _addFollowUp(),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Add answer-owned follow-up',
-                onPressed: _addFollowUp,
-                icon: const Icon(Icons.add_comment_outlined),
-              ),
-              if (branches.isNotEmpty)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = [
                 IconButton(
-                  tooltip: collapsed ? 'Expand follow-ups' : 'Collapse follow-ups',
-                  onPressed: () {
-                    final updated = _copyMap(widget.answer!);
-                    updated['branches_collapsed'] = !collapsed;
-                    widget.onUpdate(updated);
-                  },
-                  icon: Icon(collapsed ? Icons.expand_more : Icons.expand_less),
+                  tooltip: 'Add answer-owned follow-up',
+                  onPressed: _addFollowUp,
+                  icon: const Icon(Icons.add_comment_outlined),
                 ),
-              if (branches.isNotEmpty)
-                Text('${branches.length} follow-ups'),
-            ],
+                if (branches.isNotEmpty)
+                  IconButton(
+                    tooltip: collapsed
+                        ? 'Expand follow-ups'
+                        : 'Collapse follow-ups',
+                    onPressed: () {
+                      final updated = _copyMap(widget.answer!);
+                      updated['branches_collapsed'] = !collapsed;
+                      widget.onUpdate(updated);
+                    },
+                    icon: Icon(
+                      collapsed ? Icons.expand_more : Icons.expand_less,
+                    ),
+                  ),
+                if (branches.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text('${branches.length} follow-ups'),
+                  ),
+              ];
+              final field = TextField(
+                controller: _followUp,
+                decoration: const InputDecoration(
+                  labelText: 'Follow-up question',
+                ),
+                onSubmitted: (_) => _addFollowUp(),
+              );
+              if (constraints.maxWidth < 440) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [field, Wrap(children: actions)],
+                );
+              }
+              return Row(
+                children: [Expanded(child: field), ...actions],
+              );
+            },
           ),
           if (branches.isNotEmpty && !collapsed)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Column(
-                children: [
-                  for (final branch in branches)
-                    _GuestQuestionEditor(
-                      key: ValueKey((branch as Map<String, dynamic>)['id']),
-                      question: branch,
-                      participants: [widget.participant],
-                      onRemove: () => _removeNestedBranch(branch),
-                      onUpdate: (updated) {
-                        final answer = _copyMap(widget.answer!);
-                        _replaceInQuestions(answer['follow_ups'] as List, updated);
-                        widget.onUpdate(answer);
-                      },
-                      makeQuestion: widget.makeQuestion,
-                    ),
-                ],
+            LayoutBuilder(
+              builder: (context, constraints) => Padding(
+                padding: EdgeInsets.only(
+                  left: constraints.maxWidth < 440 ? 0 : 8,
+                ),
+                child: Column(
+                  children: [
+                    for (final branch in branches)
+                      _GuestQuestionEditor(
+                        key: ValueKey((branch as Map<String, dynamic>)['id']),
+                        question: branch,
+                        participants: [widget.participant],
+                        nested: true,
+                        onRemove: () => _removeNestedBranch(branch),
+                        onUpdate: (updated) {
+                          final answer = _copyMap(widget.answer!);
+                          _replaceInQuestions(
+                            answer['follow_ups'] as List,
+                            updated,
+                          );
+                          widget.onUpdate(answer);
+                        },
+                        makeQuestion: widget.makeQuestion,
+                      ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -1892,11 +2375,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           title: Text(entry['title'] as String? ?? 'Guest group entry'),
           content: SizedBox(
             width: 700,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                const JsonEncoder.withIndent('  ').convert(entry['data']),
-              ),
-            ),
+            child: _GuestGroupEntryContent(entry: entry),
           ),
           actions: [
             TextButton(
@@ -1908,31 +2387,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 if (entryDialogActive &&
                     entryDialogContext.mounted &&
                     (ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
-                  await showDialog<void>(
-                    context: entryDialogContext,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Authorized group export'),
-                      content: SizedBox(
-                        width: 640,
-                        child: SingleChildScrollView(
-                          child: SelectableText(const JsonEncoder.withIndent('  ').convert(result)),
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: const JsonEncoder.withIndent('  ').convert(result)));
-                            Navigator.pop(context);
-                          },
-                          child: const Text('Copy export'),
-                        ),
-                        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
-                      ],
-                    ),
-                  );
+                  entryDialogActive = false;
+                  Navigator.pop(entryDialogContext);
+                  await _exportAuthorizedGroupEntry(result);
                 }
               }),
-              child: const Text('Export'),
+              child: const Text('Download / Share PDF'),
             ),
             TextButton(
               onPressed: () => _run(() async {
@@ -1951,8 +2411,17 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                     title: const Text('Entry revisions'),
                     content: SizedBox(
                       width: 640,
-                      child: SingleChildScrollView(
-                        child: SelectableText(const JsonEncoder.withIndent('  ').convert(history)),
+                      height: MediaQuery.sizeOf(context).height * 0.55,
+                      child: ListView(
+                        children: [
+                          for (final revision in history)
+                            ListTile(
+                              title: Text(
+                                'Revision ${revision['revision']} · ${revision['title']}',
+                              ),
+                              subtitle: const Text('Updated by a group member'),
+                            ),
+                        ],
                       ),
                     ),
                     actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
@@ -1992,6 +2461,252 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     await entryDialog.whenComplete(() => entryDialogActive = false);
   }
 
+  Future<void> _exportAuthorizedGroupEntry(
+    Map<String, dynamic> entry,
+  ) async {
+    final title = entry['title'] as String? ?? 'Guest group entry';
+    final data = entry['data'] is Map
+        ? Map<String, dynamic>.from(entry['data'] as Map)
+        : <String, dynamic>{};
+    if (entry['kind'] == 'interact_session') {
+      final participants = (data['participants'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      final scope = await showDialog<String>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Choose report scope'),
+          children: [
+            for (final participant in participants)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(
+                  context,
+                  participant['id'] as String?,
+                ),
+                child: Text(
+                  'Selected participant — ${participant['name'] ?? 'Participant'}',
+                ),
+              ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, '*'),
+              child: const Text('All participants'),
+            ),
+          ],
+        ),
+      );
+      if (scope == null || !mounted) return;
+      final allParticipants = scope == '*';
+      final Object? firstParticipantId = participants.firstOrNull?['id'];
+      final String? participantId;
+      if (allParticipants) {
+        participantId = firstParticipantId is String
+            ? firstParticipantId
+            : null;
+      } else {
+        participantId = scope;
+      }
+      final session = {...data, 'title': title};
+      final report = composeGuestReport(
+        session: session,
+        allParticipants: allParticipants,
+        participantId: participantId,
+        exportedAt: DateTime.now().toUtc(),
+      );
+      await showDialog<void>(
+        context: context,
+        builder: (context) => _GuestReportPreviewDialog(
+          report: report,
+          onDownload: () => _downloadAuthorizedReport(
+            report,
+            session,
+            allParticipants,
+            participantId,
+          ),
+          onShare: () => _shareAuthorizedReport(
+            report,
+            session,
+            allParticipants,
+            participantId,
+          ),
+          onPrintFallback: () => openPrintableReport(
+            buildGuestReportDocument(
+              session: session,
+              allParticipants: allParticipants,
+              participantId: participantId,
+              generatedAt: report.exportedAt,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final document = GuestPortableDocument(
+      title: title,
+      scope: 'Authorized guest-group Knowledge entry',
+      exportedAt: DateTime.now().toUtc(),
+      sections: [
+        if (data['body'] is String)
+          GuestPortableSection(heading: 'Knowledge', body: data['body'] as String),
+        if (data['answer'] is String)
+          GuestPortableSection(heading: 'Answer', body: data['answer'] as String),
+      ],
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _GuestPortablePreviewDialog(
+        document: document,
+        onDownload: () => _downloadPortableDocument(document),
+        onShare: () => _sharePortableDocument(document),
+        onPrintFallback: () =>
+            openPrintableReport(buildGuestPortableHtml(document)),
+      ),
+    );
+  }
+
+  Future<void> _downloadAuthorizedReport(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    final document = buildGuestReportDocument(
+      session: session,
+      allParticipants: allParticipants,
+      participantId: participantId,
+      generatedAt: report.exportedAt,
+    );
+    try {
+      final status = await _downloadPdfOrShareFile(
+        await buildGuestReportPdf(report),
+        guestReportFilename(report),
+      );
+      if (status == ShareResultStatus.success ||
+          status == ShareResultStatus.dismissed) {
+        return;
+      }
+    } on Object {
+      // Fall through to the print-to-PDF fallback.
+    }
+    openPrintableReport(document);
+  }
+
+  Future<void> _shareAuthorizedReport(
+    GuestReportData report,
+    Map<String, dynamic> session,
+    bool allParticipants,
+    String? participantId,
+  ) async {
+    final confirmed = await _confirmPortableCopy();
+    if (confirmed != true || !mounted) return;
+    try {
+      final bytes = await buildGuestReportPdf(report);
+      if (!mounted) return;
+      final renderBox = context.findRenderObject() as RenderBox?;
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          title: 'Share Interact PDF',
+          text: 'Portable PDF copy. Recipients may retain or forward it.',
+          files: [XFile.fromData(bytes, mimeType: 'application/pdf')],
+          fileNameOverrides: [guestReportFilename(report)],
+          downloadFallbackEnabled: false,
+          sharePositionOrigin: renderBox == null
+              ? null
+              : renderBox.localToGlobal(Offset.zero) & renderBox.size,
+        ),
+      );
+      if (result.status == ShareResultStatus.dismissed) return;
+      if (!mounted) return;
+      if (result.status == ShareResultStatus.unavailable) {
+        await _downloadAuthorizedReport(
+          report,
+          session,
+          allParticipants,
+          participantId,
+        );
+      }
+    } on Object {
+      if (mounted) {
+        await _downloadAuthorizedReport(
+          report,
+          session,
+          allParticipants,
+          participantId,
+        );
+      }
+    }
+  }
+
+  Future<void> _downloadPortableDocument(
+    GuestPortableDocument document,
+  ) async {
+    try {
+      final status = await _downloadPdfOrShareFile(
+        await buildGuestPortablePdf(document),
+        guestPortableFilename(document),
+      );
+      if (status == ShareResultStatus.success ||
+          status == ShareResultStatus.dismissed) {
+        return;
+      }
+    } on Object {
+      // Fall through to the print-to-PDF fallback.
+    }
+    openPrintableReport(buildGuestPortableHtml(document));
+  }
+
+  Future<void> _sharePortableDocument(
+    GuestPortableDocument document,
+  ) async {
+    final confirmed = await _confirmPortableCopy();
+    if (confirmed != true || !mounted) return;
+    try {
+      final bytes = await buildGuestPortablePdf(document);
+      if (!mounted) return;
+      final renderBox = context.findRenderObject() as RenderBox?;
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          title: 'Share PDF',
+          text: 'Portable PDF copy. Recipients may retain or forward it.',
+          files: [XFile.fromData(bytes, mimeType: 'application/pdf')],
+          fileNameOverrides: [guestPortableFilename(document)],
+          downloadFallbackEnabled: false,
+          sharePositionOrigin: renderBox == null
+              ? null
+              : renderBox.localToGlobal(Offset.zero) & renderBox.size,
+        ),
+      );
+      if (result.status == ShareResultStatus.dismissed) return;
+      if (!mounted) return;
+      if (result.status == ShareResultStatus.unavailable) {
+        await _downloadPortableDocument(document);
+      }
+    } on Object {
+      if (mounted) await _downloadPortableDocument(document);
+    }
+  }
+
+  Future<bool?> _confirmPortableCopy() => showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Share a PDF copy?'),
+      content: const Text(
+        'Recipients can keep or forward this PDF. Removing their group access later cannot revoke a copy they downloaded.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Continue'),
+        ),
+      ],
+    ),
+  );
+
   bool _canEdit(Map<String, dynamic> entry) {
     final role = _group?['role'];
     final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
@@ -2004,22 +2719,42 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final groupId = _groupId;
     if (groupId == null) return;
     final title = TextEditingController(text: entry['title'] as String? ?? '');
-    final data = TextEditingController(
-      text: const JsonEncoder.withIndent('  ').convert(entry['data']),
+    final sourceData = entry['data'] is Map
+        ? Map<String, dynamic>.from(entry['data'] as Map)
+        : <String, dynamic>{};
+    final body = TextEditingController(text: sourceData['body'] as String? ?? '');
+    final answer = TextEditingController(
+      text: sourceData['answer'] as String? ?? '',
     );
-    final edited = await showDialog<Map<String, dynamic>>(
+    final accepted = await showDialog<bool>(
       context: context,
-      builder: (context) => _GuestEntryEditDialog(title: title, data: data),
+      builder: (context) => _GuestEntryEditDialog(
+        title: title,
+        body: body,
+        answer: answer,
+        editKnowledge: entry['kind'] != 'interact_session',
+      ),
     );
+    final editedTitle = title.text.trim();
+    final editedBody = body.text.trim();
+    final editedAnswer = answer.text.trim();
     title.dispose();
-    data.dispose();
-    if (edited == null || !mounted) return;
+    body.dispose();
+    answer.dispose();
+    if (accepted != true || editedTitle.isEmpty || !mounted) return;
+    final updatedData = entry['kind'] == 'interact_session'
+        ? sourceData
+        : {
+            ...sourceData,
+            'body': editedBody,
+            'answer': editedAnswer,
+          };
     await _run(() async {
       await _repository.updateEntry(
         groupId: groupId,
         entryId: entry['id'] as String,
-        title: edited['title'] as String,
-        data: edited['data'] as Map<String, dynamic>,
+        title: editedTitle,
+        data: updatedData,
       );
       await _loadGroup(groupId);
     });
@@ -2225,19 +2960,42 @@ String _safeGuestError(Object error) {
   return 'The guest group request failed. Check your connection and try again.';
 }
 
+Future<ShareResultStatus?> _downloadPdfOrShareFile(
+  Uint8List bytes,
+  String filename,
+) async {
+  if (await downloadPdf(bytes, filename)) return ShareResultStatus.success;
+  if (kIsWeb) return null;
+  final result = await SharePlus.instance.share(
+    ShareParams(
+      title: 'Save PDF',
+      text: 'Choose a destination to save or share this PDF.',
+      files: [XFile.fromData(bytes, mimeType: 'application/pdf')],
+      fileNameOverrides: [filename],
+      downloadFallbackEnabled: false,
+    ),
+  );
+  return result.status;
+}
+
 class _GuestEntryEditDialog extends StatefulWidget {
-  const _GuestEntryEditDialog({required this.title, required this.data});
+  const _GuestEntryEditDialog({
+    required this.title,
+    required this.body,
+    required this.answer,
+    required this.editKnowledge,
+  });
 
   final TextEditingController title;
-  final TextEditingController data;
+  final TextEditingController body;
+  final TextEditingController answer;
+  final bool editKnowledge;
 
   @override
   State<_GuestEntryEditDialog> createState() => _GuestEntryEditDialogState();
 }
 
 class _GuestEntryEditDialogState extends State<_GuestEntryEditDialog> {
-  String? _error;
-
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Edit shared group entry'),
@@ -2247,35 +3005,321 @@ class _GuestEntryEditDialogState extends State<_GuestEntryEditDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(controller: widget.title, decoration: const InputDecoration(labelText: 'Title')),
-          TextField(
-            controller: widget.data,
-            minLines: 8,
-            maxLines: 16,
-            decoration: const InputDecoration(labelText: 'Entry JSON'),
-          ),
-          if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (widget.editKnowledge) ...[
+            TextField(
+              controller: widget.body,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(labelText: 'Knowledge'),
+            ),
+            TextField(
+              controller: widget.answer,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(labelText: 'Answer'),
+            ),
+          ] else
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text('Interact questions and answers are unchanged.'),
+            ),
         ],
       ),
     ),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
       FilledButton(
-        onPressed: () {
-          try {
-            final decoded = jsonDecode(widget.data.text);
-            if (decoded is! Map<String, dynamic>) {
-              throw const FormatException('Entry data must be a JSON object.');
-            }
-            final title = widget.title.text.trim();
-            if (title.isEmpty) throw const FormatException('Title is required.');
-            Navigator.pop(context, {'title': title, 'data': decoded});
-          } on Object {
-            setState(() => _error = 'Enter a valid JSON object and a non-empty title.');
-          }
-        },
+        onPressed: () => Navigator.pop(context, true),
         child: const Text('Save revision'),
       ),
     ],
+  );
+}
+
+class _GuestReportPreviewDialog extends StatelessWidget {
+  const _GuestReportPreviewDialog({
+    required this.report,
+    required this.onDownload,
+    required this.onShare,
+    required this.onPrintFallback,
+  });
+
+  final GuestReportData report;
+  final VoidCallback onDownload;
+  final VoidCallback onShare;
+  final VoidCallback onPrintFallback;
+
+  Widget _question(BuildContext context, GuestReportQuestion question, int depth) {
+    final indent = (depth * 12).clamp(0, 36).toDouble();
+    return Padding(
+      padding: EdgeInsets.only(left: indent, top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Question ${question.path}${depth > 0 ? ' · Follow-up' : ''}',
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+          if (question.triggerParticipant != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Triggered by ${question.triggerParticipant}: '
+                '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: SelectableText(
+              question.text,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          if (question.answers.isEmpty)
+            const ListTile(title: Text('Answer'), subtitle: Text('Unanswered.')),
+          for (final answer in question.answers) ...[
+            Card(
+              margin: EdgeInsets.only(left: indent, top: 8),
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Answer — ${answer.participantName}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      answer.body.trim().isEmpty ? 'Unanswered.' : answer.body,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            for (final followUp in answer.followUps)
+              _question(context, followUp, depth + 1),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Preview PDF'),
+    content: SizedBox(
+      width: 720,
+      height: MediaQuery.sizeOf(context).height * 0.62,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Portable copy · ${report.scope}',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          Text(
+            'Participants: ${report.participantNames.isEmpty ? 'Not selected' : report.participantNames.join(', ')}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            'Exported: ${report.exportedAt.toLocal()}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            'Some uncommon characters or emoji may not render in the PDF.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const Divider(),
+          Expanded(
+            child: ListView(
+              children: report.questions.isEmpty
+                  ? const [Text('No questions are available in this report.')]
+                  : [
+                      for (final question in report.questions)
+                        _question(context, question, 0),
+                    ],
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          TextButton(
+            onPressed: onPrintFallback,
+            child: const Text('Print / Save PDF fallback'),
+          ),
+          OutlinedButton.icon(
+            onPressed: onShare,
+            icon: const Icon(Icons.share_outlined),
+            label: const Text('Share PDF'),
+          ),
+          FilledButton.icon(
+            onPressed: onDownload,
+            icon: const Icon(Icons.download_outlined),
+            label: const Text('Download PDF'),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+class _GuestPortablePreviewDialog extends StatelessWidget {
+  const _GuestPortablePreviewDialog({
+    required this.document,
+    required this.onDownload,
+    required this.onShare,
+    required this.onPrintFallback,
+  });
+
+  final GuestPortableDocument document;
+  final VoidCallback onDownload;
+  final VoidCallback onShare;
+  final VoidCallback onPrintFallback;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Preview PDF'),
+    content: SizedBox(
+      width: 720,
+      height: MediaQuery.sizeOf(context).height * 0.62,
+      child: ListView(
+        children: [
+          Text(document.title, style: Theme.of(context).textTheme.titleLarge),
+          Text('Portable copy · ${document.scope}'),
+          Text('Exported: ${document.exportedAt.toLocal()}'),
+          const Text(
+            'Some uncommon characters or emoji may not render in the PDF.',
+          ),
+          const Divider(),
+          for (final section in document.sections) ...[
+            Text(section.heading, style: Theme.of(context).textTheme.titleMedium),
+            SelectableText(
+              section.body.trim().isEmpty ? 'Not provided.' : section.body,
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (document.sections.isEmpty)
+            const Text('No report content is available.'),
+        ],
+      ),
+    ),
+    actions: [
+      Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          TextButton(
+            onPressed: onPrintFallback,
+            child: const Text('Print / Save PDF fallback'),
+          ),
+          OutlinedButton.icon(
+            onPressed: onShare,
+            icon: const Icon(Icons.share_outlined),
+            label: const Text('Share PDF'),
+          ),
+          FilledButton.icon(
+            onPressed: onDownload,
+            icon: const Icon(Icons.download_outlined),
+            label: const Text('Download PDF'),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+class _GuestGroupEntryContent extends StatelessWidget {
+  const _GuestGroupEntryContent({required this.entry});
+
+  final Map<String, dynamic> entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = entry['data'] is Map
+        ? Map<String, dynamic>.from(entry['data'] as Map)
+        : <String, dynamic>{};
+    if (entry['kind'] != 'interact_session') {
+      return ListView(
+        shrinkWrap: true,
+        children: [
+          for (final item in [
+            ('Knowledge', data['body']),
+            ('Answer', data['answer']),
+          ])
+            if (item.$2 is String && (item.$2 as String).isNotEmpty) ...[
+              Text(item.$1, style: Theme.of(context).textTheme.titleSmall),
+              SelectableText(item.$2 as String),
+              const SizedBox(height: 12),
+            ],
+        ],
+      );
+    }
+    final report = composeGuestReport(
+      session: {
+        ...data,
+        'title': entry['title'] as String? ?? 'Interact session',
+      },
+      allParticipants: true,
+      participantId: null,
+      exportedAt: DateTime.now().toUtc(),
+    );
+    return ListView(
+      shrinkWrap: true,
+      children: [
+        Text(
+          'All participants · ${report.participantNames.join(', ')}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        for (final question in report.questions)
+          _GuestEntryQuestionContent(question: question, depth: 0),
+      ],
+    );
+  }
+}
+
+class _GuestEntryQuestionContent extends StatelessWidget {
+  const _GuestEntryQuestionContent({
+    required this.question,
+    required this.depth,
+  });
+
+  final GuestReportQuestion question;
+  final int depth;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(left: (depth * 12).clamp(0, 36).toDouble(), top: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(question.text, style: Theme.of(context).textTheme.titleSmall),
+        if (question.triggerParticipant != null)
+          Text(
+            'Triggered by ${question.triggerParticipant}: '
+            '${question.triggerAnswer?.trim().isNotEmpty == true ? question.triggerAnswer : 'Unanswered.'}',
+          ),
+        if (question.answers.isEmpty) const Text('Unanswered.'),
+        for (final answer in question.answers) ...[
+          Text('Answer — ${answer.participantName}'),
+          SelectableText(answer.body.trim().isEmpty ? 'Unanswered.' : answer.body),
+          for (final followUp in answer.followUps)
+            _GuestEntryQuestionContent(
+              question: followUp,
+              depth: depth + 1,
+            ),
+        ],
+      ],
+    ),
   );
 }
 
