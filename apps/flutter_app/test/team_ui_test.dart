@@ -217,6 +217,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Answer Owner · owner@example.test').last);
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('department-answer-owner-selector'),
+        ),
+        matching: find.text('Answer Owner · owner@example.test'),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Assign owner'));
     await tester.pumpAndSettle();
     expect(
@@ -251,6 +261,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Answer Owner · owner@example.test'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('team-member-selector-team-1')),
+        matching: find.text('Answer Owner · owner@example.test'),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Add team member'));
     await tester.pumpAndSettle();
     expect(governanceRepository.teamMemberId, answerOwnerMember.id);

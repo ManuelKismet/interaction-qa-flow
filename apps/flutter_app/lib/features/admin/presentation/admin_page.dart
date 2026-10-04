@@ -268,6 +268,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                           );
                   }
                   return DropdownButtonFormField<String?>(
+                    key: const ValueKey('department-answer-owner-selector'),
                     initialValue: _ownerUserId,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Answer owner'),
@@ -279,9 +280,13 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                       for (final member in eligible)
                         DropdownMenuItem<String?>(
                           value: member.id,
-                          child: Text(
-                            '${member.displayName} · ${member.email}',
-                            overflow: TextOverflow.ellipsis,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 220),
+                            child: Text(
+                              '${member.displayName} · ${member.email}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                     ],
@@ -776,6 +781,7 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
         SizedBox(
           width: 320,
           child: DropdownButtonFormField<String?>(
+            key: ValueKey('team-member-selector-${widget.team.id}'),
             initialValue: _selectedMemberId,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Organisation member'),
@@ -787,9 +793,13 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
               for (final member in eligible)
                 DropdownMenuItem<String?>(
                   value: member.id,
-                  child: Text(
-                    '${member.displayName} · ${member.email}',
-                    overflow: TextOverflow.ellipsis,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 280),
+                    child: Text(
+                      '${member.displayName} · ${member.email}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
             ],
