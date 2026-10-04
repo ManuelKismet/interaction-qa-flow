@@ -240,3 +240,5 @@ Exact head d93af2509d0e54e7bd0aad3f3f8469a9b04a71cb pinned in /workspaces/intqaf
 - git diff --check passed; worktree/lockfile clean.
 Logs /home/vscode/.local/share/intqaflow/pr13-d93af25-verification-20261004.
 No fix/deploy/merge/role/data changes. Bring unresolved repeated overflow back to founder before another Copilot correction cycle. Guest-group/backup/import/PDF/account UI acceptance remains pending on appropriate configured candidate; current hosted build has not been updated.
+
+Final d93af25 JavaScript release build PASSED56.7s. All verification jobs completed. This fixes compilation but does not resolve the failed narrow-layout test; no deployment or full acceptance signoff.
