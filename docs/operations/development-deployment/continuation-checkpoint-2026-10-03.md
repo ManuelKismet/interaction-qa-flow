@@ -162,3 +162,36 @@ Founder submitted the correct Link guest recovery form. Post-submission observat
 UX finding: successful linkWithCredential does not clear/navigate the form or set a success message; button depends on isAnonymous and becomes Create account after success. A repeated submission then produces guest-unavailable error. Need stable completion state, explicit **Account created from this guest; local work remains on this device**, a Continue action, appropriate email-verification instruction, and prevention of accidental resubmission. Code at 0079511 also does not call sendEmailVerification in the linkGuestIdentity branch; separate-account signup does. Reconcile linked-account verification UX separately from founder's deferred real email-delivery acceptance. Current served SHA remains unidentified and new application fix cycle is not started.
 
 Development Firebase console opened at project intqaflow-dev/authentication/users for requested manual verification. Google account session is signed out; founder selected the saved Google account through secure auth. Google now requests passkey completion. Manual browser handoff provided for this sign-in. No Firebase user flag, account roles, hosted data or local database has been changed. PR13 tests and cleanup remain pending after account verification/sign-out/sign-in and database authority checks. CLI path scan did not locate persisted gcloud executable; Flutter and multiple prior worktrees persist, but transient /tmp verification runtimes are absent. Restore official tooling as needed after sign-in rather than treating missing binaries as proof infrastructure is absent.
+
+
+## Independent continuation results — 4 October 2026 afternoon
+
+This section supersedes earlier pending-account and untested-PR13 statements.
+
+### Account journey
+Firebase development account guesttester1@test.com authoritatively confirmed, UID CLizPEdEM4b0rbm5CuMoxghMQZf2. Founder completed fresh Google Cloud CLI login with isolated CLOUDSDK_CONFIG=/tmp/intqaflow-fresh-dev-auth. Do not probe/reuse retained credentials: an earlier persisted-credential presence probe was rejected by auto-review. Browser Google login succeeded; Firebase console had no emailVerified toggle and embedded Cloud Shell was unavailable.
+
+Identity Toolkit lookup/update/readback scoped to intqaflow-dev and exact UID confirmed emailVerified false → true, with email identity assertion before update. API requests required x-goog-user-project=intqaflow-dev quota header; no IAM/API-enable changes were made. No secrets logged.
+
+Actual UI sign-out confirmation states local guest work stays on device. Sign-out passed and local Knowledge remained. Secure-form sign-in returned generic email/password failure; founder manual browser sign-in then succeeded. Fresh Account menu showed guesttester1@test.com, no organisation membership. Local Knowledge, both acceptance sessions and reusable template remained accessible. This proves same-device local preservation, NOT cloud import/transfer or complete group-boundary acceptance. Actual email delivery remains deferred. Test identity/data are retained until outstanding tests finish; no cleanup performed.
+
+### Exact PR13 head independently tested
+Head 0079511d244a1a8648e61f2cee4b1529ac89a9fb, detached worktree /workspaces/intqaflow-review-pr13-0079511. Fresh backend venv /tmp/intqaflow-pr13-0079511-venv; logs /home/vscode/.local/share/intqaflow/pr13-0079511-verification-20261004.
+- Requirements and pip check passed.
+- Backend: 82 passed, 1 warning.
+- Flutter dependency resolution passed.
+- Flutter: 59 passed, 5 files failed to load due to compilation errors (not five assertion failures).
+- Analyzer failed: 21 issues; do not inherit earlier zero-errors result.
+- Release JavaScript build failed: guest_workspace_page.dart around 1089–1090 syntax errors, guided_page.dart around 234 missing closing parenthesis.
+- Worktree/lockfile clean; git diff --check passed.
+No fix, merge or deployment performed. New candidate browser acceptance is blocked until compilation is fixed.
+
+Founder authorised sending findings and continuing tests. Copilot follow-up sent on PR13, comment 5980704732, covering compilation regressions, keep-guest cancellation feedback/rename, successful-link navigation/message/resubmission, linked-account verification consistency, shared-group request error, template report attribution, PDF download ambiguity, backup/import/recursive template gaps and local/cloud boundary clarity. Keep draft; Copilot owns fixes, ChatGPT independent verification. Live served UI SHA remains unidentified; do not attribute live findings to exact head.
+
+### Hosted authority and obsolete-local cleanup checks
+Fresh CLI inventory confirms Cloud SQL intqaflow-dev-pg (PostgreSQL 16, RUNNABLE, europe-west2) contains intqaflow_dev. Cloud Run intqaflow-dev-api latest ready revision intqaflow-dev-api-reviewabb224f. Service configuration read safely: APP_ENV development, FIREBASE_PROJECT_ID intqaflow-dev, Cloud SQL instance annotation intqaflow-dev:europe-west2:intqaflow-dev-pg; DATABASE_URL references secret intqaflow-dev-database-url latest, secret value not read/logged.
+
+Original tracked compose.yaml describes smart_qa DB and smart_qa_postgres volume. Current .devcontainer/compose.yaml has only hosted-client workspace and intentionally fail-closed intqaflow_dev connector placeholder; no local postgres service.
+Docker executable absent from PATH and checked /usr/bin/docker,/usr/local/bin/docker; /var/run/docker.sock and /var/lib/docker/volumes absent at checked paths. pg_lsclusters reports only PostgreSQL16 main, port5432, DOWN. This is not proof legacy external Docker volume does not exist. Actual smart_qa volume target/unique-data check remains blocked outside this accessible container; do not remove main cluster or unrelated disposable intqaflow_review runtime. No deletion performed.
+
+Remaining: full guest shared/invitation/conflict/privacy boundaries; actual PDF file/render/share; backup/import and recursive template parity; deeper post-login nested answer/report retention; new exact-head independent verification and affected UI tests; confirm exact hosted database URL target/read-only schema authority as needed without secret output; identify actual local Docker host before scoped cleanup; final test-account/data cleanup. No organisation/admin grant, production change or readiness signoff.
