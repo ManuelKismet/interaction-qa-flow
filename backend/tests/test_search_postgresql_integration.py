@@ -23,7 +23,6 @@ async def test_lexical_candidates_execute_on_postgresql() -> None:
     schema_name = f"search_test_{uuid4().hex}"
     try:
         async with engine.connect() as connection:
-            await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await connection.execute(text(f'CREATE SCHEMA "{schema_name}"'))
             await connection.commit()
 
