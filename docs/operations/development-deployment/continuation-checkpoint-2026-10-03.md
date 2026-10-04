@@ -228,3 +228,15 @@ Independent results:
 Logs /home/vscode/.local/share/intqaflow/pr13-1cdc5dd-verification-20261004. No deployment, merge, data cleanup or role grant. Recurring compilation regression requires founder attention before next Copilot fix cycle. Account/group/PDF/backup responsive UI acceptance remains blocked on compilable candidate.
 
 Final 1cdc5dd results: analyzer 2 errors,5 warnings,12 infos; JavaScript release build failed in17.3s. All verification jobs completed; no test/build jobs left running in this terminal. Latest candidate is not deployable or accepted. Preserve linked test account/local content and keep PR draft.
+
+
+## Independent corrected-head verification — d93af25
+Exact head d93af2509d0e54e7bd0aad3f3f8469a9b04a71cb pinned in /workspaces/intqaflow-review-pr13-d93af25; original workspace preserved. Source review confirms collection-if comma removed and narrow action shortened with full tooltip meaning. Test retains long participant name, deepest branch label and render-exception assertion, not weakened.
+- Backend82 passed,1 warning,17.25s; pip check passed.
+- Flutter pub get passed; full suite91 passed,1 FAILED (1m10s).
+- Same narrow-layout test at360×800,DPR1 still throws RenderFlex overflow10px on right; assertion now guest_interact_widget_test.dart66. New label did NOT fix the regression.
+- Analyzer0 errors,1 warning,12 infos. Warning sign_in_page.dart72:57 unnecessary_non_null_assertion.
+- JavaScript release (--no-wasm-dry-run) still running at this entry.
+- git diff --check passed; worktree/lockfile clean.
+Logs /home/vscode/.local/share/intqaflow/pr13-d93af25-verification-20261004.
+No fix/deploy/merge/role/data changes. Bring unresolved repeated overflow back to founder before another Copilot correction cycle. Guest-group/backup/import/PDF/account UI acceptance remains pending on appropriate configured candidate; current hosted build has not been updated.
