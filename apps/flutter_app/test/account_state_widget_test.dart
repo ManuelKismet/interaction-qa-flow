@@ -13,10 +13,18 @@ import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dar
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 
 class _TestUser extends Fake implements User {
-  _TestUser({required this.isAnonymous, this.linkError});
+  _TestUser({
+    required this.isAnonymous,
+    this.linkError,
+    this.verificationEmailError,
+    this.reloadError,
+  });
 
   @override
-  final bool isAnonymous;
+  bool isAnonymous;
+
+  @override
+  bool get emailVerified => false;
 
   @override
   String? get email => 'account@example.test';
@@ -25,19 +33,32 @@ class _TestUser extends Fake implements User {
   String get uid => 'account-uid';
 
   final FirebaseAuthException? linkError;
+  final FirebaseAuthException? verificationEmailError;
+  final FirebaseAuthException? reloadError;
   int verificationEmailAttempts = 0;
+  int linkAttempts = 0;
+  int reloadAttempts = 0;
 
   @override
   Future<void> sendEmailVerification([
     ActionCodeSettings? actionCodeSettings,
   ]) async {
     verificationEmailAttempts++;
+    if (verificationEmailError != null) throw verificationEmailError!;
+  }
+
+  @override
+  Future<void> reload() async {
+    reloadAttempts++;
+    if (reloadError != null) throw reloadError!;
   }
 
   @override
   Future<UserCredential> linkWithCredential(AuthCredential credential) async {
+    linkAttempts++;
     if (linkError != null) throw linkError!;
-    throw StateError('Unexpected account-link request.');
+    isAnonymous = false;
+    return _TestUserCredential(this);
   }
 }
 
@@ -95,6 +116,24 @@ class _MemoryGuestStorage implements GuestStorage {
 
   @override
   void remove() => value = null;
+}
+
+class _SignInLauncher extends StatelessWidget {
+  const _SignInLauncher();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: TextButton(
+        onPressed: () => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => const SignInPage(linkGuestIdentity: true),
+          ),
+        ),
+        child: const Text('Open account linking'),
+      ),
+    ),
+  );
 }
 
 void main() {
@@ -194,7 +233,7 @@ void main() {
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
     expect(find.text('Shared guest identity'), findsOneWidget);
-    expect(find.text('Link guest recovery'), findsOneWidget);
+    expect(find.text('Create account from this guest'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
     expect(find.text('Organisation admin'), findsNothing);
   });
@@ -420,6 +459,49 @@ void main() {
     expect(find.text('No organisation membership'), findsNothing);
   });
 
+  testWidgets('guest-group lookup errors remain distinct from no access and retry', (
+    tester,
+  ) async {
+    final user = _TestUser(isAnonymous: false);
+    var attempts = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(user)),
+          accountMembershipStatusProvider.overrideWith(
+            (ref) async => AccountMembershipStatus.noMembership,
+          ),
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(
+            GuestWorkspaceStore(_MemoryGuestStorage()),
+          ),
+          currentGuestGroupsProvider.overrideWith((ref) async {
+            attempts++;
+            throw StateError('private test detail');
+          }),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            accountUser: user,
+            membershipStatus: AccountMembershipStatus.noMembership,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Existing guest-group access could not be checked'),
+      findsOneWidget,
+    );
+    expect(find.text('private test detail'), findsNothing);
+    expect(find.text('No approved guest groups are linked to this device.'), findsNothing);
+    await tester.tap(find.text('Retry guest groups'));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+  });
+
   testWidgets('link conflict keeps the current shared guest identity', (
     tester,
   ) async {
@@ -437,13 +519,13 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('Linking recovery keeps this guest identity'),
+      find.textContaining('Create a sign-in account from this guest'),
       findsOneWidget,
     );
     await tester.enterText(find.byType(TextField).first, 'account@example.test');
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
     await tester.tap(
-      find.widgetWithText(FilledButton, 'Link guest recovery'),
+      find.widgetWithText(FilledButton, 'Create account from this guest'),
     );
     await tester.pumpAndSettle();
 
@@ -454,6 +536,106 @@ void main() {
     expect(auth.createAttempts, 0);
     expect(auth.signInAttempts, 0);
     expect(identical(auth.currentUser, user), isTrue);
+  });
+
+  testWidgets('guest account linking verifies, refreshes, and closes on success', (
+    tester,
+  ) async {
+    final user = _TestUser(isAnonymous: true);
+    final auth = _TestFirebaseAuth(user);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(home: _SignInLauncher()),
+      ),
+    );
+    await tester.tap(find.text('Open account linking'));
+    await tester.pumpAndSettle();
+    expect(find.text('Create account from this guest'), findsNWidgets(2));
+
+    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
+    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Create account from this guest'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(user.linkAttempts, 1);
+    expect(user.isAnonymous, isFalse);
+    expect(user.verificationEmailAttempts, 1);
+    expect(user.reloadAttempts, 1);
+    expect(find.byType(SignInPage), findsNothing);
+    expect(
+      find.textContaining('The guest identity and group access are retained'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('guest linking reports verification-email failure after linking', (
+    tester,
+  ) async {
+    final user = _TestUser(
+      isAnonymous: true,
+      verificationEmailError: FirebaseAuthException(code: 'network-request-failed'),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user))],
+        child: const MaterialApp(home: _SignInLauncher()),
+      ),
+    );
+    await tester.tap(find.text('Open account linking'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
+    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Create account from this guest'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(user.isAnonymous, isFalse);
+    expect(user.verificationEmailAttempts, 1);
+    expect(find.byType(SignInPage), findsNothing);
+    expect(
+      find.textContaining('verification email could not be sent'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('group access remain linked'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('guest linking reports account refresh failure after linking', (
+    tester,
+  ) async {
+    final user = _TestUser(
+      isAnonymous: true,
+      reloadError: FirebaseAuthException(code: 'network-request-failed'),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user))],
+        child: const MaterialApp(home: _SignInLauncher()),
+      ),
+    );
+    await tester.tap(find.text('Open account linking'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
+    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Create account from this guest'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(user.isAnonymous, isFalse);
+    expect(user.verificationEmailAttempts, 1);
+    expect(user.reloadAttempts, 1);
+    expect(find.byType(SignInPage), findsNothing);
+    expect(
+      find.textContaining('account status could not be refreshed'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('account creation sends verification email', (tester) async {
@@ -476,7 +658,7 @@ void main() {
     );
     await tester.enterText(find.byType(TextField).first, 'new@example.test');
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(find.text('Create account'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Create a separate account'));
     await tester.pumpAndSettle();
 
     expect(auth.createAttempts, 1);
@@ -506,16 +688,22 @@ void main() {
     );
     await tester.enterText(find.byType(TextField).first, 'account@example.test');
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(find.text('Create account'));
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Create a separate account'),
+    );
     await tester.pumpAndSettle();
 
     expect(
       find.textContaining('does not transfer the current guest group membership'),
       findsOneWidget,
     );
-    await tester.tap(find.text('Keep guest identity'));
+    await tester.tap(find.text('Cancel account creation'));
     await tester.pumpAndSettle();
     expect(auth.createAttempts, 0);
     expect(identical(auth.currentUser, user), isTrue);
+    expect(
+      find.textContaining('Account creation cancelled. Your guest identity'),
+      findsOneWidget,
+    );
   });
 }

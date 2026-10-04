@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:int_qa_flow/core/api/api_exception.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/core/platform/pdf_download.dart';
@@ -329,9 +330,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final existingGuestGroups = _hasSignedInNonGuestUser
-        ? ref.watch(currentGuestGroupsProvider).value ?? const []
-        : const <Map<String, dynamic>>[];
+    final guestGroupsState = _hasSignedInNonGuestUser
+        ? ref.watch(currentGuestGroupsProvider)
+        : null;
+    final existingGuestGroups = guestGroupsState?.value ?? const [];
     final canOpenGuestGroups =
         widget.sharedIdentityActive || existingGuestGroups.isNotEmpty;
     return DefaultTabController(
@@ -359,6 +361,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                 tooltip: 'Enable shared guest groups',
                 onPressed: _startSharedGuestIdentity,
                 icon: const Icon(Icons.cloud_upload_outlined),
+              ),
+            else if (guestGroupsState?.hasError == true)
+              IconButton(
+                tooltip: 'Retry guest-group access check',
+                onPressed: () => ref.invalidate(currentGuestGroupsProvider),
+                icon: const Icon(Icons.refresh),
               ),
             _accountMenu(),
             PopupMenuButton<String>(
@@ -434,6 +442,19 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                       child: Text(
                         'Shared group creation and invitation redemption use a Firebase anonymous identity. This signed-in account was not switched or granted guest access.',
                       ),
+                    ),
+                  if (guestGroupsState?.hasError == true)
+                    MaterialBanner(
+                      content: const Text(
+                        'Existing guest-group access could not be checked. This does not confirm that no groups are linked.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () =>
+                              ref.invalidate(currentGuestGroupsProvider),
+                          child: const Text('Retry guest groups'),
+                        ),
+                      ],
                     ),
                   if (_loadError != null)
                     MaterialBanner(
@@ -585,10 +606,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       );
       if (status == ShareResultStatus.dismissed) return;
       if (status == ShareResultStatus.success) {
-        if (!kIsWeb && mounted) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Choose a destination in the system sheet to save the PDF.'),
+            SnackBar(
+              content: Text(
+                kIsWeb
+                    ? 'Browser PDF download was requested. If no file appears, use Browser print / Save PDF.'
+                    : 'Choose a destination in the system sheet to save the PDF.',
+              ),
             ),
           );
         }
@@ -681,7 +706,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       builder: (context) => AlertDialog(
         title: const Text('PDF action unavailable'),
         content: const Text(
-          'This browser or device cannot complete that PDF action. Download the PDF and attach it using your preferred app, or use the print-to-PDF fallback.',
+          'Direct download saves a PDF file. Browser print opens the report in a new tab; choose Print → Save as PDF in your browser.',
         ),
         actions: [
           TextButton(
@@ -690,11 +715,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, 'print'),
-            child: const Text('Print / Save PDF fallback'),
+            child: const Text('Browser print / Save PDF'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, 'download'),
-            child: const Text('Download PDF'),
+            child: const Text('Try direct PDF download'),
           ),
         ],
       ),
@@ -716,7 +741,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
           guestReportFilename(report),
         );
         if (status == ShareResultStatus.dismissed) return;
-        if (status != ShareResultStatus.success && mounted) {
+        if (status == ShareResultStatus.success && mounted && kIsWeb) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Browser PDF download was requested. If no file appears, use Browser print / Save PDF.',
+              ),
+            ),
+          );
+        } else if (status != ShareResultStatus.success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Direct download is unavailable on this device. Use the print fallback.'),
@@ -829,7 +862,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
           if (widget.sharedIdentityActive)
             const PopupMenuItem(
               value: 'link-guest',
-              child: Text('Link guest recovery'),
+              child: Text('Create account from this guest'),
             ),
         ],
         if (widget.onRetryAccount != null) ...[
@@ -3158,7 +3191,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                   onTap: () => _openEntry(entry),
                 ),
               ),
-        ] else if (!_busy && _groups.isEmpty)
+        ] else if (_error == null && !_busy && _groups.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Text(
@@ -3180,12 +3213,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 }
 
 String _safeGuestError(Object error) {
+  if (error is ApiException) return error.message;
   final text = error.toString();
   if (text.contains('429')) return 'Request limit reached. Wait before trying again.';
   if (text.contains('403')) return 'This guest group action is not allowed for your role.';
   if (text.contains('404')) return 'This group, invitation or entry is unavailable.';
   if (text.contains('401')) return 'Guest identity is unavailable. Sign in again to continue.';
-  return 'The guest group request failed. Check your connection and try again.';
+  return 'The guest group request could not be verified. Check your sign-in and group access, then retry.';
 }
 
 Future<ShareResultStatus?> _downloadPdfOrShareFile(
@@ -3360,6 +3394,9 @@ class _GuestReportPreviewDialog extends StatelessWidget {
             'Some uncommon characters or emoji may not render in the PDF.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
+          const Text(
+            'Download PDF saves a file directly. Browser print opens a separate report; choose Print → Save as PDF.',
+          ),
           const Divider(),
           Expanded(
             child: ListView(
@@ -3387,7 +3424,7 @@ class _GuestReportPreviewDialog extends StatelessWidget {
           ),
           TextButton(
             onPressed: onPrintFallback,
-            child: const Text('Print / Save PDF fallback'),
+            child: const Text('Browser print / Save PDF'),
           ),
           OutlinedButton.icon(
             onPressed: onShare,
@@ -3458,7 +3495,7 @@ class _GuestPortablePreviewDialog extends StatelessWidget {
           ),
           TextButton(
             onPressed: onPrintFallback,
-            child: const Text('Print / Save PDF fallback'),
+            child: const Text('Browser print / Save PDF'),
           ),
           OutlinedButton.icon(
             onPressed: onShare,

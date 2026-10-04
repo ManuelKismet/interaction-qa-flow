@@ -375,7 +375,7 @@ String buildGuestPortableHtml(GuestPortableDocument document) {
   return '''<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${_escapeHtml(document.title)} — PDF fallback</title>
+<title>${_escapeHtml(document.title)} — Interact report</title>
 <style>
 body { max-width: 850px; margin: 24px auto; padding: 32px; font: 16px Arial, sans-serif; line-height: 1.55; }
 p { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -384,7 +384,7 @@ section { margin-top: 24px; border-top: 1px solid #bbb; padding-top: 12px; }
 @page { margin: 18mm; }
 @media print { .toolbar { display: none; } body { margin: 0; padding: 0; } }
 </style></head><body>
-<nav class="toolbar"><button onclick="window.print()">Print / Save PDF fallback</button></nav>
+<nav class="toolbar"><button onclick="window.print()">Browser print / Save PDF</button></nav>
 <h1>${_escapeHtml(document.title)}</h1>
 <p>Report scope: ${_escapeHtml(document.scope)}<br>
 Report prepared: ${_escapeHtml(document.exportedAt.toIso8601String())}</p>
@@ -489,9 +489,17 @@ $followUps''';
     main { max-width: 850px; margin: 24px auto; padding: 40px; background: #fff; }
     .metadata { line-height: 1.6; overflow-wrap: anywhere; }
     .question { margin-top: 24px; padding-top: 16px; border-top: 1px solid #dadce0; }
-    .question h2, .answer p { overflow-wrap: anywhere; white-space: pre-wrap; }
+    .question h2 { break-after: avoid-page; page-break-after: avoid; }
+    .answer p { overflow-wrap: anywhere; white-space: pre-wrap; }
     .path, .context { color: #5f6368; font-size: 13px; }
-    .answer { margin: 12px 0; padding: 12px 16px; border-left: 3px solid #365f9f; background: #f8f9fa; }
+    .answer {
+      margin: 12px 0;
+      padding: 12px 16px;
+      border-left: 3px solid #365f9f;
+      background: #f8f9fa;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+    }
     .answer p { line-height: 1.55; }
     .empty { color: #5f6368; font-style: italic; }
     @page { size: auto; margin: 18mm; }
@@ -500,8 +508,8 @@ $followUps''';
   </style>
 </head>
 <body>
-  <nav class="toolbar" aria-label="PDF fallback">
-    <button type="button" onclick="window.print()">Print / Save PDF fallback</button>
+  <nav class="toolbar" aria-label="Browser print controls">
+    <button type="button" onclick="window.print()">Browser print / Save PDF</button>
     <button type="button" onclick="window.close()">Close preview</button>
   </nav>
   <main>

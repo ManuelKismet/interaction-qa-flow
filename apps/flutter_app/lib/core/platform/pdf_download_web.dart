@@ -12,8 +12,13 @@ Future<bool> downloadPdf(Uint8List bytes, String filename) async {
   final anchor = web.HTMLAnchorElement()
     ..href = url
     ..download = filename;
-  anchor.click();
-  await Future<void>.delayed(const Duration(seconds: 1));
-  web.URL.revokeObjectURL(url);
-  return true;
+  web.document.body?.append(anchor);
+  try {
+    anchor.click();
+    await Future<void>.delayed(const Duration(seconds: 1));
+    return true;
+  } finally {
+    anchor.remove();
+    web.URL.revokeObjectURL(url);
+  }
 }

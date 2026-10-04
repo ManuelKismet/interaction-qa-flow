@@ -25,11 +25,13 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   String? _message;
   String? _error;
   bool _createAccountMode = false;
+  bool _linkGuestMode = false;
 
   @override
   void initState() {
     super.initState();
-    _createAccountMode = widget.linkGuestIdentity || widget.createAccount;
+    _linkGuestMode = widget.linkGuestIdentity;
+    _createAccountMode = _linkGuestMode || widget.createAccount;
   }
 
   @override
@@ -53,7 +55,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         setState(() {
           _message = 'If that account exists, a reset email has been sent.';
         });
-      } else if (_createAccountMode && widget.linkGuestIdentity) {
+      } else if (_createAccountMode && _linkGuestMode) {
         final user = auth.currentUser;
         if (user?.isAnonymous != true) {
           setState(() {
@@ -66,7 +68,33 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           email: _email.text.trim(),
           password: _password.text,
         );
-        await user!.linkWithCredential(credential);
+        final linkedCredential = await user!.linkWithCredential(credential);
+        final linkedUser = linkedCredential.user ?? user!;
+        var verificationEmailFailed = false;
+        try {
+          if (!linkedUser.emailVerified) {
+            await linkedUser.sendEmailVerification();
+          }
+        } on FirebaseAuthException {
+          verificationEmailFailed = true;
+        }
+        try {
+          await linkedUser.reload();
+        } on FirebaseAuthException {
+          if (!mounted) return;
+          await _finishGuestLink(
+            'Account created from this guest, but the account status could not be refreshed. The guest identity and group access remain linked. Sign in again to verify the account state.',
+          );
+          return;
+        }
+        if (!mounted) return;
+        await _finishGuestLink(
+          verificationEmailFailed
+              ? 'Account created from this guest, but the verification email could not be sent. The guest identity and group access remain linked. Sign in normally and contact your administrator if verification is still pending.'
+              : linkedUser.emailVerified
+              ? 'Account created from this guest and verified. Group access is retained; local work stays on this device.'
+              : 'Account created from this guest. Check your email to verify it. The guest identity and group access are retained; local work stays on this device.',
+        );
       } else if (_createAccountMode) {
         if (auth.currentUser?.isAnonymous == true) {
           final switchIdentity = await showDialog<bool>(
@@ -75,13 +103,14 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               title: const Text('Create a separate account?'),
               content: const Text(
                 'This creates a new signed-in identity and does not transfer '
-                'the current guest group membership. Link guest recovery instead '
-                'to keep using this identity. Local work stays on this device.',
+                'the current guest group membership. Create an account from this '
+                'guest instead to keep the same identity and group access. Local '
+                'work stays on this device.',
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Keep guest identity'),
+                  child: const Text('Cancel account creation'),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(context, true),
@@ -90,7 +119,15 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               ],
             ),
           );
-          if (switchIdentity != true || !mounted) return;
+          if (switchIdentity != true || !mounted) {
+            if (switchIdentity == false && mounted) {
+              setState(() {
+                _message =
+                    'Account creation cancelled. Your guest identity, group access, and local work are unchanged.';
+              });
+            }
+            return;
+          }
         }
         final credential = await auth.createUserWithEmailAndPassword(
           email: _email.text.trim(),
@@ -189,6 +226,28 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     }
   }
 
+  Future<void> _finishGuestLink(String message) async {
+    if (!mounted) return;
+    setState(() {
+      _createAccountMode = false;
+      _message = message;
+    });
+    final navigator = Navigator.of(context);
+    if (!navigator.canPop()) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    await navigator.maybePop();
+  }
+
+  String _actionLabel() {
+    if (_busy) return 'Please wait…';
+    if (_resetMode) return 'Send reset email';
+    if (!_createAccountMode) return 'Sign in';
+    if (!_linkGuestMode) return 'Create a separate account';
+    return ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true
+        ? 'Create account from this guest'
+        : 'Guest identity unavailable';
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         body: SafeArea(
@@ -220,8 +279,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                               _resetMode
                                   ? 'Reset password'
                                   : _createAccountMode
-                                      ? widget.linkGuestIdentity
-                                          ? 'Link guest recovery'
+                                      ? _linkGuestMode
+                                          ? 'Create account from this guest'
                                           : 'Create a separate account'
                                       : 'Sign in to IntQAFlow',
                               style: Theme.of(context).textTheme.headlineSmall,
@@ -229,8 +288,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                             if (_createAccountMode) ...[
                               const SizedBox(height: 8),
                               Text(
-                                widget.linkGuestIdentity
-                                    ? 'Linking recovery keeps this guest identity and its group access. It does not create a separate account or upload local work.'
+                                _linkGuestMode
+                                    ? 'Create a sign-in account from this guest to keep the same identity and group access. Local work stays on this device; it is not uploaded.'
                                     : 'This creates a separate account. It does not transfer guest-group access or upload local work.',
                               ),
                             ],
@@ -271,24 +330,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                             const SizedBox(height: 20),
                             FilledButton(
                               onPressed: _busy ? null : _submit,
-                              child: Text(
-                                _busy
-                                    ? 'Please wait…'
-                                    : _resetMode
-                                        ? 'Send reset email'
-                                        : _createAccountMode
-                                            ? widget.linkGuestIdentity &&
-                                                    ref
-                                                            .read(
-                                                              firebaseAuthProvider,
-                                                            )
-                                                            .currentUser
-                                                            ?.isAnonymous ==
-                                                        true
-                                                ? 'Link guest recovery'
-                                                : 'Create account'
-                                            : 'Sign in',
-                              ),
+                              child: Text(_actionLabel()),
                             ),
                             TextButton(
                               onPressed: _busy
@@ -298,8 +340,10 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                                         _resetMode = false;
                                       } else if (_createAccountMode) {
                                         _createAccountMode = false;
+                                        _linkGuestMode = false;
                                       } else {
                                         _createAccountMode = true;
+                                        _linkGuestMode = false;
                                       }
                                       _error = null;
                                       _message = null;

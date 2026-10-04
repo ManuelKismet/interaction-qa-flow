@@ -81,7 +81,45 @@ class _PendingEntryRepository extends GuestGroupRepository {
   }
 }
 
+class _FailingGroupsRepository extends GuestGroupRepository {
+  _FailingGroupsRepository() : super(Dio());
+
+  var attempts = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async {
+    attempts++;
+    throw StateError('private test detail');
+  }
+}
+
 void main() {
+  testWidgets('group lookup failure does not claim there are no groups', (
+    tester,
+  ) async {
+    final repository = _FailingGroupsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('The guest group request could not be verified'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('No approved guest groups are linked'), findsNothing);
+    expect(find.text('private test detail'), findsNothing);
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(repository.attempts, 2);
+  });
+
   for (final action in ['Download / Share PDF', 'History']) {
     testWidgets(
       'does not open $action result after the entry dialog is dismissed',

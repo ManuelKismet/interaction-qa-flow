@@ -26,6 +26,25 @@ void main() {
     client.close();
   });
 
+  test('shared guest-group listing uses Firebase and App Check tokens', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _okList());
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await client.get<List<dynamic>>('/api/v1/guest/groups');
+
+    expect(adapter.requests.single.path, '/api/v1/guest/groups');
+    expect(
+      adapter.requests.single.headers['Authorization'],
+      '$_authorizationScheme current-id-token',
+    );
+    expect(
+      adapter.requests.single.headers['X-Firebase-AppCheck'],
+      'current-app-check-token',
+    );
+    client.close();
+  });
+
   test('refreshes expired sessions and signs out after a rejected refresh', () async {
     final tokens = _FakeTokenSource();
     final adapter = _RecordingAdapter((_) => _unauthorized());
@@ -122,6 +141,14 @@ class _RecordingAdapter implements HttpClientAdapter {
 
 ResponseBody _ok() => ResponseBody.fromString(
       '{}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+
+ResponseBody _okList() => ResponseBody.fromString(
+      '[]',
       200,
       headers: {
         Headers.contentTypeHeader: ['application/json'],

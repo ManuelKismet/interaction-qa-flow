@@ -96,6 +96,27 @@ void main() {
       }),
       isEmpty,
     );
+    final templateReport = composeGuestReport(
+      session: restored,
+      allParticipants: true,
+      participantId: null,
+      exportedAt: DateTime.utc(2026, 10, 3),
+    );
+    expect(templateReport.participantNames, ['Charlie', 'Participant 2']);
+    expect(
+      templateReport.questions.first.answers
+          .map((answer) => answer.participantName),
+      ['Charlie', 'Participant 2'],
+    );
+    final templateReportHtml = buildGuestReportDocument(
+      session: restored,
+      allParticipants: true,
+      participantId: null,
+      generatedAt: DateTime.utc(2026, 10, 3),
+    );
+    expect(templateReportHtml, contains('Answer — Charlie'));
+    expect(templateReportHtml, contains('Answer — Participant 2'));
+    expect(templateReportHtml, contains('Which component?'));
 
     final backup = GuestWorkspaceData(
       sessions: [restored],
@@ -189,6 +210,7 @@ void main() {
     expect(selected, contains('Unanswered.'));
     expect(all, contains('private Alice answer'));
     expect(all, contains('private Bob answer'));
+    expect(all, contains('private deep answer'));
     expect(all, contains('Bob only'));
     expect(all, contains('Which component?'));
     expect(all, contains('Triggered by B &amp; B: private Bob answer'));
@@ -197,6 +219,9 @@ void main() {
       contains('Triggered by Alice &lt;A&gt;: private Alice branch answer'),
     );
     expect(all, contains('All participants'));
+    expect(all, contains('break-after: avoid-page'));
+    expect(all, contains('page-break-inside: avoid'));
+    expect(all, contains('window.print()'));
 
     final selectedData = composeGuestReport(
       session: session,
@@ -260,6 +285,45 @@ void main() {
     expect(html, contains('A &amp; &lt;B&gt;'));
     expect(html, isNot(contains('<script>')));
     expect(html, isNot(contains('<img src=x')));
+  });
+
+  test('printable guest report retains long nested document content', () {
+    final session = {
+      'title': 'Long session',
+      'participants': [
+        {'id': 'p1', 'name': 'Participant One'},
+      ],
+      'questions': [
+        for (var index = 1; index <= 24; index++)
+          {
+            'id': 'q$index',
+            'text': 'Prompt $index',
+            'scope': 'shared',
+            'answers': [
+              {
+                'participant_id': 'p1',
+                'body': 'Answer body $index',
+                'follow_ups': [],
+              },
+            ],
+          },
+      ],
+    };
+
+    final html = buildGuestReportDocument(
+      session: session,
+      allParticipants: true,
+      participantId: null,
+      generatedAt: DateTime.utc(2026, 10, 3),
+    );
+
+    expect(html, contains('Prompt 24'));
+    expect(html, contains('Answer body 24'));
+    expect(html, contains('@page'));
+    expect(html, contains('break-after: avoid-page'));
+    expect(html, contains('page-break-inside: avoid'));
+    expect(html, contains('window.print()'));
+    expect(html, contains('Browser print / Save PDF'));
   });
 
   test('PDF reports are valid portable documents with safe filenames', () async {

@@ -7,6 +7,11 @@ class ApiException implements Exception {
 
   factory ApiException.fromDio(DioException error) {
     final statusCode = error.response?.statusCode;
+    if (statusCode == 401) {
+      return const ApiException(
+        'The request was not authorized. Check your sign-in and application verification, then retry.',
+      );
+    }
     if (statusCode == 403) {
       return const ApiException('You do not have permission to do that.');
     }

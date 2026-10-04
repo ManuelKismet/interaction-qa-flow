@@ -216,7 +216,16 @@ void main() {
     expect(
       find.descendant(
         of: preview,
-        matching: find.text('Print / Save PDF fallback'),
+        matching: find.text('Browser print / Save PDF'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: preview,
+        matching: find.textContaining(
+          'Download PDF saves a file directly. Browser print opens a separate report',
+        ),
       ),
       findsOneWidget,
     );
