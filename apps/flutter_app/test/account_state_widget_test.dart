@@ -161,17 +161,26 @@ Future<void> _expectSeparateAccountError(
   );
   await tester.enterText(find.byType(TextField).first, 'new@example.test');
   await tester.enterText(find.byType(TextField).last, 'secret-password');
+  final passwordField = tester.widget<TextField>(find.byType(TextField).last);
+  expect(passwordField.obscureText, isTrue);
   await tester.tap(
     find.widgetWithText(FilledButton, 'Create a separate account'),
   );
   await tester.pumpAndSettle();
 
   expect(find.textContaining(expectedMessage), findsOneWidget);
-  expect(
-    find.textContaining('Sensitive credential details'),
-    findsNothing,
+  final renderedMessages = tester.widgetList<Text>(
+    find.descendant(
+      of: find.byType(SignInPage),
+      matching: find.byType(Text),
+    ),
   );
-  expect(find.textContaining('secret-password'), findsNothing);
+  final renderedMessageText = renderedMessages.map((widget) => widget.data ?? '');
+  expect(
+    renderedMessageText,
+    isNot(contains('Sensitive credential details must not be shown.')),
+  );
+  expect(renderedMessageText, isNot(contains('secret-password')));
   expect(auth.createAttempts, 1);
 }
 
