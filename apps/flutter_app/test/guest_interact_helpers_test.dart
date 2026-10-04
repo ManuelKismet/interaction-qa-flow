@@ -568,10 +568,9 @@ void main() {
     );
   });
 
-  test(
+  testWidgets(
     'PDF export refuses unsupported glyphs without losing report text',
-    () async {
-      TestWidgetsFlutterBinding.ensureInitialized();
+    (tester) async {
       final session = _sessionFixture();
       final questions = (session['questions'] as List)
           .cast<Map<String, dynamic>>();
@@ -585,12 +584,17 @@ void main() {
         exportedAt: DateTime.utc(2026, 10, 3),
       );
 
-      UnsupportedPdfCharactersException? unsupported;
-      try {
-        await buildGuestReportPdf(report);
-      } on UnsupportedPdfCharactersException catch (error) {
-        unsupported = error;
-      }
+      final unsupported =
+          await tester.runAsync<UnsupportedPdfCharactersException?>(
+        () async {
+          try {
+            await buildGuestReportPdf(report);
+          } on UnsupportedPdfCharactersException catch (error) {
+            return error;
+          }
+          return null;
+        },
+      );
       expect(unsupported, isNotNull);
       expect(unsupported!.codePoints, containsAll([0x4e2d, 0x1f9d1]));
       final html = buildGuestReportDocument(
