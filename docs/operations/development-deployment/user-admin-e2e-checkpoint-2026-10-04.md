@@ -165,3 +165,13 @@ Lesson: independent tested backend fixes can be rolled out to development while 
 - Documentation remains local on the diverged development docs branch; a separate documentation review branch is being prepared so accumulated checkpoints can be published without resetting or force-pushing the development branch.
 
 Lesson: distinguish a failed test assertion from a test file that cannot compile; neither signs off the admin UI. A backend contract test plus live frontend retest is required to close Reopen after deployment.
+
+### Reconnection checkpoint and published documentation
+
+- Published the cumulative four-file documentation checkpoint as commit `2be875197ee73e1d785f2b92735f4fa739b07b6d` on `docs/user-admin-e2e-checkpoint-20261004`; draft PR 15 is open, unmerged.
+- Hosted admin prefix search `handov` returned both verified synthetic questions with Keyword match labels. Backend revision `intqaflow-dev-api-review80b0c61` remains live at 100%; frontend remains `b3d6491`.
+- Exact frontend head `b37ac7e` passed 104 tests and failed one admin test at line 210: the department creation control was above the current viewport, while the test scrolled downward. Analyzer and release build were withheld after the failed suite.
+- A temporary diagnostic changing the second scroll delta to -300 advanced the targeted suite to the team member selector assertion at line 316, which found no matching long display name. Targeted result: two passed, one failed. The diagnostic source edit was restored; it is not a release candidate or committed fix.
+- Copilot subsequently pushed `bae1eed5c92b9bf4c360935ee023305f2fbf8d0c`, changing that same scroll delta to -300. Exact-head tests are running; deployment remains gated.
+- Lesson: detach background Flutter commands from terminal input with nohup and redirected stdin; an attached background run can disturb the interactive terminal. A new terminal restored command execution.
+- Production, the old local database, and the unrelated migration document remain excluded. Remaining department, team, answer-owner, regular-user permission and organisation session checks are still pending.
