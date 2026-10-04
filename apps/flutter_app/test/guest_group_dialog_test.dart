@@ -229,7 +229,10 @@ void main() {
     );
 
     await tester.tap(find.text('Preview and share local work'));
-    await tester.pumpAndSettle();
+    await _pumpUntilFound(
+      tester,
+      find.text('Preview sharing to Local Safety Team'),
+    );
     expect(find.text('Preview sharing to Local Safety Team'), findsOneWidget);
     expect(
       find.textContaining('uploads selected copies online to Local Safety Team'),
@@ -280,14 +283,20 @@ void main() {
     );
 
     await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+    await _pumpUntilGone(
+      tester,
+      find.text('Preview sharing to Local Safety Team'),
+    );
     expect(repository.sharedKnowledgeIds, isNull);
     expect((await store.load()).sessions.single['title'], 'Private interview');
 
     await tester.tap(find.text('Preview and share local work'));
-    await tester.pumpAndSettle();
+    await _pumpUntilFound(
+      tester,
+      find.text('Preview sharing to Local Safety Team'),
+    );
     await tester.tap(find.text('Local knowledge'));
-    await tester.pumpAndSettle();
+    await tester.pump();
     await tester.tap(find.text('Share selected with group'));
     await tester.pumpAndSettle();
 
@@ -358,4 +367,20 @@ Future<void> _pumpUntilEnabled(WidgetTester tester, Finder finder) async {
     }
   }
   fail('Widget did not become enabled: $finder');
+}
+
+Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 40; attempt++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (finder.evaluate().isNotEmpty) return;
+  }
+  fail('Widget did not appear: $finder');
+}
+
+Future<void> _pumpUntilGone(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 40; attempt++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (finder.evaluate().isEmpty) return;
+  }
+  fail('Widget did not disappear: $finder');
 }
