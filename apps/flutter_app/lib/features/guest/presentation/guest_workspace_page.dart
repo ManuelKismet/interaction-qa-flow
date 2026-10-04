@@ -361,7 +361,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                 tooltip: 'Enable shared guest groups',
                 onPressed: _startSharedGuestIdentity,
                 icon: const Icon(Icons.cloud_upload_outlined),
-              ),
+              )
             else if (guestGroupsState?.hasError == true)
               IconButton(
                 tooltip: 'Retry guest-group access check',
@@ -1645,19 +1645,35 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             ),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.tonal(
-                onPressed: participants.isEmpty ? null : () => _addQuestion(shared: true),
-                child: const Text('Add shared question'),
-              ),
-              FilledButton.tonal(
-                onPressed: participants.isEmpty ? null : () => _addQuestion(shared: false),
-                child: const Text('Add question for selected participant'),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 440;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonal(
+                    onPressed: participants.isEmpty
+                        ? null
+                        : () => _addQuestion(shared: true),
+                    child: const Text('Add shared question'),
+                  ),
+                  Tooltip(
+                    message: 'Add question for selected participant',
+                    child: FilledButton.tonal(
+                      onPressed: participants.isEmpty
+                          ? null
+                          : () => _addQuestion(shared: false),
+                      child: Text(
+                        compact
+                            ? 'Add participant question'
+                            : 'Add question for selected participant',
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           if (questions.isEmpty && participants.isNotEmpty)
             const Padding(

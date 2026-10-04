@@ -40,6 +40,21 @@ void main() {
     expect(find.text('Active participant'), findsOneWidget);
     expect(find.text('Add shared question'), findsOneWidget);
     expect(find.text('Add follow-up'), findsWidgets);
+    expect(
+      find.text('Add participant question'),
+      findsOneWidget,
+      reason: 'The narrow action label must fit while preserving its meaning.',
+    );
+    expect(
+      find.text(
+        'A participant name with enough words to wrap at a narrow mobile width',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('A nested follow-up question with a deliberately long label 8'),
+      findsOneWidget,
+    );
     final participantGuidance = tester.widget<DropdownButtonFormField<String>>(
       find.byWidgetPredicate(
         (widget) =>
