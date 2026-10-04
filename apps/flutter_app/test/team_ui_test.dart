@@ -209,7 +209,7 @@ void main() {
         find.byKey(const ValueKey('create-department-button'));
     await tester.scrollUntilVisible(
       createDepartmentButton,
-      300,
+      -300,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
