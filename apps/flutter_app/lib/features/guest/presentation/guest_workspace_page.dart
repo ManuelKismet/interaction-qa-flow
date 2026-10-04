@@ -1086,7 +1086,6 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
           ],
         ),
       ),
-        ),
     );
   }
 }

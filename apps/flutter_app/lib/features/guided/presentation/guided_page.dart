@@ -231,7 +231,7 @@ class _SessionsList extends StatelessWidget {
               onTap: () => context.go('/guided/sessions/${session.id}'),
             );
           },
-        );
+        ),
       ),
     );
   }
