@@ -175,3 +175,10 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Copilot subsequently pushed `bae1eed5c92b9bf4c360935ee023305f2fbf8d0c`, changing that same scroll delta to -300. Exact-head tests are running; deployment remains gated.
 - Lesson: detach background Flutter commands from terminal input with nohup and redirected stdin; an attached background run can disturb the interactive terminal. A new terminal restored command execution.
 - Production, the old local database, and the unrelated migration document remain excluded. Remaining department, team, answer-owner, regular-user permission and organisation session checks are still pending.
+
+### Exact bae1eed frontend result
+
+- Full suite on exact `bae1eed5c92b9bf4c360935ee023305f2fbf8d0c`: 104 passed, one failed, 45 seconds. The department creation scroll gate is fixed.
+- Remaining failure is `team_ui_test.dart:316`: after tapping the last generic Select a member control and choosing the long-name fixture, the keyed `team-member-selector-team-1` has no selected display-name text. The selected-item builder renders displayName; the test may have opened a different department/team selector. Copilot comment `5985641380` requests a consistently keyed control plus real addTeamMember validation. No conclusion that member assignment itself is broken yet.
+- Analyzer and release build remain withheld after the failed test suite. No frontend deployment or merge occurred. Backend 84-test isolated PostgreSQL evidence and the live search fix remain valid because the new head changes only the frontend test.
+- Lesson: scope interaction and outcome assertions to the same control when several identical dropdown hints exist; scrolling can change which generic last match is visible.
