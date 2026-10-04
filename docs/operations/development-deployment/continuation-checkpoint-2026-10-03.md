@@ -205,3 +205,9 @@ Post-sign-in original-session all-participant report visually confirms root Blue
 PR13 new head f8b42bc5e9a62db78b4f05754299e72ee004765e (Fix Dart syntax blockers) was fetched and pinned in /workspaces/intqaflow-review-pr13-f8b42bc. Patch changes only two delimiter sites in guest_workspace_page.dart/guided_page.dart; it does not establish disposition of the broader fresh UX findings.
 Exact-head backend regression: 82 passed, 1 warning, 23.58s. Flutter pub get passed; Flutter full suite, analyzer and release web build started sequentially with stdin redirected /dev/null. Logs /home/vscode/.local/share/intqaflow/pr13-f8b42bc-verification-20261004. Results still pending at this entry; do not claim completion from launch. No deployment or merge.
 Hosted API /health returned status ok, environment development. This is liveness, not proof schema/database readiness.
+
+
+### f8b42bc verification results
+Flutter full suite completed: 82 passed, 1 failed in 1m48s. Failure guest_interact_widget_test.dart “long labels and nested branches fit a narrow guest layout”: tester.takeException expected null, got RenderFlex horizontal overflow 10px; assertion line51. This is a widget regression, not a compilation-load failure.
+Analyzer: zero errors, zero warnings, 12 infos.
+Initial release build failed after75.5s because dart2js compiler exited -15 (terminated), with optional Wasm dry-run failure241. Do not classify this as a remaining syntax defect or claim resource cause proven. JavaScript-only retry started with --no-wasm-dry-run; log build-js-retry.log, result pending. No new application fix cycle sent for this newly discovered overflow yet; report to founder first.
