@@ -364,6 +364,23 @@ void main() {
     await tester.tap(find.text('Preview import'));
     await tester.pumpAndSettle();
     expect(find.text('Preview local backup import'), findsOneWidget);
+    expect(
+      find.text(
+        'Selected items are added locally. Existing items with matching IDs are kept unchanged.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.ancestor(
+              of: find.text('New backup item'),
+              matching: find.byType(CheckboxListTile),
+            ),
+          )
+          .value,
+      isTrue,
+    );
     await tester.tap(find.text('Import selected locally'));
     await tester.pumpAndSettle();
 

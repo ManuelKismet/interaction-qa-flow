@@ -2668,13 +2668,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     await _run(() async {
       final local = await ref.read(guestWorkspaceStoreProvider).load();
       if (!mounted) return;
+      final groupName = _group?['name'] as String? ?? 'this guest group';
       final selection = await showDialog<_GuestImportSelection>(
         context: context,
         builder: (context) => _GuestImportPreview(
           data: local,
-          title: 'Preview local work to share',
+          title: 'Preview sharing to $groupName',
           confirmLabel: 'Share selected with group',
           includeTemplates: false,
+          shareWithGroup: true,
+          groupName: groupName,
         ),
       );
       if (selection == null || !mounted) return;
@@ -3685,22 +3688,28 @@ class _GuestImportPreview extends StatefulWidget {
     this.title = 'Confirm selected local import',
     this.confirmLabel = 'Import selected locally',
     this.includeTemplates = true,
+    this.shareWithGroup = false,
+    this.groupName,
   });
 
   final GuestWorkspaceData data;
   final String title;
   final String confirmLabel;
   final bool includeTemplates;
+  final bool shareWithGroup;
+  final String? groupName;
 
   @override
   State<_GuestImportPreview> createState() => _GuestImportPreviewState();
 }
 
 class _GuestImportPreviewState extends State<_GuestImportPreview> {
-  late final Set<String> _knowledge =
-      widget.data.knowledge.map((item) => item['id'] as String).toSet();
-  late final Set<String> _sessions =
-      widget.data.sessions.map((item) => item['id'] as String).toSet();
+  late final Set<String> _knowledge = widget.shareWithGroup
+      ? <String>{}
+      : widget.data.knowledge.map((item) => item['id'] as String).toSet();
+  late final Set<String> _sessions = widget.shareWithGroup
+      ? <String>{}
+      : widget.data.sessions.map((item) => item['id'] as String).toSet();
   late final Set<String> _templates =
       widget.includeTemplates
           ? widget.data.templates.map((item) => item['id'] as String).toSet()
@@ -3714,10 +3723,18 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
       height: MediaQuery.sizeOf(context).height * 0.65,
       child: ListView(
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Text(
-              'Selected items are added locally. Existing items with matching IDs are kept unchanged.',
+              widget.shareWithGroup
+                  ? 'Sharing uploads selected copies online to '
+                    '${widget.groupName ?? 'this guest group'}. '
+                    'Approved group members may be able to access them. '
+                    'Your local originals stay on this device. If an item '
+                    'from this identity was already shared to this group, '
+                    'its existing group copy is reused without being '
+                    'overwritten.'
+                  : 'Selected items are added locally. Existing items with matching IDs are kept unchanged.',
             ),
           ),
           for (final item in widget.data.knowledge)
@@ -3732,7 +3749,11 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
             CheckboxListTile(
               value: _sessions.contains(item['id']),
               title: Text(item['title'] as String? ?? 'Interact session'),
-              subtitle: const Text('Includes all participants and answer-owned branches'),
+              subtitle: Text(
+                widget.shareWithGroup
+                    ? 'Sharing uploads all participants and answer-owned branches'
+                    : 'Includes all participants and answer-owned branches',
+              ),
               onChanged: (selected) => setState(() {
                 _toggle(_sessions, item['id'] as String, selected);
               }),
@@ -3757,14 +3778,18 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
       FilledButton(
-        onPressed: () => Navigator.pop(
-          context,
-          _GuestImportSelection(
-            knowledgeIds: _knowledge,
-            sessionIds: _sessions,
-            templateIds: _templates,
-          ),
-        ),
+        onPressed: widget.shareWithGroup &&
+                _knowledge.isEmpty &&
+                _sessions.isEmpty
+            ? null
+            : () => Navigator.pop(
+                context,
+                _GuestImportSelection(
+                  knowledgeIds: _knowledge,
+                  sessionIds: _sessions,
+                  templateIds: _templates,
+                ),
+              ),
         child: Text(widget.confirmLabel),
       ),
     ],
