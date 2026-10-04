@@ -17,8 +17,8 @@ class GuestItemIdGenerator {
 }
 
 String _randomNamespace() => List.generate(
-  4,
-  (_) => _secureRandom.nextInt(1 << 32).toRadixString(16).padLeft(8, '0'),
+  8,
+  (_) => _secureRandom.nextInt(1 << 16).toRadixString(16).padLeft(4, '0'),
 ).join();
 
 class GuestWorkspaceData {
