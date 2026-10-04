@@ -132,6 +132,11 @@ void main() {
 
   testWidgets('admin surface shows team creation and membership controls',
       (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final questionsRepository = _FakeQuestionsRepository();
     final governanceRepository = _FakeGovernanceRepository();
     await tester.pumpWidget(ProviderScope(
@@ -227,7 +232,16 @@ void main() {
       ),
       findsOneWidget,
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Assign owner'));
+    final assignOwnerButton =
+        find.widgetWithText(FilledButton, 'Assign owner');
+    await tester.scrollUntilVisible(
+      assignOwnerButton,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(assignOwnerButton);
     await tester.pumpAndSettle();
     expect(
       governanceRepository.assignedDepartmentId,
@@ -269,6 +283,7 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
     await tester.tap(find.widgetWithText(FilledButton, 'Add team member'));
     await tester.pumpAndSettle();
     expect(governanceRepository.teamMemberId, answerOwnerMember.id);

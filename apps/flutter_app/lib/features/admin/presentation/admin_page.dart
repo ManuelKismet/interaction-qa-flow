@@ -281,7 +281,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                         DropdownMenuItem<String?>(
                           value: member.id,
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 220),
+                            constraints: const BoxConstraints(maxWidth: 160),
                             child: Text(
                               '${member.displayName} · ${member.email}',
                               maxLines: 1,
@@ -794,7 +794,7 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
                 DropdownMenuItem<String?>(
                   value: member.id,
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 280),
+                    constraints: const BoxConstraints(maxWidth: 160),
                     child: Text(
                       '${member.displayName} · ${member.email}',
                       maxLines: 1,
