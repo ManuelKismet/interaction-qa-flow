@@ -73,14 +73,12 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   _TestFirebaseAuth(
     this.currentUser, {
     this.createError,
-    this.signInError,
   });
 
   @override
   final User? currentUser;
 
   final FirebaseAuthException? createError;
-  final FirebaseAuthException? signInError;
   int createAttempts = 0;
   int signInAttempts = 0;
   int signOutAttempts = 0;
@@ -103,7 +101,6 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
     required String password,
   }) async {
     signInAttempts++;
-    if (signInError != null) throw signInError!;
     throw StateError('Unexpected sign-in.');
   }
 
