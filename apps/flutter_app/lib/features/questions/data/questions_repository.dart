@@ -270,6 +270,7 @@ class QuestionsRepository {
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/reopen',
+        data: const {},
       ),
     );
   }
