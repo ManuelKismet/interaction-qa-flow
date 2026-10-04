@@ -290,3 +290,8 @@ FULL Flutter97passed0fail74s; backend82passed1warning17.05s. Analyzer12issues11.
 Unaffected served-fefd195 live checks: malformed JSON rejected with explicit invalid-backup snackbar (native settled input, not rapid semantics fill). Unsupported schema_version999 attempt reached no import preview but version-specific feedback not captured; not signed off. Knowledge prefix preser finds original item; reload preserves question/details/edited answer and signed-in/no-membership messaging. No new Knowledge mutations.
 
 Final ff89808 analyzer0errors0warnings12infos (exit1, not lint-clean). JavaScript release build PASSED54.1s (exit0). Independent source/test/build gate passed. Configured development build/deployment and affected LIVE acceptance still pending; founder approval required before replacing hosted frontend. Current served fefd195,backend unchanged. No merge/data deletion.
+
+
+## Founder-authorized ff89808 development frontend publish — 4 October 2026
+Founder approved dev-frontend-only deployment and affected live retesting. Configured ff89808 build passed52.5s with existing dev Firebase/AppCheck public application configuration and hosted development API; project intqaflow-dev asserted. Backend unchanged.
+Rollback prior release sites/intqaflow-dev/releases/1791124679615000,version sites/intqaflow-dev/versions/4e602dc29ba184d6. Reviewed dev-only deploy_hosting.py invoked against ff89808 build/web with fresh authorized CLOUDSDK_CONFIG=/tmp/intqaflow-fresh-dev-auth. Publish outcome pending at this entry; do not infer success from invocation. Logs hosting-deploy.log/hosting-deploy.exit in ff89808 verification folder. Existing signed-in account/local fixtures retained; no merge or data cleanup.
