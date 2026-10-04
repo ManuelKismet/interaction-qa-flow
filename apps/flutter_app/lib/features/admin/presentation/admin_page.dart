@@ -6,6 +6,7 @@ import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
 import 'package:int_qa_flow/features/governance/data/governance_repository.dart';
 import 'package:int_qa_flow/features/governance/domain/governance_models.dart';
+import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 class AdminPage extends ConsumerStatefulWidget {
@@ -16,16 +17,17 @@ class AdminPage extends ConsumerStatefulWidget {
 }
 
 class _AdminPageState extends ConsumerState<AdminPage> {
-  final _userIdController = TextEditingController();
+  final _departmentNameController = TextEditingController();
   final _teamNameController = TextEditingController();
   final _teamDescriptionController = TextEditingController();
   String? _departmentId;
+  String? _ownerUserId;
   String? _teamDepartmentId;
   bool _busy = false;
 
   @override
   void dispose() {
-    _userIdController.dispose();
+    _departmentNameController.dispose();
     _teamNameController.dispose();
     _teamDescriptionController.dispose();
     super.dispose();
@@ -96,12 +98,39 @@ class _AdminPageState extends ConsumerState<AdminPage> {
         const SizedBox(height: 24),
         Text('Departments', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.end,
+          children: [
+            SizedBox(
+              width: 280,
+              child: TextField(
+                controller: _departmentNameController,
+                decoration: const InputDecoration(
+                  labelText: 'New department name',
+                ),
+                onSubmitted: (_) => _createDepartment(),
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: _busy ? null : _createDepartment,
+              icon: const Icon(Icons.add),
+              label: const Text('Create department'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         departments.when(
-          data: (items) => Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [for (final item in items) Chip(label: Text(item.name))],
-          ),
+          data: (items) => items.isEmpty
+              ? const Text('No departments yet. Create one to assign members.')
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final item in items) Chip(label: Text(item.name)),
+                  ],
+                ),
           loading: () => const LinearProgressIndicator(),
           error: (_, _) => const Text('Departments unavailable'),
         ),
@@ -158,7 +187,11 @@ class _AdminPageState extends ConsumerState<AdminPage> {
               ? const Text('No teams created.')
               : Column(
                   children: [
-                    for (final team in items) _TeamAdminTile(team: team),
+                    for (final team in items)
+                      _TeamAdminTile(
+                        team: team,
+                        organisationMembers: members,
+                      ),
                   ],
                 ),
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -175,14 +208,24 @@ class _AdminPageState extends ConsumerState<AdminPage> {
             SizedBox(
               width: 240,
               child: departments.when(
-                data: (items) => DropdownButtonFormField<String>(
+                data: (items) => DropdownButtonFormField<String?>(
                   initialValue: _departmentId,
                   decoration: const InputDecoration(labelText: 'Department'),
                   items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Select a department'),
+                    ),
                     for (final item in items)
-                      DropdownMenuItem(value: item.id, child: Text(item.name)),
+                      DropdownMenuItem<String?>(
+                        value: item.id,
+                        child: Text(item.name),
+                      ),
                   ],
-                  onChanged: (value) => setState(() => _departmentId = value),
+                  onChanged: (value) => setState(() {
+                    _departmentId = value;
+                    _ownerUserId = null;
+                  }),
                 ),
                 loading: () => const LinearProgressIndicator(),
                 error: (_, _) => const Text('Departments unavailable'),
@@ -190,13 +233,77 @@ class _AdminPageState extends ConsumerState<AdminPage> {
             ),
             SizedBox(
               width: 300,
-              child: TextField(
-                controller: _userIdController,
-                decoration: const InputDecoration(labelText: 'User ID'),
+              child: members.when(
+                data: (items) {
+                  final alreadyAssigned = (owners.value ?? const [])
+                      .where((owner) => owner.department.id == _departmentId)
+                      .map((owner) => owner.user.id)
+                      .toSet();
+                  final answerOwners = items
+                      .where(
+                        (member) =>
+                            member.status == 'active' &&
+                            member.role == 'answer_owner',
+                      )
+                      .toList();
+                  final eligible = answerOwners
+                      .where((member) => !alreadyAssigned.contains(member.id))
+                      .toList();
+                  if (_departmentId == null) {
+                    return const Text('Select a department first.');
+                  }
+                  if (owners.isLoading) {
+                    return const LinearProgressIndicator();
+                  }
+                  if (owners.hasError) {
+                    return const Text('Department owners unavailable.');
+                  }
+                  if (eligible.isEmpty) {
+                    return answerOwners.isEmpty
+                        ? const Text(
+                            'No active answer-owner members. Assign a member the answer-owner role first.',
+                          )
+                        : const Text(
+                            'All answer owners are already assigned to this department.',
+                          );
+                  }
+                  return DropdownButtonFormField<String?>(
+                    initialValue: _ownerUserId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Answer owner'),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Select a member'),
+                      ),
+                      for (final member in eligible)
+                        DropdownMenuItem<String?>(
+                          value: member.id,
+                          child: Text(
+                            '${member.displayName} · ${member.email}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => _ownerUserId = value),
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (_, _) =>
+                    const Text('Organisation members unavailable.'),
               ),
             ),
             FilledButton.icon(
-              onPressed: _busy ? null : _assign,
+              onPressed: _busy ||
+                      members.isLoading ||
+                      members.hasError ||
+                      owners.isLoading ||
+                      owners.hasError ||
+                      _departmentId == null ||
+                      _ownerUserId == null
+                  ? null
+                  : _assign,
               icon: const Icon(Icons.person_add_alt_1),
               label: const Text('Assign owner'),
             ),
@@ -236,13 +343,25 @@ class _AdminPageState extends ConsumerState<AdminPage> {
   }
 
   Future<void> _assign() async {
-    final userId = _userIdController.text.trim();
-    if (_departmentId == null || userId.isEmpty) return;
-    await _run(() => ref.read(governanceRepositoryProvider).assignOwner(
-          _departmentId!,
-          userId,
-        ));
-    _userIdController.clear();
+    if (_departmentId == null || _ownerUserId == null) return;
+    final departmentId = _departmentId!;
+    final userId = _ownerUserId!;
+    await _run(() async {
+      await ref
+          .read(governanceRepositoryProvider)
+          .assignOwner(departmentId, userId);
+      if (mounted) setState(() => _ownerUserId = null);
+    });
+  }
+
+  Future<void> _createDepartment() async {
+    final name = _departmentNameController.text.trim();
+    if (_busy || name.isEmpty) return;
+    await _run(() async {
+      await ref.read(questionsRepositoryProvider).createDepartment(name);
+      _departmentNameController.clear();
+      ref.invalidate(departmentsProvider);
+    });
   }
 
   Future<void> _addMember(
@@ -568,23 +687,21 @@ class _OrganisationMemberEditorDialogState
 }
 
 class _TeamAdminTile extends ConsumerStatefulWidget {
-  const _TeamAdminTile({required this.team});
+  const _TeamAdminTile({
+    required this.team,
+    required this.organisationMembers,
+  });
 
   final TeamSummary team;
+  final AsyncValue<List<OrganisationMember>> organisationMembers;
 
   @override
   ConsumerState<_TeamAdminTile> createState() => _TeamAdminTileState();
 }
 
 class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
-  final _memberIdController = TextEditingController();
+  String? _selectedMemberId;
   bool _busy = false;
-
-  @override
-  void dispose() {
-    _memberIdController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -613,37 +730,91 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
           loading: () => const LinearProgressIndicator(),
           error: (_, _) => const Text('Unable to load team members.'),
         ),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _memberIdController,
-                decoration: const InputDecoration(labelText: 'User ID'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            FilledButton.icon(
-              onPressed: _busy ? null : _add,
-              icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Add team member'),
-            ),
-          ],
+        members.when(
+          data: (teamMembers) => widget.organisationMembers.when(
+            data: (organisationMembers) =>
+                _memberSelector(organisationMembers, teamMembers),
+            loading: () => const LinearProgressIndicator(),
+            error: (_, _) =>
+                const Text('Organisation members unavailable.'),
+          ),
+          loading: () => const LinearProgressIndicator(),
+          error: (_, _) => const Text('Unable to load team members.'),
         ),
         const SizedBox(height: 16),
       ],
     );
   }
 
-  Future<void> _add() async {
-    final userId = _memberIdController.text.trim();
-    if (userId.isEmpty) return;
-    await _run(
-      () => ref.read(governanceRepositoryProvider).addTeamMember(
-            widget.team.id,
-            userId,
+  Widget _memberSelector(
+    List<OrganisationMember> organisationMembers,
+    List<TeamMembership> teamMembers,
+  ) {
+    final assignedIds = teamMembers.map((item) => item.user.id).toSet();
+    final eligible = organisationMembers
+        .where(
+          (member) =>
+              member.status == 'active' && !assignedIds.contains(member.id),
+        )
+        .toList();
+    if (organisationMembers.isEmpty) {
+      return const Text('Add an organisation member before assigning this team.');
+    }
+    if (eligible.isEmpty) {
+      if (!organisationMembers.any((member) => member.status == 'active')) {
+        return const Text('No active organisation members are available.');
+      }
+      return const Text(
+        'All active organisation members are already on this team.',
+      );
+    }
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.end,
+      children: [
+        SizedBox(
+          width: 320,
+          child: DropdownButtonFormField<String?>(
+            initialValue: _selectedMemberId,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Organisation member'),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Select a member'),
+              ),
+              for (final member in eligible)
+                DropdownMenuItem<String?>(
+                  value: member.id,
+                  child: Text(
+                    '${member.displayName} · ${member.email}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: (value) =>
+                setState(() => _selectedMemberId = value),
           ),
+        ),
+        FilledButton.icon(
+          onPressed: _busy || _selectedMemberId == null ? null : _add,
+          icon: const Icon(Icons.person_add_alt_1),
+          label: const Text('Add team member'),
+        ),
+      ],
     );
-    _memberIdController.clear();
+  }
+
+  Future<void> _add() async {
+    final userId = _selectedMemberId;
+    if (userId == null) return;
+    await _run(() async {
+      await ref
+          .read(governanceRepositoryProvider)
+          .addTeamMember(widget.team.id, userId);
+      if (mounted) setState(() => _selectedMemberId = null);
+    });
   }
 
   Future<void> _remove(TeamMembership membership) => _run(

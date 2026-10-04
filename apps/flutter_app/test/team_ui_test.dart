@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,8 +6,10 @@ import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/admin/presentation/admin_page.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/ask/presentation/ask_page.dart';
+import 'package:int_qa_flow/features/governance/data/governance_repository.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
 import 'package:int_qa_flow/features/governance/domain/governance_models.dart';
+import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 const finance = DepartmentSummary(id: 'department-1', name: 'Finance');
@@ -26,6 +29,65 @@ const adminMember = OrganisationMember(
   departmentId: 'department-1',
   departmentName: 'Finance',
 );
+const answerOwnerMember = OrganisationMember(
+  id: 'answer-owner-1',
+  email: 'owner@example.test',
+  displayName: 'Answer Owner',
+  role: 'answer_owner',
+  status: 'active',
+);
+
+class _FakeQuestionsRepository extends QuestionsRepository {
+  _FakeQuestionsRepository() : super(Dio());
+
+  final departments = <DepartmentSummary>[];
+
+  @override
+  Future<DepartmentSummary> createDepartment(String name) async {
+    final department = DepartmentSummary(
+      id: 'created-department-${departments.length + 1}',
+      name: name,
+    );
+    departments.add(department);
+    return department;
+  }
+}
+
+class _FakeGovernanceRepository extends GovernanceRepository {
+  _FakeGovernanceRepository() : super(Dio());
+
+  String? assignedDepartmentId;
+  String? assignedOwnerId;
+  String? teamMemberId;
+  List<TeamMembership> teamMemberships = const [];
+
+  @override
+  Future<void> assignOwner(String departmentId, String userId) async {
+    assignedDepartmentId = departmentId;
+    assignedOwnerId = userId;
+  }
+
+  @override
+  Future<void> addTeamMember(String teamId, String userId) async {
+    teamMemberId = userId;
+    teamMemberships = [
+      ...teamMemberships,
+      TeamMembership(
+        id: 'membership-${teamMemberships.length + 1}',
+        teamId: teamId,
+        user: UserSummary(
+          id: userId,
+          displayName: 'Answer Owner',
+          role: 'answer_owner',
+        ),
+      ),
+    ];
+  }
+
+  @override
+  Future<List<TeamMembership>> teamMembers(String teamId) async =>
+      teamMemberships;
+}
 
 void main() {
   test('linked team suggests its parent department', () {
@@ -70,6 +132,8 @@ void main() {
 
   testWidgets('admin surface shows team creation and membership controls',
       (tester) async {
+    final questionsRepository = _FakeQuestionsRepository();
+    final governanceRepository = _FakeGovernanceRepository();
     await tester.pumpWidget(ProviderScope(
       overrides: [
         currentMembershipProvider.overrideWith(
@@ -81,13 +145,19 @@ void main() {
             role: 'admin',
           ),
         ),
-        departmentsProvider.overrideWith((ref) async => const [finance]),
+        governanceRepositoryProvider.overrideWithValue(governanceRepository),
+        questionsRepositoryProvider.overrideWithValue(questionsRepository),
+        departmentsProvider.overrideWith(
+          (ref) async => questionsRepository.departments.toList(),
+        ),
         teamsProvider.overrideWith((ref) async => const [payroll]),
         departmentOwnersProvider.overrideWith((ref) async => const []),
         organisationMembersProvider.overrideWith(
-          (ref) async => const [adminMember],
+          (ref) async => const [adminMember, answerOwnerMember],
         ),
-        teamMembersProvider(payroll.id).overrideWith((ref) async => const []),
+        teamMembersProvider(payroll.id).overrideWith(
+          (ref) async => governanceRepository.teamMemberships,
+        ),
       ],
       child: const MaterialApp(
         home: Scaffold(body: AdminPage()),
@@ -117,6 +187,44 @@ void main() {
       find.text('member@example.test · employee · Finance'),
       findsOneWidget,
     );
+    expect(
+      find.text('No departments yet. Create one to assign members.'),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byType(TextField).at(0), 'Operations');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create department'));
+    await tester.pumpAndSettle();
+    expect(questionsRepository.departments.single.name, 'Operations');
+    expect(find.text('Operations'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Select a department'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select a department'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Operations').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Select a member').first,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select a member').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Answer Owner · owner@example.test').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Assign owner'));
+    await tester.pumpAndSettle();
+    expect(
+      governanceRepository.assignedDepartmentId,
+      'created-department-1',
+    );
+    expect(governanceRepository.assignedOwnerId, answerOwnerMember.id);
+
     expect(find.text('Teams'), findsOneWidget);
     expect(find.text('Create team'), findsOneWidget);
     await tester.scrollUntilVisible(
@@ -131,6 +239,7 @@ void main() {
     );
     await tester.tap(find.text('Payroll'));
     await tester.pumpAndSettle();
+    expect(find.text('User ID'), findsNothing);
     expect(
       find.descendant(
         of: payrollTile,
@@ -138,5 +247,12 @@ void main() {
       ),
       findsOneWidget,
     );
+    await tester.tap(find.text('Select a member').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Answer Owner · owner@example.test'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Add team member'));
+    await tester.pumpAndSettle();
+    expect(governanceRepository.teamMemberId, answerOwnerMember.id);
   });
 }

@@ -28,6 +28,18 @@ class QuestionsRepository {
     }
   }
 
+  Future<DepartmentSummary> createDepartment(String name) async {
+    try {
+      final response = await _client.post<Map<String, dynamic>>(
+        '/api/v1/departments',
+        data: {'name': name},
+      );
+      return DepartmentSummary.fromJson(response.data!);
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   Future<List<TeamSummary>> listTeams() async {
     try {
       final response = await _client.get<List<dynamic>>(
