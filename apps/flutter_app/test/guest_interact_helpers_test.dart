@@ -593,6 +593,29 @@ void main() {
       }
       expect(unsupported, isNotNull);
       expect(unsupported!.codePoints, containsAll([0x4e2d, 0x1f9d1]));
+      UnsupportedPdfCharactersException? portableUnsupported;
+      try {
+        await buildGuestPortablePdf(
+          GuestPortableDocument(
+            title: 'Shared guide',
+            scope: 'Authorized group entry',
+            exportedAt: DateTime.utc(2026, 10, 3),
+            sections: const [
+              GuestPortableSection(
+                heading: 'Answer',
+                body: 'Chinese 中文 and emoji 🧑',
+              ),
+            ],
+          ),
+        );
+      } on UnsupportedPdfCharactersException catch (error) {
+        portableUnsupported = error;
+      }
+      expect(portableUnsupported, isNotNull);
+      expect(
+        portableUnsupported!.codePoints,
+        containsAll([0x4e2d, 0x1f9d1]),
+      );
       final html = buildGuestReportDocument(
         session: session,
         allParticipants: true,
