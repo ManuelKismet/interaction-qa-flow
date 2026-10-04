@@ -226,3 +226,5 @@ Independent results:
 - JavaScript release build (--no-wasm-dry-run) in progress; capture completion before claiming result.
 - Worktree clean; git diff --check no output.
 Logs /home/vscode/.local/share/intqaflow/pr13-1cdc5dd-verification-20261004. No deployment, merge, data cleanup or role grant. Recurring compilation regression requires founder attention before next Copilot fix cycle. Account/group/PDF/backup responsive UI acceptance remains blocked on compilable candidate.
+
+Final 1cdc5dd results: analyzer 2 errors,5 warnings,12 infos; JavaScript release build failed in17.3s. All verification jobs completed; no test/build jobs left running in this terminal. Latest candidate is not deployable or accepted. Preserve linked test account/local content and keep PR draft.
