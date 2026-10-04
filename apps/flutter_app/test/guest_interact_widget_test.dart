@@ -55,6 +55,17 @@ void main() {
       find.text('A nested follow-up question with a deliberately long label 8'),
       findsOneWidget,
     );
+    final compactFollowUpAction = find.byWidgetPredicate(
+      (widget) =>
+          widget is Tooltip &&
+          widget.message == 'Add answer-owned follow-up' &&
+          widget.child is IconButton,
+    );
+    expect(
+      compactFollowUpAction,
+      findsWidgets,
+      reason: 'Deeply nested answer actions should compact before they overflow.',
+    );
     final participantGuidance = tester.widget<DropdownButtonFormField<String>>(
       find.byWidgetPredicate(
         (widget) =>

@@ -1969,21 +1969,28 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
     final collapsed = widget.answer?['branches_collapsed'] as bool? ?? false;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerLowest,
-          border: Border(
-            left: BorderSide(
-              color: Theme.of(context).colorScheme.primary,
-              width: 2,
+      child: LayoutBuilder(
+        builder: (context, editorConstraints) {
+          final horizontalPadding =
+              editorConstraints.maxWidth < 240 ? 4.0 : 12.0;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLowest,
+              border: Border(
+                left: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 2,
+                ),
+              ),
             ),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                vertical: 12,
+                horizontal: horizontalPadding,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
           Text(
             'Participant answer · ${widget.participant['name']}',
             style: Theme.of(context).textTheme.titleSmall,
@@ -2003,13 +2010,19 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
           const SizedBox(height: 8),
           LayoutBuilder(
             builder: (context, constraints) {
+              final compactActions = constraints.maxWidth < 200;
               final actions = [
                 Tooltip(
                   message: 'Add answer-owned follow-up',
-                  child: FilledButton.tonalIcon(
-                    onPressed: _addFollowUp,
-                    icon: const Icon(Icons.add_comment_outlined),
-                    label: const Text('Add follow-up'),
+                  child: compactActions
+                      ? IconButton(
+                          onPressed: _addFollowUp,
+                          icon: const Icon(Icons.add_comment_outlined),
+                        )
+                      : FilledButton.tonalIcon(
+                          onPressed: _addFollowUp,
+                          icon: const Icon(Icons.add_comment_outlined),
+                          label: const Text('Add follow-up'),
                   ),
                 ),
                 if (branches.isNotEmpty)
@@ -2090,9 +2103,11 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                 ),
               ),
             ),
-            ],
-          ),
-        ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -69,7 +69,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           password: _password.text,
         );
         final linkedCredential = await user!.linkWithCredential(credential);
-        final linkedUser = linkedCredential.user ?? user!;
+        final linkedUser = linkedCredential.user ?? user;
         var verificationEmailFailed = false;
         try {
           if (!linkedUser.emailVerified) {
