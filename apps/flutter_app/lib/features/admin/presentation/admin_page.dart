@@ -114,6 +114,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
               ),
             ),
             FilledButton.icon(
+              key: const ValueKey('create-department-button'),
               onPressed: _busy ? null : _createDepartment,
               icon: const Icon(Icons.add),
               label: const Text('Create department'),
@@ -209,7 +210,11 @@ class _AdminPageState extends ConsumerState<AdminPage> {
               width: 240,
               child: departments.when(
                 data: (items) => DropdownButtonFormField<String?>(
+                  key: const ValueKey(
+                    'department-answer-owner-department-selector',
+                  ),
                   initialValue: _departmentId,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Department'),
                   items: [
                     const DropdownMenuItem<String?>(
@@ -219,7 +224,29 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                     for (final item in items)
                       DropdownMenuItem<String?>(
                         value: item.id,
-                        child: Text(item.name),
+                        child: Text(
+                          item.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  selectedItemBuilder: (context) => [
+                    const Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text('Select a department'),
+                    ),
+                    for (final item in items)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: SizedBox(
+                          width: 120,
+                          child: Text(
+                            item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
                   ],
                   onChanged: (value) => setState(() {

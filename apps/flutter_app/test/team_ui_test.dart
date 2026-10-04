@@ -204,11 +204,22 @@ void main() {
       noDepartmentsMessage,
       findsOneWidget,
     );
-    await tester.enterText(find.byType(TextField).at(0), 'Operations');
-    await tester.tap(find.widgetWithText(FilledButton, 'Create department'));
+    const departmentName = 'Operations and Compliance Department';
+    final createDepartmentButton =
+        find.byKey(const ValueKey('create-department-button'));
+    await tester.scrollUntilVisible(
+      createDepartmentButton,
+      300,
+      scrollable: find.byType(Scrollable).first,
+      axisDirection: AxisDirection.up,
+    );
     await tester.pumpAndSettle();
-    expect(questionsRepository.departments.single.name, 'Operations');
-    expect(find.text('Operations'), findsOneWidget);
+    await tester.ensureVisible(createDepartmentButton);
+    await tester.enterText(find.byType(TextField).at(0), departmentName);
+    await tester.tap(createDepartmentButton);
+    await tester.pumpAndSettle();
+    expect(questionsRepository.departments.single.name, departmentName);
+    expect(find.text(departmentName), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text('Select a department'),
@@ -218,8 +229,18 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Select a department'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Operations').last);
+    await tester.tap(find.text(departmentName).last);
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('department-answer-owner-department-selector'),
+        ),
+        matching: find.text(departmentName),
+      ),
+      findsOneWidget,
+    );
     await tester.scrollUntilVisible(
       find.text('Select a member').first,
       300,
