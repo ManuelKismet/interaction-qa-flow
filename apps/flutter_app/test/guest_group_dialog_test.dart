@@ -223,7 +223,10 @@ void main() {
         child: const MaterialApp(home: SharedGuestGroupsPage()),
       ),
     );
-    await tester.pumpAndSettle();
+    await _pumpUntilEnabled(
+      tester,
+      find.widgetWithText(OutlinedButton, 'Preview and share local work'),
+    );
 
     await tester.tap(find.text('Preview and share local work'));
     await tester.pumpAndSettle();
@@ -344,4 +347,15 @@ void main() {
       },
     );
   }
+}
+
+Future<void> _pumpUntilEnabled(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 40; attempt++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (finder.evaluate().isNotEmpty &&
+        tester.widget<OutlinedButton>(finder).onPressed != null) {
+      return;
+    }
+  }
+  fail('Widget did not become enabled: $finder');
 }
