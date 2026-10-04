@@ -255,3 +255,10 @@ Logs /home/vscode/.local/share/intqaflow/pr13-fefd195-verification-20261004.
 No merge/deployment/role/data changes. After successful build, affected LIVE browser checks require a configured development candidate; existing hosted app has not been changed. Pending live: improved link/cancel feedback, linked-account verification workflow (real delivery deferred), group request/invitations/access/privacy, backup/import, recursive templates, report ownership and actual PDF download/render/share, responsive affected views. Full guest suite still not complete.
 
 Final fefd195 analyzer:0 errors,0 warnings,12 infos (exit1, not lint-clean). Release JavaScript build PASSED52.2s. Verification jobs complete. Source/build acceptance passed; hosted browser acceptance not yet established. No deployment/merge. Development-only configured frontend update requires founder approval before replacing hosted UI; preserve current local data/auth and rollback version.
+
+
+## Founder-authorized development frontend update — 4 October 2026
+Founder clarifies no production environment exists yet; current backend is development/testing. Authorization: update ONLY development frontend with verified fefd195; backend unchanged.
+Configured build fefd195 PASSED53.2s with existing persisted development Firebase web/App Check public application config and API_BASE_URL https://intqaflow-dev-api-bycdjb22qq-nw.a.run.app. Project identity asserted intqaflow-dev; configuration values/secrets not printed. App Check mode/keys/IAM unchanged. Plain earlier release build is not confused with this configured build.
+Rollback metadata before publish: Hosting release sites/intqaflow-dev/releases/1791054186117000, version sites/intqaflow-dev/versions/5057f8035d9ce756 (2026-10-03T19:03:06.117Z).
+Existing reviewed development-only deploy_hosting.py invoked against /workspaces/intqaflow-review-pr13-fefd195/apps/flutter_app/build/web using fresh CLOUDSDK_CONFIG=/tmp/intqaflow-fresh-dev-auth. Publish outcome pending at this entry; do not claim deployment from invocation. Log hosting-deploy.log under pr13-fefd195-verification-20261004.
