@@ -133,9 +133,9 @@ Map<String, dynamic> _templateQuestion(
 Map<String, dynamic> _templateAnswer(
   Map<String, dynamic>? answer,
   String slot,
-  Map<String, String> participantSlots,
+  Map<String, String> participantSlots, {
   required String Function() makeId,
-) => {
+}) => {
   'participant_slot': slot,
   'follow_ups': [
     for (final followUp in answer?['follow_ups'] as List? ?? const [])
