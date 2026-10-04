@@ -269,3 +269,15 @@ Reload without data clearing preserved signed-in/no-membership state and local K
 Original session all-participant preview shows correct labels/nested branch ownership and updated Close/Browser print guidance.
 Actual Download PDF wait-for-download timed out15s once on new build; file save/render remains unverified. Browser print action opened a new tab titled Guest acceptance 2026-10-04 — Interact report. Binding that tab twice failed with browser protocol Emulation.setLocaleOverride already in effect; document/pagination/PDF save not verified. Do not classify browser tab-binding failure as an app defect.
 Evidence screenshot intqaflow-fefd195-development-report.jpg retained. No test-data deletion, account/admin grant, backend deployment or merge.
+
+
+## Live template reuse defect — 4 October 2026
+On served/configured fefd195, Participant1 original-session view excludes B-owned branches; switching to B restores owned tree. Saved new Recursive acceptance2026-10-04 template from original and created Recursive template copy2026-10-04.
+All-participant preview visually labels BOTH answer rows Participant2 and renders only root. Explicit copied local JSON backup (app UI, not hidden browser state) confirms:
+- Original2participants have2uniqueIDs; tree3questions.
+- New recursive copy2participants share guest-hmwflhn1y8; uniqueIDs1; both root answers same owner.
+- Older Template acceptance copy likewise duplicate participant ID.
+- Both saved templates and copies have3-question tree in backup. Snapshot recursion NOT absent; ambiguous ownership corrupts rendering/selection.
+Source guest_workspace_data.dart100–101 uses DateTime.now().microsecondsSinceEpoch alone for newGuestId. Timestamp-only synchronous browser ID collision inferred from observed IDs and generator. Source tests using supplied unique IDs missed live defect.
+Copilot live findings sent comment5981213061; concrete collision correction/request sent5981256976 with robust IDs/frozen-clock uniqueness tests, owner mapping, no suppression and safe handling of existing corrupt copies without guessed/destructive repair. No ChatGPT app fix.
+Evidence intqaflow-template-identity-collision-2026-10-04.jpg. Original valid session and all copies preserved. No account/group/admin changes. All UI/UX findings NOT signed off; PDF actual download/print pagination and group/privacy acceptance remain unverified. Next inspect Copilot collision fix, independently test, then authorize any subsequent development frontend update separately.
