@@ -42,6 +42,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   }
 
   Future<void> _submit() async {
+    final isResetOperation = _resetMode;
+    final isSeparateAccountCreation = _createAccountMode && !_linkGuestMode;
     setState(() {
       _busy = true;
       _error = null;
@@ -196,13 +198,17 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       }
     } on FirebaseAuthException catch (error) {
       // Log only a sanitized error code; never credentials or exception details.
-      final code = error.code.replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+      final code = error.code
+          .toLowerCase()
+          .split('/')
+          .last
+          .replaceAll(RegExp(r'[^a-z0-9_-]'), '');
       const diagnostics = bool.fromEnvironment('AUTH_DIAGNOSTICS');
       if (diagnostics) debugPrint('Firebase authentication failed: auth/$code');
       if (!mounted) return;
-      final message = _resetMode
+      final message = isResetOperation
           ? 'Unable to send a reset email. Please check the address and try again.'
-          : _createAccountMode && !_linkGuestMode
+          : isSeparateAccountCreation
           ? switch (code) {
               'email-already-in-use' =>
                 'An account already uses this email. Sign in or reset the password instead.',

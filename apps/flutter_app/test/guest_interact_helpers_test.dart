@@ -585,16 +585,14 @@ void main() {
         exportedAt: DateTime.utc(2026, 10, 3),
       );
 
-      await expectLater(
-        buildGuestReportPdf(report),
-        throwsA(
-          isA<UnsupportedPdfCharactersException>().having(
-            (error) => error.codePoints,
-            'codePoints',
-            containsAll([0x4e2d, 0x1f9d1]),
-          ),
-        ),
-      );
+      UnsupportedPdfCharactersException? unsupported;
+      try {
+        await buildGuestReportPdf(report);
+      } on UnsupportedPdfCharactersException catch (error) {
+        unsupported = error;
+      }
+      expect(unsupported, isNotNull);
+      expect(unsupported!.codePoints, containsAll([0x4e2d, 0x1f9d1]));
       final html = buildGuestReportDocument(
         session: session,
         allParticipants: true,
