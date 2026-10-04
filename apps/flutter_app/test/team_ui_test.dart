@@ -211,7 +211,6 @@ void main() {
       createDepartmentButton,
       300,
       scrollable: find.byType(Scrollable).first,
-      axisDirection: AxisDirection.up,
     );
     await tester.pumpAndSettle();
     await tester.ensureVisible(createDepartmentButton);
