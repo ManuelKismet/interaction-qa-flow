@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
+import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -85,7 +86,10 @@ GuestReportData composeGuestReport({
         participant['id'] as String:
             participant['name'] as String? ?? 'Participant',
   };
-  String nameFor(String? id) => participantNames[id] ?? 'Participant';
+  final ambiguousParticipantIds = duplicateGuestParticipantIds(session);
+  String nameFor(String? id) => ambiguousParticipantIds.contains(id)
+      ? 'Participant (ambiguous ID)'
+      : participantNames[id] ?? 'Participant';
 
   List<GuestReportQuestion> renderQuestion(
     Map<String, dynamic> question, {
@@ -106,7 +110,7 @@ GuestReportData composeGuestReport({
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
-    final targetIds = nested
+    final targetIds = (nested
         ? [ownerId].whereType<String>().toList()
         : allParticipants
         ? question['scope'] == 'participant'
@@ -124,42 +128,55 @@ GuestReportData composeGuestReport({
                       ),
                     ),
               ]
-        : [participantId].whereType<String>().toList();
+        : [participantId].whereType<String>().toList())
+        .toSet()
+        .toList();
     if (targetIds.isEmpty) targetIds.add('');
 
     final answers = <GuestReportAnswer>[];
     for (final target in targetIds) {
-      final answer = existingAnswers.firstWhere(
-        (item) => item['participant_id'] == target,
-        orElse: () => {
-          'participant_id': target,
-          'body': '',
-          'follow_ups': const [],
-        },
-      );
-      final answerBody = answer['body'] as String? ?? '';
-      final followUps = <GuestReportQuestion>[];
-      for (final (index, item) in (answer['follow_ups'] as List? ?? const [])
-          .indexed) {
-        if (item is Map) {
-          followUps.addAll(
-            renderQuestion(
-              Map<String, dynamic>.from(item),
-              path: '$path.${index + 1}',
-              ownerId: answer['participant_id'] as String?,
-              triggerAnswerBody: answerBody,
-              nested: true,
-            ),
-          );
+      final matchingAnswers = existingAnswers
+          .where((item) => item['participant_id'] == target)
+          .toList();
+      final targetAnswers =
+          ambiguousParticipantIds.contains(target) &&
+              matchingAnswers.isNotEmpty
+          ? matchingAnswers
+          : [
+              matchingAnswers.firstOrNull ??
+                  {
+                    'participant_id': target,
+                    'body': '',
+                    'follow_ups': const [],
+                  },
+            ];
+      for (final answer in targetAnswers) {
+        final answerBody = answer['body'] as String? ?? '';
+        final followUps = <GuestReportQuestion>[];
+        for (final (index, item) in (answer['follow_ups'] as List? ?? const [])
+            .indexed) {
+          if (item is Map) {
+            followUps.addAll(
+              renderQuestion(
+                Map<String, dynamic>.from(item),
+                path: '$path.${index + 1}',
+                ownerId: answer['participant_id'] as String?,
+                triggerAnswerBody: answerBody,
+                nested: true,
+              ),
+            );
+          }
         }
+        answers.add(
+          GuestReportAnswer(
+            participantName: ambiguousParticipantIds.contains(target)
+                ? 'Participant (ambiguous ID)'
+                : nameFor(answer['participant_id'] as String?),
+            body: answerBody,
+            followUps: followUps,
+          ),
+        );
       }
-      answers.add(
-        GuestReportAnswer(
-          participantName: nameFor(answer['participant_id'] as String?),
-          body: answerBody,
-          followUps: followUps,
-        ),
-      );
     }
     return [
       GuestReportQuestion(
@@ -194,9 +211,13 @@ GuestReportData composeGuestReport({
             .toList();
   return GuestReportData(
     title: session['title'] as String? ?? 'Interact session',
-    scope: allParticipants
-        ? 'All participants'
-        : 'Selected participant — ${nameFor(participantId)}',
+    scope: [
+      allParticipants
+          ? 'All participants'
+          : 'Selected participant — ${nameFor(participantId)}',
+      if (ambiguousParticipantIds.isNotEmpty)
+        'Duplicate participant IDs detected; answer attribution is ambiguous',
+    ].join(' · '),
     participantNames: [
       for (final participant in reportParticipants)
         participant['name'] as String? ?? 'Participant',

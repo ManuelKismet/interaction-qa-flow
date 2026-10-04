@@ -4,6 +4,13 @@ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 
 void main() {
+  test('guest item IDs stay unique across rapid same-clock generation', () {
+    final ids = List.generate(256, (_) => newGuestItemId());
+
+    expect(ids.toSet(), hasLength(ids.length));
+    expect(ids.every((id) => id.startsWith('guest-v2-')), isTrue);
+  });
+
   test('local guest workspace persists Knowledge, templates and answer branches', () async {
     final storage = MemoryGuestStorage();
     final store = GuestWorkspaceStore(storage);
@@ -74,6 +81,39 @@ void main() {
     expect((answers[1] as Map<String, dynamic>)['participant_id'], 'p2');
     final followUps = (answers[0] as Map<String, dynamic>)['follow_ups'] as List;
     expect((followUps.single as Map<String, dynamic>)['text'], 'Which service?');
+  });
+
+  test('loading a session with colliding participant IDs does not rewrite it', () async {
+    final storage = MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    final session = <String, dynamic>{
+      'id': 'legacy-collision',
+      'participants': [
+        {'id': 'duplicate-id', 'name': 'Alice'},
+        {'id': 'duplicate-id', 'name': 'Bob'},
+      ],
+      'questions': [
+        {
+          'id': 'shared-question',
+          'scope': 'shared',
+          'answers': [
+            {
+              'participant_id': 'duplicate-id',
+              'body': 'Existing answer',
+              'follow_ups': [],
+            },
+          ],
+        },
+      ],
+    };
+    final original = GuestWorkspaceData(sessions: [session]);
+    await store.save(original);
+    final savedValue = storage.read();
+
+    final restored = await store.load();
+
+    expect(restored.sessions.single, session);
+    expect(storage.read(), savedValue);
   });
 
   test('guest Knowledge search is keyword and prefix only', () {

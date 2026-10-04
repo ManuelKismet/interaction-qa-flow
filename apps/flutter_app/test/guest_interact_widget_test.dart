@@ -77,6 +77,67 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('legacy duplicate participant IDs are preserved and not editable', (
+    tester,
+  ) async {
+    final session = <String, dynamic>{
+      'id': 'legacy-collision',
+      'title': 'Legacy session',
+      'participants': [
+        {'id': 'duplicate-id', 'name': 'Alice'},
+        {'id': 'duplicate-id', 'name': 'Bob'},
+      ],
+      'questions': [
+        {
+          'id': 'shared-question',
+          'text': 'Existing question',
+          'scope': 'shared',
+          'answers': [
+            {
+              'participant_id': 'duplicate-id',
+              'body': 'Alice answer',
+              'follow_ups': [],
+            },
+            {
+              'participant_id': 'duplicate-id',
+              'body': 'Bob answer',
+              'follow_ups': [],
+            },
+          ],
+        },
+      ],
+    };
+    final data = GuestWorkspaceData(sessions: [session]);
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await store.save(data);
+    final savedValue = storage.read();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Interact').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Legacy session'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('duplicate participant IDs'),
+      findsOneWidget,
+    );
+    expect(find.text('Active participant'), findsNothing);
+    expect(find.text('Prepared question'), findsNothing);
+    expect(find.text('Download / Share PDF'), findsOneWidget);
+    expect((await store.load()).sessions.single, session);
+    expect(storage.read(), savedValue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('desktop guest Knowledge and Interact forms stay readable width', (
     tester,
   ) async {

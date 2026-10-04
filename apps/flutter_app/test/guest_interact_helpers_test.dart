@@ -8,6 +8,206 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
 
 void main() {
+  test(
+    'template clones get distinct IDs when the clock has coarse resolution',
+    () {
+      final generator = GuestItemIdGenerator.forTesting(
+        namespace: 'fixed-clock',
+      );
+      final makeId = generator.next;
+      final source = _sessionFixture();
+      final templateId = makeId();
+      final template = createGuestTemplateFromSession(
+        session: source,
+        id: templateId,
+        name: 'Reusable interview',
+        makeId: makeId,
+      );
+
+      Map<String, dynamic> clone(String title) =>
+          createGuestSessionFromTemplate(
+            template: template,
+            id: makeId(),
+            title: title,
+            firstParticipantName: title,
+            makeId: makeId,
+          );
+
+      final first = clone('First copy');
+      final second = clone('Second copy');
+      final firstParticipants = (first['participants'] as List)
+          .cast<Map<String, dynamic>>();
+      final secondParticipants = (second['participants'] as List)
+          .cast<Map<String, dynamic>>();
+      final firstQuestions = first['questions'] as List;
+      final firstAnswers =
+          (firstQuestions.first as Map<String, dynamic>)['answers'] as List;
+      final answerOwnerIds = firstAnswers
+          .cast<Map<String, dynamic>>()
+          .map((answer) => answer['participant_id'] as String)
+          .toList();
+      final entityIds = [
+        templateId,
+        ..._allQuestionIds(template['questions'] as List),
+        first['id'] as String,
+        ...firstParticipants.map((participant) => participant['id'] as String),
+        ..._allQuestionIds(firstQuestions),
+        second['id'] as String,
+        ...secondParticipants.map((participant) => participant['id'] as String),
+        ..._allQuestionIds(second['questions'] as List),
+      ];
+
+      expect(entityIds.toSet(), hasLength(entityIds.length));
+      expect(
+        firstParticipants.map((participant) => participant['id']).toSet(),
+        hasLength(2),
+      );
+      expect(identical(firstAnswers[0], firstAnswers[1]), isFalse);
+      expect(answerOwnerIds.toSet(), hasLength(2));
+      expect(answerOwnerIds.toSet(), {
+        for (final participant in firstParticipants) participant['id'],
+      });
+
+      void verifyOwners(List questions, {String? ownerId}) {
+        for (final item in questions) {
+          final question = item as Map<String, dynamic>;
+          final answers = (question['answers'] as List)
+              .cast<Map<String, dynamic>>();
+          for (final answer in answers) {
+            final participantId = answer['participant_id'] as String;
+            expect(
+              firstParticipants.any(
+                (participant) => participant['id'] == participantId,
+              ),
+              isTrue,
+            );
+            expect(answer['body'], isEmpty);
+            if (ownerId != null) expect(participantId, ownerId);
+            if (question['scope'] == 'participant') {
+              expect(question['target_participant_id'], participantId);
+            }
+            verifyOwners(
+              answer['follow_ups'] as List? ?? const [],
+              ownerId: participantId,
+            );
+          }
+        }
+      }
+
+      verifyOwners(firstQuestions);
+      final allReport = composeGuestReport(
+        session: first,
+        allParticipants: true,
+        participantId: null,
+        exportedAt: DateTime.utc(2026, 10, 4),
+      );
+      expect(
+        allReport.questions.first.answers.map(
+          (answer) => answer.participantName,
+        ),
+        ['First copy', 'Participant 2'],
+      );
+      expect(
+        allReport.questions.first.answers.first.followUps.first.text,
+        'Alice follow-up',
+      );
+      expect(
+        allReport.questions.first.answers.first.followUps.first.answers.first
+            .followUps.first.text,
+        'Which component?',
+      );
+      expect(
+        allReport.questions.first.answers.last.followUps.first.text,
+        'Bob follow-up',
+      );
+
+      final selectedReport = composeGuestReport(
+        session: first,
+        allParticipants: false,
+        participantId: firstParticipants.first['id'] as String,
+        exportedAt: DateTime.utc(2026, 10, 4),
+      );
+      expect(selectedReport.participantNames, ['First copy']);
+      expect(
+        selectedReport.questions.map((question) => question.text),
+        ['Shared prompt'],
+      );
+      expect(
+        selectedReport.questions.single.answers.single.followUps
+            .map((question) => question.text),
+        ['Alice follow-up'],
+      );
+    },
+  );
+
+  test('reports do not guess owners in a saved session with duplicate IDs', () {
+    final session = <String, dynamic>{
+      'id': 'legacy-collision',
+      'title': 'Existing session',
+      'participants': [
+        {'id': 'duplicate-id', 'name': 'Alice'},
+        {'id': 'duplicate-id', 'name': 'Bob'},
+      ],
+      'questions': [
+        {
+          'id': 'shared',
+          'text': 'Shared question',
+          'scope': 'shared',
+          'answers': [
+            {
+              'participant_id': 'duplicate-id',
+              'body': 'Existing Alice answer',
+              'follow_ups': [
+                {
+                  'id': 'alice-follow-up',
+                  'text': 'Existing Alice follow-up',
+                  'scope': 'participant',
+                  'target_participant_id': 'duplicate-id',
+                  'answers': [
+                    {
+                      'participant_id': 'duplicate-id',
+                      'body': 'Alice follow-up answer',
+                      'follow_ups': [],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              'participant_id': 'duplicate-id',
+              'body': 'Existing Bob answer',
+              'follow_ups': [],
+            },
+          ],
+        },
+      ],
+    };
+    final before = jsonEncode(session);
+
+    final report = composeGuestReport(
+      session: session,
+      allParticipants: true,
+      participantId: null,
+      exportedAt: DateTime.utc(2026, 10, 4),
+    );
+
+    expect(report.scope, contains('answer attribution is ambiguous'));
+    expect(report.questions.single.answers, hasLength(2));
+    expect(
+      report.questions.single.answers.map((answer) => answer.participantName),
+      everyElement('Participant (ambiguous ID)'),
+    );
+    expect(
+      report.questions.single.answers.map((answer) => answer.body),
+      ['Existing Alice answer', 'Existing Bob answer'],
+    );
+    expect(
+      report.questions.single.answers.first.followUps.single.answers.single.body,
+      'Alice follow-up answer',
+    );
+    expect(jsonEncode(session), before);
+  });
+
   test('local templates preserve scope and nested structure without answers', () async {
     final session = _sessionFixture();
     final original = jsonEncode(session);

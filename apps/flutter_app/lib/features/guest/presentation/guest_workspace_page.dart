@@ -533,15 +533,22 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
-    final selectedParticipantId = participants.any(
+    final hasDuplicateParticipantIds =
+        duplicateGuestParticipantIds(session).isNotEmpty;
+    final matchingParticipantId = participants.any(
       (participant) => participant['id'] == participantId,
     )
         ? participantId
         : participants.firstOrNull?['id'] as String?;
+    final selectedParticipantId = hasDuplicateParticipantIds
+        ? null
+        : matchingParticipantId;
     final selectedParticipantName = participants
             .where((participant) => participant['id'] == selectedParticipantId)
             .firstOrNull?['name'] as String? ??
-        'Not selected';
+        (hasDuplicateParticipantIds
+            ? 'Unavailable (duplicate participant IDs)'
+            : 'Not selected');
     final allParticipants = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -551,8 +558,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Selected participant'),
+            onPressed: hasDuplicateParticipantIds
+                ? null
+                : () => Navigator.pop(context, false),
+            child: Text(
+              hasDuplicateParticipantIds
+                  ? 'Selected participant unavailable'
+                  : 'Selected participant',
+            ),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
@@ -1526,6 +1539,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   @override
   Widget build(BuildContext context) {
     final participants = _participants;
+    final hasDuplicateParticipantIds =
+        duplicateGuestParticipantIds(widget.session).isNotEmpty;
     final activeParticipant = participants
         .where((participant) => participant['id'] == _selectedParticipantId)
         .firstOrNull ?? participants.firstOrNull;
@@ -1560,7 +1575,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             runSpacing: 8,
             children: [
               OutlinedButton.icon(
-                onPressed: widget.onSaveTemplate,
+                onPressed: hasDuplicateParticipantIds
+                    ? null
+                    : widget.onSaveTemplate,
                 icon: const Icon(Icons.bookmark_add_outlined),
                 label: const Text('Save as local template'),
               ),
@@ -1584,7 +1601,14 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
             ],
           ),
-          if (participants.isNotEmpty) ...[
+          if (hasDuplicateParticipantIds)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'This saved session has duplicate participant IDs. Existing data is unchanged; participant editing and selected-participant reports are unavailable because answer ownership cannot be determined safely. Use All participants to view answers marked as ambiguous, and make a local backup before any manual repair.',
+              ),
+            ),
+          if (participants.isNotEmpty && !hasDuplicateParticipantIds) ...[
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
               key: ValueKey(activeParticipantId),
@@ -1619,82 +1643,96 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             ),
             const SizedBox(height: 4),
           ],
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _participant,
-                  decoration: const InputDecoration(labelText: 'Add participant'),
-                  onSubmitted: (_) => _addParticipant(),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Add participant',
-                onPressed: _addParticipant,
-                icon: const Icon(Icons.person_add_alt_1),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _question,
-            decoration: const InputDecoration(
-              labelText: 'Prepared question',
-              helperText: 'Shared questions get separate answers from each participant.',
-              helperMaxLines: 3,
-            ),
-          ),
-          const SizedBox(height: 8),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final compact = constraints.maxWidth < 440;
-              return Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.tonal(
-                    onPressed: participants.isEmpty
-                        ? null
-                        : () => _addQuestion(shared: true),
-                    child: const Text('Add shared question'),
+          if (!hasDuplicateParticipantIds)
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _participant,
+                    decoration: const InputDecoration(
+                      labelText: 'Add participant',
+                    ),
+                    onSubmitted: (_) => _addParticipant(),
                   ),
-                  Tooltip(
-                    message: 'Add question for selected participant',
-                    child: FilledButton.tonal(
+                ),
+                IconButton(
+                  tooltip: 'Add participant',
+                  onPressed: _addParticipant,
+                  icon: const Icon(Icons.person_add_alt_1),
+                ),
+              ],
+            ),
+          if (!hasDuplicateParticipantIds) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _question,
+              decoration: const InputDecoration(
+                labelText: 'Prepared question',
+                helperText: 'Shared questions get separate answers from each participant.',
+                helperMaxLines: 3,
+              ),
+            ),
+            const SizedBox(height: 8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 440;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonal(
                       onPressed: participants.isEmpty
                           ? null
-                          : () => _addQuestion(shared: false),
-                      child: Text(
-                        compact
-                            ? 'Add participant question'
-                            : 'Add question for selected participant',
+                          : () => _addQuestion(shared: true),
+                      child: const Text('Add shared question'),
+                    ),
+                    Tooltip(
+                      message: 'Add question for selected participant',
+                      child: FilledButton.tonal(
+                        onPressed: participants.isEmpty
+                            ? null
+                            : () => _addQuestion(shared: false),
+                        child: Text(
+                          compact
+                              ? 'Add participant question'
+                              : 'Add question for selected participant',
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              );
-            },
-          ),
-          if (questions.isEmpty && participants.isNotEmpty)
+                  ],
+                );
+              },
+            ),
+          ],
+          if (hasDuplicateParticipantIds)
             const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: Text('No prepared questions for this participant yet.'),
-            ),
-          for (final question in questions)
-            _GuestQuestionEditor(
-              key: ValueKey(question['id']),
-              question: question,
-              participants: activeParticipant == null
-                  ? const []
-                  : [activeParticipant],
-              onRemove: () => _removeRootQuestion(question),
-              onUpdate: (updated) => _replaceQuestion(
-                widget.session,
-                updated,
-                (session) => widget.onChange(session),
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Question and answer editing is paused for this session.',
               ),
-              makeQuestion: widget.makeQuestion,
-            ),
+            )
+          else ...[
+            if (questions.isEmpty && participants.isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text('No prepared questions for this participant yet.'),
+              ),
+            for (final question in questions)
+              _GuestQuestionEditor(
+                key: ValueKey(question['id']),
+                question: question,
+                participants: activeParticipant == null
+                    ? const []
+                    : [activeParticipant],
+                onRemove: () => _removeRootQuestion(question),
+                onUpdate: (updated) => _replaceQuestion(
+                  widget.session,
+                  updated,
+                  (session) => widget.onChange(session),
+                ),
+                makeQuestion: widget.makeQuestion,
+              ),
+          ],
         ],
       ),
     );

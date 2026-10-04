@@ -1,4 +1,25 @@
 import 'dart:convert';
+import 'dart:math';
+
+final _secureRandom = Random.secure();
+final _defaultGuestItemIdGenerator = GuestItemIdGenerator();
+
+class GuestItemIdGenerator {
+  GuestItemIdGenerator() : _namespace = _randomNamespace();
+
+  GuestItemIdGenerator.forTesting({required String namespace})
+    : _namespace = namespace;
+
+  final String _namespace;
+  var _counter = 0;
+
+  String next() => 'guest-v2-$_namespace-${(_counter++).toRadixString(36)}';
+}
+
+String _randomNamespace() => List.generate(
+  4,
+  (_) => _secureRandom.nextInt(1 << 32).toRadixString(16).padLeft(8, '0'),
+).join();
 
 class GuestWorkspaceData {
   const GuestWorkspaceData({
@@ -62,6 +83,17 @@ class GuestWorkspaceData {
   }
 }
 
+Set<String> duplicateGuestParticipantIds(Map<String, dynamic> session) {
+  final seen = <String>{};
+  final duplicates = <String>{};
+  for (final participant in session['participants'] as List? ?? const []) {
+    if (participant is! Map || participant['id'] is! String) continue;
+    final id = participant['id'] as String;
+    if (!seen.add(id)) duplicates.add(id);
+  }
+  return duplicates;
+}
+
 bool matchesGuestKeywordOrPrefix(
   String query,
   Map<String, dynamic> knowledgeItem,
@@ -97,7 +129,5 @@ List<Map<String, dynamic>> mergeSelectedGuestItems({
 }
 
 String newGuestItemId() {
-  final random = DateTime.now().microsecondsSinceEpoch;
-  return 'guest-${random.toRadixString(36)}';
+  return _defaultGuestItemIdGenerator.next();
 }
-

@@ -4,7 +4,9 @@ Map<String, dynamic> createGuestTemplateFromSession({
   required Map<String, dynamic> session,
   required String id,
   required String name,
+  String Function()? makeId,
 }) {
+  final nextId = makeId ?? newGuestItemId;
   final participants = (session['participants'] as List? ?? const [])
       .whereType<Map>()
       .map((item) => Map<String, dynamic>.from(item))
@@ -31,6 +33,7 @@ Map<String, dynamic> createGuestTemplateFromSession({
           _templateQuestion(
             Map<String, dynamic>.from(question),
             participantSlots,
+            makeId: nextId,
           ),
     ],
   };
@@ -41,11 +44,13 @@ Map<String, dynamic> createGuestSessionFromTemplate({
   required String id,
   required String title,
   required String firstParticipantName,
+  String Function()? makeId,
 }) {
+  final nextId = makeId ?? newGuestItemId;
   final slots = _templateSlots(template);
   final participantIds = <String, String>{
     for (final slot in slots)
-      slot['id']!: newGuestItemId(),
+      slot['id']!: nextId(),
   };
   final participants = [
     for (final (index, slot) in slots.indexed)
@@ -69,6 +74,7 @@ Map<String, dynamic> createGuestSessionFromTemplate({
             Map<String, dynamic>.from(question),
             participantIds,
             fallbackSlot,
+            makeId: nextId,
           ),
     ],
   };
@@ -78,6 +84,7 @@ Map<String, dynamic> _templateQuestion(
   Map<String, dynamic> question,
   Map<String, String> participantSlots, {
   String? answerOwnerSlot,
+  required String Function() makeId,
 }) {
   final nested = answerOwnerSlot != null;
   final scope = nested
@@ -107,7 +114,7 @@ Map<String, dynamic> _templateQuestion(
         participantSlots[answer['participant_id'] as String]!: answer,
   };
   return {
-    'id': newGuestItemId(),
+    'id': makeId(),
     'text': question['text'] as String? ?? '',
     'scope': scope,
     if (scope == 'participant') 'target_participant_slot': targetSlots.first,
@@ -117,6 +124,7 @@ Map<String, dynamic> _templateQuestion(
           answersBySlot[slot],
           slot,
           participantSlots,
+          makeId: makeId,
         ),
     ],
   };
@@ -126,6 +134,7 @@ Map<String, dynamic> _templateAnswer(
   Map<String, dynamic>? answer,
   String slot,
   Map<String, String> participantSlots,
+  required String Function() makeId,
 ) => {
   'participant_slot': slot,
   'follow_ups': [
@@ -135,6 +144,7 @@ Map<String, dynamic> _templateAnswer(
           Map<String, dynamic>.from(followUp),
           participantSlots,
           answerOwnerSlot: slot,
+          makeId: makeId,
         ),
   ],
 };
@@ -144,6 +154,7 @@ Map<String, dynamic> _sessionQuestion(
   Map<String, String> participantIds,
   String fallbackSlot, {
   String? answerOwnerSlot,
+  required String Function() makeId,
 }) {
   final nested = answerOwnerSlot != null;
   final scope = nested
@@ -166,7 +177,7 @@ Map<String, dynamic> _sessionQuestion(
   };
   final directFollowUps = question['follow_ups'] as List? ?? const [];
   return {
-    'id': newGuestItemId(),
+    'id': makeId(),
     'text': question['text'] as String? ?? '',
     'scope': scope,
     if (scope == 'participant')
@@ -179,6 +190,7 @@ Map<String, dynamic> _sessionQuestion(
           participantIds,
           fallbackSlot,
           directFollowUps,
+          makeId,
         ),
     ],
   };
@@ -190,6 +202,7 @@ Map<String, dynamic> _sessionAnswer(
   Map<String, String> participantIds,
   String fallbackSlot,
   List directFollowUps,
+  String Function() makeId,
 ) => {
   'participant_id': participantIds[slot] ?? participantIds[fallbackSlot],
   'body': '',
@@ -202,6 +215,7 @@ Map<String, dynamic> _sessionAnswer(
           participantIds,
           fallbackSlot,
           answerOwnerSlot: slot,
+          makeId: makeId,
         ),
   ],
 };
