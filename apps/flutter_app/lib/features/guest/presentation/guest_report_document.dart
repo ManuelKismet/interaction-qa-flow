@@ -233,8 +233,16 @@ GuestReportData composeGuestReport({
   );
 }
 
-Future<Uint8List> buildGuestReportPdf(GuestReportData report) async {
-  final fontBytes = await rootBundle.load('assets/fonts/DejaVuSans.ttf');
+Future<Uint8List> buildGuestReportPdf(GuestReportData report) {
+  return rootBundle.load('assets/fonts/DejaVuSans.ttf').then(
+    (fontBytes) => _buildGuestReportPdfWithFont(report, fontBytes),
+  );
+}
+
+Future<Uint8List> _buildGuestReportPdfWithFont(
+  GuestReportData report,
+  ByteData fontBytes,
+) {
   _requireSupportedPdfCharacters(fontBytes, [
     report.title,
     report.scope,
