@@ -316,6 +316,15 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(
+      find.descendant(
+        of: preview,
+        matching: find.textContaining(
+          'If the bundled font lacks a character, direct PDF is skipped',
+        ),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.descendant(of: preview, matching: find.text('Close')));
     await tester.pumpAndSettle();
     expect(find.text('Preview PDF'), findsNothing);

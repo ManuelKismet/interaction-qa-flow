@@ -2,8 +2,14 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
-import 'package:pdf/pdf.dart';
+import 'package:pdf/pdf.dart' show PdfColors, PdfPageFormat, TtfParser;
 import 'package:pdf/widgets.dart' as pw;
+
+class UnsupportedPdfCharactersException implements Exception {
+  const UnsupportedPdfCharactersException(this.codePoints);
+
+  final List<int> codePoints;
+}
 
 class GuestReportData {
   const GuestReportData({
@@ -229,6 +235,13 @@ GuestReportData composeGuestReport({
 
 Future<Uint8List> buildGuestReportPdf(GuestReportData report) async {
   final fontBytes = await rootBundle.load('assets/fonts/DejaVuSans.ttf');
+  _requireSupportedPdfCharacters(fontBytes, [
+    report.title,
+    report.scope,
+    ...report.participantNames,
+    report.exportedAt.toIso8601String(),
+    for (final question in report.questions) ..._questionText(question),
+  ]);
   final font = pw.Font.ttf(fontBytes);
   final pdf = pw.Document(
     title: report.title,
@@ -333,6 +346,15 @@ Future<Uint8List> buildGuestPortablePdf(
   GuestPortableDocument document,
 ) async {
   final fontBytes = await rootBundle.load('assets/fonts/DejaVuSans.ttf');
+  _requireSupportedPdfCharacters(fontBytes, [
+    document.title,
+    document.scope,
+    document.exportedAt.toIso8601String(),
+    for (final section in document.sections) ...[
+      section.heading,
+      section.body.trim().isEmpty ? 'Not provided.' : section.body,
+    ],
+  ]);
   final font = pw.Font.ttf(fontBytes);
   final pdf = pw.Document(
     title: document.title,
@@ -387,6 +409,36 @@ Future<Uint8List> buildGuestPortablePdf(
     ),
   );
   return pdf.save();
+}
+
+Iterable<String> _questionText(GuestReportQuestion question) sync* {
+  yield 'Path ${question.path} · ${question.triggerParticipant ?? ''}';
+  yield question.text;
+  if (question.triggerAnswer != null) yield question.triggerAnswer!;
+  for (final answer in question.answers) {
+    yield 'Answer — ${answer.participantName}';
+    yield answer.body.trim().isEmpty ? 'Unanswered.' : answer.body;
+    for (final followUp in answer.followUps) {
+      yield* _questionText(followUp);
+    }
+  }
+}
+
+void _requireSupportedPdfCharacters(ByteData fontBytes, Iterable<String> text) {
+  final glyphs = TtfParser(fontBytes).charToGlyphIndexMap;
+  final unsupported = <int>{};
+  for (final value in text) {
+    for (final codePoint in value.runes) {
+      if (codePoint == 0x09 || codePoint == 0x0a || codePoint == 0x0d) {
+        continue;
+      }
+      final glyphIndex = glyphs[codePoint];
+      if (glyphIndex == null || glyphIndex == 0) unsupported.add(codePoint);
+    }
+  }
+  if (unsupported.isNotEmpty) {
+    throw UnsupportedPdfCharactersException(unsupported.toList()..sort());
+  }
 }
 
 String buildGuestPortableHtml(GuestPortableDocument document) {

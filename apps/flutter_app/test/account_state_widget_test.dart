@@ -70,11 +70,17 @@ class _TestUserCredential extends Fake implements UserCredential {
 }
 
 class _TestFirebaseAuth extends Fake implements FirebaseAuth {
-  _TestFirebaseAuth(this.currentUser);
+  _TestFirebaseAuth(
+    this.currentUser, {
+    this.createError,
+    this.signInError,
+  });
 
   @override
   final User? currentUser;
 
+  final FirebaseAuthException? createError;
+  final FirebaseAuthException? signInError;
   int createAttempts = 0;
   int signInAttempts = 0;
   int signOutAttempts = 0;
@@ -86,6 +92,7 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
     required String password,
   }) async {
     createAttempts++;
+    if (createError != null) throw createError!;
     if (createCredential != null) return createCredential!;
     throw StateError('Unexpected account creation.');
   }
@@ -96,6 +103,7 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
     required String password,
   }) async {
     signInAttempts++;
+    if (signInError != null) throw signInError!;
     throw StateError('Unexpected sign-in.');
   }
 
@@ -134,6 +142,40 @@ class _SignInLauncher extends StatelessWidget {
       ),
     ),
   );
+}
+
+Future<void> _expectSeparateAccountError(
+  WidgetTester tester, {
+  required String code,
+  required String expectedMessage,
+}) async {
+  final auth = _TestFirebaseAuth(
+    null,
+    createError: FirebaseAuthException(
+      code: code,
+      message: 'Sensitive credential details must not be shown.',
+    ),
+  );
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+      child: const MaterialApp(home: SignInPage(createAccount: true)),
+    ),
+  );
+  await tester.enterText(find.byType(TextField).first, 'new@example.test');
+  await tester.enterText(find.byType(TextField).last, 'secret-password');
+  await tester.tap(
+    find.widgetWithText(FilledButton, 'Create a separate account'),
+  );
+  await tester.pumpAndSettle();
+
+  expect(find.textContaining(expectedMessage), findsOneWidget);
+  expect(
+    find.textContaining('Sensitive credential details'),
+    findsNothing,
+  );
+  expect(find.textContaining('secret-password'), findsNothing);
+  expect(auth.createAttempts, 1);
 }
 
 void main() {
@@ -670,6 +712,30 @@ void main() {
     expect(
       find.textContaining('does not add organisation membership'),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('separate signup explains an email already in use safely', (
+    tester,
+  ) async {
+    await _expectSeparateAccountError(
+      tester,
+      code: 'email-already-in-use',
+      expectedMessage:
+          'An account already uses this email. Sign in or reset the password instead.',
+    );
+    expect(
+      find.textContaining('guest identity remains active'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('separate signup explains weak passwords safely', (tester) async {
+    await _expectSeparateAccountError(
+      tester,
+      code: 'weak-password',
+      expectedMessage:
+          'Choose a stronger password and try creating the account again.',
     );
   });
 

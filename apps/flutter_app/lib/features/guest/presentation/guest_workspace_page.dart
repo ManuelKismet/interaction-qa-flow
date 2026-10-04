@@ -20,6 +20,22 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
 import 'package:share_plus/share_plus.dart';
 
+void _showPdfFontFallbackNotice(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        kIsWeb
+            ? 'The bundled PDF font lacks some characters. No partial PDF was created; the full report is opening in browser print. Check its preview for glyph support.'
+            : 'The bundled PDF font lacks some characters, so no partial PDF was created. Use the web report’s browser-print export to retain the full text.',
+      ),
+    ),
+  );
+}
+
+String _pdfFontPreviewMessage() => kIsWeb
+    ? 'If the bundled font lacks a character, direct PDF is skipped. The full report opens in browser print; check print preview for glyph support.'
+    : 'If the bundled font lacks a character, direct PDF is skipped. Use the web report’s browser-print export to retain the full text.';
+
 class GuestWorkspacePage extends ConsumerStatefulWidget {
   const GuestWorkspacePage({
     required this.firebaseReady,
@@ -635,6 +651,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       if (mounted) {
         await _showPdfFallback(report, session, allParticipants, participantId);
       }
+    } on UnsupportedPdfCharactersException {
+      if (mounted) {
+        _showPdfFontFallbackNotice(context);
+        if (kIsWeb) {
+          await _showPdfFallback(report, session, allParticipants, participantId);
+        }
+      }
     } on Object {
       if (mounted) {
         await _showPdfFallback(report, session, allParticipants, participantId);
@@ -700,6 +723,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('PDF sharing was opened.')),
         );
+      }
+    } on UnsupportedPdfCharactersException {
+      if (mounted) {
+        _showPdfFontFallbackNotice(context);
+        if (kIsWeb) {
+          await _showPdfFallback(report, session, allParticipants, participantId);
+        }
       }
     } on Object {
       if (mounted) {
@@ -768,6 +798,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
               content: Text('Direct download is unavailable on this device. Use the print fallback.'),
             ),
           );
+        }
+      } on UnsupportedPdfCharactersException {
+        if (mounted) {
+          _showPdfFontFallbackNotice(context);
+          if (kIsWeb) {
+            openPrintableReport(
+              buildGuestReportDocument(
+                session: session,
+                allParticipants: allParticipants,
+                participantId: participantId,
+                generatedAt: report.exportedAt,
+              ),
+            );
+          }
         }
       } on Object {
         if (mounted) {
@@ -2919,10 +2963,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           status == ShareResultStatus.dismissed) {
         return;
       }
+    } on UnsupportedPdfCharactersException {
+      if (mounted) _showPdfFontFallbackNotice(context);
     } on Object {
       // Fall through to the print-to-PDF fallback.
     }
-    openPrintableReport(document);
+    if (kIsWeb) openPrintableReport(document);
   }
 
   Future<void> _shareAuthorizedReport(
@@ -2983,10 +3029,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           status == ShareResultStatus.dismissed) {
         return;
       }
+    } on UnsupportedPdfCharactersException {
+      if (mounted) _showPdfFontFallbackNotice(context);
     } on Object {
       // Fall through to the print-to-PDF fallback.
     }
-    openPrintableReport(buildGuestPortableHtml(document));
+    if (kIsWeb) openPrintableReport(buildGuestPortableHtml(document));
   }
 
   Future<void> _sharePortableDocument(
@@ -3015,6 +3063,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (result.status == ShareResultStatus.unavailable) {
         await _downloadPortableDocument(document);
       }
+    } on UnsupportedPdfCharactersException {
+      if (mounted) await _downloadPortableDocument(document);
+      return;
     } on Object {
       if (mounted) await _downloadPortableDocument(document);
     }
@@ -3464,7 +3515,7 @@ class _GuestReportPreviewDialog extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           Text(
-            'Some uncommon characters or emoji may not render in the PDF.',
+            _pdfFontPreviewMessage(),
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const Text(
@@ -3539,9 +3590,7 @@ class _GuestPortablePreviewDialog extends StatelessWidget {
           Text(document.title, style: Theme.of(context).textTheme.titleLarge),
           Text('Portable copy · ${document.scope}'),
           Text('Report prepared: ${document.exportedAt.toLocal()}'),
-          const Text(
-            'Some uncommon characters or emoji may not render in the PDF.',
-          ),
+          Text(_pdfFontPreviewMessage()),
           const Divider(),
           for (final section in document.sections) ...[
             Text(section.heading, style: Theme.of(context).textTheme.titleMedium),

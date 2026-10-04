@@ -547,7 +547,10 @@ void main() {
         scope: 'Authorized guest-group Knowledge entry',
         exportedAt: DateTime.utc(2026, 10, 3),
         sections: const [
-          GuestPortableSection(heading: 'Answer', body: 'A readable answer'),
+          GuestPortableSection(
+            heading: 'Answer',
+            body: 'A readable answer café Ω',
+          ),
         ],
       ),
     );
@@ -564,6 +567,43 @@ void main() {
       'shared-guide-2026-10-03.pdf',
     );
   });
+
+  test(
+    'PDF export refuses unsupported glyphs without losing report text',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final session = _sessionFixture();
+      final questions = (session['questions'] as List)
+          .cast<Map<String, dynamic>>();
+      final answers =
+          (questions.first['answers'] as List).cast<Map<String, dynamic>>();
+      answers.first['body'] = 'Chinese 中文 and emoji 🧑';
+      final report = composeGuestReport(
+        session: session,
+        allParticipants: true,
+        participantId: null,
+        exportedAt: DateTime.utc(2026, 10, 3),
+      );
+
+      await expectLater(
+        buildGuestReportPdf(report),
+        throwsA(
+          isA<UnsupportedPdfCharactersException>().having(
+            (error) => error.codePoints,
+            'codePoints',
+            containsAll([0x4e2d, 0x1f9d1]),
+          ),
+        ),
+      );
+      final html = buildGuestReportDocument(
+        session: session,
+        allParticipants: true,
+        participantId: null,
+        generatedAt: DateTime.utc(2026, 10, 3),
+      );
+      expect(html, contains('Chinese 中文 and emoji 🧑'));
+    },
+  );
 
   test('Knowledge PDF fallback escapes content and keeps a readable scope', () {
     final html = buildGuestPortableHtml(
