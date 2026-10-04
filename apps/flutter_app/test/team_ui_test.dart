@@ -31,8 +31,8 @@ const adminMember = OrganisationMember(
 );
 const answerOwnerMember = OrganisationMember(
   id: 'answer-owner-1',
-  email: 'owner@example.test',
-  displayName: 'Answer Owner',
+  email: 'a-very-long-answer-owner-address@example.test',
+  displayName: 'Answer Owner With A Long Display Name',
   role: 'answer_owner',
   status: 'active',
 );
@@ -220,7 +220,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Select a member').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Answer Owner · owner@example.test').last);
+    await tester.tap(
+      find
+          .text('Answer Owner With A Long Display Name · '
+              'a-very-long-answer-owner-address@example.test')
+          .last,
+    );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(
@@ -228,7 +233,7 @@ void main() {
         of: find.byKey(
           const ValueKey('department-answer-owner-selector'),
         ),
-        matching: find.text('Answer Owner · owner@example.test'),
+        matching: find.text('Answer Owner With A Long Display Name'),
       ),
       findsOneWidget,
     );
@@ -273,13 +278,17 @@ void main() {
     );
     await tester.tap(find.text('Select a member').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Answer Owner · owner@example.test'));
+    await tester.tap(
+      find
+          .text('Answer Owner With A Long Display Name · '
+              'a-very-long-answer-owner-address@example.test'),
+    );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('team-member-selector-team-1')),
-        matching: find.text('Answer Owner · owner@example.test'),
+        matching: find.text('Answer Owner With A Long Display Name'),
       ),
       findsOneWidget,
     );

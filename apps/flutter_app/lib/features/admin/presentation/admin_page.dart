@@ -290,6 +290,24 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                           ),
                         ),
                     ],
+                    selectedItemBuilder: (context) => [
+                      const Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text('Select a member'),
+                      ),
+                      for (final member in eligible)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: SizedBox(
+                            width: 120,
+                            child: Text(
+                              member.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                    ],
                     onChanged: (value) =>
                         setState(() => _ownerUserId = value),
                   );
@@ -797,6 +815,24 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
                     constraints: const BoxConstraints(maxWidth: 160),
                     child: Text(
                       '${member.displayName} · ${member.email}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+            ],
+            selectedItemBuilder: (context) => [
+              const Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text('Select a member'),
+              ),
+              for (final member in eligible)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: SizedBox(
+                    width: 120,
+                    child: Text(
+                      member.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
