@@ -112,3 +112,33 @@ Current required acceptance order:
 6. Continue authorised-admin acceptance only after genuine registered-user acceptance, using the approved backend membership/provisioning path rather than seeded/synthetic admin identities.
 
 This chat instance can inspect repository state and GitHub evidence but currently has no live Codespaces terminal/browser control exposed. Therefore no new live browser pass, Codespace test run, account creation, local-volume deletion, deployment, hosted-data mutation or role grant is claimed by this checkpoint update. Those actions remain the next execution steps when the existing development runtime/browser surface is available. Preserve the existing guest-local session until its persistence check is completed.
+
+
+## Work Mode live continuation — 4 October 2026, registration handoff
+
+Read this section before repeating guest testing. Existing signed-in GitHub access and Codespace bookish-happiness-w974vpwgq7j3g95v are available through the cloud browser. The current browser initially contained no saved guest sessions or Knowledge, so the 3 October session could not be reopened here. No browser data was cleared. Created fresh UI session **Guest acceptance 2026-10-04**, template **Acceptance reusable template**, and independent session **Template acceptance copy**. Preserve these until account-transition/privacy acceptance completes.
+
+### Observed guest checks
+
+- Session creation, second participant B, shared prepared question **Which option did you choose?**: passed.
+- B-specific answer-owned follow-up **Why blue?**, recursively followed by **When is calm useful?**: passed.
+- After reload, original session retained two participants and question tree. Participant 1 view excludes B-specific follow-ups. All-participant PDF preview shows B's retained root answer **Blue persistence acceptance B**, first nested answer **calm**, and second nested answer **During incident response.** This establishes actual fresh-session local answer retention; it does not validate the inaccessible 3 October session.
+- Local Knowledge create, prefix search **preserve**, edit and reload retention passed for **How do I preserve guest work?** with edited answer **Edited acceptance answer: keep a backup.**
+- Local template save and reuse produced a separate two-participant session with unanswered prepared question. Template and both sessions persisted across reload. Current saved template advertises one prepared question; recursive answer-owned template parity is not established.
+- Selected-participant and all-participant report previews opened. Original session report correctly identifies Participants 1 and B and the nested trigger/answers.
+- Template-copy all-participant preview had header **Participants: Participant 1, Participant 2** but BOTH answer rows labelled **Answer — Participant 2**. Observed UI inconsistency on served dev build; recheck exact PR13 candidate before assigning source defect.
+- PDF Download button exercised by semantic and visible-coordinate paths. Neither produced a captured download event (15-second timeout each). Actual download/rendered file/share remains unverified; browser restriction vs application failure not established.
+- Served guest workspace options exposed only clear-local-copy; session options exposed only delete-session. Backup/import controls were not available in these inspected menus; test them on the newer candidate.
+- Explicit UI opt-in to shared guest identity succeeded and preserved local work. Shared guest-group list request failed with **The guest group request failed. Check your connection and try again.**, persisting after one Retry. No group/invitation or shared content was created. Hosted group/link/conflict/multi-group/privacy acceptance is blocked and not passed.
+
+### Input-harness limitation
+
+Flutter semantics/text values can update before the rendered form/controller settles; rapid consecutive entries sometimes did not reach actual app state. Use visible settled coordinates/native keys, blur, then confirm visible rendered content and report/reload. Do not classify initial empty nested answers as a source defect: successful subsequent native-key entry and report/reload established retained recursive answers.
+
+### Codespace read-only observations
+
+Started existing Codespace and preserved original branch/untracked **postgresql-migration-review-2026-10-03.md**. Current original workspace is behind remote branch. No source checkout/update/reset, PR head testing, build, deployment, merge or deletion was performed in this continuation. Terminal PATH currently did not resolve docker, rg, gh or gcloud; process-name scan found no postgres/docker/cloud-sql match. This is NOT proof no legacy database/volume exists. Locate tooling and actual legacy runtime; confirm hosted Cloud SQL intqaflow_dev authority and unique-data disposition before scoped cleanup. Historical disposable intqaflow_review migration cluster is not the requested smart_qa target.
+
+### Resume after signup handoff
+
+Normal Account → Create account UI opened from shared guest identity. Registration/email verification requires founder manual entry using an accessible mailbox; credentials must not be supplied in chat. No account was created by the agent and verification/sign-out/sign-in/no-membership remain untested. After registration, verify local content remains local without automatic upload, user no-membership state, email verification and sign-out/sign-in, plus guest recovery/link/conflict boundaries. Then scoped obsolete-local smart_qa cleanup only after authority confirmation, followed by independent current exact PR13 head test/build and affected-flow review. Guest full acceptance remains incomplete because of the listed blocked/unverified functions. Do not inherit earlier abb224f test counts for current PR13 head.
