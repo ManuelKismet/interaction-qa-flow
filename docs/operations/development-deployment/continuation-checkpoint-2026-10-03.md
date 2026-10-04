@@ -195,3 +195,13 @@ Original tracked compose.yaml describes smart_qa DB and smart_qa_postgres volume
 Docker executable absent from PATH and checked /usr/bin/docker,/usr/local/bin/docker; /var/run/docker.sock and /var/lib/docker/volumes absent at checked paths. pg_lsclusters reports only PostgreSQL16 main, port5432, DOWN. This is not proof legacy external Docker volume does not exist. Actual smart_qa volume target/unique-data check remains blocked outside this accessible container; do not remove main cluster or unrelated disposable intqaflow_review runtime. No deletion performed.
 
 Remaining: full guest shared/invitation/conflict/privacy boundaries; actual PDF file/render/share; backup/import and recursive template parity; deeper post-login nested answer/report retention; new exact-head independent verification and affected UI tests; confirm exact hosted database URL target/read-only schema authority as needed without secret output; identify actual local Docker host before scoped cleanup; final test-account/data cleanup. No organisation/admin grant, production change or readiness signoff.
+
+
+## Legacy runtime clarification and new candidate — 4 October 2026
+Founder confirms obsolete smart_qa was used during initial development on their PC, not the current hosted development environment. Actual PC Docker volume cleanup is deferred until PC access; do not treat missing Codespace Docker tooling as a reason to install/start a replacement Docker host or delete the unrelated PostgreSQL main cluster. Nothing deleted.
+
+Post-sign-in original-session all-participant report visually confirms root Blue persistence acceptance B, nested calm, and second nested During incident response. retained with Participant B ownership. Flutter disabled semantic textbox values appear empty despite visible rendered content; screenshot observation is authoritative for this check, not those empty harness values.
+
+PR13 new head f8b42bc5e9a62db78b4f05754299e72ee004765e (Fix Dart syntax blockers) was fetched and pinned in /workspaces/intqaflow-review-pr13-f8b42bc. Patch changes only two delimiter sites in guest_workspace_page.dart/guided_page.dart; it does not establish disposition of the broader fresh UX findings.
+Exact-head backend regression: 82 passed, 1 warning, 23.58s. Flutter pub get passed; Flutter full suite, analyzer and release web build started sequentially with stdin redirected /dev/null. Logs /home/vscode/.local/share/intqaflow/pr13-f8b42bc-verification-20261004. Results still pending at this entry; do not claim completion from launch. No deployment or merge.
+Hosted API /health returned status ok, environment development. This is liveness, not proof schema/database readiness.
