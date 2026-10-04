@@ -211,3 +211,18 @@ Hosted API /health returned status ok, environment development. This is liveness
 Flutter full suite completed: 82 passed, 1 failed in 1m48s. Failure guest_interact_widget_test.dart “long labels and nested branches fit a narrow guest layout”: tester.takeException expected null, got RenderFlex horizontal overflow 10px; assertion line51. This is a widget regression, not a compilation-load failure.
 Analyzer: zero errors, zero warnings, 12 infos.
 Initial release build failed after75.5s because dart2js compiler exited -15 (terminated), with optional Wasm dry-run failure241. Do not classify this as a remaining syntax defect or claim resource cause proven. JavaScript-only retry started with --no-wasm-dry-run; log build-js-retry.log, result pending. No new application fix cycle sent for this newly discovered overflow yet; report to founder first.
+
+
+## Latest Copilot review — 4 October 2026, 15:05 London continuation
+Prior f8b42bc JavaScript-only release retry PASSED (61.4s), not deployed; initial default build termination is not a source-syntax defect. Its 360px 10px overflow test failure remains unverified until new compilable source runs.
+
+Latest PR13 head 1cdc5dd5238bd63d42c509728ee1810b461f2390 pinned /workspaces/intqaflow-review-pr13-1cdc5dd. Reviewed source and Copilot pr13-follow-up-checkpoint-2026-10-04.md. New changes add same-guest account naming/success/navigation, verification-send/reload failure messages, cancellation feedback, sanitized retryable group errors, distinct report-owner assertions, attached download anchor with delayed URL revocation and honest requested-download language. These are source changes, not live acceptance. Existing hosted UI remains unchanged.
+
+Independent results:
+- Backend 82 passed, 1 warning,17.24s.
+- Flutter pub get passed; full suite 65 passed,4 files failed to LOAD: widget_test, account_state_widget_test, guest_interact_widget_test, guest_group_dialog_test.
+- Source-confirmed NEW syntax error guest_workspace_page.dart365: comma after preceding else-if IconButton at364 terminates collection-if chain before next else-if. Compiler expected closing bracket. No fix made by ChatGPT.
+- Analyzer19 issues; exact severity count pending.
+- JavaScript release build (--no-wasm-dry-run) in progress; capture completion before claiming result.
+- Worktree clean; git diff --check no output.
+Logs /home/vscode/.local/share/intqaflow/pr13-1cdc5dd-verification-20261004. No deployment, merge, data cleanup or role grant. Recurring compilation regression requires founder attention before next Copilot fix cycle. Account/group/PDF/backup responsive UI acceptance remains blocked on compilable candidate.
