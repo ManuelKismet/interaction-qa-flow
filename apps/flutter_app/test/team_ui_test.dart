@@ -192,8 +192,16 @@ void main() {
       find.text('member@example.test · employee · Finance'),
       findsOneWidget,
     );
+    final noDepartmentsMessage =
+        find.text('No departments yet. Create one to assign members.');
+    await tester.scrollUntilVisible(
+      noDepartmentsMessage,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(
-      find.text('No departments yet. Create one to assign members.'),
+      noDepartmentsMessage,
       findsOneWidget,
     );
     await tester.enterText(find.byType(TextField).at(0), 'Operations');
