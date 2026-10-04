@@ -95,3 +95,20 @@ Preserve existing guest/private/group/org authorization boundaries, App Check ob
 - Final worktree status and lockfile: clean; git diff --check passed. Flutter 3.41.4 / Dart 3.11.1.
 
 No application deployment, merge, migration apply, hosted-data modification, admin grant, IAM change or App Check change was performed in this verification.
+
+
+## Founder continuation directive — 4 October 2026
+
+Founder authorised completing the full guest application flow/function/feature acceptance, now explicitly including guest → normal account creation/email verification/sign-out/sign-in and subsequent no-membership state. After guest/account acceptance, inspect and independently verify any pending Copilot PR13 commit in Codespace before further development acceptance. Founder also states the old local database is no longer required and may be removed after the hosted-development path is confirmed authoritative; do not delete hosted intqaflow_dev or production data.
+
+Repository review on 4 October found PR13 current head `0079511d244a1a8648e61f2cee4b1529ac89a9fb`, exactly one commit ahead of independently verified `abb224fee28355a671b9cd8828c090bdb86353b1`. The delta is Flutter/UI/test only: auth page, guest workspace/report, registered Interact pages and associated tests. No backend/database source changed in that delta. The new head has no GitHub Actions run attached, so it is unverified; do not inherit the earlier 79-Flutter-pass result for this commit.
+
+Current required acceptance order:
+1. Finish existing guest-local Interact persistence/participant/nested-branch checks and all remaining guest Knowledge, template, backup/import, PDF and privacy flows.
+2. Continue through normal registration UI, email verification, sign-out/sign-in and genuine no-organisation-membership behaviour. Do not recreate synthetic accounts or auth bypasses.
+3. Verify shared-guest/link/conflict/group boundaries and ensure account creation does not auto-upload local work, auto-enrol an organisation or widen guest-group privileges.
+4. Identify the actual local legacy database/volume in the development runtime, confirm hosted Cloud SQL `intqaflow_dev` is authoritative and no unique required data remains, then remove only that local legacy database/volume. Never delete hosted `intqaflow_dev` as part of this cleanup.
+5. Independently verify PR13 exact head in Codespace: dependency resolution/lockfile, backend regression suite, Flutter full tests, analyzer and release web build; then repeat only affected browser flows including responsive UI, backup/import, PDF download/share and auth navigation.
+6. Continue authorised-admin acceptance only after genuine registered-user acceptance, using the approved backend membership/provisioning path rather than seeded/synthetic admin identities.
+
+This chat instance can inspect repository state and GitHub evidence but currently has no live Codespaces terminal/browser control exposed. Therefore no new live browser pass, Codespace test run, account creation, local-volume deletion, deployment, hosted-data mutation or role grant is claimed by this checkpoint update. Those actions remain the next execution steps when the existing development runtime/browser surface is available. Preserve the existing guest-local session until its persistence check is completed.
