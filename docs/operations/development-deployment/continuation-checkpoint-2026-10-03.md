@@ -242,3 +242,14 @@ Logs /home/vscode/.local/share/intqaflow/pr13-d93af25-verification-20261004.
 No fix/deploy/merge/role/data changes. Bring unresolved repeated overflow back to founder before another Copilot correction cycle. Guest-group/backup/import/PDF/account UI acceptance remains pending on appropriate configured candidate; current hosted build has not been updated.
 
 Final d93af25 JavaScript release build PASSED56.7s. All verification jobs completed. This fixes compilation but does not resolve the failed narrow-layout test; no deployment or full acceptance signoff.
+
+
+## Recursive-layout correction verification — fefd195
+Pinned fefd195ebafa64aa7a41f12e14db661d53a6638f in /workspaces/intqaflow-review-pr13-fefd195. Source review: recursive answer padding reduces below240px; follow-up action becomes icon below200px with “Add answer-owned follow-up” tooltip. Long participant/deep branch/no-render-exception assertions preserved and compact-action assertion added. Redundant user! removed.
+- Backend82 passed,1 warning18.21s; pip check passed.
+- Flutter pub get passed; FULL Flutter suite92 passed,0 failures66s. Previously recurring360px10px overflow regression now PASSES.
+- Analyzer completed12 issues; all previously recorded informational notices; precise severity confirmation follows.
+- Release JavaScript --no-wasm-dry-run in progress at entry.
+- Worktree/lockfile clean; git diff --check passed.
+Logs /home/vscode/.local/share/intqaflow/pr13-fefd195-verification-20261004.
+No merge/deployment/role/data changes. After successful build, affected LIVE browser checks require a configured development candidate; existing hosted app has not been changed. Pending live: improved link/cancel feedback, linked-account verification workflow (real delivery deferred), group request/invitations/access/privacy, backup/import, recursive templates, report ownership and actual PDF download/render/share, responsive affected views. Full guest suite still not complete.
