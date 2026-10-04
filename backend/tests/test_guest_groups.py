@@ -195,26 +195,48 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
     changed = await client.patch(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
         headers=bearer("guest-editor"),
-        json={"title": "Updated password policy"},
+        json={"expected_revision": 1, "title": "Updated password policy"},
     )
     assert changed.status_code == 403
     admin_edit = await client.patch(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
         headers=bearer("guest-owner"),
-        json={"title": "Admin-reviewed password policy"},
+        json={"expected_revision": 1, "title": "Admin-reviewed password policy"},
     )
     assert admin_edit.status_code == 200
     changed_by_author = await client.patch(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
         headers=bearer("guest-joiner"),
-        json={"title": "Updated password policy"},
+        json={"expected_revision": 2, "title": "Updated password policy"},
     )
     assert changed_by_author.status_code == 200
+
+    first_edit = await client.patch(
+        f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
+        headers=bearer("guest-joiner"),
+        json={"expected_revision": 3, "title": "First concurrent edit"},
+    )
+    assert first_edit.status_code == 200
+    assert first_edit.json()["revision"] == 4
+    stale_edit = await client.patch(
+        f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
+        headers=bearer("guest-owner"),
+        json={"expected_revision": 3, "title": "Stale concurrent edit"},
+    )
+    assert stale_edit.status_code == 409
+    latest = await client.get(
+        f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
+        headers=bearer("guest-owner"),
+    )
+    assert latest.status_code == 200
+    assert latest.json()["title"] == "First concurrent edit"
+    assert latest.json()["revision"] == 4
+
     history = await client.get(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}/history",
         headers=bearer("guest-owner"),
     )
-    assert [item["revision"] for item in history.json()] == [1, 2, 3]
+    assert [item["revision"] for item in history.json()] == [1, 2, 3, 4]
     exported = await client.get(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}/export",
         headers=bearer("guest-owner"),

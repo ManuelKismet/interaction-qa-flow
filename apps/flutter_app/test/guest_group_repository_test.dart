@@ -82,6 +82,66 @@ void main() {
     client.close();
   });
 
+  test(
+    'entry updates send the revision used to make the edit',
+    () async {
+      final adapter = _RecordingAdapter(
+        responseBody: '{"id":"entry-id","revision":2}',
+      );
+      final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+        ..httpClientAdapter = adapter;
+
+      await GuestGroupRepository(client).updateEntry(
+        groupId: 'group-id',
+        entryId: 'entry-id',
+        expectedRevision: 1,
+        title: 'Updated title',
+        data: const {'answer': 'Updated answer'},
+      );
+
+      expect(
+        adapter.requestPath,
+        '/api/v1/guest/groups/group-id/entries/entry-id',
+      );
+      expect(adapter.requestBody, {
+        'expected_revision': 1,
+        'title': 'Updated title',
+        'data': {'answer': 'Updated answer'},
+      });
+      client.close();
+    },
+  );
+
+  test(
+    'stale entry update conflicts ask the user to refresh before saving',
+    () async {
+      final adapter = _RecordingAdapter(
+        statusCode: 409,
+        responseBody: '{"detail":"stale revision"}',
+      );
+      final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+        ..httpClientAdapter = adapter;
+
+      await expectLater(
+        GuestGroupRepository(client).updateEntry(
+          groupId: 'group-id',
+          entryId: 'entry-id',
+          expectedRevision: 1,
+          title: 'Updated title',
+          data: const {},
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.message,
+            'message',
+            contains('Refresh and review the latest version'),
+          ),
+        ),
+      );
+      client.close();
+    },
+  );
+
   test('group listing errors are sanitized and distinguish unauthorized requests', () async {
     final adapter = _RecordingAdapter(
       statusCode: 401,

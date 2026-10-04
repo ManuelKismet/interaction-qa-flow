@@ -3086,6 +3086,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       await _repository.updateEntry(
         groupId: groupId,
         entryId: entry['id'] as String,
+        expectedRevision: entry['revision'] as int,
         title: editedTitle,
         data: updatedData,
       );

@@ -193,15 +193,30 @@ class GuestGroupRepository {
   Future<Map<String, dynamic>> updateEntry({
     required String groupId,
     required String entryId,
+    required int expectedRevision,
     required String title,
     required Map<String, dynamic> data,
-  }) => _request(() async {
-    final response = await _client.patch<Map<String, dynamic>>(
-      '/api/v1/guest/groups/$groupId/entries/$entryId',
-      data: {'title': title, 'data': data},
-    );
-    return response.data!;
-  });
+  }) async {
+    try {
+      final response = await _client.patch<Map<String, dynamic>>(
+        '/api/v1/guest/groups/$groupId/entries/$entryId',
+        data: {
+          'expected_revision': expectedRevision,
+          'title': title,
+          'data': data,
+        },
+      );
+      return response.data!;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 409) {
+        throw const ApiException(
+          'This content changed since you opened it. '
+          'Refresh and review the latest version before saving.',
+        );
+      }
+      throw ApiException.fromDio(error);
+    }
+  }
 
   Future<void> deleteEntry({
     required String groupId,

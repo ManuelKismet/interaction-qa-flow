@@ -531,6 +531,14 @@ class GuestService:
         entry = await self._entry(group_id, entry_id, lock=True)
         if member.role not in _EDIT_ANY_ROLES and entry.created_by_uid != firebase_uid:
             raise HTTPException(status_code=403, detail="Cannot edit another member's content")
+        if entry.revision != payload.expected_revision:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Guest content changed since it was opened. "
+                    "Reload the latest version before saving."
+                ),
+            )
         if payload.title is None and payload.data is None:
             raise HTTPException(status_code=422, detail="No guest content changes supplied")
         title = payload.title.strip() if payload.title is not None else entry.title
