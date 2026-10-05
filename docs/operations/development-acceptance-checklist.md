@@ -1,5 +1,7 @@
 # Development acceptance checklist
 
+> Current status (2026-10-05): historical baseline and scenario inventory. Dated FAIL/PENDING/NOT RUN labels below are not current verdicts. See [current checkpoint](development-deployment/user-admin-e2e-checkpoint-2026-10-04.md) for superseding evidence and remaining gaps. Production and old local database excluded.
+
 Prepared 2026-10-02. Deployment remains deferred. Keep the old local database and its volume until hosted end-to-end acceptance passes. Use synthetic data and fake embeddings for local checks. No production data, live embedding calls, public server exposure or global App Check enforcement changes are part of this checklist.
 
 ## Evidence and policy

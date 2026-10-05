@@ -442,3 +442,12 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Invitation revoked/active invitation list empty. Remove member twice blanks owner page with no removal POST; reload recovers Knowledge root and viewer remains active. Second attempt used screenshot-grounded visible menu action. Report5993845396 requests navigation/dialog lifecycle regression. Viewer remains in empty synthetic group; removal cleanup NOT passed. No organisation grants changed.
 - New test-only a67a2461d054af5406ac553ca8a0890868723507 independently backend87 passed/12.54s, one existing warning, fresh PostgreSQL stopped/password removed. Guard400 does not consume invitation; legitimate join still pending. No application changes/new deployment needed.
 - Previously passed unrelated checks remain closed. Linked-account identity journey, no-org registered browser acceptance, hosted dangerous CSV cells and broader privacy/operational checks remain pending. Production/old local database excluded.
+
+
+### 2026-10-05 12:11 UTC — hosted CSV safety and operational audit
+
+- Deployed0f87f47 Employee private fixture69d4afaf-5f1c-4459-a3b4-77da6deafa91: =title,+participant,@question,-answer with comma/quotes. Native CSV Copy203chars, parsed2rows/8columns; all4 risky text cells prefixed apostrophe, comma/quoted text preserved. JSON backup retains original values. Hosted formula neutralization/fidelity PASS, not spreadsheet execution or full hosted control-character matrix. Private draft retained; no Knowledge publication.
+- Operational sourcea67a246: /health static status/environment and liveness test only; no tracked GitHub workflow/backend lock, dependency ranges. Recovery doc requires restore/PITR procedure but no rehearsal evidence inspected. Readiness/reproducibility/CI/recovery remain OPEN.
+- GuidedKnowledgeService.decide invokes QuestionService.create which commits before answer creation/final proposal audit. Source atomicity concern, not reproduced hosted outage. Copilot5994126124 requests disposable failure test and transaction fix if failure, plus scoped operational improvements. No live DB/provider fault injection or IAM/schema changes.
+- Copilot stilla67a246; member removal cleanup pending. Previously passed unrelated checks remain closed.
+- Lesson: parse CSV before asserting quote integrity; JSON original-value fidelity is separate. Historical checklist is dated baseline; current checkpoint supersedes old pending/fail labels.
