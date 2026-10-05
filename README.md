@@ -356,3 +356,6 @@ Development acceptance update (2026-10-05, superseding the deployment above): te
 
 
 Development acceptance update (2026-10-05): exact PR13 head `8e243bf` deployed with 113 Flutter and 85 backend tests passed, analyze/build passed, Cloud Run healthy at 100% traffic and both Hosting origins matching the tested build. Admin template Restore/start passed; non-owner restore is denied by the API, with UI action gating/feedback still under review. See the user/admin E2E checkpoint for fixture cleanup, rollout identifiers, remaining checks and lessons. PRs remain draft/unmerged.
+
+
+Development update (2026-10-05): frontend bd0ae05 deployed after 115 Flutter tests, analyze and release build passed. Hosted creator/admin template mutation gating now passes; validated backend remains review8e243bf (85 tests). Broader E2E acceptance remains in progress; checkpoint records remaining work.

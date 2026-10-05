@@ -379,3 +379,11 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 
 - Copilot pushed `bd0ae0557438ee4698608a2ac8d2deb0da7cda8f` (Gate template mutations by ownership). Reviewed model parsing of existing created_by, membership creator/admin gate, and friendly persistent failure SnackBar. Backend unchanged relative to 8e243bf; existing independent 85-pass backend result carries forward.
 - Exact clean head checked out in isolated review worktree. Full Flutter tests, analyze and exact-head release build running; no new rollout or hosted UI pass claimed yet. Added widget coverage includes non-owner denial, creator/admin actions and failed Restore. Deployed development remains 8e243bf pending all gates.
+
+
+### 2026-10-05 10:38 UTC — template authority fix independently verified and deployed
+
+- Exact bd0ae0557438ee4698608a2ac8d2deb0da7cda8f: full Flutter 115 passed/57s, analyze passed/5.9s (12 existing infos), release build passed/50.5s; diff check clean. Backend unchanged, prior full 85-pass result retained.
+- Frontend-only development release sites/intqaflow-dev/releases/1791196604987000, version sites/intqaflow-dev/versions/31e9a528a9ab376a, 36 files. Both origins independently match the exact tested bundle (4,414,296 bytes). Cloud Run remains validated review8e243bf; no backend/security/database change. Hosting rollback version e77eef5d15d47d0c.
+- Hosted Employee sees active admin-created original and archived copy without mutation menus; own General Interaction QA menu remains. Admin archived-copy menu still offers Restore. Copy remains archived; no account/fixture mutation. New hosted authority check PASS. Persistent failure SnackBar verified by full widget suite, not by injecting a hosted outage.
+- Saved screenshot of non-owner template list. Existing route reload to root and separately observed session-navigation spinner remain unresolved; successful completed-session reload here does not close those findings. Remaining broader acceptance checks unchanged.
