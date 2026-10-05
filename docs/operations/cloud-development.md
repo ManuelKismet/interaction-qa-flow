@@ -282,17 +282,25 @@ approve enabling Firebase anonymous authentication in the development project,
 then separately configure any required App Check web settings. Apply migration
 `0011_guest_groups` only through the reviewed development migration process.
 Guest-group API tests use isolated synthetic token fixtures; live acceptance
-must use a newly registered Firebase identity through the normal UI. This
+may use an anonymous identity or a registered identity with a verified email
+through the normal UI. Unverified registered identities cannot create groups or
+redeem invitations. Linking a sign-in method to the current anonymous identity
+preserves its Firebase UID and group memberships; a separate account receives
+no automatic group-data transfer. This
 implementation did not change Firebase settings, IAM, App Check mode, Cloud
 SQL, or deployment state.
 
-Group access expires after 90 days without an authorized request. A bounded
-dry-run-first cleanup command is available at
+Group access expires after 90 days without an authorized request. Deletion is
+not automatic: a bounded, dry-run-first cleanup command is available at
 `backend/app/maintenance/guest_retention.py`; it is not scheduled or enabled by
 this implementation. See
 [`guest-group-retention.md`](guest-group-retention.md) for backup, recovery,
 permissions, and scheduler review requirements. Do not treat access expiry as
 deletion or promise that exported copies can be revoked.
+
+An account maps to one organisation membership; multi-organisation accounts are
+not supported. Registered users without an organisation can continue using
+local work and explicitly authorized shared groups.
 
 Backend guest-group tests use isolated SQLite and monkeypatched synthetic
 verified-token fixtures. PostgreSQL migration SQL generation was checked

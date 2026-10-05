@@ -80,7 +80,10 @@ infer the user's formal department.
   `backend/app/models/guest.py`, not an organisation or department. Their API
   verifies Firebase ID tokens and App Check independently and derives access
   from the Firebase UID's group membership; caller-supplied identity headers are
-  rejected.
+  rejected. Anonymous Firebase identities and registered identities with a
+  verified email may create groups or redeem invitations; unverified registered
+  identities are denied these actions. Every invitation redemption remains
+  pending until a group admin approves it.
 - Group roles and invitation approval are enforced by guest services on every
   content, search, history, export, and membership request. Invitation previews
   disclose validity only. Group membership does not grant organisation,
@@ -91,12 +94,17 @@ infer the user's formal department.
 - Group access expires after 90 days without an authorized request. The
   `backend/app/maintenance/guest_retention.py` command supports bounded,
   dry-run-first deletion of expired groups and their group-owned rows; no
-  scheduler is configured. Cleanup locks and rechecks each group before
-  deleting, and does not touch organisation or private-session data.
+  scheduler is configured. Expiry denies access but does not itself delete data;
+  expired rows are removed only by a reviewed apply-mode run. Cleanup locks and
+  rechecks each group before deleting, and does not touch organisation or
+  private-session data.
 - Registered organisation routes continue to resolve active Firebase UID
   mappings and retain the existing tenant, department, private-session,
   governance, and audit checks. A linked guest identity can access only its
-  existing group memberships.
+  existing group memberships. Each Firebase UID maps to one account and each
+  account belongs to one organisation; multiple organisation memberships per
+  account are not supported. Group roles remain independent of organisation
+  roles, and group membership does not create organisation membership.
 
 ## Semantic search
 

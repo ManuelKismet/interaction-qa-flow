@@ -13,19 +13,31 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 
 class _TestFirebaseAuth implements FirebaseAuth {
+  _TestFirebaseAuth([this.user]);
+
+  final User? user;
+
   @override
-  User? get currentUser => _TestUser();
+  User? get currentUser => user ?? _TestUser();
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _TestUser implements User {
+  _TestUser({this.anonymous = true, this.verified = false});
+
   @override
   String get uid => 'test-anonymous-uid';
 
   @override
-  bool get isAnonymous => true;
+  bool get isAnonymous => anonymous;
+
+  @override
+  bool get emailVerified => verified;
+
+  final bool anonymous;
+  final bool verified;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -96,6 +108,13 @@ class _FailingGroupsRepository extends GuestGroupRepository {
   }
 }
 
+class _EmptyGroupsRepository extends GuestGroupRepository {
+  _EmptyGroupsRepository() : super(Dio());
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => [];
+}
+
 class _ShareRepository extends GuestGroupRepository {
   _ShareRepository() : super(Dio());
 
@@ -148,6 +167,51 @@ class _MemoryGuestStorage implements GuestStorage {
 }
 
 void main() {
+  testWidgets(
+    'verified registered identity can create and join while unverified is denied',
+    (tester) async {
+      for (final user in [
+        _TestUser(),
+        _TestUser(anonymous: false, verified: true),
+        _TestUser(anonymous: false, verified: false),
+      ]) {
+        final eligible = user.isAnonymous || user.emailVerified;
+        final auth = _TestFirebaseAuth(user);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              firebaseAuthProvider.overrideWithValue(auth),
+              guestGroupRepositoryProvider.overrideWithValue(
+                _EmptyGroupsRepository(),
+              ),
+            ],
+            child: const MaterialApp(home: SharedGuestGroupsPage()),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Shared groups'), findsOneWidget);
+        final createButton = tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'Create group'),
+        );
+        final joinButton = tester.widget<OutlinedButton>(
+          find.widgetWithText(OutlinedButton, 'Join with invitation'),
+        );
+        expect(createButton.onPressed != null, eligible);
+        expect(joinButton.onPressed != null, eligible);
+        expect(
+          find.textContaining('Verify this account’s email'),
+          user.isAnonymous || user.emailVerified
+              ? findsNothing
+              : findsOneWidget,
+        );
+        expect(identical(user, auth.currentUser), isTrue);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
   testWidgets('group lookup failure does not claim there are no groups', (
     tester,
   ) async {
@@ -164,10 +228,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('The guest group request could not be verified'),
+      find.textContaining('The shared-group request could not be verified'),
       findsOneWidget,
     );
-    expect(find.textContaining('No approved guest groups are linked'), findsNothing);
+    expect(find.textContaining('No approved shared groups are linked'), findsNothing);
     expect(find.text('private test detail'), findsNothing);
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
@@ -305,6 +369,44 @@ void main() {
     expect((await store.load()).knowledge.single['title'], 'Local knowledge');
     expect((await store.load()).sessions.single['title'], 'Private interview');
   });
+
+  testWidgets(
+    'verified registered identity can create and join while unverified is denied',
+    (tester) async {
+      for (final verified in [true, false]) {
+        final user = _TestUser(anonymous: false, verified: verified);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+              guestGroupRepositoryProvider.overrideWithValue(
+                _EmptyGroupsRepository(),
+              ),
+            ],
+            child: const MaterialApp(home: SharedGuestGroupsPage()),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Shared groups'), findsOneWidget);
+        final createButton = tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'Create group'),
+        );
+        final joinButton = tester.widget<OutlinedButton>(
+          find.widgetWithText(OutlinedButton, 'Join with invitation'),
+        );
+        expect(createButton.onPressed != null, verified);
+        expect(joinButton.onPressed != null, verified);
+        expect(
+          find.textContaining('Verify this account’s email'),
+          verified ? findsNothing : findsOneWidget,
+        );
+        expect(identical(user, _TestFirebaseAuth(user).currentUser), isTrue);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    },
+  );
 
   for (final action in ['Download / Share PDF', 'History']) {
     testWidgets(

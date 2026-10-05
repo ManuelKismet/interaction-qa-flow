@@ -1,10 +1,12 @@
 # Shared guest-group retention operation
 
-Guest-group access expires after 90 days without an authorized request. The
-cleanup command removes expired groups and their memberships, invitations,
+Guest-group access expires after 90 days without an authorized request. Expiry
+does not itself delete data. When explicitly run in apply mode, the cleanup
+command removes expired groups and their memberships, invitations,
 entries, and entry revisions. It does not delete account identities, rate-limit
 records, organisation data, private Interact sessions, or copies already
-exported by members.
+exported by members. No automatic deletion schedule is configured; expired data
+is deleted only by a reviewed apply-mode run.
 
 ## Review and execution
 

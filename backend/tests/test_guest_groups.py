@@ -19,19 +19,29 @@ from app.services import guest as guest_service
 PROJECT_ID = "intqaflow-dev"
 
 
-def bearer(uid: str, provider: str = "anonymous") -> dict[str, str]:
-    token = "-".join(("test", provider, uid))
+def bearer(
+    uid: str,
+    provider: str = "anonymous",
+    *,
+    email_verified: bool | None = None,
+) -> dict[str, str]:
+    verified = (
+        provider != "anonymous" if email_verified is None else email_verified
+    )
+    token = f"test-{provider}-{uid}~{int(verified)}"
     return {"Authorization": "".join(("Bear", "er ", token))}
 
 
 def install_test_tokens(monkeypatch) -> None:
     def verify(token: str, _settings) -> dict[str, object]:
+        token, verified = token.rsplit("~", 1)
         _, provider, uid = token.split("-", 2)
         return {
             "aud": PROJECT_ID,
             "iss": f"https://securetoken.google.com/{PROJECT_ID}",
             "sub": uid,
             "firebase": {"sign_in_provider": provider},
+            "email_verified": verified == "1",
         }
 
     monkeypatch.setattr(dependencies, "verify_id_token", verify)
@@ -53,6 +63,31 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
     install_test_tokens(monkeypatch)
     owner = await make_group(client, "guest-owner", "Field research")
     group_id = owner["id"]
+    linked_owner = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("guest-owner", "password"),
+    )
+    assert linked_owner.status_code == 200
+    assert linked_owner.json()["role"] == "admin"
+    linked_owner_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("guest-owner", "password"),
+        json={"role": "viewer", "expires_in_hours": 12},
+    )
+    assert linked_owner_invitation.status_code == 200
+    assert (
+        await client.delete(
+            f"/api/v1/guest/groups/{group_id}/invitations/"
+            f"{linked_owner_invitation.json()['id']}",
+            headers=bearer("guest-owner", "password"),
+        )
+    ).status_code == 204
+    assert (
+        await client.get(
+            "/api/v1/auth/me",
+            headers=bearer("guest-owner", "password"),
+        )
+    ).status_code == 401
     async with session_factory() as db:
         group_row = await db.scalar(
             select(GuestGroup).where(GuestGroup.id == UUID(group_id))
@@ -420,9 +455,95 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
     registered_create = await client.post(
         "/api/v1/guest/groups",
         headers=bearer("registered-org-user", "password"),
-        json={"name": "Not anonymous", "display_name": "Org user"},
+        json={"name": "Registered group", "display_name": "Org user"},
     )
-    assert registered_create.status_code == 403
+    assert registered_create.status_code == 201
+    assert registered_create.json()["role"] == "admin"
+
+    unverified_create = await client.post(
+        "/api/v1/guest/groups",
+        headers=bearer(
+            "unverified-registered", "password", email_verified=False
+        ),
+        json={"name": "Unverified group", "display_name": "Unverified user"},
+    )
+    assert unverified_create.status_code == 403
+
+    registered_group = registered_create.json()
+    registered_invitation = await client.post(
+        f"/api/v1/guest/groups/{registered_group['id']}/invitations",
+        headers=bearer("registered-org-user", "password"),
+        json={"role": "contributor", "expires_in_hours": 12},
+    )
+    assert registered_invitation.status_code == 200
+    pending_registered = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer(
+            "verified-registered-joiner", "google.com", email_verified=True
+        ),
+        json={
+            "token": registered_invitation.json()["token"],
+            "display_name": "Verified joiner",
+        },
+    )
+    assert pending_registered.status_code == 200
+    assert pending_registered.json()["status"] == "pending"
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{registered_group['id']}",
+            headers=bearer("verified-registered-joiner", "google.com"),
+        )
+    ).status_code == 404
+    unverified_join = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer(
+            "unverified-joiner", "password", email_verified=False
+        ),
+        json={
+            "token": registered_invitation.json()["token"],
+            "display_name": "Unverified joiner",
+        },
+    )
+    assert unverified_join.status_code == 403
+    approve_registered = await client.post(
+        f"/api/v1/guest/groups/{registered_group['id']}/members/"
+        f"{pending_registered.json()['id']}/approve",
+        headers=bearer("registered-org-user", "password"),
+    )
+    assert approve_registered.status_code == 200
+    assert approve_registered.json()["status"] == "active"
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{registered_group['id']}",
+            headers=bearer("verified-registered-joiner", "google.com"),
+        )
+    ).status_code == 200
+    assert (
+        await client.get(
+            "/api/v1/auth/me",
+            headers=bearer("verified-registered-joiner", "google.com"),
+        )
+    ).status_code == 401
+    async with session_factory() as db:
+        registered_user = await db.scalar(
+            select(User).where(
+                User.id == UUID("00000000-0000-0000-0000-000000000002")
+            )
+        )
+        assert registered_user is not None
+        registered_user.role = UserRole.ADMIN
+        await db.commit()
+    org_admin_has_no_implicit_group_access = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("registered-org-user", "password"),
+    )
+    assert org_admin_has_no_implicit_group_access.status_code == 404
+    linked_group_admin = await client.get(
+        f"/api/v1/guest/groups/{registered_group['id']}",
+        headers=bearer("registered-org-user", "password"),
+    )
+    assert linked_group_admin.status_code == 200
+    assert linked_group_admin.json()["role"] == "admin"
 
     async with session_factory() as db:
         memberships = list(
@@ -435,7 +556,7 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
         assert {member.role for member in memberships} == {"admin", "contributor"}
         registered = await db.scalar(select(User))
         assert registered is not None
-        assert registered.role == UserRole.EMPLOYEE
+        assert registered.role == UserRole.ADMIN
 
 
 @pytest.mark.asyncio

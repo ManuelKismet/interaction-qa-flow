@@ -15,6 +15,7 @@ import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 class _TestUser extends Fake implements User {
   _TestUser({
     required this.isAnonymous,
+    this.isEmailVerified = false,
     this.linkError,
     this.verificationEmailError,
     this.reloadError,
@@ -24,7 +25,9 @@ class _TestUser extends Fake implements User {
   bool isAnonymous;
 
   @override
-  bool get emailVerified => false;
+  bool get emailVerified => isEmailVerified;
+
+  final bool isEmailVerified;
 
   @override
   String? get email => 'account@example.test';
@@ -307,7 +310,7 @@ void main() {
     expect(find.text('Create account'), findsNothing);
   });
 
-  testWidgets('registered accounts only expose existing guest-group access', (
+  testWidgets('registered accounts can still open existing shared groups', (
     tester,
   ) async {
     await pumpGuestWorkspace(
@@ -319,8 +322,22 @@ void main() {
       ],
     );
 
-    expect(find.byTooltip('Shared guest groups'), findsOneWidget);
-    expect(find.byTooltip('Enable shared guest groups'), findsNothing);
+    expect(find.byTooltip('Shared groups'), findsOneWidget);
+    expect(find.byTooltip('Enable shared groups'), findsNothing);
+  });
+
+  testWidgets('verified account without an organisation can open shared groups', (
+    tester,
+  ) async {
+    await pumpGuestWorkspace(
+      tester,
+      user: _TestUser(isAnonymous: false, isEmailVerified: true),
+      membershipStatus: AccountMembershipStatus.noMembership,
+    );
+
+    expect(find.textContaining('no organisation membership'), findsOneWidget);
+    expect(find.byTooltip('Shared groups'), findsOneWidget);
+    expect(find.byTooltip('Enable shared groups'), findsNothing);
   });
 
   testWidgets('inactive and unavailable memberships are distinct states', (
@@ -507,7 +524,7 @@ void main() {
     expect(find.text('No organisation membership'), findsNothing);
   });
 
-  testWidgets('guest-group lookup errors remain distinct from no access and retry', (
+  testWidgets('shared-group lookup errors remain distinct from no access and retry', (
     tester,
   ) async {
     final user = _TestUser(isAnonymous: false);
@@ -540,12 +557,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('Existing guest-group access could not be checked'),
+      find.textContaining('Existing shared-group access could not be checked'),
       findsOneWidget,
     );
     expect(find.text('private test detail'), findsNothing);
-    expect(find.text('No approved guest groups are linked to this device.'), findsNothing);
-    await tester.tap(find.text('Retry guest groups'));
+    expect(find.text('No approved shared groups are linked to this identity.'), findsNothing);
+    await tester.tap(find.text('Retry shared groups'));
     await tester.pumpAndSettle();
     expect(attempts, 2);
   });
@@ -701,7 +718,7 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('This creates a separate account. It does not transfer guest-group access'),
+      find.textContaining('This creates a separate account. It does not transfer shared-group access'),
       findsOneWidget,
     );
     await tester.enterText(find.byType(TextField).first, 'new@example.test');
@@ -745,7 +762,7 @@ void main() {
     );
   });
 
-  testWidgets('separate account creation warns before leaving guest groups', (
+  testWidgets('separate account creation warns before leaving shared groups', (
     tester,
   ) async {
     final user = _TestUser(isAnonymous: true);
@@ -766,7 +783,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('does not transfer the current guest group membership'),
+      find.textContaining('does not transfer the current shared-group membership'),
       findsOneWidget,
     );
     await tester.tap(find.text('Cancel account creation'));

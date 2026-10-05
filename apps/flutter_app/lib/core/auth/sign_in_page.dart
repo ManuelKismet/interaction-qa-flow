@@ -105,7 +105,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               title: const Text('Create a separate account?'),
               content: const Text(
                 'This creates a new signed-in identity and does not transfer '
-                'the current guest group membership. Create an account from this '
+                'the current shared-group membership. Create an account from this '
                 'guest instead to keep the same identity and group access. Local '
                 'work stays on this device.',
               ),
@@ -323,7 +323,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                               Text(
                                 _linkGuestMode
                                     ? 'Create a sign-in account from this guest to keep the same identity and group access. Local work stays on this device; it is not uploaded.'
-                                    : 'This creates a separate account. It does not transfer guest-group access or upload local work.',
+                                    : 'This creates a separate account. It does not transfer shared-group access or upload local work.',
                               ),
                             ],
                             const SizedBox(height: 20),

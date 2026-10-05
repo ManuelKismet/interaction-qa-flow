@@ -544,7 +544,7 @@ void main() {
     final portablePdf = await buildGuestPortablePdf(
       GuestPortableDocument(
         title: 'Shared guide',
-        scope: 'Authorized guest-group Knowledge entry',
+        scope: 'Authorized shared-group Knowledge entry',
         exportedAt: DateTime.utc(2026, 10, 3),
         sections: const [
           GuestPortableSection(
@@ -559,7 +559,7 @@ void main() {
       guestPortableFilename(
         GuestPortableDocument(
           title: 'Shared guide',
-          scope: 'Authorized guest-group Knowledge entry',
+          scope: 'Authorized shared-group Knowledge entry',
           exportedAt: DateTime.utc(2026, 10, 3),
           sections: const [],
         ),

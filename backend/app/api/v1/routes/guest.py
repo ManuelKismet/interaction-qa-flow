@@ -40,11 +40,14 @@ router = APIRouter(
 )
 
 
-def require_anonymous_identity(identity: GuestIdentity) -> None:
-    if identity.sign_in_provider != "anonymous":
+def require_eligible_group_identity(identity: GuestIdentity) -> None:
+    if (
+        identity.sign_in_provider != "anonymous"
+        and not identity.email_verified
+    ):
         raise HTTPException(
             status_code=403,
-            detail="A Firebase anonymous identity is required for this action",
+            detail="A verified email is required for registered Firebase identities",
         )
 
 
@@ -62,7 +65,7 @@ async def create_group(
     identity: GuestIdentity = Depends(get_guest_identity),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    require_anonymous_identity(identity)
+    require_eligible_group_identity(identity)
     return await GuestService(session).create_group(identity.firebase_uid, payload)
 
 
@@ -131,7 +134,7 @@ async def join_invitation(
     identity: GuestIdentity = Depends(get_guest_identity),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    require_anonymous_identity(identity)
+    require_eligible_group_identity(identity)
     return await GuestService(session).join_invitation(
         identity.firebase_uid, payload.token, payload.display_name
     )
