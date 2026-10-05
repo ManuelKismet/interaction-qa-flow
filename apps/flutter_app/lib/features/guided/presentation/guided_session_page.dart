@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
@@ -52,6 +53,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   @override
   Widget build(BuildContext context) {
     final detail = ref.watch(guidedSessionProvider(_query));
+    final membership = ref.watch(currentMembershipProvider).value;
     return detail.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
@@ -65,6 +67,17 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         ),
       ),
       data: (session) {
+        final canEditSession = membership != null &&
+            (membership.userId == session.createdById ||
+                (membership.role == 'admin' &&
+                    session.visibility != 'private'));
+        final readOnly = !canEditSession;
+        VoidCallback? transition;
+        if (canEditSession && session.status == 'draft') {
+          transition = () => _transition('start');
+        } else if (canEditSession && session.status == 'active') {
+          transition = () => _transition('complete');
+        }
         if (_participantId == null &&
             session.participants.isNotEmpty &&
             !_allParticipantsReport) {
@@ -102,12 +115,19 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                       ),
                     )
                   : null,
-              onTransition: session.status == 'draft'
-                  ? () => _transition('start')
-                  : session.status == 'active'
-                  ? () => _transition('complete')
-                  : null,
+              onTransition: transition,
             ),
+            if (readOnly)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'View-only session. Only the owner or an administrator can make changes.',
+                    key: ValueKey('guided-session-read-only-notice'),
+                  ),
+                ),
+              ),
             if (!_reportMode)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
@@ -148,23 +168,25 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                       '$answered of ${session.preparedQuestionCount} prepared answered',
                     ),
                     Text('${session.followUpCount} follow-ups'),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.person_add_alt_1_outlined),
-                      label: const Text('Add participant'),
-                      onPressed: () => _addParticipant(),
-                    ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Shared question'),
-                      onPressed: () => _addQuestion('shared'),
-                    ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.person_outline),
-                      label: const Text('Participant question'),
-                      onPressed: activeParticipant == null
-                          ? null
-                          : () => _addQuestion('participant'),
-                    ),
+                    if (canEditSession) ...[
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.person_add_alt_1_outlined),
+                        label: const Text('Add participant'),
+                        onPressed: () => _addParticipant(),
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.add),
+                        label: const Text('Shared question'),
+                        onPressed: () => _addQuestion('shared'),
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.person_outline),
+                        label: const Text('Participant question'),
+                        onPressed: activeParticipant == null
+                            ? null
+                            : () => _addQuestion('participant'),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -179,6 +201,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                       questions: session.questions,
                       participantId: _participantId,
                       participantName: activeParticipant?.name,
+                      readOnly: readOnly,
                       onEditing: _editing,
                       onSaveQuestion: (question, value) => _save(
                         () => ref
@@ -592,6 +615,7 @@ class GuidedFlowView extends StatelessWidget {
     required this.questions,
     required this.participantId,
     required this.participantName,
+    this.readOnly = false,
     required this.onEditing,
     required this.onSaveQuestion,
     required this.onSaveAnswer,
@@ -606,6 +630,7 @@ class GuidedFlowView extends StatelessWidget {
   final List<GuidedQuestion> questions;
   final String? participantId;
   final String? participantName;
+  final bool readOnly;
   final VoidCallback onEditing;
   final Future<void> Function(GuidedQuestion, String) onSaveQuestion;
   final Future<void> Function(GuidedQuestion, GuidedAnswer?, String)
@@ -669,6 +694,7 @@ class GuidedFlowView extends StatelessWidget {
                 question: visible.question,
                 participantId: participantId!,
                 participantName: participantName ?? 'Participant',
+                readOnly: readOnly,
                 depth: visible.depth,
                 path: visible.path,
                 parentText: visible.parentText,
@@ -707,6 +733,7 @@ class GuidedQuestionNode extends StatelessWidget {
     required this.question,
     required this.participantId,
     required this.participantName,
+    this.readOnly = false,
     required this.depth,
     required this.path,
     required this.parentText,
@@ -724,6 +751,7 @@ class GuidedQuestionNode extends StatelessWidget {
   final GuidedQuestion question;
   final String participantId;
   final String participantName;
+  final bool readOnly;
   final int depth;
   final List<int> path;
   final String? parentText;
@@ -777,16 +805,18 @@ class GuidedQuestionNode extends StatelessWidget {
                           fontSize: 12,
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Check Knowledge',
-                        icon: const Icon(Icons.manage_search_outlined),
-                        onPressed: () => onKnowledgeSearch(question),
-                      ),
-                      IconButton(
-                        tooltip: 'Delete question',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => onDelete(question),
-                      ),
+                      if (!readOnly) ...[
+                        IconButton(
+                          tooltip: 'Check Knowledge',
+                          icon: const Icon(Icons.manage_search_outlined),
+                          onPressed: () => onKnowledgeSearch(question),
+                        ),
+                        IconButton(
+                          tooltip: 'Delete question',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => onDelete(question),
+                        ),
+                      ],
                     ],
                   ),
                   Text(
@@ -803,63 +833,78 @@ class GuidedQuestionNode extends StatelessWidget {
                       ),
                     ),
                   const SizedBox(height: 6),
-                  _DebouncedField(
-                    key: ValueKey('question-${question.id}-${question.text}'),
-                    initialValue: question.text,
-                    minLines: 1,
-                    style: Theme.of(context).textTheme.titleMedium,
-                    onEditing: onEditing,
-                    onSave: (value) => onSaveQuestion(question, value),
-                  ),
+                  if (readOnly)
+                    Text(
+                      question.text,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    )
+                  else
+                    _DebouncedField(
+                      key: ValueKey('question-${question.id}-${question.text}'),
+                      initialValue: question.text,
+                      minLines: 1,
+                      style: Theme.of(context).textTheme.titleMedium,
+                      onEditing: onEditing,
+                      onSave: (value) => onSaveQuestion(question, value),
+                    ),
                   const SizedBox(height: 10),
                   Text(
                     'Answer · $participantName',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  _DebouncedField(
-                    key: ValueKey(
-                      'answer-${answer?.id ?? question.id}-${answer?.body ?? ''}',
+                  if (readOnly)
+                    Text(
+                      answer?.body.isNotEmpty == true
+                          ? answer!.body
+                          : 'No answer recorded.',
+                    )
+                  else
+                    _DebouncedField(
+                      key: ValueKey(
+                        'answer-${answer?.id ?? question.id}-${answer?.body ?? ''}',
+                      ),
+                      initialValue: answer?.body ?? '',
+                      minLines: 2,
+                      hintText: 'Record $participantName’s answer...',
+                      onEditing: onEditing,
+                      onSave: (value) => onSaveAnswer(question, answer, value),
                     ),
-                    initialValue: answer?.body ?? '',
-                    minLines: 2,
-                    hintText: 'Record $participantName’s answer...',
-                    onEditing: onEditing,
-                    onSave: (value) => onSaveAnswer(question, answer, value),
-                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 4,
                     children: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.account_tree_outlined),
-                        label: const Text('Add follow-up'),
-                        onPressed: answer == null
-                            ? null
-                            : () => onAddFollowUp(answer),
-                      ),
-                      TextButton.icon(
-                        icon: const Icon(Icons.lightbulb_outline),
-                        label: const Text('Propose for Knowledge'),
-                        onPressed:
-                            answer == null || answer.body.trim().isEmpty
-                            ? null
-                            : () => onPropose(question, answer),
-                      ),
-                      if (question.followUps.isNotEmpty && answer != null)
+                      if (!readOnly) ...[
                         TextButton.icon(
-                          icon: Icon(
-                            answer.branchesCollapsed
-                                ? Icons.expand_more
-                                : Icons.expand_less,
-                          ),
-                          label: Text(
-                            answer.branchesCollapsed
-                                ? 'Expand branch'
-                                : 'Collapse branch',
-                          ),
-                          onPressed: () => onToggleBranch(answer),
+                          icon: const Icon(Icons.account_tree_outlined),
+                          label: const Text('Add follow-up'),
+                          onPressed: answer == null
+                              ? null
+                              : () => onAddFollowUp(answer),
                         ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.lightbulb_outline),
+                          label: const Text('Propose for Knowledge'),
+                          onPressed:
+                              answer == null || answer.body.trim().isEmpty
+                              ? null
+                              : () => onPropose(question, answer),
+                        ),
+                        if (question.followUps.isNotEmpty && answer != null)
+                          TextButton.icon(
+                            icon: Icon(
+                              answer.branchesCollapsed
+                                  ? Icons.expand_more
+                                  : Icons.expand_less,
+                            ),
+                            label: Text(
+                              answer.branchesCollapsed
+                                  ? 'Expand branch'
+                                  : 'Collapse branch',
+                            ),
+                            onPressed: () => onToggleBranch(answer),
+                          ),
+                      ],
                       if (question.followUps.isNotEmpty && answer != null)
                         Text('${question.followUps.length} follow-ups'),
                     ],

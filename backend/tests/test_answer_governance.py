@@ -389,12 +389,41 @@ async def test_admin_assigns_and_removes_department_owner(app_client) -> None:
         for item in owners.json()
     )
 
+    finance_owner_departments = await client.get(
+        "/api/v1/department-answer-owners/mine",
+        headers=headers(ids, "finance_owner"),
+    )
+    assert finance_owner_departments.status_code == 200
+    assert finance_owner_departments.json() == [str(ids["finance_department"])]
+
+    people_owner_departments = await client.get(
+        "/api/v1/department-answer-owners/mine",
+        headers=headers(ids, "people_owner"),
+    )
+    assert people_owner_departments.status_code == 200
+    assert set(people_owner_departments.json()) == {
+        str(ids["finance_department"]),
+        str(ids["people_department"]),
+    }
+
+    employee_departments = await client.get(
+        "/api/v1/department-answer-owners/mine",
+        headers=headers(ids, "employee"),
+    )
+    assert employee_departments.status_code == 403
+
     removed = await client.delete(
         f"/api/v1/departments/{ids['finance_department']}/answer-owners/"
         f"{ids['people_owner']}",
         headers=headers(ids),
     )
     assert removed.status_code == 204
+    remaining_owner_departments = await client.get(
+        "/api/v1/department-answer-owners/mine",
+        headers=headers(ids, "people_owner"),
+    )
+    assert remaining_owner_departments.status_code == 200
+    assert remaining_owner_departments.json() == [str(ids["people_department"])]
 
     async with session_factory() as session:
         actions = set(await session.scalars(select(AuditEvent.action)))

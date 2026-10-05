@@ -296,6 +296,9 @@ void main() {
     );
     await tester.tap(find.text('Payroll'));
     await tester.pumpAndSettle();
+    final payrollSelector =
+        find.byKey(const ValueKey('team-member-selector-team-1'));
+    await tester.ensureVisible(payrollSelector);
     expect(find.text('User ID'), findsNothing);
     expect(
       find.descendant(
@@ -304,7 +307,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    await tester.tap(find.text('Select a member').last);
+    await tester.tap(payrollSelector);
     await tester.pumpAndSettle();
     await tester.tap(
       find

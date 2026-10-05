@@ -132,6 +132,17 @@ class GovernanceRepository {
         DepartmentAnswerOwner.fromJson,
       );
 
+  Future<Set<String>> myDepartmentOwnerIds() async {
+    try {
+      final response = await _client.get<List<dynamic>>(
+        '/api/v1/department-answer-owners/mine',
+      );
+      return (response.data ?? const []).cast<String>().toSet();
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   Future<void> assignOwner(String departmentId, String userId) => _mutate(
         '/api/v1/departments/$departmentId/answer-owners',
         {'user_id': userId},

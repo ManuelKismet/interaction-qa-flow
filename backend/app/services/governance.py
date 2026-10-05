@@ -322,6 +322,27 @@ class GovernanceService:
             )
         ]
 
+    async def my_department_owner_ids(
+        self,
+        organisation_id: UUID,
+        user_id: UUID,
+    ) -> list[UUID]:
+        actor = await self.permissions.actor(user_id, organisation_id)
+        if actor.role != UserRole.ANSWER_OWNER:
+            raise PermissionDeniedError(
+                "Only answer owners can view their department assignments"
+            )
+        return sorted(
+            {
+                department.id
+                for _, department, owner in await self.governance.list_department_owners(
+                    organisation_id
+                )
+                if owner.id == actor.id
+            },
+            key=str,
+        )
+
     async def audit_events(
         self,
         organisation_id: UUID,

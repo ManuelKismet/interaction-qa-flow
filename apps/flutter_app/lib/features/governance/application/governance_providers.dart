@@ -24,6 +24,11 @@ final departmentOwnersProvider =
   (ref) => ref.watch(governanceRepositoryProvider).departmentOwners(),
 );
 
+final myDepartmentOwnerIdsProvider =
+    FutureProvider.autoDispose<Set<String>>(
+  (ref) => ref.watch(governanceRepositoryProvider).myDepartmentOwnerIds(),
+);
+
 final duplicateCandidatesProvider = FutureProvider.autoDispose
     .family<List<SemanticSearchResult>, String>(
   (ref, questionId) => ref
