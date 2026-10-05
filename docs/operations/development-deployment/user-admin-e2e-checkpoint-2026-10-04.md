@@ -369,3 +369,8 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Scoped-owner UI positive, role-without-assignment negative, department-free negative, and revocation checks passed. Regular account is restored to Employee and no answer-owner assignments remain; no answer mutations or wider grants.
 - Lessons: settle Flutter transitions and obtain fresh accessibility indexes before selecting a template menu; stale indexes selected the wrong template, which is not evidence of caching failure. Error-state test coverage does not establish a fix for the separately reported hosted navigation spinner.
 - Continue independent remaining flows while Copilot addresses the UI defect. Team sharing/privacy, registered guest collaboration, actual CJK/emoji PDF output, export clipboard verification, and hosted navigation root cause remain pending; do not claim full acceptance. Old local database and production remain excluded.
+
+### 2026-10-05 10:21 UTC — employee native JSON clipboard verification
+
+- Completed private Employee session opened through Completed sessions without a spinner. Export > JSON > Copy placed valid 2,261-character JSON on the browser clipboard. Parsed kind `intqaflow-guided-session`, version 1, completed/private state, expected synthetic title, one participant, one prepared question and one nonempty nested answer. Question text matches the fixture. Clipboard export verification is now PASS; no downloaded-file claim.
+- Lesson: native session answers are nested under questions in this export format; validate the actual schema rather than assuming top-level answers. Session content was not modified. Other pending checks in the preceding checkpoint remain open.
