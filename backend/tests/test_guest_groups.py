@@ -479,15 +479,30 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
         json={"role": "contributor", "expires_in_hours": 12},
     )
     assert registered_invitation.status_code == 200
+    registered_join_payload = {
+        "token": registered_invitation.json()["token"],
+        "display_name": "Verified joiner",
+    }
+    rejected_identity_header = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers={
+            **bearer(
+                "verified-registered-joiner", "google.com", email_verified=True
+            ),
+            "X-User-ID": "caller-selected-user",
+        },
+        json=registered_join_payload,
+    )
+    assert rejected_identity_header.status_code == 400
+    assert rejected_identity_header.json() == {
+        "detail": "Caller-selected identity and organisation headers are not accepted"
+    }
     pending_registered = await client.post(
         "/api/v1/guest/invitations/join",
         headers=bearer(
             "verified-registered-joiner", "google.com", email_verified=True
         ),
-        json={
-            "token": registered_invitation.json()["token"],
-            "display_name": "Verified joiner",
-        },
+        json=registered_join_payload,
     )
     assert pending_registered.status_code == 200
     assert pending_registered.json()["status"] == "pending"
