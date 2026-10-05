@@ -359,3 +359,6 @@ Development acceptance update (2026-10-05): exact PR13 head `8e243bf` deployed w
 
 
 Development update (2026-10-05): frontend bd0ae05 deployed after 115 Flutter tests, analyze and release build passed. Hosted creator/admin template mutation gating now passes; validated backend remains review8e243bf (85 tests). Broader E2E acceptance remains in progress; checkpoint records remaining work.
+
+
+Development acceptance (2026-10-05): reviewed `0f87f47` deployed, API `intqaflow-dev-api-review0f87f47`, Hosting release `1791199919218000`; backend87/Flutter118/analyze/build passed. Registered shared-group create/join/approval and viewer UI boundaries passed; Remove member blanks the owner page and remains pending. Test-only `a67a246` separately passed backend87. See [acceptance checkpoint](docs/operations/development-deployment/user-admin-e2e-checkpoint-2026-10-04.md) for evidence and lessons.
