@@ -437,6 +437,10 @@ void main() {
     );
     await tester.enterText(find.byType(TextField).first, 'account@example.test');
     await tester.enterText(find.byType(TextField).last, 'secret-password');
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).obscureText,
+      isTrue,
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
@@ -445,8 +449,22 @@ void main() {
       find.text('Sign-in failed. Check your email and password and try again.'),
       findsOneWidget,
     );
-    expect(find.textContaining('Sensitive credential details'), findsNothing);
-    expect(find.textContaining('secret-password'), findsNothing);
+    final renderedText = tester.widgetList<Text>(
+      find.descendant(
+        of: find.byType(SignInPage),
+        matching: find.byType(Text),
+      ),
+    ).map((widget) => widget.data ?? '');
+    expect(
+      renderedText.any(
+        (text) => text.contains('Sensitive credential details'),
+      ),
+      isFalse,
+    );
+    expect(
+      renderedText.any((text) => text.contains('secret-password')),
+      isFalse,
+    );
   });
 
   testWidgets('registered account without membership is not shown as signed out', (
