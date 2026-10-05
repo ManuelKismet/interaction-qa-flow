@@ -219,3 +219,9 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 
 - Admin signed out after completed admin checks. Secure browserAuth submitted existing email/password sign-in, but visible site response was auth/invalid-email. Employee sign-in is not verified; credentials were not read or logged, and no blind retry performed. Manual handoff requested for regularuser1@test.com.
 - Retain pending employee permission, department/team selection, current search and organisation-session visibility checks. Answer-owner role/assignment needs a scoped account and action-time approval before increasing governance permissions. No role changed; admin/employee roles retained. Documentation and checkpoint PR15 latest published outcome remains the source of truth; full suite 105 pass and dev frontend ed24b0a remain green.
+
+### Employee sign-in and access boundary verified
+
+- Manual sign-in succeeded. Account menu freshly confirms regularuser1@test.com, organisation Employee role.
+- Verified accepted own answer is visible with Suggest update/History but without edit/remove/verify/review actions; approved question has Request review. Direct /admin route renders Administrator access is required.
+- Admin-owned organisation-visible session 231a10a3-76c3-4e77-a186-720c52c3d854 loads for employee (read boundary passed). Enabled Start produced HTTP403 at 07:06:00 UTC, session remained draft (write boundary passed). UI still shows enabled edit controls without a durable explanation: frontend usability defect, Copilot comment5989758071 requests read-only non-owner employee view with reports/export retained. No access bypass or session mutation observed.
