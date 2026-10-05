@@ -337,3 +337,10 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Archived copy menu still offers Save as new version, Duplicate and Archive, with no Restore/Unarchive option. Recovery acceptance remains pending, reported to Copilot in PR13 comment 5991877023 for intended lifecycle review and a narrow fix if required. No permanent deletion performed. Archived synthetic copy retained as audit fixture.
 - Copilot acknowledged the separate navigation investigation with an eyes reaction at 09:23:15 UTC. Latest independently checked PR13 head remains a4ec6c1; no new fix has been validated. Do not report acknowledgement as completion.
 - Lesson: retained archived data is not equivalent to a user-accessible recovery flow; verify the available restore control independently.
+
+### 2026-10-05 — Copilot follow-up commits under independent validation
+
+- PR13 advanced to exact head 07c17a98f6b309cb6e41ae574a4a7837bd54da09. cd184f0 adds only a mocked session 404/error/retry widget regression; Copilot could not reproduce or confirm the hosted spinner cause and changed no route/auth/access logic. Hosted navigation remains open.
+- 07c17a9 adds creator/admin-restricted template restore with a distinct audit action, archived-only conflict guard, and an archived-menu Restore action preserving version/questions and startability. Backend/widget coverage added. Source review confirms tenant lookup and permissions remain explicit.
+- Clean detached exact-head worktree checked before launching full Flutter suite, analysis/release build, and full backend tests against a fresh disposable local PostgreSQL cluster. Tests are in progress; deployed development remains a4ec6c1 until independent checks pass and a coordinated backend/frontend rollout is verified. No old local database used.
+- Lesson: a mocked 404/retry test is useful regression coverage but is not evidence that an observed hosted route transition was reproduced or fixed. Keep those statuses separate.
