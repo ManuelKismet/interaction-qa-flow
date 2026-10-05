@@ -3,6 +3,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import func, select
 
+from app.ai.embedding_provider import DeterministicFakeEmbeddingProvider
 from app.models.answer import Answer
 from app.models.audit_event import AuditAction, AuditEvent
 from app.models.guided import GuidedQuestion, GuidedSession, KnowledgeProposal
@@ -428,6 +429,13 @@ async def test_knowledge_proposal_acceptance_rolls_back_and_retries_atomically(
     app_client, monkeypatch
 ) -> None:
     client, session_factory = app_client
+    monkeypatch.setattr(
+        guided_knowledge,
+        "get_embedding_provider",
+        lambda settings: DeterministicFakeEmbeddingProvider(
+            settings.embedding_dimensions
+        ),
+    )
     ids = await seed_governance(session_factory)
     guided = await create_session(client, ids)
     participant = await add_participant(client, ids, guided["id"], "Alice")
@@ -452,6 +460,9 @@ async def test_knowledge_proposal_acceptance_rolls_back_and_retries_atomically(
         initial_answer_count = await session.scalar(
             select(func.count()).select_from(Answer)
         )
+        initial_embedding_count = await session.scalar(
+            select(func.count()).select_from(QuestionEmbedding)
+        )
 
     async def fail_after_question(self, question_id, data, *, commit=True):
         raise RuntimeError("injected answer creation failure")
@@ -475,6 +486,9 @@ async def test_knowledge_proposal_acceptance_rolls_back_and_retries_atomically(
         assert await session.scalar(select(func.count()).select_from(Answer)) == (
             initial_answer_count
         )
+        assert await session.scalar(
+            select(func.count()).select_from(QuestionEmbedding)
+        ) == initial_embedding_count
         assert await session.scalar(
             select(func.count())
             .select_from(AuditEvent)
@@ -502,6 +516,30 @@ async def test_knowledge_proposal_acceptance_rolls_back_and_retries_atomically(
         assert await session.scalar(select(func.count()).select_from(Answer)) == (
             initial_answer_count + 1
         )
+        assert await session.scalar(
+            select(func.count()).select_from(QuestionEmbedding)
+        ) == initial_embedding_count + 1
+        created_question = await session.get(
+            Question, stored_proposal.created_question_id
+        )
+        assert created_question is not None
+        assert created_question.title == "How do I claim mileage?"
+        assert await session.scalar(
+            select(func.count())
+            .select_from(Answer)
+            .where(
+                Answer.question_id == created_question.id,
+                Answer.body == "Use the Expenses portal.",
+            )
+        ) == 1
+        assert await session.scalar(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(
+                AuditEvent.entity_id == proposal_id,
+                AuditEvent.action == AuditAction.KNOWLEDGE_PROPOSAL_ACCEPTED.value,
+            )
+        ) == 1
 
 
 @pytest.mark.asyncio
