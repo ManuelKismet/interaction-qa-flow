@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_page.dart';
@@ -12,6 +13,7 @@ class _TemplateTestRepository extends GuidedRepository {
   final List<GuidedTemplate> templates = [];
   List<GuidedTemplateQuestion>? savedVersion;
   String? restoredTemplateId;
+  bool failRestore = false;
 
   void addTemplate(GuidedTemplate template) => templates.add(template);
 
@@ -32,6 +34,7 @@ class _TemplateTestRepository extends GuidedRepository {
 
   @override
   Future<void> restoreTemplate(String id) async {
+    if (failRestore) throw StateError('Forbidden');
     restoredTemplateId = id;
     final index = templates.indexWhere((template) => template.id == id);
     final template = templates[index];
@@ -39,12 +42,21 @@ class _TemplateTestRepository extends GuidedRepository {
       id: template.id,
       name: template.name,
       description: template.description,
+      createdById: template.createdById,
       status: 'active',
       currentVersion: template.currentVersion,
       questions: template.questions,
     );
   }
 }
+
+ActiveMembership _membership(String userId, String role) => ActiveMembership(
+  userId: userId,
+  organisationId: 'organisation-1',
+  email: '$userId@example.invalid',
+  displayName: userId,
+  role: role,
+);
 
 void main() {
   testWidgets('Interact navigation toolbar fits a phone viewport', (
@@ -65,6 +77,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          currentMembershipProvider.overrideWith(
+            (ref) async => _membership('template-owner', 'employee'),
+          ),
           guidedRepositoryProvider.overrideWithValue(
             _TemplateTestRepository()..addTemplate(template),
           ),
@@ -95,6 +110,7 @@ void main() {
     );
     const template = GuidedTemplate(
       id: 'template-1',
+      createdById: 'template-owner',
       name: 'Template',
       status: 'active',
       currentVersion: 1,
@@ -113,6 +129,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          currentMembershipProvider.overrideWith(
+            (ref) async => _membership('template-owner', 'employee'),
+          ),
           guidedRepositoryProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: Scaffold(body: GuidedPage())),
@@ -154,6 +173,7 @@ void main() {
 
     const template = GuidedTemplate(
       id: 'archived-template',
+      createdById: 'template-owner',
       name: 'Archived template',
       status: 'archived',
       currentVersion: 3,
@@ -171,6 +191,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          currentMembershipProvider.overrideWith(
+            (ref) async => _membership('template-owner', 'employee'),
+          ),
           guidedRepositoryProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: Scaffold(body: GuidedPage())),
@@ -203,5 +226,83 @@ void main() {
     expect(find.text('Save as new version'), findsOneWidget);
     expect(find.text('Archive'), findsOneWidget);
     expect(find.text('Restore'), findsNothing);
+  });
+
+  testWidgets('non-owner employee cannot manage another creator template', (
+    tester,
+  ) async {
+    const template = GuidedTemplate(
+      id: 'other-template',
+      createdById: 'template-owner',
+      name: 'Another creator template',
+      status: 'archived',
+      currentVersion: 1,
+      questions: [],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMembershipProvider.overrideWith(
+            (ref) async => _membership('employee-2', 'employee'),
+          ),
+          guidedRepositoryProvider.overrideWithValue(
+            _TemplateTestRepository()..addTemplate(template),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: GuidedPage())),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Another creator template'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('guided-template-other-template')),
+      findsOneWidget,
+    );
+    expect(find.byType(PopupMenuButton<String>), findsNothing);
+  });
+
+  testWidgets('admin can manage templates and restore failures are visible', (
+    tester,
+  ) async {
+    const template = GuidedTemplate(
+      id: 'archived-template',
+      createdById: 'template-owner',
+      name: 'Archived template',
+      status: 'archived',
+      currentVersion: 1,
+      questions: [],
+    );
+    final repository = _TemplateTestRepository()
+      ..addTemplate(template)
+      ..failRestore = true;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMembershipProvider.overrideWith(
+            (ref) async => _membership('admin-1', 'admin'),
+          ),
+          guidedRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: Scaffold(body: GuidedPage())),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    expect(find.text('Restore'), findsOneWidget);
+    await tester.tap(find.text('Restore'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Could not update this template. Please try again.'),
+      findsOneWidget,
+    );
+    expect(repository.templates.single.status, 'archived');
   });
 }

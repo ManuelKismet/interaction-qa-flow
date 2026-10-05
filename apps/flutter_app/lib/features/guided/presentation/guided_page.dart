@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
@@ -243,6 +244,7 @@ class _TemplatesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final membership = ref.watch(currentMembershipProvider).value;
     return templates.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const Center(child: Text('Unable to load templates.')),
@@ -279,51 +281,14 @@ class _TemplatesList extends ConsumerWidget {
               const SizedBox(height: 20),
               if (items.isEmpty) const Center(child: Text('No templates yet.')),
               for (final item in items)
-                ListTile(
-                  title: Text(item.name),
-                  subtitle: Text(
-                    'v${item.currentVersion} · ${item.questions.length} questions · ${item.status}',
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (action) async {
-                      final repository = ref.read(guidedRepositoryProvider);
-                      if (action == 'version') {
-                        await _saveVersion(context, ref, item);
-                        return;
-                      }
-                      if (action == 'duplicate') {
-                        await repository.duplicateTemplate(item.id);
-                      }
-                      if (action == 'archive') {
-                        await repository.archiveTemplate(item.id);
-                      }
-                      if (action == 'restore') {
-                        await repository.restoreTemplate(item.id);
-                      }
-                      ref.invalidate(guidedTemplatesProvider);
-                    },
-                    itemBuilder: (_) => item.status == 'archived'
-                        ? const [
-                            PopupMenuItem(
-                              value: 'restore',
-                              child: Text('Restore'),
-                            ),
-                          ]
-                        : const [
-                            PopupMenuItem(
-                              value: 'version',
-                              child: Text('Save as new version'),
-                            ),
-                            PopupMenuItem(
-                              value: 'duplicate',
-                              child: Text('Duplicate'),
-                            ),
-                            PopupMenuItem(value: 'archive', child: Text('Archive')),
-                          ],
-                  ),
-                  onTap: item.status == 'active'
-                      ? () => _start(context, ref, item)
-                      : null,
+                _templateTile(
+                  context,
+                  ref,
+                  item,
+                  canManage:
+                      membership != null &&
+                      (membership.userId == item.createdById ||
+                          membership.role == 'admin'),
                 ),
             ],
           ),
@@ -331,6 +296,69 @@ class _TemplatesList extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _templateTile(
+    BuildContext context,
+    WidgetRef ref,
+    GuidedTemplate template, {
+    required bool canManage,
+  }) => ListTile(
+    key: ValueKey('guided-template-${template.id}'),
+    title: Text(template.name),
+    subtitle: Text(
+      'v${template.currentVersion} · ${template.questions.length} questions · ${template.status}',
+    ),
+    trailing: canManage
+        ? PopupMenuButton<String>(
+            onSelected: (action) async {
+              try {
+                final repository = ref.read(guidedRepositoryProvider);
+                if (action == 'version') {
+                  await _saveVersion(context, ref, template);
+                  return;
+                }
+                if (action == 'duplicate') {
+                  await repository.duplicateTemplate(template.id);
+                }
+                if (action == 'archive') {
+                  await repository.archiveTemplate(template.id);
+                }
+                if (action == 'restore') {
+                  await repository.restoreTemplate(template.id);
+                }
+                ref.invalidate(guidedTemplatesProvider);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Could not update this template. Please try again.',
+                        ),
+                      ),
+                    );
+                }
+              }
+            },
+            itemBuilder: (_) => template.status == 'archived'
+                ? const [
+                    PopupMenuItem(value: 'restore', child: Text('Restore')),
+                  ]
+                : const [
+                    PopupMenuItem(
+                      value: 'version',
+                      child: Text('Save as new version'),
+                    ),
+                    PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
+                    PopupMenuItem(value: 'archive', child: Text('Archive')),
+                  ],
+          )
+        : null,
+    onTap: template.status == 'active'
+        ? () => _start(context, ref, template)
+        : null,
+  );
 
   Future<void> _saveVersion(
     BuildContext context,

@@ -241,6 +241,7 @@ class GuidedTemplate {
     required this.currentVersion,
     required this.questions,
     this.description,
+    this.createdById,
   });
 
   factory GuidedTemplate.fromJson(Map<String, dynamic> json) {
@@ -251,6 +252,7 @@ class GuidedTemplate {
       description: json['description'] as String?,
       status: json['status'] as String,
       currentVersion: json['current_version'] as int,
+      createdById: json['created_by'] as String?,
       questions: (version?['questions'] as List<dynamic>? ?? const [])
           .map((item) => GuidedTemplateQuestion.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -263,6 +265,7 @@ class GuidedTemplate {
   final String status;
   final int currentVersion;
   final List<GuidedTemplateQuestion> questions;
+  final String? createdById;
 }
 
 enum GuidedViewMode {
