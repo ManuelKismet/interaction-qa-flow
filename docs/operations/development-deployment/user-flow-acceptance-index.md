@@ -1,0 +1,46 @@
+# Development acceptance coverage index
+
+Updated 2026-10-05. This index is the starting point before running a test. Scope is development only; production and the old local database are excluded. Detailed evidence and chronology remain in [the checkpoint](user-admin-e2e-checkpoint-2026-10-04.md). PASS means the stated scope only, not every related feature. UNCERTAIN means evidence is incomplete, not a failure.
+
+| Gate / actor | Status | Evidence / scope | Next action or reason for retest |
+|---|---|---|---|
+| Guest local Knowledge and Interact common flows | PASS, reuse | Historical guest checkpoints; participant/nested/report/template checks recorded | Repeat only a changed path |
+| Guest registration/linking, guesttester1@test.com | PASS, reuse |9eaa93a: Link guest recovery submitted, signed-in identity after reload;6d89698 authoritative verification | No new signup/linking |
+| Linked account without organisation, local continuity | PASS, reuse |6d89698 signout/signin: local Knowledge, both sessions, reusable template retained; no organisation | On-device preservation; no cloud-transfer claim |
+| Verification email delivery | OPEN |guesttester1 and later synthetic accounts manually verified | Normal email delivery not demonstrated |
+| Original guest group's owner/admin after linking | UNCERTAIN |9eaa93a/6d89698 local continuity does not prove group membership;9032f23 later used new anonymous identity | Inspect existing guesttester1/group records; narrow retest allowed if inconclusive |
+| Guesttester1 later org/department/team enrolment | UNCERTAIN | No exact completion located in all-history search | Use existing identity; do not repeat regularuser1 enrolment |
+| Regularuser1 organisation enrolment/department/team assignment | PASS, reuse | Current checkpoint: Employee, E2E Operations, two teams | Separate from guesttester1 continuity |
+| Admin organisation setup/member management | PASS recorded scope | Current checkpoint: synthetic org, departments, teams, membership | Wider matrix tracked separately |
+| Regular Knowledge lifecycle/search/contribution | PASS recorded scope | Current checkpoint: own content, approved content protection, search, discussion, review request | No general repeat |
+| Regular private Interact lifecycle/report/reload | PASS, reuse |ca40e2aa fixture, completed and persisted | No general repeat |
+| Organisation Interact non-owner read-only UI | PASS affected regression | Populated organisation session read/report; write controls removed | Keep private/session matrix separate |
+| Scoped answer-owner assigned/role-only/out-of-scope/revoked UI | PASS, cleaned | Current checkpoint, temporary authority restored to Employee | No repeated role grant |
+| Admin question/answer review/challenge decisions | PASS recorded cases | Current checkpoint: challenge reject/accept and question-change reject | Audit storage completeness separate |
+| Canonical merge/unmerge | PASS, cleaned |7b1e2087/e700114c merge200/unmerge200; archived/unlinked duplicate baseline | No repeat |
+| Template ownership/archive/Restore | PASS affected regressions |bd0ae05 non-owner hidden, owner/admin actions and Restore | Failure SnackBar widget evidence only |
+| Basic JSON/CSV native clipboard | PASS | Existing private session exports; JSON2261chars/CSV259chars | No repeat |
+| Hosted CSV formula neutralization / JSON fidelity | PASS |0f87f47 fixture69d4afaf;203chars,2rows/8columns,4 risky cells protected | No spreadsheet execution/full hosted control-character claim |
+| Verified registered Shared groups create/join/approval | PASS |0f87f47 groupa12cb842; Employee owner, orgAdmin invited viewer | No repeat except changed removal path |
+| Group and organisation authority independence UI | PASS recorded cases | OrgAdmin had no automatic group; approved viewer write/invite disabled | Full direct-API matrix remains separate |
+| Shared-group member removal | BLOCKED hosted; fix validating |0f87f47 blank page/no request; newdaadc66 fix/widget test | Validate exact head, deploy development, retest removal/revocation only |
+| Guest optimistic concurrency | PASS recorded scope | Conflict/retry/save and no overwrite in prior guest checkpoint | Stale-draft closing usability separately open |
+| Stale guest draft closing | OPEN | Earlier pending usability item | Narrow UI check |
+| PDF native supported glyphs/multipage/nesting | PASS recorded scope | Prior report checks | Printed CJK/emoji output tooling-blocked; do not equate HTML preview with PDF |
+| Tenant/private/department/team full route matrix | PARTIAL | Automated boundaries and recorded hosted samples | Identify missing actor/route combinations; tags do not imply team privacy |
+| Navigation spinner/reload-to-root | OPEN | Some route-specific recovery passes; root cause not closed | Narrow reproductions; no blanket navigation sign-off |
+| Proposal approval atomicity/retry | FAIL reproduced; fix validating |a67a246 disposable probe: partial question then duplicate on retry;daadc66 regression | Independent90backend pass; hosted normal approval follows reviewed rollout; no live failure injection |
+| DB readiness | SOURCE/TEST validating |daadc66 /ready distinct from /health | Check exact tests then hosted healthy endpoint; no live outage injection |
+| Dependency lock/lint/compile reproducibility | VALIDATING |daadc66 pinned backend lock; fresh clean installation running | Record actual completion |
+| GitHub CI | BLOCKED externally | Copilot reports action_required/zero jobs | No CI execution claim; local gates distinct |
+| Development recovery procedure | DOC reviewed, rehearsal NOT RUN |daadc66 development-recovery.md | No restore/IAM changes; rehearsal requires separately scoped approval |
+| Current deployed code |0f87f47 |APIreview0f87f47, Hosting1791199919218000 | daadc66 not deployed until all gates pass |
+
+## Workflow to prevent repeated work
+
+1. Start here, then read the linked dated evidence. Search current docs AND git history for the actor/fixture before calling a gate untested. Historical commits may contain checkpoints absent from this branch.
+2. Reuse PASS evidence when the implementation is unchanged. A repeat must name the changed code, changed actor boundary or missing assertion. Ask for credentials only when an uncovered case needs that identity.
+3. For each new result record exact commit, environment, actor, fixture, expected/observed result, evidence and cleanup state in the checkpoint; update this index in the same documentation commit.
+4. Keep source review, automated tests, hosted UI/API and actual exported artifact evidence distinct. An observation probe that reproduces a defect is not acceptance.
+5. Explicitly mention @copilot for assignments; a posted comment is not receipt/completion evidence. Review exact new head and independent gates before development rollout.
+6. Record corrections/lessons immediately. Preserve historical evidence and link superseding conclusions rather than silently overwriting it.

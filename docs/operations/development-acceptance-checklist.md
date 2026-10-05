@@ -94,3 +94,6 @@ Reproducible opt-in files:
 Run from the pinned backend with PYTHONPATH containing that backend and the isolation branch's docs/operations/review-probes directory, using the review virtual environment and EMBEDDING_PROVIDER=fake. Invoke these files explicitly with pytest; they are not automatically included in the application's suite. Preserve backend_security_observations.py as the historical defect reproduction helper.
 
 Next correction: check visibility of resolved canonical roots and intermediate aliases before suggestion creation and response construction; test denied creation leaves no persisted suggestion, legitimate owner/public-root operations succeed, and related canonical/search paths do not expose private target metadata. Live Firebase/App Check, hosted migration/database acceptance and manual Phase 6 remain pending. No merge or deployment.
+
+
+Current test planning starts with [the coverage index](development-deployment/user-flow-acceptance-index.md); do not rerun historical cases marked PASS without a documented reason.
