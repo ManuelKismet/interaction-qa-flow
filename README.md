@@ -349,3 +349,5 @@ node -e 'const fs=require("fs"); const html=fs.readFileSync("index.html","utf8")
 ## License
 
 MIT. See `LICENSE`.
+
+Development acceptance update (2026-10-05): frontend ed24b0a is published to intqaflow-dev, Hosting release 1791182719884000/version 3bbec4254fc5fdc1; backend remains review80b0c61. All 105 Flutter tests, analyzer (12 infos only) and release build passed. Hosted department creation, primary department assignment, cross-functional and department-linked team membership, reversible membership removal, and repaired Reopen passed. Detailed remaining account and governance checks are tracked in docs/operations/development-deployment/user-admin-e2e-checkpoint-2026-10-04.md. PR13, PR15 and PR16 remain unmerged.

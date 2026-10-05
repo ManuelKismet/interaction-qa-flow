@@ -207,3 +207,10 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Added regularuser1 to existing cross-functional E2E Operations Team with readable account selection, verified member row, removed it, verified absent row, and re-added it, verified restored row.
 - Created E2E Department Handover Team with parent E2E Operations Department; title and department displayed correctly. Added regularuser1; membership outcome verification follows. Supports retaining membership in multiple teams.
 - Dropdown menus visually show account labels but the Flutter accessibility tree initially exposes only the hint; screenshot-based option selection was necessary. Record this accessibility limitation without confusing it with absent data.
+
+### Hosted Reopen repair and next account checks
+
+- Department-linked team membership visibly confirmed for regularuser1. Team ID 0a2022ba-6667-4889-868a-2c3c6b5dd2cc; cross-functional team e877da4a-d9ca-4e24-bdb6-7b5fe2ac13d3. Both member additions API 201.
+- Reopen on synthetic verified question 95d78939-fd71-48bb-9f75-0ab50c123218 passed HTTP 200 at 06:52:44 UTC, replacing the previous missing-body 422. UI became open and retained the verified answer; Accept answer restored resolved/accepted/verified state with original answer text.
+- Department owner form correctly refuses assignment without an active Answer owner member. Both accounts remain Admin/Employee. Role promotion and department-scoped owner assignment/revoke are not yet executed.
+- Remaining account-specific acceptance: employee sign-in, post-admin approved/verified content restrictions, department/team selection, organisation-visible session read/edit boundary, current keyword/prefix search, and answer-owner governance. Earlier common guest/employee lifecycle checks are retained without repetition. Browser printed CJK/emoji PDF glyph verification remains pending; old local DB and production excluded.
