@@ -283,7 +283,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
-    expect(find.text('Shared guest identity'), findsOneWidget);
+    expect(find.text('Shared groups identity'), findsOneWidget);
     expect(find.text('Create account from this guest'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
     expect(find.text('Organisation admin'), findsNothing);
