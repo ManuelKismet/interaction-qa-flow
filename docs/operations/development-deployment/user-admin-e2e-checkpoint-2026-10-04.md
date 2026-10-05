@@ -399,3 +399,8 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 
 - Employee completed private session Export > CSV > Copy passes: 259 characters, header plus one data row, expected session question, participant and complete answer present. Header session_title,participant,scope,type,depth,question,answer,returns_to. Export dialog closed; session unmodified.
 - This is basic native clipboard/content acceptance, not spreadsheet-formula safety or a downloaded-file claim. IQ08 escaping remains separately pending. Shared-group implementation handoff remains queued/under Copilot work; no new implementation head independently checked yet.
+
+### 2026-10-05 11:04 UTC — IQ08 current-service reproduction
+
+- Actual bd0ae05 GuidedService.export_csv invoked with in-memory synthetic get_session result: parsed cells retain raw =1+1 title, +1+1 participant, @SUM(1,1) question and -1+1 answer. CSV formula safety FAIL confirmed; no database/network used, no hosted fixture changed. Copilot queued sequential fix after shared-group scope in comment 5993136447. Require spreadsheet-safe policy across user-controlled cells, control-whitespace cases, quoting/newlines/nesting and faithful JSON.
+- Lesson: review worktree has no backend .venv; use existing /workspaces/intqaflow/backend/.venv interpreter with review backend as cwd to execute exact reviewed source. First nonexistent-interpreter attempt did not execute a test. Basic browser CSV export remains PASS independently of this safety failure.
