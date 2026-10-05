@@ -264,3 +264,11 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Proof: intqaflow-owner-restored-employee-20261005.jpg captured and inspected. Scope/revocation UI defect sent to Copilot PR13 for assignment-aware button gating and regression tests; do not broaden backend permissions.
 - Lesson: evaluate scope and revocation independently of organisation role. A visible button is not evidence of API authority; preserve separate UI/API outcomes and prove rollback before handoff. After interrupted dropdown actions, read settled state before repeating selection.
 - Remaining: Copilot organisation-session read-only UI and governance-scope UI fixes/retest; audit uncovered review/challenge/merge feature flows; browser PDF CJK/emoji printed glyph proof remains platform-blocked. Do not label the full user/admin feature matrix complete.
+
+### Employee challenge -> administrator rejection E2E — 2026-10-05 09:20 London
+- Copilot PR13 checked: no new commit, still bae1eed; assignment-aware governance UI and non-owner Interact read-only UI fixes remain pending.
+- Existing synthetic scoped answer used without extra permissions. Employee Suggest update submitted a synthetic rationale and replacement that explicitly must not be applied: POST answer challenges HTTP 201 at 08:15:30Z.
+- Admin Review queue listed the department challenge; detail offered Reject/Accept. Admin rejected with reviewer note: POST /api/v1/challenges/c45e8e1e-3615-4f24-af0f-af1f03f39f1e/reject HTTP 200 at 08:16:53Z.
+- Verified restoration: original text, accepted/resolved status, verified attribution, and review 2027-04-03 unchanged. History remains only v1. Fresh employee detail also shows verified answer with no owner governance controls.
+- Open queue empty after rejection. Rejected status filter returns the challenge, demonstrating retained closed-record traceability. Proof intqaflow-rejected-challenge-20261005.jpg captured/inspected. This completes the rejection path, not acceptance/other challenge types.
+- Lesson: check both removal from the actionable queue and retention in a closed-status queue; empty open queue alone does not demonstrate retained history. No old local database, production, permanent deletion, or repository merge.
