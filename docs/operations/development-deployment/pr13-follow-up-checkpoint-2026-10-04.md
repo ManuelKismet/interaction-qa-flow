@@ -82,11 +82,19 @@ and organisation roles remain separate.
 Before sign-in or start-fresh from a guest identity, the client checks current
 group membership and active administrator counts. It blocks the action if the
 current identity is the sole active administrator or if group ownership cannot
-be verified. The existing transfer action is immediate and does not ask the
-recipient to accept. Accepted transfer, group closure/archive, associated
-invitation handling, and recovery are not implemented. Do not leave a sole
-admin group by creating/signing into a separate identity; retain the current
-identity until a reviewed lifecycle process exists.
+be verified. Administration transfer is now a seven-day proposal to an active
+member. The requester remains admin until that recipient accepts; acceptance
+atomically makes the recipient admin and requester contributor. Decline,
+cancellation, or expiry leaves roles unchanged.
+
+An active admin can archive a group. Members/content/revisions are retained,
+outstanding invitations are revoked, and all active group operations are denied.
+Only the same recorded archiver Firebase UID while still an active admin can
+restore it for 30 days. A separate account does not inherit recovery. Restore
+does not revive invitations or activate pending/removed members. After 30 days
+data remains stored pending a separately reviewed retention decision; archived
+groups are excluded from expiry cleanup and are not silently purged. The UI
+discloses member impact and recovery scope before archive and account departure.
 
 ### Observed retention behavior
 

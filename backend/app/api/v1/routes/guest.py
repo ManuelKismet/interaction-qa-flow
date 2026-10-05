@@ -59,6 +59,14 @@ async def list_groups(
     return await GuestService(session).list_groups(identity.firebase_uid)
 
 
+@router.get("/groups/archived")
+async def list_archived_groups(
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    return await GuestService(session).list_archived_groups(identity.firebase_uid)
+
+
 @router.post("/groups", status_code=status.HTTP_201_CREATED)
 async def create_group(
     payload: GuestGroupCreate,
@@ -191,6 +199,60 @@ async def transfer_administration(
     return await GuestService(session).transfer_administration(
         group_id, member_id, identity.firebase_uid
     )
+
+
+@router.post("/groups/{group_id}/admin-transfers/{transfer_id}/accept")
+async def accept_admin_transfer(
+    group_id: UUID,
+    transfer_id: UUID,
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await GuestService(session).respond_admin_transfer(
+        group_id, transfer_id, identity.firebase_uid, accept=True
+    )
+
+
+@router.post("/groups/{group_id}/admin-transfers/{transfer_id}/decline")
+async def decline_admin_transfer(
+    group_id: UUID,
+    transfer_id: UUID,
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await GuestService(session).respond_admin_transfer(
+        group_id, transfer_id, identity.firebase_uid, accept=False
+    )
+
+
+@router.delete("/groups/{group_id}/admin-transfers/{transfer_id}")
+async def cancel_admin_transfer(
+    group_id: UUID,
+    transfer_id: UUID,
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await GuestService(session).cancel_admin_transfer(
+        group_id, transfer_id, identity.firebase_uid
+    )
+
+
+@router.post("/groups/{group_id}/archive")
+async def archive_group(
+    group_id: UUID,
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await GuestService(session).archive_group(group_id, identity.firebase_uid)
+
+
+@router.post("/groups/{group_id}/restore")
+async def restore_group(
+    group_id: UUID,
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await GuestService(session).restore_group(group_id, identity.firebase_uid)
 
 
 @router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)

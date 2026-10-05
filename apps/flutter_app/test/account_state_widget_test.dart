@@ -146,6 +146,9 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
   Future<List<Map<String, dynamic>>> listGroups() async => groups;
 
   @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
   Future<Map<String, dynamic>> getGroup(String groupId) async =>
       details[groupId]!;
 }
@@ -1110,7 +1113,7 @@ void main() {
     expect(find.text('Keep this shared-group identity'), findsOneWidget);
     expect(
       find.textContaining(
-        'recipient acceptance and group closure are not supported yet',
+        'request a transfer and wait for an active member to accept',
       ),
       findsOneWidget,
     );
@@ -1119,6 +1122,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(auth.signInAttempts, 0);
     expect(identical(auth.currentUser, guest), isTrue);
+  });
+
+  testWidgets('archived group recovery is disclosed before sign-in', (
+    tester,
+  ) async {
+    final guest = _TestUser(isAnonymous: true);
+    final auth = _TestFirebaseAuth(guest);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(
+          home: SignInPage(hasArchivedGuestGroups: true),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in to your existing account?'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'only by the same Firebase account that archived them',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('does not transfer restoration rights'), findsOneWidget);
+    await tester.tap(find.text('Keep guest workspace'));
+    await tester.pumpAndSettle();
+    expect(auth.signInAttempts, 0);
   });
 
   testWidgets('account menu detects and blocks a sole group administrator', (

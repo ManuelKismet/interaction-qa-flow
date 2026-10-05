@@ -57,6 +57,9 @@ class _PendingEntryRepository extends GuestGroupRepository {
   ];
 
   @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
   Future<Map<String, dynamic>> getGroup(String groupId) async => {
     'id': groupId,
     'role': 'viewer',
@@ -113,6 +116,9 @@ class _EmptyGroupsRepository extends GuestGroupRepository {
 
   @override
   Future<List<Map<String, dynamic>>> listGroups() async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
 }
 
 class _ShareRepository extends GuestGroupRepository {
@@ -125,6 +131,9 @@ class _ShareRepository extends GuestGroupRepository {
   Future<List<Map<String, dynamic>>> listGroups() async => [
     {'id': 'group-1', 'name': 'Local Safety Team', 'role': 'editor'},
   ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
 
   @override
   Future<Map<String, dynamic>> getGroup(String groupId) async => {
@@ -154,21 +163,59 @@ class _ShareRepository extends GuestGroupRepository {
 }
 
 class _MemberManagementRepository extends GuestGroupRepository {
-  _MemberManagementRepository() : super(Dio());
+  _MemberManagementRepository({
+    this.isTransferTarget = false,
+    this.transferRequested = false,
+  }) : super(Dio());
 
   var removeRequests = 0;
   var memberStatus = 'active';
+  final bool isTransferTarget;
+  bool transferRequested;
+  bool transferAccepted = false;
+  bool archived = false;
+  var transferRequests = 0;
+  var acceptTransferRequests = 0;
+  var archiveRequests = 0;
+  var restoreRequests = 0;
 
   @override
-  Future<List<Map<String, dynamic>>> listGroups() async => [
-    {'id': 'group-1', 'name': 'Research group', 'role': 'admin'},
-  ];
+  Future<List<Map<String, dynamic>>> listGroups() async => archived
+      ? []
+      : [
+          {
+            'id': 'group-1',
+            'name': 'Research group',
+            'role': isTransferTarget && !transferAccepted ? 'viewer' : 'admin',
+          },
+        ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => archived
+      ? [
+          {
+            'id': 'group-1',
+            'name': 'Research group',
+            'can_restore': true,
+            'restore_until': '2030-01-31T00:00:00+00:00',
+          },
+        ]
+      : const [];
 
   @override
   Future<Map<String, dynamic>> getGroup(String groupId) async => {
     'id': groupId,
     'name': 'Research group',
-    'role': 'admin',
+    'role': isTransferTarget && !transferAccepted ? 'viewer' : 'admin',
+    'pending_admin_transfer': transferRequested && !transferAccepted
+        ? {
+            'id': 'transfer-1',
+            'target_display_name': 'Invited viewer',
+            'expires_at': '2030-01-08T00:00:00+00:00',
+            'is_target': isTransferTarget,
+            'is_requester': !isTransferTarget,
+          }
+        : null,
     'members': [
       if (memberStatus != 'removed')
         {
@@ -197,6 +244,40 @@ class _MemberManagementRepository extends GuestGroupRepository {
   }) async {
     removeRequests++;
     memberStatus = 'removed';
+  }
+
+  @override
+  Future<Map<String, dynamic>> transferAdministration({
+    required String groupId,
+    required String memberId,
+  }) async {
+    transferRequests++;
+    transferRequested = true;
+    return {'id': 'transfer-1', 'status': 'pending'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> acceptAdminTransfer({
+    required String groupId,
+    required String transferId,
+  }) async {
+    acceptTransferRequests++;
+    transferAccepted = true;
+    return {'id': transferId, 'status': 'accepted'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> archiveGroup(String groupId) async {
+    archiveRequests++;
+    archived = true;
+    return {'id': groupId};
+  }
+
+  @override
+  Future<Map<String, dynamic>> restoreGroup(String groupId) async {
+    restoreRequests++;
+    archived = false;
+    return {'id': groupId};
   }
 }
 
@@ -489,6 +570,96 @@ void main() {
     expect(find.text('Shared groups'), findsOneWidget);
     expect(find.byType(Scaffold), findsOneWidget);
     expect(find.text('Invited viewer'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('group administration transfer requires recipient acceptance', (
+    tester,
+  ) async {
+    final ownerRepository = _MemberManagementRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(ownerRepository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Manage members and invitations'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Request admin transfer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Request group administration?'), findsOneWidget);
+    expect(find.textContaining('You remain an administrator unless they accept'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Send request'));
+    await tester.pumpAndSettle();
+
+    expect(ownerRepository.transferRequests, 1);
+    expect(find.textContaining('Waiting for Invited viewer to accept'), findsOneWidget);
+    expect(
+      find.textContaining('Role: admin'),
+      findsOneWidget,
+      reason: 'The requester keeps the current role until the recipient accepts.',
+    );
+
+    final recipientRepository = _MemberManagementRepository(
+      isTransferTarget: true,
+      transferRequested: true,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(recipientRepository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('asked to accept group administration'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Accept administration'));
+    await tester.pumpAndSettle();
+    expect(recipientRepository.acceptTransferRequests, 1);
+    expect(find.textContaining('asked to accept group administration'), findsNothing);
+    expect(find.textContaining('Role: admin'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('group archive explains same-UID recovery and can be restored', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Archive group'));
+    await tester.pumpAndSettle();
+    expect(find.text('Archive this shared group?'), findsOneWidget);
+    expect(find.textContaining('only the same Firebase account'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Archive group').last);
+    await tester.pumpAndSettle();
+
+    expect(repository.archiveRequests, 1);
+    expect(find.text('Archived groups'), findsOneWidget);
+    expect(
+      find.textContaining('Only this same Firebase account can restore'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Restore'));
+    await tester.pumpAndSettle();
+    expect(repository.restoreRequests, 1);
+    expect(find.text('Research group · admin'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

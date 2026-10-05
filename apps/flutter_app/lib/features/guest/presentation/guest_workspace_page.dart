@@ -163,10 +163,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     if (!mounted) return;
     final user = _currentAccountUser;
     var hasCurrentGuestGroupAccess = false;
+    var hasArchivedGuestGroups = false;
     var hasSoleAdministeredGroup = false;
     var guestGroupOwnershipUnavailable = false;
     if (user?.isAnonymous == true && !linkGuest) {
       try {
+        hasArchivedGuestGroups = (await ref
+                .read(guestGroupRepositoryProvider)
+                .listArchivedGroups())
+            .isNotEmpty;
         final groups = await ref
             .read(guestGroupRepositoryProvider)
             .listGroups();
@@ -205,6 +210,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
               data.sessions.isNotEmpty ||
               data.templates.isNotEmpty,
           hasCurrentGuestGroupAccess: hasCurrentGuestGroupAccess,
+          hasArchivedGuestGroups: hasArchivedGuestGroups,
           hasSoleAdministeredGroup: hasSoleAdministeredGroup,
           guestGroupOwnershipUnavailable: guestGroupOwnershipUnavailable,
         ),
@@ -213,13 +219,55 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   }
 
   Future<void> _signOut() async {
+    var hasArchivedGroups = false;
+    if (widget.sharedIdentityActive) {
+      try {
+        final repository = ref.read(guestGroupRepositoryProvider);
+        final groups = await repository.listGroups();
+        hasArchivedGroups = (await repository.listArchivedGroups()).isNotEmpty;
+        for (final group in groups.where((group) => group['role'] == 'admin')) {
+          final detail = await repository.getGroup(group['id'] as String);
+          final members = (detail['members'] as List? ?? const [])
+              .whereType<Map>();
+          final activeAdmins = members.where(
+            (member) =>
+                member['role'] == 'admin' && member['status'] == 'active',
+          );
+          if (activeAdmins.length <= 1) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Keep this identity until another active administrator '
+                    'accepts a transfer or you archive the group.',
+                  ),
+                ),
+              );
+            }
+            return;
+          }
+        }
+      } on Object {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Shared-group administration could not be checked. Keep this '
+                'identity and retry before signing out.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Sign out?'),
         content: Text(
           widget.sharedIdentityActive
-              ? 'This signs out of the shared guest identity. You may lose access to its groups unless recovery is linked or group administration is transferred. Local work stays on this device.'
+              ? 'This signs out of the shared guest identity. Active group access stays with this Firebase identity. Archived groups can be restored for 30 days only by the same identity that archived them; a different account does not inherit recovery rights.${hasArchivedGroups ? ' You have archived groups whose recovery depends on this identity.' : ''} Local work stays on this device.'
               : 'Your local work stays on this device.',
         ),
         actions: [
@@ -2304,6 +2352,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     with WidgetsBindingObserver {
   final _search = TextEditingController();
   List<Map<String, dynamic>> _groups = const [];
+  List<Map<String, dynamic>> _archivedGroups = const [];
   List<Map<String, dynamic>> _entries = const [];
   List<Map<String, dynamic>> _invitations = const [];
   Map<String, dynamic>? _group;
@@ -2337,12 +2386,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       _busy = true;
       _error = null;
       _groups = const [];
+      _archivedGroups = const [];
       _group = null;
       _entries = const [];
       _invitations = const [];
     });
     try {
       final groups = await _repository.listGroups();
+      final archivedGroups = await _repository.listArchivedGroups();
       final selected = groups.any((group) => group['id'] == _groupId)
           ? _groupId
           : groups.isEmpty
@@ -2351,6 +2402,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (!mounted) return;
       setState(() {
         _groups = groups;
+        _archivedGroups = archivedGroups;
         _groupId = selected;
       });
       if (selected != null) {
@@ -2366,6 +2418,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (mounted) {
         setState(() {
           _groups = const [];
+          _archivedGroups = const [];
           _group = null;
           _entries = const [];
           _invitations = const [];
@@ -2409,6 +2462,152 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _archiveGroup() async {
+    final groupId = _groupId;
+    if (groupId == null || _group?['role'] != 'admin') return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Archive this shared group?'),
+        content: const Text(
+          'All members will lose group access and outstanding invitations will '
+          'be revoked. Members, content, and revisions are retained. For 30 days, '
+          'only the same Firebase account that archives this group can restore it. '
+          'A new account does not inherit recovery rights. Restoring does not '
+          'reinstate invitations or pending/removed member access.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep group active'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Archive group'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _run(() async {
+      await _repository.archiveGroup(groupId);
+      _groupId = null;
+      await _loadGroups();
+    });
+  }
+
+  Future<void> _restoreArchivedGroup(String groupId) async {
+    await _run(() async {
+      await _repository.restoreGroup(groupId);
+      await _loadGroups();
+    });
+  }
+
+  Future<void> _respondToAdminTransfer({
+    required String groupId,
+    required String transferId,
+    required bool accept,
+  }) async {
+    await _run(() async {
+      if (accept) {
+        await _repository.acceptAdminTransfer(
+          groupId: groupId,
+          transferId: transferId,
+        );
+      } else {
+        await _repository.declineAdminTransfer(
+          groupId: groupId,
+          transferId: transferId,
+        );
+      }
+      await _loadGroup(groupId);
+    });
+  }
+
+  Future<void> _cancelAdminTransfer({
+    required String groupId,
+    required String transferId,
+  }) async {
+    await _run(() async {
+      await _repository.cancelAdminTransfer(
+        groupId: groupId,
+        transferId: transferId,
+      );
+      await _loadGroup(groupId);
+    });
+  }
+
+  Widget _adminTransferCard() {
+    final value = _group?['pending_admin_transfer'];
+    if (value is! Map<String, dynamic> || _groupId == null) {
+      return const SizedBox.shrink();
+    }
+    final groupId = _groupId!;
+    final transferId = value['id'] as String;
+    if (value['is_target'] == true) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'You have been asked to accept group administration. '
+                'Accepting makes you an admin and changes the requester to contributor.',
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  FilledButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _respondToAdminTransfer(
+                            groupId: groupId,
+                            transferId: transferId,
+                            accept: true,
+                          ),
+                    child: const Text('Accept administration'),
+                  ),
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _respondToAdminTransfer(
+                            groupId: groupId,
+                            transferId: transferId,
+                            accept: false,
+                          ),
+                    child: const Text('Decline'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (value['is_requester'] == true) {
+      return Card(
+        child: ListTile(
+          title: Text(
+            'Waiting for ${value['target_display_name'] ?? 'the member'} to accept administration.',
+          ),
+          subtitle: Text('Request expires ${value['expires_at']}'),
+          trailing: TextButton(
+            onPressed: _busy
+                ? null
+                : () => _cancelAdminTransfer(
+                    groupId: groupId,
+                    transferId: transferId,
+                  ),
+            child: const Text('Cancel request'),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Future<void> _createGroup() async {
@@ -2629,7 +2828,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                                     PopupMenuItem(value: role, child: Text('Make $role')),
                                 const PopupMenuItem(
                                   value: 'transfer_admin',
-                                  child: Text('Transfer admin role'),
+                                  child: Text('Request admin transfer'),
                                 ),
                                 const PopupMenuDivider(),
                                 const PopupMenuItem(
@@ -2694,18 +2893,20 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         builder: (context) => AlertDialog(
           title: Text(
             action == 'transfer_admin'
-                ? 'Transfer group administration?'
+                ? 'Request group administration?'
                 : 'Remove this guest member?',
           ),
           content: Text(action == 'transfer_admin'
-              ? '${member['display_name']} will become the administrator and you will become a contributor. This does not affect organisation roles.'
+              ? '${member['display_name']} will be asked to accept administration. '
+                    'You remain an administrator unless they accept; then you become a contributor. '
+                    'The request expires in seven days. This does not affect organisation roles.'
               : '${member['display_name']} will lose access to this group on their next request. Already exported copies cannot be revoked.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               child: Text(
-                action == 'transfer_admin' ? 'Transfer administration' : 'Remove member',
+                action == 'transfer_admin' ? 'Send request' : 'Remove member',
               ),
             ),
           ],
@@ -3280,7 +3481,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       padding: const EdgeInsets.all(16),
       children: [
         const Text(
-          'Shared groups are separate from organisations and teams. Group membership does not grant organisation, department, or private-session access. Use this signed-in Firebase identity for ownership. Linking an account from this guest identity preserves its group memberships; a separate account does not inherit group data.',
+          'Shared groups are separate from organisations and teams. Group membership does not grant organisation, department, or private-session access. Use this signed-in Firebase identity for ownership. Linking an account from this guest identity preserves its group memberships; a separate account does not inherit group data or archived-group recovery rights.',
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -3312,6 +3513,34 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           ),
         ],
         if (_busy) const LinearProgressIndicator(),
+        if (_archivedGroups.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Archived groups',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          for (final archived in _archivedGroups)
+            Card(
+              child: ListTile(
+                title: Text(archived['name'] as String? ?? 'Shared group'),
+                subtitle: Text(
+                  archived['can_restore'] == true
+                      ? 'Only this same Firebase account can restore by ${archived['restore_until']}. Invitations stay revoked; removed and pending memberships are not reactivated.'
+                      : 'The 30-day restore window ended. Data is retained pending separately reviewed retention; this account cannot restore it.',
+                ),
+                trailing: archived['can_restore'] == true
+                    ? OutlinedButton(
+                        onPressed: _busy
+                            ? null
+                            : () => _restoreArchivedGroup(
+                                archived['id'] as String,
+                              ),
+                        child: const Text('Restore'),
+                      )
+                    : null,
+              ),
+            ),
+        ],
         if (_groups.isNotEmpty) ...[
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -3334,6 +3563,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
             'Only admins manage membership and invitations.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
+          _adminTransferCard(),
           Row(
             children: [
               Expanded(
@@ -3367,6 +3597,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 onPressed: _group?['role'] == 'admin' ? _createInvitation : null,
                 icon: const Icon(Icons.person_add_alt_1),
                 label: const Text('Invite'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _busy || _group?['role'] != 'admin'
+                    ? null
+                    : _archiveGroup,
+                icon: const Icon(Icons.archive_outlined),
+                label: const Text('Archive group'),
               ),
             ],
           ),

@@ -75,15 +75,31 @@ membership or local browser work. Registered identities without an organisation
 can still use their local workspace and any groups already linked to their UID.
 Organisation membership and roles are independent of shared-group membership.
 
-Before signing into another account or starting fresh from a guest identity that
-is the only active group administrator, the client blocks the action. The
-existing administrator-transfer action changes roles immediately and has no
-recipient-acceptance step; it must not be described as an accepted transfer.
-Group closure/archive, invitation revocation as part of closure, and recovery
-from closure are not implemented. Keep the current identity until an explicitly
-accepted transfer flow or reviewed group-lifecycle process exists. No group
-data is automatically migrated, imported, or deleted by account creation or
-sign-in.
+Administration transfer is recipient-accepted. An active group admin may request
+transfer to an active member; the request expires after seven days. The requester
+remains an admin until that exact recipient accepts. Acceptance changes both
+roles in one transaction: the recipient becomes admin and the requester becomes
+contributor. Decline, cancellation, and expiry do not change roles. The group
+row is locked before membership/transfer rows are rechecked and updated, so
+acceptance serializes against other lifecycle mutations.
+
+An active admin can archive a group as a recoverable closure. Archiving blocks
+normal group and invitation operations, revokes outstanding invitations, cancels
+pending transfer requests, and retains members, entries, and revisions. Only the
+same Firebase UID recorded as the archiving admin, while still an active admin,
+can restore it within 30 days. A different account, including a new account
+created after archiving, does not inherit recovery rights. Restore reopens the
+group for 90 days of access and does not revive invitations or change membership
+statuses: pending and removed members do not regain access automatically.
+
+After 30 days the archived data remains stored; it is not silently purged.
+Archived groups are excluded from the existing expiry cleanup, including when
+their 90-day group expiry passes. Deletion after archive recovery expires is a
+separate retention decision and must not be implemented by the current cleanup.
+The Shared groups UI explains the member impact and same-UID recovery limit
+before archive and account departure. A sole-admin identity may leave only after
+another active member accepts a transfer or the group is archived. No group data
+is automatically migrated, imported, or deleted by account creation or sign-in.
 
 ## Scheduler review
 

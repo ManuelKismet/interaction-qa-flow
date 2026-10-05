@@ -98,6 +98,11 @@ infer the user's formal department.
   content, search, history, export, and membership request. Invitation previews
   disclose validity only. Group membership does not grant organisation,
   department, or private Interact access.
+- Administration transfer requires recipient acceptance and serializes role
+  changes under the group-row lock. Active admins may archive groups; only the
+  recorded archiver UID can restore during the 30-day recovery window. Archived
+  membership/content remain stored, invitations are revoked, and archived groups
+  are excluded from automatic expiry cleanup pending separate retention review.
 - Import is a deliberate selection and confirmation. Local items remain in the
   browser after sharing, and Interact entries require explicit
   `share_with_group` confirmation. Exports cannot be revoked after download.

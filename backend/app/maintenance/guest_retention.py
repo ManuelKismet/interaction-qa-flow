@@ -57,10 +57,17 @@ async def _purge_candidate(
         async with session.begin():
             group = await session.scalar(
                 select(GuestGroup)
-                .where(GuestGroup.id == group_id)
+                .where(
+                    GuestGroup.id == group_id,
+                    GuestGroup.archived_at.is_(None),
+                )
                 .with_for_update()
             )
-            if group is None or _utc(group.expires_at) > cutoff:
+            if (
+                group is None
+                or group.archived_at is not None
+                or _utc(group.expires_at) > cutoff
+            ):
                 return None
 
             counts = await _group_counts(session, group_id)
@@ -141,7 +148,10 @@ async def cleanup_expired_guest_groups(
         candidate_ids = list(
             await session.scalars(
                 select(GuestGroup.id)
-                .where(GuestGroup.expires_at <= cutoff)
+                .where(
+                    GuestGroup.expires_at <= cutoff,
+                    GuestGroup.archived_at.is_(None),
+                )
                 .order_by(GuestGroup.expires_at, GuestGroup.id)
                 .limit(batch_size + 1)
             )

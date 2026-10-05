@@ -9,6 +9,7 @@ class SignInPage extends ConsumerStatefulWidget {
     this.createAccount = false,
     this.hasMeaningfulGuestWork = false,
     this.hasCurrentGuestGroupAccess = false,
+    this.hasArchivedGuestGroups = false,
     this.hasSoleAdministeredGroup = false,
     this.guestGroupOwnershipUnavailable = false,
     super.key,
@@ -18,6 +19,7 @@ class SignInPage extends ConsumerStatefulWidget {
   final bool createAccount;
   final bool hasMeaningfulGuestWork;
   final bool hasCurrentGuestGroupAccess;
+  final bool hasArchivedGuestGroups;
   final bool hasSoleAdministeredGroup;
   final bool guestGroupOwnershipUnavailable;
 
@@ -240,7 +242,9 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   }
 
   bool get _hasMeaningfulCurrentGuestState =>
-      widget.hasMeaningfulGuestWork || widget.hasCurrentGuestGroupAccess;
+      widget.hasMeaningfulGuestWork ||
+      widget.hasCurrentGuestGroupAccess ||
+      widget.hasArchivedGuestGroups;
 
   Future<bool> _confirmCurrentGuestState(
     FirebaseAuth auth,
@@ -255,9 +259,9 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                 'Keep this identity and retry after shared groups are available.'
           : 'This identity is the only administrator of at least one shared '
                 'group. Keep this identity, or return to Shared groups → Manage '
-                'members and use the existing transfer action before leaving it. '
-                'The current transfer takes effect immediately; recipient '
-                'acceptance and group closure are not supported yet.';
+                'members to request a transfer and wait for an active member to '
+                'accept, or archive the group before leaving it. An archived group '
+                'can be restored for 30 days only by this same Firebase identity.';
       if (mounted) {
         await showDialog<void>(
           context: context,
@@ -280,6 +284,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
 
     final currentUid = currentUser?.uid;
     final wasAnonymous = currentUser?.isAnonymous == true;
+    final archivedGroupWarning = widget.hasArchivedGuestGroups
+        ? ' Archived groups can be restored for 30 days only by the same '
+              'Firebase account that archived them; starting fresh does not '
+              'transfer restoration rights.'
+        : '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -289,7 +298,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               : 'Sign in to your existing account?',
         ),
         content: Text(
-          createSeparateAccount
+          (createSeparateAccount
               ? 'This starts a separate registered identity. The current guest '
                     'workspace is different from that new account: local work '
                     'stays in this browser unless you explicitly clear only its '
@@ -301,7 +310,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                     'Keep it, or explicitly clear only the local copy from '
                     'Workspace options; sign-in never clears it. Shared-group '
                     'membership and ownership stay with the current identity and '
-                    'are not transferred.',
+                    'are not transferred.') +
+              archivedGroupWarning,
         ),
         actions: [
           TextButton(
