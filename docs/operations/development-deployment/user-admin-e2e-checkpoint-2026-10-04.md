@@ -239,3 +239,11 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - User explicitly approved temporary regularuser1 Answer owner promotion for E2E Operations Department, scoped verification/revocation test, then restoration to Employee (2026-10-05 08:13 London). This authorization is retained; no repeated permission question needed for that same scope.
 - Signed out regularuser1 after baseline employee checks; manual adminuser@test.com sign-in handoff prepared using established manual sign-in preference after secure form produced invalid-email. No role promotion or department owner assignment has happened yet.
 - Execution sequence: admin promotes/assigns; regularuser1 tests scoped fixture 2d4b9691-67ac-4d62-928c-28990fcf18f9 and absence of broader powers; admin revokes/returns Employee. Preserve synthetic organisation and both team memberships.
+
+### Approved owner assignment executed; separate sign-in prepared
+
+- Fresh account menu confirmed adminuser@test.com/Admin after manual sign-in. Saved regularuser1 role Department answer owner with primary E2E Operations Department retained; member row now shows answer_owner.
+- Assigned regularuser1 only to E2E Operations Department, ID dc65db82-a4e6-4188-8e90-59620d4f8c7d. POST department answer-owners returned201 at07:21:31 UTC; owner list displays regularuser1/E2E Operations Department and Remove owner. No other department assigned.
+- Cleanup obligation remains active: revoke this assignment and restore Employee after scoped verification/negative-boundary test. Admin tab9 stays signed in for cleanup.
+- Verified alternate development origin https://intqaflow-dev.firebaseapp.com serves the exact deployed main.dart.js hash (4400648 bytes). Browser tab14 is independently signed out on that origin and prepared for manual regularuser1 sign-in; admin web.app origin remains signed in. This allows the two test identities to coexist without repeated admin credential handoffs. No production or app configuration change.
+- Lesson: using the two existing development Hosting origins isolates origin-local authentication for multi-account E2E while preserving the admin session for reliable rollback. Verify identical build and actual signed-out state before relying on isolation.
