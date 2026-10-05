@@ -194,3 +194,9 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Copilot PR13 remained at bae1eed overnight. Applied the already verified test-only selector correction on separate branch `codex/fix-admin-selector-e2e`, commit `ed24b0ae14fc576668469f0e5e9229cc8c8751cf`; draft PR16 targets the Copilot branch and remains unmerged. Application source unchanged by this correction.
 - Restarted the stopped Codespace and launched serial exact-commit full Flutter tests, analyzer and release build. Backend source remains the validated deployed 80b0c61 implementation; no backend rollout required.
 - Hosted admin session remained signed in. Both synthetic organisation members and their admin/employee roles loaded correctly after reconnection. Production and the old local database remain excluded.
+
+### Validated frontend published to development
+
+- Exact commit ed24b0ae14fc576668469f0e5e9229cc8c8751cf: all 105 Flutter tests passed (48s), analyzer passed (12 existing infos, no errors/warnings), release web build passed (49.3s). Draft PR16 remains unmerged.
+- Development Hosting release `1791182719884000`, version `3bbec4254fc5fdc1`, 36 files. Independent HTTP download of main.dart.js matched the exact local build hash (4400648 bytes). Backend remains review80b0c61 at 100%; prior frontend rollback version 685a23bf5da673fe retained.
+- Admin session survived reload. New department creation control is visible. Created synthetic E2E Operations Department and selected it as regularuser1 primary department with Employee role unchanged; hosted membership outcome verification follows.
