@@ -487,3 +487,6 @@ Independent daadc66 gates: backend 90, Flutter 119, analyze/build and clean lock
 
 ### Development rollout verified — 5 October 2026
 daadc66 deployed: Cloud Run intqaflow-dev-api-reviewdaadc66 Ready, runtime configuration preserved, 100% traffic, /health and database-backed /ready both 200. Hosting release 1791205666163000, version d283dab943f1089c, 36 files. Both Hosting origins main.dart.js hash-match the exact validated build. Rollback targets: API review0f87f47; Hosting version 331eb642df81e56c. Hosted member removal and normal proposal approval still require targeted UI acceptance; do not mark them passed from deployment alone. Historical guesttester1 linking/local continuity and CSV remain reused. No new account created.
+
+### Existing-owner authentication blocker — 5 October 2026, 13:30 UTC
+Hosted removal regression remains BLOCKED, not failed or passed: regularuser1@test.com login received Firebase auth/invalid-credential after the intended Switch account confirmation, including the founder manual retry. No member removal request was made. Admin session remains available; updated app loads and Review has no pending Interact proposals. Do not repeat signup, reset credentials automatically, or infer successful authentication from the switch confirmation. Resume owner-only removal and fresh approval fixture after verified existing-owner sign-in.
