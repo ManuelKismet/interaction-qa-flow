@@ -72,6 +72,7 @@ void main() {
     );
     await tester.pumpWidget(
       ProviderScope(
+        retry: (_, _) => null,
         overrides: [
           guidedSessionProvider(
             noParticipantQuery,
@@ -104,7 +105,7 @@ void main() {
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
-    expect(requestCount, greaterThanOrEqualTo(2));
+    expect(requestCount, 3);
     expect(find.text('Unable to load this Interact session.'), findsNothing);
     expect(find.text('What happened?'), findsOneWidget);
     expect(
