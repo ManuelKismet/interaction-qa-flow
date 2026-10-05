@@ -44,6 +44,24 @@ schema creation, migration, or access to organisation/private-session tables.
 Use the existing restricted runtime identity only after the database owner
 confirms its grants; do not broaden IAM or database privileges for this task.
 
+## Account identity continuity
+
+Shared-group membership and administrator roles are keyed to the Firebase UID.
+Creating an account from the current guest identity links credentials to that
+same UID; signing into or creating a separate identity does not transfer group
+membership or local browser work. Registered identities without an organisation
+can still use their local workspace and any groups already linked to their UID.
+Organisation membership and roles are independent of shared-group membership.
+
+Before a guest identity can switch away from a group where it is the only active
+administrator, the client blocks the switch. The existing administrator-transfer
+action changes roles immediately and has no recipient-acceptance step; it must
+not be described as an accepted transfer. Group closure/archive, invitation
+revocation as part of closure, and recovery from closure are not implemented.
+Do not switch away from the sole administrator until an explicitly accepted
+transfer flow or reviewed group-lifecycle process exists. No group data is
+automatically migrated, imported, or deleted by account creation or sign-in.
+
 ## Scheduler review
 
 Do not enable a scheduler as part of this change. Before proposing one, the

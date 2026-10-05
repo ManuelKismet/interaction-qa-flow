@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,16 +77,21 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   _TestFirebaseAuth(
     this.currentUser, {
     this.createError,
+    this.signInError,
   });
 
   @override
   final User? currentUser;
 
   final FirebaseAuthException? createError;
+  final FirebaseAuthException? signInError;
   int createAttempts = 0;
   int signInAttempts = 0;
   int signOutAttempts = 0;
   UserCredential? createCredential;
+  UserCredential? signInCredential;
+  String? lastSignInEmail;
+  String? lastSignInPassword;
 
   @override
   Future<UserCredential> createUserWithEmailAndPassword({
@@ -104,6 +110,10 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
     required String password,
   }) async {
     signInAttempts++;
+    lastSignInEmail = email;
+    lastSignInPassword = password;
+    if (signInError != null) throw signInError!;
+    if (signInCredential != null) return signInCredential!;
     throw StateError('Unexpected sign-in.');
   }
 
@@ -124,6 +134,20 @@ class _MemoryGuestStorage implements GuestStorage {
 
   @override
   void remove() => value = null;
+}
+
+class _TestGuestGroupRepository extends GuestGroupRepository {
+  _TestGuestGroupRepository(this.groups, this.details) : super(Dio());
+
+  final List<Map<String, dynamic>> groups;
+  final Map<String, Map<String, dynamic>> details;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => groups;
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async =>
+      details[groupId]!;
 }
 
 class _SignInLauncher extends StatelessWidget {
@@ -259,6 +283,13 @@ void main() {
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();
       expect(find.text('Back to guest workspace'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, 'member@example.test');
+      await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sign in to a different account?'), findsOneWidget);
+      await tester.tap(find.text('Keep guest identity'));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Back to guest workspace'));
       await tester.pumpAndSettle();
@@ -433,7 +464,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+    expect(find.text('IntQAFlow workspace'), findsOneWidget);
+    expect(find.text('IntQAFlow guest workspace'), findsNothing);
+    expect(find.byTooltip('Workspace options'), findsOneWidget);
+    expect(find.byTooltip('Guest workspace options'), findsNothing);
+    expect(find.textContaining('guest'), findsNothing);
     expect(find.textContaining('no organisation membership'), findsOneWidget);
     expect(find.text('Checking account'), findsNothing);
   });
@@ -627,6 +662,7 @@ void main() {
 
     expect(user.linkAttempts, 1);
     expect(user.isAnonymous, isFalse);
+    expect(user.uid, 'account-uid');
     expect(user.verificationEmailAttempts, 1);
     expect(user.reloadAttempts, 1);
     expect(find.byType(SignInPage), findsNothing);
@@ -771,7 +807,10 @@ void main() {
       ProviderScope(
         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
         child: const MaterialApp(
-          home: SignInPage(createAccount: true),
+          home: SignInPage(
+            createAccount: true,
+            hasCurrentGuestGroupAccess: true,
+          ),
         ),
       ),
     );
@@ -783,7 +822,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('does not transfer the current shared-group membership'),
+      find.textContaining('current guest workspace is different'),
       findsOneWidget,
     );
     await tester.tap(find.text('Cancel account creation'));
@@ -794,5 +833,193 @@ void main() {
       find.textContaining('Account creation cancelled. Your guest identity'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('start fresh discloses local-work retention before signup', (
+    tester,
+  ) async {
+    final auth = _TestFirebaseAuth(null);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(
+          home: SignInPage(
+            createAccount: true,
+            hasMeaningfulGuestWork: true,
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'new@example.test');
+    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Create a separate account'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Start fresh with a separate account?'), findsOneWidget);
+    expect(find.textContaining('local work stays on this device'), findsOneWidget);
+    expect(find.textContaining('shared-group membership or administration does not transfer'), findsOneWidget);
+    await tester.tap(find.text('Cancel account creation'));
+    await tester.pumpAndSettle();
+    expect(auth.createAttempts, 0);
+  });
+
+  testWidgets('empty anonymous bootstrap can sign in without a switch warning', (
+    tester,
+  ) async {
+    final guest = _TestUser(isAnonymous: true);
+    final auth = _TestFirebaseAuth(guest)
+      ..signInCredential = _TestUserCredential(_TestUser(isAnonymous: false));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(home: SignInPage()),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, ' member@example.test ');
+    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in to a different account?'), findsNothing);
+    expect(find.text('Start fresh with a separate account?'), findsNothing);
+    expect(auth.signInAttempts, 1);
+    expect(auth.lastSignInEmail, 'member@example.test');
+    expect(auth.lastSignInPassword, 'safe-test-password');
+  });
+
+  testWidgets('sign-in warning identifies current workspace and destination', (
+    tester,
+  ) async {
+    final guest = _TestUser(isAnonymous: true);
+    final auth = _TestFirebaseAuth(guest)
+      ..signInCredential = _TestUserCredential(_TestUser(isAnonymous: false));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(
+          home: SignInPage(hasMeaningfulGuestWork: true),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in to a different account?'), findsOneWidget);
+    expect(find.textContaining('does not upgrade the current guest workspace'), findsOneWidget);
+    expect(find.text('Sign in to destination'), findsOneWidget);
+    await tester.tap(find.text('Sign in to destination'));
+    await tester.pumpAndSettle();
+
+    expect(auth.signInAttempts, 1);
+    expect(auth.lastSignInEmail, 'destination@example.test');
+    expect(auth.lastSignInPassword, 'safe-test-password');
+  });
+
+  testWidgets('sole shared-group administrator cannot switch identities', (
+    tester,
+  ) async {
+    final guest = _TestUser(isAnonymous: true);
+    final auth = _TestFirebaseAuth(guest);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(
+          home: SignInPage(
+            hasCurrentGuestGroupAccess: true,
+            hasSoleAdministeredGroup: true,
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Keep this shared-group identity'), findsOneWidget);
+    expect(find.textContaining('recipient acceptance and group closure are not supported yet'), findsOneWidget);
+    expect(find.text('Sign in to destination'), findsNothing);
+    await tester.tap(find.text('Keep this identity'));
+    await tester.pumpAndSettle();
+    expect(auth.signInAttempts, 0);
+    expect(identical(auth.currentUser, guest), isTrue);
+  });
+
+  testWidgets('account menu detects and blocks a sole group administrator', (
+    tester,
+  ) async {
+    final guest = _TestUser(isAnonymous: true);
+    final auth = _TestFirebaseAuth(guest);
+    final repository = _TestGuestGroupRepository(
+      const [
+        {'id': 'sole-admin-group', 'name': 'Sole admin group', 'role': 'admin'},
+      ],
+      const {
+        'sole-admin-group': {
+          'members': [
+            {'id': 'current-member', 'role': 'admin', 'status': 'active'},
+          ],
+        },
+      },
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+          guestWorkspaceStoreProvider.overrideWithValue(
+            GuestWorkspaceStore(_MemoryGuestStorage()),
+          ),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            accountUser: guest,
+            sharedIdentityActive: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Keep this shared-group identity'), findsOneWidget);
+    expect(auth.signInAttempts, 0);
+  });
+
+  testWidgets('unavailable group ownership check fails closed on identity switch', (
+    tester,
+  ) async {
+    final guest = _TestUser(isAnonymous: true);
+    final auth = _TestFirebaseAuth(guest);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(
+          home: SignInPage(guestGroupOwnershipUnavailable: true),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('switching accounts is paused'), findsOneWidget);
+    await tester.tap(find.text('Keep this identity'));
+    await tester.pumpAndSettle();
+    expect(auth.signInAttempts, 0);
+    expect(identical(auth.currentUser, guest), isTrue);
   });
 }

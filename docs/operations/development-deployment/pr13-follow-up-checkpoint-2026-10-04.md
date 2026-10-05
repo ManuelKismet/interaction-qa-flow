@@ -62,3 +62,60 @@ are not a live-auth or guest-group acceptance test.
 - Complete the existing PR9 wide-screen outline/narrow-screen branch navigation
   and pending-edit-flush gaps separately; this follow-up does not claim them
   fixed.
+
+## Account/workspace follow-up — 2026-10-05
+
+This source follow-up distinguishes three actions: linking credentials to the
+current guest UID, signing into a destination account, and creating a separate
+registered identity. Link mode retains the current UID; it does not upload
+device-local drafts or create organisation membership. Separate-account and
+sign-in warnings are shown only when the current local workspace has content or
+the current Firebase identity has group access. An empty anonymous identity can
+sign in without a “switch” prompt. Registered accounts without an organisation
+are labelled as a registered workspace, not a guest workspace; shared-group and
+organisation roles remain separate.
+
+Before sign-in or separate-account creation, the client checks current group
+membership and active administrator counts. It blocks switching if the current
+identity is the sole active administrator, or if ownership cannot be verified.
+The existing transfer action is immediate and does not ask the recipient to
+accept; this follow-up does not implement accepted transfers, group closure,
+archive/recovery, or transfer/closure invitation handling. Keep the existing
+identity until an accepted transfer or reviewed lifecycle process is available.
+No data is implicitly deleted or migrated.
+
+Sign-in now snapshots the trimmed email and password at submission before any
+confirmation dialog, then uses the captured values. Optional
+`AUTH_DIAGNOSTICS=true` output includes only the sanitized Firebase error code,
+Firebase app name, and project ID; passwords, tokens, and email addresses are
+not logged. This source change cannot establish whether the hosted
+`auth/invalid-credential` response was caused by a mistyped/incorrect password,
+autofill behavior, or another remote credential condition. No password was read
+or reset, no hosted credential retry was performed, and the submitted account's
+password correctness remains unknown.
+
+Focused widget coverage was added for empty-anonymous sign-in, explicit
+meaningful-work warnings, destination credential capture, separate-identity
+disclosure, sole-admin blocking, unavailable-ownership fail-closed behavior,
+and registered-workspace labels. Existing linking coverage asserts that the
+same Firebase user/UID remains active. These Flutter tests, analyzer, and web
+build have not been run here because Flutter/Dart are unavailable. Backend
+behavior and authorization were not changed. The existing backend-validation
+workflow remains backend-only; its run at `daadc66` required action and had zero
+jobs, so it supplied no test logs.
+
+### Handoff and lessons
+
+- Before switching from an identity, evaluate its current workspace and
+  group-admin responsibilities; do not infer them from the destination account.
+- Linking is the continuity path. A separate account is not a data-transfer
+  path, and local browser work remains on the device.
+- Never use an `invalid-credential` observation as evidence of a bad password or
+  a product defect without a safe, controlled reproduction. Keep diagnostics
+  sanitized and avoid credential resets/retries.
+- The requested
+  `docs/operations/development-deployment/user-flow-acceptance-index.md` and
+  PR15 checkpoint were not present in this clone. The available PR13 checkpoint
+  above is updated instead; do not infer prior acceptance from this source-only
+  change. Historical hosted account evidence remains limited to the statuses
+  recorded in the supplied handoff.

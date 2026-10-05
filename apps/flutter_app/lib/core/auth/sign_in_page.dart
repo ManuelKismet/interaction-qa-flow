@@ -7,11 +7,19 @@ class SignInPage extends ConsumerStatefulWidget {
   const SignInPage({
     this.linkGuestIdentity = false,
     this.createAccount = false,
+    this.hasMeaningfulGuestWork = false,
+    this.hasCurrentGuestGroupAccess = false,
+    this.hasSoleAdministeredGroup = false,
+    this.guestGroupOwnershipUnavailable = false,
     super.key,
   });
 
   final bool linkGuestIdentity;
   final bool createAccount;
+  final bool hasMeaningfulGuestWork;
+  final bool hasCurrentGuestGroupAccess;
+  final bool hasSoleAdministeredGroup;
+  final bool guestGroupOwnershipUnavailable;
 
   @override
   ConsumerState<SignInPage> createState() => _SignInPageState();
@@ -44,15 +52,17 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   Future<void> _submit() async {
     final isResetOperation = _resetMode;
     final isSeparateAccountCreation = _createAccountMode && !_linkGuestMode;
+    final email = _email.text.trim();
+    final password = _password.text;
     setState(() {
       _busy = true;
       _error = null;
       _message = null;
     });
+    final auth = ref.read(firebaseAuthProvider);
     try {
-      final auth = ref.read(firebaseAuthProvider);
       if (_resetMode) {
-        await auth.sendPasswordResetEmail(email: _email.text.trim());
+        await auth.sendPasswordResetEmail(email: email);
         if (!mounted) return;
         setState(() {
           _message = 'If that account exists, a reset email has been sent.';
@@ -67,8 +77,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           return;
         }
         final credential = EmailAuthProvider.credential(
-          email: _email.text.trim(),
-          password: _password.text,
+          email: email,
+          password: password,
         );
         final linkedCredential = await user!.linkWithCredential(credential);
         final linkedUser = linkedCredential.user ?? user;
@@ -98,42 +108,19 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               : 'Account created from this guest. Check your email to verify it. The guest identity and group access are retained; local work stays on this device.',
         );
       } else if (_createAccountMode) {
-        if (auth.currentUser?.isAnonymous == true) {
-          final switchIdentity = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Create a separate account?'),
-              content: const Text(
-                'This creates a new signed-in identity and does not transfer '
-                'the current shared-group membership. Create an account from this '
-                'guest instead to keep the same identity and group access. Local '
-                'work stays on this device.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel account creation'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Create separate account'),
-                ),
-              ],
-            ),
-          );
-          if (switchIdentity != true || !mounted) {
-            if (switchIdentity == false && mounted) {
-              setState(() {
-                _message =
-                    'Account creation cancelled. Your guest identity, group access, and local work are unchanged.';
-              });
-            }
-            return;
-          }
+        final currentUser = auth.currentUser;
+        if ((currentUser?.isAnonymous == true ||
+                _hasMeaningfulCurrentGuestState) &&
+            !await _confirmGuestIdentitySwitch(
+              auth,
+              currentUser,
+              createSeparateAccount: true,
+            )) {
+          return;
         }
         final credential = await auth.createUserWithEmailAndPassword(
-          email: _email.text.trim(),
-          password: _password.text,
+          email: email,
+          password: password,
         );
         final user = credential.user;
         if (user == null) {
@@ -167,33 +154,19 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           });
         }
       } else {
-        if (auth.currentUser?.isAnonymous == true) {
-          final switchIdentity = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Switch from this guest identity?'),
-              content: const Text(
-                'Signing in to a different account will not move this guest '
-                'group membership. Link a new account for recovery, or transfer '
-                'group administration explicitly before switching.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Keep guest identity'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Switch account'),
-                ),
-              ],
-            ),
-          );
-          if (switchIdentity != true || !mounted) return;
+        final currentUser = auth.currentUser;
+        if ((currentUser?.isAnonymous == true ||
+                (currentUser == null && _hasMeaningfulCurrentGuestState)) &&
+            !await _confirmGuestIdentitySwitch(
+              auth,
+              currentUser,
+              createSeparateAccount: false,
+            )) {
+          return;
         }
         await auth.signInWithEmailAndPassword(
-          email: _email.text.trim(),
-          password: _password.text,
+          email: email,
+          password: password,
         );
       }
     } on FirebaseAuthException catch (error) {
@@ -204,7 +177,14 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           .last
           .replaceAll(RegExp(r'[^a-z0-9_-]'), '');
       const diagnostics = bool.fromEnvironment('AUTH_DIAGNOSTICS');
-      if (diagnostics) debugPrint('Firebase authentication failed: auth/$code');
+      if (diagnostics) {
+        final app = auth.app;
+        final projectId = app.options.projectId ?? 'unset';
+        debugPrint(
+          'Firebase authentication failed: auth/$code '
+          '(app=${app.name}, project=$projectId)',
+        );
+      }
       if (!mounted) return;
       final message = isResetOperation
           ? 'Unable to send a reset email. Please check the address and try again.'
@@ -257,6 +237,107 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  bool get _hasMeaningfulCurrentGuestState =>
+      widget.hasMeaningfulGuestWork || widget.hasCurrentGuestGroupAccess;
+
+  Future<bool> _confirmGuestIdentitySwitch(
+    FirebaseAuth auth,
+    User? currentUser, {
+    required bool createSeparateAccount,
+  }) async {
+    if (widget.guestGroupOwnershipUnavailable ||
+        widget.hasSoleAdministeredGroup) {
+      final message = widget.guestGroupOwnershipUnavailable
+          ? 'Shared-group administration could not be checked, so switching '
+                'accounts is paused to protect group access. Keep this identity '
+                'and retry after shared groups are available.'
+          : 'This identity is the only administrator of at least one shared '
+                'group. Keep this identity, or return to Shared groups → Manage '
+                'members and transfer administration before switching. The '
+                'current transfer takes effect immediately; recipient acceptance '
+                'and group closure are not supported yet.';
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Keep this shared-group identity'),
+            content: Text(message),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Keep this identity'),
+              ),
+            ],
+          ),
+        );
+      }
+      return false;
+    }
+
+    if (!_hasMeaningfulCurrentGuestState) return true;
+
+    final currentUid = currentUser?.uid;
+    final wasAnonymous = currentUser?.isAnonymous == true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          createSeparateAccount
+              ? 'Start fresh with a separate account?'
+              : 'Sign in to a different account?',
+        ),
+        content: Text(
+          createSeparateAccount
+              ? 'This starts a separate registered identity. The current guest '
+                    'workspace is different from that new account: local work '
+                    'stays on this device, and shared-group membership or '
+                    'administration does not transfer. To keep group access, '
+                    'create an account from this guest instead.'
+              : 'This signs in to the destination account; it does not upgrade '
+                    'the current guest workspace. Local work stays on this '
+                    'device, while shared-group access remains with the current '
+                    'identity. To keep group access, create an account from this '
+                    'guest instead.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              createSeparateAccount
+                  ? 'Cancel account creation'
+                  : 'Keep guest identity',
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              createSeparateAccount ? 'Start fresh' : 'Sign in to destination',
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      if (confirmed == false && createSeparateAccount && mounted) {
+        setState(() {
+          _message = currentUser?.isAnonymous == true
+              ? 'Account creation cancelled. Your guest identity, group access, and local work are unchanged.'
+              : 'Account creation cancelled. Your current workspace and local work are unchanged.';
+        });
+      }
+      return false;
+    }
+    if (auth.currentUser?.uid != currentUid ||
+        (auth.currentUser?.isAnonymous == true) != wasAnonymous) {
+      setState(() {
+        _error =
+            'The current identity changed while confirming. No account switch was started.';
+      });
+      return false;
+    }
+    return true;
   }
 
   Future<void> _finishGuestLink(String message) async {
@@ -322,8 +403,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                               const SizedBox(height: 8),
                               Text(
                                 _linkGuestMode
-                                    ? 'Create a sign-in account from this guest to keep the same identity and group access. Local work stays on this device; it is not uploaded.'
-                                    : 'This creates a separate account. It does not transfer shared-group access or upload local work.',
+                                      ? 'Create a sign-in account from this guest to keep the same identity and group access. '
+                                          'Local work stays on this device; it is not uploaded.'
+                                      : 'Start fresh with a separate registered identity. '
+                                          'It does not transfer shared-group access or upload local work; '
+                                          'local work remains on this device.',
                               ),
                             ],
                             const SizedBox(height: 20),

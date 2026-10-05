@@ -159,11 +159,54 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     bool createAccount = false,
     bool linkGuest = false,
   }) async {
+    if (_data == null && _loadError == null) await _load();
+    if (!mounted) return;
+    final user = _currentAccountUser;
+    var hasCurrentGuestGroupAccess = false;
+    var hasSoleAdministeredGroup = false;
+    var guestGroupOwnershipUnavailable = false;
+    if (user?.isAnonymous == true && !linkGuest) {
+      try {
+        final groups = await ref
+            .read(guestGroupRepositoryProvider)
+            .listGroups();
+        hasCurrentGuestGroupAccess = groups.isNotEmpty;
+        for (final group in groups.where(
+          (group) => group['role'] == 'admin',
+        )) {
+          final detail = await ref
+              .read(guestGroupRepositoryProvider)
+              .getGroup(group['id'] as String);
+          final members = (detail['members'] as List? ?? const [])
+              .whereType<Map>();
+          final activeAdmins = members.where(
+            (member) =>
+                member['role'] == 'admin' && member['status'] == 'active',
+          );
+          if (activeAdmins.length <= 1) {
+            hasSoleAdministeredGroup = true;
+            break;
+          }
+        }
+      } on Object {
+        guestGroupOwnershipUnavailable = true;
+      }
+    }
+    final data = _data;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => SignInPage(
           createAccount: createAccount,
           linkGuestIdentity: linkGuest,
+          hasMeaningfulGuestWork:
+              data == null ||
+              _loadError != null ||
+              data.knowledge.isNotEmpty ||
+              data.sessions.isNotEmpty ||
+              data.templates.isNotEmpty,
+          hasCurrentGuestGroupAccess: hasCurrentGuestGroupAccess,
+          hasSoleAdministeredGroup: hasSoleAdministeredGroup,
+          guestGroupOwnershipUnavailable: guestGroupOwnershipUnavailable,
         ),
       ),
     );
@@ -177,7 +220,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         content: Text(
           widget.sharedIdentityActive
               ? 'This signs out of the shared guest identity. You may lose access to its groups unless recovery is linked or group administration is transferred. Local work stays on this device.'
-              : 'Your local guest work stays on this device.',
+              : 'Your local work stays on this device.',
         ),
         actions: [
           TextButton(
@@ -200,9 +243,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear this device’s guest work?'),
+        title: const Text('Clear this device’s local work?'),
         content: const Text(
-          'This permanently removes this browser’s local guest copy. '
+          'This permanently removes this browser’s local copy. '
           'Shared group content is not changed.',
         ),
         actions: [
@@ -359,8 +402,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text(
-            'IntQAFlow guest workspace',
+          title: Text(
+            _hasSignedInNonGuestUser
+                ? 'IntQAFlow workspace'
+                : 'IntQAFlow guest workspace',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -389,13 +434,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
               ),
             _accountMenu(),
             PopupMenuButton<String>(
-              tooltip: 'Guest workspace options',
+              tooltip: _hasSignedInNonGuestUser
+                  ? 'Workspace options'
+                  : 'Guest workspace options',
               onSelected: (value) {
                 if (value == 'clear') _clearLocalCopy();
                 if (value == 'backup') _copyLocalBackup();
                 if (value == 'import') _importLocalBackup();
               },
-              itemBuilder: (context) => const [
+              itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'backup',
                   child: Text('Copy local JSON backup'),
@@ -407,7 +454,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                 PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'clear',
-                  child: Text('Clear local guest copy'),
+                  child: Text(
+                    _hasSignedInNonGuestUser
+                        ? 'Clear local copy on this device'
+                        : 'Clear local guest copy',
+                  ),
                 ),
               ],
             ),
@@ -432,6 +483,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                 children: [
                   _GuestNotice(
                     sharedIdentityActive: widget.sharedIdentityActive,
+                    isRegistered: _hasSignedInNonGuestUser,
                     saveStatus: _saveStatus,
                   ),
                   if (widget.authUnavailable)
@@ -960,10 +1012,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
 class _GuestNotice extends StatelessWidget {
   const _GuestNotice({
     required this.sharedIdentityActive,
+    required this.isRegistered,
     required this.saveStatus,
   });
 
   final bool sharedIdentityActive;
+  final bool isRegistered;
   final String saveStatus;
 
   @override
@@ -974,6 +1028,8 @@ class _GuestNotice extends StatelessWidget {
     child: Text(
       sharedIdentityActive
           ? 'Guest-group membership is available for this Firebase identity. Local drafts stay on this device; only work explicitly shared with a group is online. $saveStatus'
+          : isRegistered
+          ? 'Registered workspace. Local drafts stay in this browser; shared groups and organisation access are separate. $saveStatus'
           : 'Stored in this browser only. Clearing browser data or losing this device can erase it. $saveStatus',
     ),
   );
