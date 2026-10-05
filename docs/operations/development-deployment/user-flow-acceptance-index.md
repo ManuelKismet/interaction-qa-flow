@@ -44,3 +44,6 @@ Updated 2026-10-05. This index is the starting point before running a test. Scop
 4. Keep source review, automated tests, hosted UI/API and actual exported artifact evidence distinct. An observation probe that reproduces a defect is not acceptance.
 5. Explicitly mention @copilot for assignments; a posted comment is not receipt/completion evidence. Review exact new head and independent gates before development rollout.
 6. Record corrections/lessons immediately. Preserve historical evidence and link superseding conclusions rather than silently overwriting it.
+
+### Independent validation update — 5 October 2026
+Copilot head daadc665b0d59174e4e915bf5e2d0bff0dfcdfb2: full disposable PostgreSQL backend suite 90 passed; Flutter 119 passed; analyzer and release web build passed. Fresh lock-file installation, pip check, selected Ruff checks and compileall passed. These are local independent gates; hosted removal and normal approval remain pending deployment. GitHub CI still requires approval and is not a pass. Completed historical signup and CSV checks remain reused.
