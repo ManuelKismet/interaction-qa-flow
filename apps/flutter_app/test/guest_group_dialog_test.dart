@@ -32,6 +32,7 @@ class _TestUser implements User {
     this.anonymous = true,
     this.verified = false,
     this.testUid = 'test-anonymous-uid',
+    this.testEmail = 'test@example.test',
   });
 
   @override
@@ -43,9 +44,13 @@ class _TestUser implements User {
   @override
   bool get emailVerified => verified;
 
+  @override
+  String? get email => testEmail;
+
   final bool anonymous;
   final bool verified;
   final String testUid;
+  final String testEmail;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
