@@ -82,12 +82,15 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
             headers=bearer("guest-owner", "password"),
         )
     ).status_code == 204
-    assert (
-        await client.get(
+    identity_override = app.dependency_overrides.pop(get_development_identity)
+    try:
+        unmapped_identity = await client.get(
             "/api/v1/auth/me",
             headers=bearer("guest-owner", "password"),
         )
-    ).status_code == 401
+    finally:
+        app.dependency_overrides[get_development_identity] = identity_override
+    assert unmapped_identity.status_code == 401
     async with session_factory() as db:
         group_row = await db.scalar(
             select(GuestGroup).where(GuestGroup.id == UUID(group_id))
