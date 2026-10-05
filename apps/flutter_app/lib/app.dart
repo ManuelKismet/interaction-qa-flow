@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/routing/app_router.dart';
 import 'package:int_qa_flow/core/theme/app_theme.dart';
@@ -14,7 +13,6 @@ class IntQaFlowApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final router = ref.watch(appRouterProvider);
     if (!firebaseReady) return _guestApp(firebaseReady: false);
     return ref.watch(authStateProvider).when(
       loading: () => _accountStatusApp(
@@ -53,7 +51,6 @@ class IntQaFlowApp extends ConsumerWidget {
           child: _RegisteredAccountApp(
             firebaseReady: firebaseReady,
             user: user,
-            router: router,
           ),
         );
       },
@@ -106,12 +103,10 @@ class _RegisteredAccountApp extends ConsumerWidget {
   const _RegisteredAccountApp({
     required this.firebaseReady,
     required this.user,
-    required this.router,
   });
 
   final bool firebaseReady;
   final User user;
-  final GoRouter router;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -162,7 +157,7 @@ class _RegisteredAccountApp extends ConsumerWidget {
             title: 'IntQAFlow',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light,
-            routerConfig: router,
+            routerConfig: ref.watch(appRouterProvider(user.uid)),
           ),
         );
       },

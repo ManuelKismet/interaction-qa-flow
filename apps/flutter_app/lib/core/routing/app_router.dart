@@ -11,7 +11,10 @@ import 'package:int_qa_flow/features/questions/presentation/question_detail_page
 import 'package:int_qa_flow/features/questions/presentation/questions_page.dart';
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 
-final appRouterProvider = Provider<GoRouter>((ref) {
+final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+  ref,
+  _,
+) {
   final router = GoRouter(
     initialLocation: sessionDeepLinkInitialLocation(Uri.base),
     overridePlatformDefaultLocation: true,

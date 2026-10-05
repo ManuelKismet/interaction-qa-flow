@@ -735,15 +735,7 @@ void main() {
     final auth = _SwitchingFirebaseAuth(owner);
     final authEvents = StreamController<User?>();
     final repository = _AccountTransitionRepository(auth);
-    final router = GoRouter(
-      initialLocation: '/guest/groups',
-      routes: [
-        GoRoute(
-          path: '/guest/groups',
-          builder: (context, state) => const SharedGuestGroupsPage(),
-        ),
-      ],
-    );
+    final routers = <String, GoRouter>{};
     authEvents.add(owner);
 
     await tester.pumpWidget(
@@ -763,7 +755,20 @@ void main() {
               role: 'member',
             ),
           ),
-          appRouterProvider.overrideWithValue(router),
+          appRouterProvider.overrideWith((ref, firebaseUid) {
+            final router = GoRouter(
+              initialLocation: '/guest/groups',
+              routes: [
+                GoRoute(
+                  path: '/guest/groups',
+                  builder: (context, state) => const SharedGuestGroupsPage(),
+                ),
+              ],
+            );
+            routers[firebaseUid] = router;
+            ref.onDispose(router.dispose);
+            return router;
+          }),
           guestGroupRepositoryProvider.overrideWithValue(repository),
         ],
         child: const IntQaFlowApp(),
@@ -775,10 +780,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Accept administration'), findsNothing);
+    expect(routers.keys, contains('owner-uid'));
 
     auth.user = recipient;
     authEvents.add(recipient);
     await tester.pumpAndSettle();
+    expect(routers.keys, containsAll(['owner-uid', 'recipient-uid']));
+    expect(routers['owner-uid'], isNot(same(routers['recipient-uid'])));
     expect(
       find.textContaining('asked to accept group administration'),
       findsOneWidget,
@@ -793,7 +801,6 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     await authEvents.close();
-    router.dispose();
   });
 
   testWidgets('group archive explains same-UID recovery and can be restored', (
