@@ -403,7 +403,7 @@ void main() {
     expect(find.text('member@example.test'), findsOneWidget);
     expect(find.text('Organisation workspace · answer_owner'), findsOneWidget);
     expect(
-      find.text('Guest-group roles are separate from organisation roles.'),
+      find.text('Shared-group roles are separate from organisation roles.'),
       findsOneWidget,
     );
     expect(find.text('Sign out'), findsOneWidget);
