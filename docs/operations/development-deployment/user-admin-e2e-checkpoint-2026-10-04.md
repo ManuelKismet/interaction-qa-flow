@@ -247,3 +247,10 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Cleanup obligation remains active: revoke this assignment and restore Employee after scoped verification/negative-boundary test. Admin tab9 stays signed in for cleanup.
 - Verified alternate development origin https://intqaflow-dev.firebaseapp.com serves the exact deployed main.dart.js hash (4400648 bytes). Browser tab14 is independently signed out on that origin and prepared for manual regularuser1 sign-in; admin web.app origin remains signed in. This allows the two test identities to coexist without repeated admin credential handoffs. No production or app configuration change.
 - Lesson: using the two existing development Hosting origins isolates origin-local authentication for multi-account E2E while preserving the admin session for reliable rollback. Verify identical build and actual signed-out state before relying on isolation.
+
+### Browser transport recovered without replaying setup
+
+- User requested retry at 08:53 London. Browser inventory and live tab observations now succeed. Admin tab9 is still in Admin with regularuser1 Answer owner role and the existing E2E Operations Department owner assignment; no setup action was replayed.
+- Isolated regular-user tab14 remains at the existing sign-in form on firebaseapp.com. Manual sign-in as regularuser1 is the next blocking step; admin web.app tab stays available for revocation and Employee restoration. Neither cleanup nor scoped verification is claimed complete.
+- Codespace terminal is available. Previous published grant checkpoint and PR15 interruption comment5990063182 remain valid.
+- Lesson: after a transport failure, inventory and inspect existing surfaces before navigating, logging out, recreating fixtures or repeating a grant. Preserve the admin rollback session and verify actual state; an interrupted handoff is not a successful login.
