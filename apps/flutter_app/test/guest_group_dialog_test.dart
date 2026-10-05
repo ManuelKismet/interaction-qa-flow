@@ -605,13 +605,18 @@ void main() {
       findsOneWidget,
       reason: 'The requester keeps the current role until the recipient accepts.',
     );
+  });
 
+  testWidgets('recipient sees and can accept pending administration transfer', (
+    tester,
+  ) async {
     final recipientRepository = _MemberManagementRepository(
       isTransferTarget: true,
       transferRequested: true,
     );
     await tester.pumpWidget(
       ProviderScope(
+        key: UniqueKey(),
         overrides: [
           firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
           guestGroupRepositoryProvider.overrideWithValue(recipientRepository),
@@ -620,11 +625,17 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('asked to accept group administration'), findsOneWidget);
+    expect(
+      find.textContaining('asked to accept group administration'),
+      findsOneWidget,
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Accept administration'));
     await tester.pumpAndSettle();
     expect(recipientRepository.acceptTransferRequests, 1);
-    expect(find.textContaining('asked to accept group administration'), findsNothing);
+    expect(
+      find.textContaining('asked to accept group administration'),
+      findsNothing,
+    );
     expect(find.textContaining('Role: admin'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -683,7 +694,10 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Shared entry'));
+        final entry = find.text('Shared entry');
+        await tester.ensureVisible(entry);
+        await tester.pumpAndSettle();
+        await tester.tap(entry);
         await tester.pumpAndSettle();
         await tester.tap(find.text(action).last);
         await tester.pump();
