@@ -920,6 +920,28 @@ class GuidedService:
         await self.session.commit()
         return await self._template_response(template)
 
+    async def restore_template(
+        self, template_id: UUID, organisation_id: UUID, user_id: UUID
+    ) -> GuidedTemplateResponse:
+        actor = await self.permissions.actor(user_id, organisation_id)
+        template = await self.guided.template(template_id, organisation_id)
+        if not template:
+            raise NotFoundError("Guided template not found")
+        if actor.id != template.created_by and actor.role != UserRole.ADMIN:
+            raise PermissionDeniedError("Only the template owner or an admin can restore it")
+        if template.status != GuidedTemplateStatus.ARCHIVED:
+            raise ConflictError("Only archived templates can be restored")
+        template.status = GuidedTemplateStatus.ACTIVE
+        await self._audit(
+            organisation_id,
+            user_id,
+            AuditAction.GUIDED_TEMPLATE_RESTORED,
+            "guided_template",
+            template.id,
+        )
+        await self.session.commit()
+        return await self._template_response(template)
+
     async def duplicate_template(
         self, template_id: UUID, organisation_id: UUID, user_id: UUID
     ) -> GuidedTemplateResponse:

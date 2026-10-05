@@ -297,19 +297,29 @@ class _TemplatesList extends ConsumerWidget {
                       if (action == 'archive') {
                         await repository.archiveTemplate(item.id);
                       }
+                      if (action == 'restore') {
+                        await repository.restoreTemplate(item.id);
+                      }
                       ref.invalidate(guidedTemplatesProvider);
                     },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: 'version',
-                        child: Text('Save as new version'),
-                      ),
-                      PopupMenuItem(
-                        value: 'duplicate',
-                        child: Text('Duplicate'),
-                      ),
-                      PopupMenuItem(value: 'archive', child: Text('Archive')),
-                    ],
+                    itemBuilder: (_) => item.status == 'archived'
+                        ? const [
+                            PopupMenuItem(
+                              value: 'restore',
+                              child: Text('Restore'),
+                            ),
+                          ]
+                        : const [
+                            PopupMenuItem(
+                              value: 'version',
+                              child: Text('Save as new version'),
+                            ),
+                            PopupMenuItem(
+                              value: 'duplicate',
+                              child: Text('Duplicate'),
+                            ),
+                            PopupMenuItem(value: 'archive', child: Text('Archive')),
+                          ],
                   ),
                   onTap: item.status == 'active'
                       ? () => _start(context, ref, item)

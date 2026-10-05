@@ -3,6 +3,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import func, select
 
+from app.models.audit_event import AuditAction, AuditEvent
 from app.models.guided import GuidedQuestion, GuidedSession, KnowledgeProposal
 from app.models.question import Question
 from app.models.question_embedding import QuestionEmbedding
@@ -182,6 +183,73 @@ async def test_template_versions_are_snapshotted_and_answers_start_empty(app_cli
     assert [item["text"] for item in b.json()["questions"]] == ["What should change?"]
     assert a.json()["questions"][0]["answers"] == []
     assert a.json()["template_version_id"] != b.json()["template_version_id"]
+
+
+@pytest.mark.asyncio
+async def test_archived_template_can_be_restored_without_losing_versions(app_client) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    created = await client.post(
+        "/api/v1/guided/templates",
+        headers=headers(ids, "employee"),
+        json={
+            "name": "Recoverable template",
+            "questions": [{"text": "Original question", "scope": "shared", "order_index": 0}],
+        },
+    )
+    assert created.status_code == 201
+    template = created.json()
+    archived = await client.post(
+        f"/api/v1/guided/templates/{template['id']}/archive",
+        headers=headers(ids, "employee"),
+    )
+    assert archived.status_code == 200
+    assert archived.json()["status"] == "archived"
+
+    denied = await client.post(
+        f"/api/v1/guided/templates/{template['id']}/restore",
+        headers=headers(ids, "finance_owner"),
+    )
+    assert denied.status_code == 403
+    archived_session = await client.post(
+        "/api/v1/guided/sessions",
+        headers=headers(ids, "employee"),
+        json={"title": "Archived template session", "template_id": template["id"]},
+    )
+    assert archived_session.status_code == 404
+
+    restored = await client.post(
+        f"/api/v1/guided/templates/{template['id']}/restore",
+        headers=headers(ids, "employee"),
+    )
+    assert restored.status_code == 200
+    assert restored.json()["status"] == "active"
+    assert restored.json()["current_version"] == template["current_version"]
+    assert [
+        question["text"]
+        for question in restored.json()["version"]["questions"]
+    ] == ["Original question"]
+    restored_session = await client.post(
+        "/api/v1/guided/sessions",
+        headers=headers(ids, "employee"),
+        json={"title": "Restored template session", "template_id": template["id"]},
+    )
+    assert restored_session.status_code == 201
+    assert [
+        question["text"]
+        for question in restored_session.json()["questions"]
+    ] == ["Original question"]
+
+    async with session_factory() as session:
+        audit_actions = list(
+            await session.scalars(
+                select(AuditEvent.action)
+                .where(AuditEvent.entity_id == UUID(template["id"]))
+                .order_by(AuditEvent.created_at)
+            )
+        )
+    assert AuditAction.GUIDED_TEMPLATE_ARCHIVED.value in audit_actions
+    assert AuditAction.GUIDED_TEMPLATE_RESTORED.value in audit_actions
 
 
 @pytest.mark.asyncio
