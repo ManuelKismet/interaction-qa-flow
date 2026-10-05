@@ -499,3 +499,6 @@ Reviewed Copilot head dfb17ad04bec93d32f37a1e27dac686de82a1bbb (new changes limi
 
 ### Independent UX regression result — 5 October 2026
 Exact dfb17ad full Flutter suite: 126 passed, 1 failed in 48 seconds. New test shared guest account creation defaults to same-UID linking fails at account_state_widget_test.dart:397 because a broad text finder matches both heading and action label (2 versus expected 1). This is a test ambiguity, not evidence linking failed. Sent precise fix request to @copilot comment 5997334521. Analyzer/build running separately for additional compile evidence; deployment blocked until meaningful corrected test passes. Lifecycle proposal requested in comment 5997297812; accepted transfer/group closure remain pending. Do not repeat signup or credential retries while reviewing these changes.
+
+### Analyzer follow-up — 5 October 2026
+Exact dfb17ad analyzer exits 1: new warnings sign_in_page.dart:182 dead_code/dead_null_aware_expression because FirebaseOptions.projectId is non-null; test account_state_widget_test.dart:80 unused signInError fake parameter. Sent to @copilot comment 5997362220. Existing info-level lints are separate. Build still pending at this observation. No deployment until corrected test/analyzer gates pass.
