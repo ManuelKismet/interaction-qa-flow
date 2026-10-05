@@ -316,3 +316,9 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Earlier question-change rejection identifier was independently confirmed from the safe path/status log: 9f1d3235-48e0-4e1a-8b28-46853bfff8ab. Original resolved question, verified answer and discussion remained intact after rejection.
 - Remaining affected regression: assignment-aware scoped-owner UI positive/out-of-scope/revocation, plus employee-own-private-session controls. Registered collaboration enhancement and the wider workflow acceptance gaps remain pending; old local database stays excluded.
 - Lesson: verify populated read-only content, not only an empty session; preserve history/report access while removing mutations. Refresh accessibility state after input or modal changes before using numeric controls. Independent hosted-byte verification must accompany source/build checks.
+
+### 2026-10-05 — private-owner positive controls and navigation issue sent to Copilot
+
+- Employee-owned private completed session ca40e2aa-916a-4544-a564-99d2f264d2df loads correctly after one reload on a4ec6c1; participant/question creation, editable question/answer fields, deletion, follow-up and Knowledge proposal controls remain present for its owner. Content/status were not changed.
+- Direct navigation from the organisation fixture initially remained on a spinner. Safe request evidence showed repeated private-session GET 404 at 09:22:12/16/23/30/36 UTC; one reload recovered. Cause is unconfirmed. Copilot investigation requested in PR13 comment 5991668390, including route/auth/provider transition and terminal-error handling, without broadening private-session access. Continue unrelated checks while investigation runs.
+- Lesson: owner-control rendering and successful deep-link reload do not establish reliable live route transitions; retain separate evidence and avoid declaring the full navigation flow passed.
