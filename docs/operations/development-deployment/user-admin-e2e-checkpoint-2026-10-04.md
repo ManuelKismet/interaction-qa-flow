@@ -200,3 +200,10 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Exact commit ed24b0ae14fc576668469f0e5e9229cc8c8751cf: all 105 Flutter tests passed (48s), analyzer passed (12 existing infos, no errors/warnings), release web build passed (49.3s). Draft PR16 remains unmerged.
 - Development Hosting release `1791182719884000`, version `3bbec4254fc5fdc1`, 36 files. Independent HTTP download of main.dart.js matched the exact local build hash (4400648 bytes). Backend remains review80b0c61 at 100%; prior frontend rollback version 685a23bf5da673fe retained.
 - Admin session survived reload. New department creation control is visible. Created synthetic E2E Operations Department and selected it as regularuser1 primary department with Employee role unchanged; hosted membership outcome verification follows.
+
+### Hosted department and team acceptance
+
+- Created E2E Operations Department through the new admin form (API 201). regularuser1 now visibly has Employee role and that primary department.
+- Added regularuser1 to existing cross-functional E2E Operations Team with readable account selection, verified member row, removed it, verified absent row, and re-added it, verified restored row.
+- Created E2E Department Handover Team with parent E2E Operations Department; title and department displayed correctly. Added regularuser1; membership outcome verification follows. Supports retaining membership in multiple teams.
+- Dropdown menus visually show account labels but the Flutter accessibility tree initially exposes only the hint; screenshot-based option selection was necessary. Record this accessibility limitation without confusing it with absent data.
