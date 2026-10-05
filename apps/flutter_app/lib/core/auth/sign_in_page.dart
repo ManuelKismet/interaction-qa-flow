@@ -179,7 +179,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       const diagnostics = bool.fromEnvironment('AUTH_DIAGNOSTICS');
       if (diagnostics) {
         final app = auth.app;
-        final projectId = app.options.projectId ?? 'unset';
+        final projectId = app.options.projectId;
         debugPrint(
           'Firebase authentication failed: auth/$code '
           '(app=${app.name}, project=$projectId)',

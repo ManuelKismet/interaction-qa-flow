@@ -394,12 +394,59 @@ void main() {
     await tester.tap(find.text('Create account from this guest'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Create account from this guest'), findsOneWidget);
+    expect(find.byType(SignInPage), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Create account from this guest'),
+      findsOneWidget,
+    );
     expect(
       find.textContaining('keep the same identity and group access'),
       findsOneWidget,
     );
     expect(find.text('Start fresh with a separate account'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
+    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Create account from this guest'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(user.linkAttempts, 1);
+    expect(user.uid, 'account-uid');
+    expect(user.isAnonymous, isFalse);
+    expect(auth.createAttempts, 0);
+    expect(auth.signInAttempts, 0);
+  });
+
+  testWidgets('existing-account sign-in errors do not reveal Firebase details', (
+    tester,
+  ) async {
+    final auth = _TestFirebaseAuth(
+      null,
+      signInError: FirebaseAuthException(
+        code: 'invalid-credential',
+        message: 'Sensitive credential details must not be shown.',
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(home: SignInPage()),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+    await tester.enterText(find.byType(TextField).last, 'secret-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(auth.signInAttempts, 1);
+    expect(
+      find.text('Sign-in failed. Check your email and password and try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Sensitive credential details'), findsNothing);
+    expect(find.textContaining('secret-password'), findsNothing);
   });
 
   testWidgets('registered account without membership is not shown as signed out', (
