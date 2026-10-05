@@ -70,3 +70,7 @@ Exact dfb17ad release web build completed successfully in 53.4 seconds. Validati
 
 ### Linked feature backlog — 5 October 2026
 See [feature/function backlog](feature-implementation-backlog.md), F01–F20, for implementation status, priorities, acceptance criteria and task links. Update it with this index/checkpoint. Current deployed head remains daadc66; review head f1eadad. Affected account tests 29 passed / 1 new finder ambiguity; original default-link test passes. Fix request 5997983931 sent; no deployment. Accepted transfer/archive proposal needs recovery authority/window decision. Extension/plugins remain deferred until core acceptance.
+
+### Recovery policy and validation update — 5 October 2026
+Founder selected 30-day archive recovery, same-account existing group-admin authority. No ownership/recovery transfer to a fresh UID. No automatic purge authorized; archive excluded from existing cleanup until reviewed retention implementation. Accepted transfer/archive source implementation assigned to Copilot 5998051498; authored migration/disposable DB tests permitted, hosted migration and cleanup not performed. Exact f1eadad analyzer now passes with 13 info-level lints and no warnings/errors; web release build passes in 45.8s. Affected account test 29 pass / 1 erroneous secret-finder failure remains; no deployment.
+Lesson: password-disclosure assertions must inspect rendered error Text separately from intentionally retained obscured EditableText input; inspect obscureText explicitly. Do not mistake test finder scope for a product leak.
