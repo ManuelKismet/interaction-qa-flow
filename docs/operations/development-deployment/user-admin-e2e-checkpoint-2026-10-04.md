@@ -374,3 +374,8 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 
 - Completed private Employee session opened through Completed sessions without a spinner. Export > JSON > Copy placed valid 2,261-character JSON on the browser clipboard. Parsed kind `intqaflow-guided-session`, version 1, completed/private state, expected synthetic title, one participant, one prepared question and one nonempty nested answer. Question text matches the fixture. Clipboard export verification is now PASS; no downloaded-file claim.
 - Lesson: native session answers are nested under questions in this export format; validate the actual schema rather than assuming top-level answers. Session content was not modified. Other pending checks in the preceding checkpoint remain open.
+
+### 2026-10-05 10:34 UTC — Copilot ownership UI fix under independent review
+
+- Copilot pushed `bd0ae0557438ee4698608a2ac8d2deb0da7cda8f` (Gate template mutations by ownership). Reviewed model parsing of existing created_by, membership creator/admin gate, and friendly persistent failure SnackBar. Backend unchanged relative to 8e243bf; existing independent 85-pass backend result carries forward.
+- Exact clean head checked out in isolated review worktree. Full Flutter tests, analyze and exact-head release build running; no new rollout or hosted UI pass claimed yet. Added widget coverage includes non-owner denial, creator/admin actions and failed Restore. Deployed development remains 8e243bf pending all gates.
