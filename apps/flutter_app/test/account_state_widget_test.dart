@@ -253,9 +253,14 @@ void main() {
       await pumpGuestWorkspace(tester);
 
       expect(
-        find.textContaining('Stored in this browser only.'),
+        find.textContaining('Guest workspace active in this browser profile.'),
         findsOneWidget,
       );
+      expect(
+        find.textContaining('People using this profile can see its local work.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Shared groups are separate'), findsOneWidget);
       await tester.tap(find.byTooltip('Account'));
       await tester.pumpAndSettle();
       expect(find.text('Local guest workspace'), findsOneWidget);
@@ -343,6 +348,15 @@ void main() {
       sharedIdentityActive: true,
     );
 
+    expect(
+      find.textContaining('A guest sign-in is active in this browser profile.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('People using this profile share that sign-in and its local drafts.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Shared groups are separate'), findsOneWidget);
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
     expect(find.text('Shared groups identity'), findsOneWidget);
@@ -537,6 +551,16 @@ void main() {
     expect(find.byTooltip('Workspace options'), findsOneWidget);
     expect(find.byTooltip('Guest workspace options'), findsNothing);
     expect(find.textContaining('guest'), findsNothing);
+    expect(
+      find.textContaining(
+        'Local drafts stay in this browser profile and may be visible to people using it.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Shared groups and organisation access are separate'),
+      findsOneWidget,
+    );
     expect(find.textContaining('no organisation membership'), findsOneWidget);
     expect(find.text('Checking account'), findsNothing);
   });

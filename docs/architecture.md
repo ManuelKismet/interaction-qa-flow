@@ -2,8 +2,11 @@
 
 IntQAFlow is a monorepo with one shared backend for **IntQAFlow Knowledge** and
 **IntQAFlow Interact**, plus future Teams, browser extension, and agent clients.
-They are modules of one platform: Interact can produce reusable Knowledge, and
-Knowledge can be referenced during Interact sessions.
+The intended end-user delivery direction is browser extensions and application
+plugins such as Microsoft Teams, with the web interface supporting administration
+and functions those clients do not provide. The standalone web interface remains
+supported. They are modules of one platform: Interact can produce reusable
+Knowledge, and Knowledge can be referenced during Interact sessions.
 
 The application shell exposes Knowledge and Interact as primary destinations.
 Knowledge owns the route-backed Ask/Search and Questions views; Review remains
@@ -220,4 +223,5 @@ infer the user's formal department.
 
 Generative AI, team-only visibility for primary Q&A, Microsoft Teams
 integration, browser extensions, document ingestion, and agent access remain
-intentionally deferred.
+intentionally deferred. The delivery direction above does not change these
+implementation phases; no extension or plugin is delivered by this work.

@@ -112,6 +112,24 @@ identity until a reviewed lifecycle process exists.
 - Backend draft storage is not part of this UX work. Any such proposal needs an
   explicit identity model, access controls, expiry, and cleanup design.
 
+### Browser-profile notice and product surfaces
+
+The workspace notice now states that a guest sign-in is active in this browser
+profile and that people using the same profile share its sign-in and local
+drafts. It separately identifies Shared groups as online content only when
+deliberately shared; group membership is not the same as the local browser
+workspace/session. The wording for a registered local workspace likewise
+explains same-profile draft visibility without applying guest labels.
+
+The founder-approved product direction is end-user delivery through browser
+extensions and application plugins such as Microsoft Teams, with the web
+interface serving administration and capabilities unsupported by those clients.
+The standalone web interface remains supported. The architecture document
+continues to mark Teams and browser-extension implementation as deferred; this
+UX follow-up does not change phase status or build client integrations. Keep
+identity/session copy portable to those surfaces by referring to the active
+client/profile rather than assuming separate accounts or sessions per tab.
+
 Sign-in now snapshots the trimmed email and password at submission before any
 confirmation dialog, then uses the captured values. Optional
 `AUTH_DIAGNOSTICS=true` output includes only the sanitized Firebase error code,

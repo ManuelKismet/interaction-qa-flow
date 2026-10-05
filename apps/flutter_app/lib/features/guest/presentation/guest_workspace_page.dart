@@ -1036,10 +1036,10 @@ class _GuestNotice extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Text(
       sharedIdentityActive
-          ? 'Guest-group membership is available for this Firebase identity. Local drafts stay on this device; only work explicitly shared with a group is online. $saveStatus'
+          ? 'A guest sign-in is active in this browser profile. People using this profile share that sign-in and its local drafts. Shared groups are separate; only work deliberately shared with a group is online. $saveStatus'
           : isRegistered
-          ? 'Registered workspace. Local drafts stay in this browser; shared groups and organisation access are separate. $saveStatus'
-          : 'Stored in this browser only. Clearing browser data or losing this device can erase it. $saveStatus',
+          ? 'Registered workspace. Local drafts stay in this browser profile and may be visible to people using it. Shared groups and organisation access are separate. $saveStatus'
+          : 'Guest workspace active in this browser profile. People using this profile can see its local work. Shared groups are separate; only work deliberately shared with a group is online. Clearing browser data or losing this device can erase local work. $saveStatus',
     ),
   );
 }
