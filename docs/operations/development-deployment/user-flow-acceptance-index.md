@@ -65,3 +65,5 @@ Exact dfb17ad full Flutter suite: 126 passed, 1 failed in 48 seconds. New test s
 
 ### Analyzer follow-up — 5 October 2026
 Exact dfb17ad analyzer exits 1: new warnings sign_in_page.dart:182 dead_code/dead_null_aware_expression because FirebaseOptions.projectId is non-null; test account_state_widget_test.dart:80 unused signInError fake parameter. Sent to @copilot comment 5997362220. Existing info-level lints are separate. Build still pending at this observation. No deployment until corrected test/analyzer gates pass.
+
+Exact dfb17ad release web build completed successfully in 53.4 seconds. Validation summary: 126 Flutter passes / 1 ambiguous test failure; analyzer blocked on three new warnings; backend unchanged and prior 90 passes reused. No deployment. Resume with Copilot fix review and affected automated tests before hosted account regression.
