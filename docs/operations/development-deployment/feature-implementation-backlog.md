@@ -1,0 +1,34 @@
+# IntQAFlow feature and function backlog
+
+Current development queue, 5 October 2026. Linked to [test index](user-flow-acceptance-index.md) and [checkpoint](user-admin-e2e-checkpoint-2026-10-04.md). Implementation is not verification. P1 core blockers; P2 remaining acceptance/operations; P3 future work. Production and old local database excluded.
+
+| ID | Priority | Feature / function | Status | Task / evidence | Acceptance / next action |
+|---|---|---|---|---|---|
+| F01 | P1 | Registration: keep work/groups by default; explicit start fresh; registered labels | Implemented but unverified | PR13 f1eadad, 5996269511 | Same UID linking, roles preserved, local work local, no implicit organization; corrected tests then hosted UI; reuse guesttester1 historical signup. |
+| F02 | P1 | Browser-profile session notice | Implemented but unverified | PR13 dfb17ad, 5997005512 | Explain shared local work/session in one profile; distinguish online Shared groups; no multiple-profile feature or backend draft migration. |
+| F03 | P1 | Existing-account sign-in | Blocked | Hosted invalid-credential daadc66; read-only Firebase account exists/enabled | Successful intended sign-in; meaningful-state warning only; credential cause unresolved; no retry loop or agent reset. |
+| F04 | P1 | Recipient-accepted admin transfer | Not implemented | PR13 proposal 5997349909 / task 5997297812 | Active target accepts; current admin remains until acceptance; decline/cancel/expiry no role changes; atomic last-admin and concurrency invariants. Immediate transfer currently exists. |
+| F05 | P1 | Recoverable group closure/archive | Not implemented | Same proposal as F04 | Explicit confirmation, retained content/members, invitation revocation and archived access denial; recovery authority/window decision required; exclude archive from purge. No hosted schema change authorized by backlog. |
+| F06 | P1 | Hosted member removal / access revocation | Blocked | f10f172 fix deployed daadc66; test group a12cb842-a072-4cd8-b6a4-cb8fbefc9171 | Owner removes viewer; successful request, row gone, viewer denied; preserve owner; needs authenticated owner. |
+| F07 | P1 | Proposal atomic publication | Implemented but unverified | daadc66 automated rollback/retry; backend 90 passes | Automated no-orphan/retry-once passed; hosted normal approval must publish once; no live failure injection. |
+| F08 | P1 | Original group continuity after guest registration | Implemented but unverified | guesttester1 local continuity passed; original group uncertain | Existing account original membership/admin retained; read-only evidence before narrow repeat; no signup recreation. |
+| F09 | P1 | Upgraded guest organization/department/team assignment | Implemented but unverified | regularuser1 assignment passed; guesttester1 case uncertain | Admin enrolls existing account, intended access appears, independent group roles unchanged. |
+| F10 | P2 | Full tenant/private/department/team permission matrix | Implemented but unverified | Index partial actor/route evidence | Enumerate only missing combinations; prove allow/deny; team tags are not privacy grants. |
+| F11 | P2 | Stale guest draft close handling | Implemented but unverified | Index open usability item | Narrow close/save/stale case; no silent loss; report actual defect. |
+| F12 | P2 | Root reload/navigation initialization | Blocked | Some deep-link reloads passed; root spinner open | Narrow reproduction and expected destination resolution; no blanket navigation pass. |
+| F13 | P2 | Actual verification/recovery email delivery | Blocked | Historical operator email verification exception | Founder-controlled mailbox delivery and link completion; manual flag is not delivery proof. |
+| F14 | P2 | Rendered CJK/emoji PDF output | Blocked | Latin/Omega/multipage/nesting passed; platform limitation | Inspect actual PDF glyphs/content/pagination; HTML preview insufficient. |
+| F15 | P2 | Guest/group retention clarity | Implemented but unverified | PR13 retention source docs | Browser drafts no app expiry; group 90-day access expiry not deletion; hosted scheduler/Firebase cleanup unverified; agree retention before apply. |
+| F16 | P2 | Backend CI execution | Blocked | action_required with zero jobs; local gates passed | Actual CI logs/execution; do not call local success CI success. |
+| F17 | P2 | Development recovery rehearsal | Implemented but unverified | Runbook reviewed, no rehearsal | Read-only metadata first; separately scoped isolated restore/rehearsal authorization and evidence. |
+| F18 | P2 | Locked dependencies and DB readiness | Verified | daadc66 fresh install/pip/Ruff/compile and hosted ready 200 | Preserve deployment gates; healthy readiness is not live outage rehearsal. |
+| F19 | P2 | CSV safety / JSON fidelity | Verified | Hosted 0f87f47 existing fixture | Reuse recorded scope unless export changes; excludes spreadsheet execution/full control-char matrix. |
+| F20 | P3 | Browser extension / Teams and other plugins | Deferred | Architecture and founder phase gate | Core features/functions working and remaining acceptance reviewed before building; web admin/unsupported functions and standalone use retained. |
+
+## Maintenance workflow
+
+Update backlog, test index and checkpoint together when status changes. Link exact PR/comment, commit, actor/environment, result and limitations. Consult history before repeating checks; name changed code/actor/missing assertion as repeat reason. Keep verified evidence in the test index. Track decisions explicitly; backlog is not permission for destructive cleanup, hosted schema/IAM changes or production. Review all open rows before claiming complete.
+
+## Current review
+
+f1eadad affected account suite: 29 passed, 1 failed in 6s. Same-UID default linking corrected and passed. New no-password-disclosure assertion incorrectly matches obscured EditableText controller; sent to Copilot 5997983931. This is test scope failure, not disclosure evidence. No deployment. Backend unchanged; prior 90-test pass reused. Analyzer/build follow independently.
