@@ -47,3 +47,6 @@ Updated 2026-10-05. This index is the starting point before running a test. Scop
 
 ### Independent validation update — 5 October 2026
 Copilot head daadc665b0d59174e4e915bf5e2d0bff0dfcdfb2: full disposable PostgreSQL backend suite 90 passed; Flutter 119 passed; analyzer and release web build passed. Fresh lock-file installation, pip check, selected Ruff checks and compileall passed. These are local independent gates; hosted removal and normal approval remain pending deployment. GitHub CI still requires approval and is not a pass. Completed historical signup and CSV checks remain reused.
+
+### Development rollout verified — 5 October 2026
+daadc66 deployed: Cloud Run intqaflow-dev-api-reviewdaadc66 Ready, runtime configuration preserved, 100% traffic, /health and database-backed /ready both 200. Hosting release 1791205666163000, version d283dab943f1089c, 36 files. Both Hosting origins main.dart.js hash-match the exact validated build. Rollback targets: API review0f87f47; Hosting version 331eb642df81e56c. Hosted member removal and normal proposal approval still require targeted UI acceptance; do not mark them passed from deployment alone. Historical guesttester1 linking/local continuity and CSV remain reused. No new account created.
