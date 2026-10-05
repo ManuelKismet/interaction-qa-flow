@@ -5,7 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:int_qa_flow/app.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
+import 'package:int_qa_flow/core/routing/app_router.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
@@ -25,10 +28,14 @@ class _TestFirebaseAuth implements FirebaseAuth {
 }
 
 class _TestUser implements User {
-  _TestUser({this.anonymous = true, this.verified = false});
+  _TestUser({
+    this.anonymous = true,
+    this.verified = false,
+    this.testUid = 'test-anonymous-uid',
+  });
 
   @override
-  String get uid => 'test-anonymous-uid';
+  String get uid => testUid;
 
   @override
   bool get isAnonymous => anonymous;
@@ -38,6 +45,19 @@ class _TestUser implements User {
 
   final bool anonymous;
   final bool verified;
+  final String testUid;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _SwitchingFirebaseAuth implements FirebaseAuth {
+  _SwitchingFirebaseAuth(this.user);
+
+  User? user;
+
+  @override
+  User? get currentUser => user;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -278,6 +298,68 @@ class _MemberManagementRepository extends GuestGroupRepository {
     restoreRequests++;
     archived = false;
     return {'id': groupId};
+  }
+}
+
+class _AccountTransitionRepository extends GuestGroupRepository {
+  _AccountTransitionRepository(this.auth) : super(Dio());
+
+  final _SwitchingFirebaseAuth auth;
+  var transferAccepted = false;
+  var acceptedByUid = '';
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => [
+    {
+      'id': 'transition-group',
+      'name': 'Transition group',
+      'role': auth.currentUser?.uid == 'recipient-uid' && !transferAccepted
+          ? 'viewer'
+          : 'admin',
+    },
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async {
+    final isRecipient = auth.currentUser?.uid == 'recipient-uid';
+    return {
+      'id': groupId,
+      'name': 'Transition group',
+      'role': isRecipient && !transferAccepted ? 'viewer' : 'admin',
+      'pending_admin_transfer': transferAccepted
+          ? null
+          : {
+              'id': 'transfer-1',
+              'target_display_name': 'Recipient',
+              'expires_at': '2030-01-08T00:00:00+00:00',
+              'is_target': isRecipient,
+              'is_requester': !isRecipient,
+            },
+      'members': [],
+    };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> listInvitations(String groupId) async =>
+      [];
+
+  @override
+  Future<Map<String, dynamic>> acceptAdminTransfer({
+    required String groupId,
+    required String transferId,
+  }) async {
+    acceptedByUid = auth.currentUser!.uid;
+    transferAccepted = true;
+    return {'id': transferId, 'status': 'accepted'};
   }
 }
 
@@ -638,6 +720,75 @@ void main() {
     );
     expect(find.textContaining('Role: admin'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('account transition remounts shared-group state for recipient', (
+    tester,
+  ) async {
+    final owner = _TestUser(anonymous: false, testUid: 'owner-uid');
+    final recipient = _TestUser(anonymous: false, testUid: 'recipient-uid');
+    final auth = _SwitchingFirebaseAuth(owner);
+    final authEvents = StreamController<User?>();
+    final repository = _AccountTransitionRepository(auth);
+    final router = GoRouter(
+      initialLocation: '/guest/groups',
+      routes: [
+        GoRoute(
+          path: '/guest/groups',
+          builder: (context, state) => const SharedGuestGroupsPage(),
+        ),
+      ],
+    );
+    authEvents.add(owner);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => authEvents.stream),
+          firebaseAuthProvider.overrideWithValue(auth),
+          accountMembershipStatusProvider.overrideWith(
+            (ref) async => AccountMembershipStatus.active,
+          ),
+          currentMembershipProvider.overrideWith(
+            (ref) async => const ActiveMembership(
+              userId: 'app-user',
+              organisationId: 'org',
+              email: 'member@example.test',
+              displayName: 'Member',
+              role: 'member',
+            ),
+          ),
+          appRouterProvider.overrideWithValue(router),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const IntQaFlowApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Waiting for Recipient to accept'),
+      findsOneWidget,
+    );
+    expect(find.text('Accept administration'), findsNothing);
+
+    auth.user = recipient;
+    authEvents.add(recipient);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('asked to accept group administration'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Accept administration'));
+    await tester.pumpAndSettle();
+
+    expect(repository.acceptedByUid, 'recipient-uid');
+    expect(
+      find.textContaining('asked to accept group administration'),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+    await authEvents.close();
+    router.dispose();
   });
 
   testWidgets('group archive explains same-UID recovery and can be restored', (

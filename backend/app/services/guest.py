@@ -96,6 +96,7 @@ class GuestService:
     def __init__(self, session: AsyncSession) -> None:
         self.guest = GuestRepository(session)
 
+    # Acquire rate-limit rows before group rows to keep a consistent lock order.
     async def _rate_limit(self, firebase_uid: str, action: str) -> None:
         limit, window_seconds = GUEST_RATE_LIMITS[action]
         if not await self.guest.record_rate_limit(
@@ -254,8 +255,8 @@ class GuestService:
         firebase_uid: str,
         payload: GuestInvitationCreate,
     ) -> dict[str, Any]:
-        group, _ = await self._group(group_id, firebase_uid, admin=True)
         await self._rate_limit(firebase_uid, "create_invitation")
+        group, _ = await self._group(group_id, firebase_uid, admin=True)
         now = datetime.now(timezone.utc)
         count = await self.guest.active_invitation_count(group_id, now)
         if count >= MAX_ACTIVE_INVITATIONS:
@@ -282,8 +283,8 @@ class GuestService:
     async def list_invitations(
         self, group_id: UUID, firebase_uid: str
     ) -> list[dict[str, Any]]:
-        await self._group(group_id, firebase_uid, admin=True, lock=False)
         await self._rate_limit(firebase_uid, "read")
+        await self._group(group_id, firebase_uid, admin=True, lock=False)
         invitations = await self.guest.active_invitations(
             group_id, datetime.now(timezone.utc)
         )
@@ -628,8 +629,8 @@ class GuestService:
         kind: str | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        group, _ = await self._group(group_id, firebase_uid, lock=False)
         await self._rate_limit(firebase_uid, "search")
+        group, _ = await self._group(group_id, firebase_uid, lock=False)
         if len(query) > 200:
             raise HTTPException(status_code=422, detail="Search query is too long")
         entries = await self.guest.entries(
@@ -653,8 +654,8 @@ class GuestService:
         firebase_uid: str,
         payload: GuestGroupEntryCreate,
     ) -> dict[str, Any]:
-        group, member = await self._member_can_write(group_id, firebase_uid)
         await self._rate_limit(firebase_uid, "write")
+        group, member = await self._member_can_write(group_id, firebase_uid)
         if payload.client_import_key:
             existing = await self.guest.entry_for_import(
                 group_id, firebase_uid, payload.client_import_key
@@ -692,8 +693,8 @@ class GuestService:
         firebase_uid: str,
         entries: list[GuestGroupEntryCreate],
     ) -> list[dict[str, Any]]:
-        group, _ = await self._member_can_write(group_id, firebase_uid)
         await self._rate_limit(firebase_uid, "write")
+        group, _ = await self._member_can_write(group_id, firebase_uid)
         results = []
         for payload in entries:
             if not payload.client_import_key:
@@ -743,8 +744,8 @@ class GuestService:
     async def get_entry(
         self, group_id: UUID, entry_id: UUID, firebase_uid: str
     ) -> dict[str, Any]:
-        _, _ = await self._group(group_id, firebase_uid, lock=False)
         await self._rate_limit(firebase_uid, "read")
+        _, _ = await self._group(group_id, firebase_uid, lock=False)
         entry = await self._entry(group_id, entry_id)
         await self.guest.commit()
         return _entry_dict(entry)
@@ -756,8 +757,8 @@ class GuestService:
         firebase_uid: str,
         payload: GuestGroupEntryUpdate,
     ) -> dict[str, Any]:
-        group, member = await self._member_can_write(group_id, firebase_uid)
         await self._rate_limit(firebase_uid, "write")
+        group, member = await self._member_can_write(group_id, firebase_uid)
         entry = await self._entry(group_id, entry_id, lock=True)
         if member.role not in _EDIT_ANY_ROLES and entry.created_by_uid != firebase_uid:
             raise HTTPException(
@@ -804,8 +805,8 @@ class GuestService:
     async def delete_entry(
         self, group_id: UUID, entry_id: UUID, firebase_uid: str
     ) -> None:
-        _, member = await self._member_can_write(group_id, firebase_uid)
         await self._rate_limit(firebase_uid, "write")
+        _, member = await self._member_can_write(group_id, firebase_uid)
         entry = await self._entry(group_id, entry_id, lock=True)
         if member.role not in _EDIT_ANY_ROLES and entry.created_by_uid != firebase_uid:
             raise HTTPException(
@@ -817,8 +818,8 @@ class GuestService:
     async def entry_history(
         self, group_id: UUID, entry_id: UUID, firebase_uid: str
     ) -> list[dict[str, Any]]:
-        await self._group(group_id, firebase_uid, lock=False)
         await self._rate_limit(firebase_uid, "read")
+        await self._group(group_id, firebase_uid, lock=False)
         entry = await self._entry(group_id, entry_id)
         revisions = await self.guest.entry_revisions(entry.id)
         result = [
@@ -844,8 +845,8 @@ class GuestService:
     async def export_entry(
         self, group_id: UUID, entry_id: UUID, firebase_uid: str
     ) -> dict[str, Any]:
-        await self._group(group_id, firebase_uid, lock=False)
         await self._rate_limit(firebase_uid, "export")
+        await self._group(group_id, firebase_uid, lock=False)
         entry = await self._entry(group_id, entry_id)
         await self.guest.commit()
         return _entry_dict(entry)
