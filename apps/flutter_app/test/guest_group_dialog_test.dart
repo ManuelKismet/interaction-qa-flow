@@ -643,7 +643,7 @@ void main() {
     await tester.tap(find.text('Remove member'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Remove this guest member?'), findsOneWidget);
+    expect(find.text('Remove this group member?'), findsOneWidget);
     expect(find.text('Shared groups'), findsOneWidget);
     await tester.tap(
       find.widgetWithText(FilledButton, 'Remove member').last,

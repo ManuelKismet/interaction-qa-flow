@@ -2894,7 +2894,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           title: Text(
             action == 'transfer_admin'
                 ? 'Request group administration?'
-                : 'Remove this guest member?',
+                : 'Remove this group member?',
           ),
           content: Text(action == 'transfer_admin'
               ? '${member['display_name']} will be asked to accept administration. '
