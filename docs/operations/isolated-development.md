@@ -68,7 +68,7 @@ docker compose -f compose.isolated-dev.yaml up -d --wait postgres
 cd backend
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock
 set -a
 . ./.env.isolated-dev.example
 set +a
@@ -197,9 +197,11 @@ example inside the devcontainer, because it would replace the sidecar URL.
 The bootstrap installs backend tooling and the Flutter source revision recorded
 in apps/flutter_app/.metadata (ff37bef603469fb030f2b72995ab929ccfc227f0).
 It prepares Flutter web dependencies; it does not migrate, seed, start servers,
-or patch application code. Container images and backend dependency ranges are
-not digest/version locked, so a successful reproducible rebuild remains an
-acceptance requirement.
+or patch application code. Backend ranges remain in requirements.txt, while
+requirements.lock pins the resolved Python 3.12 runtime, test dependencies, and
+Ruff analyzer. The backend validation workflow installs that lock, runs pip
+check, Ruff syntax/undefined-name checks, compileall, and the full pytest suite.
+Container images and Flutter tooling are still not digest/version locked.
 
 No ports are explicitly forwarded, and automatic forwarding is disabled.
 Before adding a private web/API tunnel, inspect actual Codespace port
