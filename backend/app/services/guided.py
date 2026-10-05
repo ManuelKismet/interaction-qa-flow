@@ -1,5 +1,6 @@
 import csv
 import io
+import unicodedata
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -60,6 +61,24 @@ from app.schemas.guided import (
     LegacyImportResponse,
 )
 from app.services.permissions import PermissionService
+
+
+def _spreadsheet_safe_csv_cell(value: str) -> str:
+    """Prefix formula-like or control-prefixed text so spreadsheets treat it as data."""
+    if not value:
+        return value
+    if unicodedata.category(value[0]) in {"Cc", "Cf"}:
+        return f"'{value}"
+
+    index = 0
+    while index < len(value) and (
+        value[index].isspace()
+        or unicodedata.category(value[index]) in {"Cc", "Cf"}
+    ):
+        index += 1
+    if index < len(value) and value[index] in {"=", "+", "-", "@"}:
+        return f"'{value}"
+    return value
 
 
 class GuidedService:
@@ -579,16 +598,22 @@ class GuidedService:
         def write_question(question: GuidedFlowQuestion, depth: int, return_to: str) -> None:
             for answer in question.answers or [None]:
                 participant = participants.get(answer.participant_id, "") if answer else ""
+                row = [
+                    detail.title,
+                    participant,
+                    question.scope.value,
+                    "follow_up" if depth else "question",
+                    depth,
+                    question.text,
+                    answer.body if answer else "",
+                    return_to,
+                ]
                 writer.writerow(
                     [
-                        detail.title,
-                        participant,
-                        question.scope.value,
-                        "follow_up" if depth else "question",
-                        depth,
-                        question.text,
-                        answer.body if answer else "",
-                        return_to,
+                        _spreadsheet_safe_csv_cell(cell)
+                        if isinstance(cell, str)
+                        else cell
+                        for cell in row
                     ]
                 )
             for child in question.follow_ups:

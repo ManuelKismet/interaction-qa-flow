@@ -199,7 +199,10 @@ infer the user's formal department.
   and audit behavior.
 - Legacy import normalizes local Interact JSON into the same answer-
   owned recursive graph. Native sessions and template sets have portable JSON;
-  session reports also support CSV and browser print/PDF.
+  session reports also support CSV and browser print/PDF. CSV export prefixes
+  formula-like user text, including formulas after leading whitespace/control
+  characters, so spreadsheet software treats it as text; JSON export retains the
+  original values.
 
 ## Deferred work
 
