@@ -174,7 +174,7 @@ Copilot headbb25739ca2870679cbdfd74792333d9bce09ff1d reviewed versus deployed1b7
 Lesson: distinguish missing UI feedback from missing persistence and inspect exact source/session proposal before retrying. A single unique synthetic fixture plus pre-approval counts prevents accidental duplicate publication from contaminating acceptance.
 
 
-### Scoped terminology gates complete; admin handoff ready — 5 October 2026, 20:03 London
+### Scoped terminology gates complete; admin handoff ready — 5 October 2026, 20:00 London
 
 Exactbb25739 independent affected guest_group_dialog_test.dart suite11passed (4s); whole-app analyzer14 existing infos/no warnings/errors (10.2s); diff check passed, runner markers AFFECTED_TEST_PASS/ANALYZE_PASS/REVIEW_GATES_PASS. Review acceptance reported to Copilot comment6001112818. This two-line text/assertion commit has no backend or behavior delta; unchanged backend95/full Flutter133 evidence retained. Release build/hosted wording inspection not performed; development remains1b73ee6. F23 Implemented but unverified hosted; no further implementation task wait needed.
 
