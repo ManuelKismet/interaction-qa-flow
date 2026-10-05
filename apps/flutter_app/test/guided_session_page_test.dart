@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:int_qa_flow/core/api/api_exception.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
@@ -43,6 +44,75 @@ final _session = GuidedSessionDetail(
 );
 
 void main() {
+  testWidgets('session 404 exits loading and retry reloads session', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    var requestCount = 0;
+    Future<GuidedSessionDetail> loadSession() async {
+      requestCount++;
+      if (requestCount == 1) {
+        throw const ApiException('That item could not be found.');
+      }
+      return _session;
+    }
+
+    final noParticipantQuery = (
+      sessionId: _session.id,
+      participantId: null,
+      viewMode: GuidedViewMode.allRelevant,
+    );
+    final participantQuery = (
+      sessionId: _session.id,
+      participantId: 'participant-1',
+      viewMode: GuidedViewMode.allRelevant,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          guidedSessionProvider(
+            noParticipantQuery,
+          ).overrideWith((ref) => loadSession()),
+          guidedSessionProvider(
+            participantQuery,
+          ).overrideWith((ref) => loadSession()),
+          currentMembershipProvider.overrideWith(
+            (ref) async => const ActiveMembership(
+              userId: 'employee-1',
+              organisationId: 'organisation-1',
+              email: 'employee@example.invalid',
+              displayName: 'Employee',
+              role: 'employee',
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: GuidedSessionPage(sessionId: 'session-1')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(requestCount, 1);
+    expect(find.text('Unable to load this Interact session.'), findsOneWidget);
+    expect(find.text('What happened?'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(requestCount, greaterThanOrEqualTo(2));
+    expect(find.text('Unable to load this Interact session.'), findsNothing);
+    expect(find.text('What happened?'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('guided-session-read-only-notice')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('non-owner employee sees session read-only but can report/export', (
     tester,
   ) async {
