@@ -233,3 +233,9 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Employee can edit/remove its own unapproved community answer and accept it; Verify and Review as current are absent. Question itself now offers Request review after contribution. Previously verified own answer remains protected.
 - Proposed next scoped check: temporarily promote regularuser1 from Employee to Answer owner, assign only E2E Operations Department, verify/review the scoped fixture, demonstrate no power over department-free fixtures, revoke the department assignment, and restore Employee role. Requires action-time confirmation before increasing governance permissions under browser rules. No promotion/assignment has occurred.
 - Remaining: answer-owner assign/revoke and role boundary, read-only UI correction for non-owner organisation sessions, browser print CJK/emoji glyph verification. Preserve historical common flows without repetition. Production, old local DB and merges remain excluded.
+
+### Approved temporary answer-owner acceptance
+
+- User explicitly approved temporary regularuser1 Answer owner promotion for E2E Operations Department, scoped verification/revocation test, then restoration to Employee (2026-10-05 08:13 London). This authorization is retained; no repeated permission question needed for that same scope.
+- Signed out regularuser1 after baseline employee checks; manual adminuser@test.com sign-in handoff prepared using established manual sign-in preference after secure form produced invalid-email. No role promotion or department owner assignment has happened yet.
+- Execution sequence: admin promotes/assigns; regularuser1 tests scoped fixture 2d4b9691-67ac-4d62-928c-28990fcf18f9 and absence of broader powers; admin revokes/returns Employee. Preserve synthetic organisation and both team memberships.
