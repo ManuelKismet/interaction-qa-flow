@@ -14,7 +14,12 @@ final _session = GuidedSessionDetail(
   revision: 1,
   updatedAt: DateTime.utc(2026),
   createdById: 'session-owner',
-  participants: [GuidedParticipant(id: 'participant-1', name: 'Participant One')],
+  participants: [
+    GuidedParticipant(
+      id: 'participant-1',
+      name: 'Participant One With A Long Display Name',
+    ),
+  ],
   questions: [
     GuidedQuestion(
       id: 'question-1',
@@ -41,6 +46,8 @@ void main() {
   testWidgets('non-owner employee sees session read-only but can report/export', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetPhysicalSize);
     final noParticipantQuery = (
       sessionId: _session.id,
       participantId: null,
@@ -76,6 +83,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
 
     expect(
       find.byKey(const ValueKey('guided-session-read-only-notice')),
@@ -107,6 +115,8 @@ void main() {
   });
 
   testWidgets('session owner retains editing controls', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetPhysicalSize);
     final noParticipantQuery = (
       sessionId: _session.id,
       participantId: null,
@@ -142,6 +152,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
 
     expect(
       find.byKey(const ValueKey('guided-session-read-only-notice')),

@@ -141,14 +141,30 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                       child: DropdownButtonFormField<String?>(
                         key: ValueKey(_participantId),
                         initialValue: _participantId,
+                        isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Active participant',
                         ),
+                        selectedItemBuilder: (context) => [
+                          for (final participant in session.participants)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                participant.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
                         items: [
                           for (final participant in session.participants)
                             DropdownMenuItem(
                               value: participant.id,
-                              child: Text(participant.name),
+                              child: Text(
+                                participant.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                         ],
                         onChanged: (value) =>
