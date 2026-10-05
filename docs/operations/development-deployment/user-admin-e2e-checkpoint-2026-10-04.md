@@ -422,3 +422,8 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - Set-e runner stopped before analyze/build as required; separate independent analyze/build running, no rollout. Development remains frontend bd0ae05/backend review8e243bf. Required repeats are limited to regressions affected by new identity/CSV code. Previously passed unrelated flows stay closed.
 
 - 11:25 UTC follow-up: separate exact07c1bc9 analyze and release build both PASS. Both test failures still block rollout; no job remains running.
+
+### 2026-10-05 11:28 UTC — exact corrected identity head under validation
+
+- Copilot current head 0f87f47c9ccbd1c2826938e7feed6780f4a15156. Reviewed diff from 07c1bc9: test-only auth override removal/restoration in finally with401 assertion retained, and updated Shared-group wording assertion. Application unchanged from reviewed shared-group/CSV implementation.
+- Exact clean head isolated full Flutter/analyze/build and backend suite running; disposable PostgreSQL only. Rollout helpers prepared with previous API review8e243bf rollback, not executed. No passed unrelated browser flow repeated. Hosted identity continuity and registered join checks will follow green gates and development rollout.
