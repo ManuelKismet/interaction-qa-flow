@@ -451,3 +451,11 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 - GuidedKnowledgeService.decide invokes QuestionService.create which commits before answer creation/final proposal audit. Source atomicity concern, not reproduced hosted outage. Copilot5994126124 requests disposable failure test and transaction fix if failure, plus scoped operational improvements. No live DB/provider fault injection or IAM/schema changes.
 - Copilot stilla67a246; member removal cleanup pending. Previously passed unrelated checks remain closed.
 - Lesson: parse CSV before asserting quote integrity; JSON original-value fidelity is separate. Historical checklist is dated baseline; current checkpoint supersedes old pending/fail labels.
+
+
+### 2026-10-05 12:28 UTC — Copilot trigger correction and IQ07 independently reproduced
+
+- Latest PR13 head stilla67a246, no member-removal completion reply. Prior task comments5993845396/5994126124 lacked explicit mention; sent @copilot action request5994399042. Lesson: an issue comment alone does not prove agent receipt/activity; explicitly trigger and inspect acknowledgement/new commit.
+- Exacta67a246 independent disposable in-memory SQLite ASGI/fake-embedding observation: seed synthetic Employee/admin, create proposal, inject RuntimeError in AnswerService.create during accept. Fresh DB session after failure shows matching Knowledge question count1, proposal pending, created_question_idNone. Restore method/retry same proposal200; matching question count2. Probe1passed/1.77s is successful DEFECT REPRODUCTION, not atomicity acceptance. Hosted DB/provider untouched; fixture engine disposed.
+- Confirmed partial publication/duplicate retry IQ07 blocker. Copilot5994427545 receives exact reproduction; acceptance regression must assert zero partial publication and one question on retry, retaining standalone create and embedding fallback. Reproducible historical probe saved under docs/operations/review-probes/proposal_atomicity_observation.py, invoked explicitly; not auto suite.
+- Member removal and operational improvements pending; hosted CSV formula gate remains closed/pass. No repeat of previously passed unrelated flow.
