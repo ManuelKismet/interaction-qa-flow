@@ -1,18 +1,40 @@
 # Shared guest-group retention operation
 
-Guest-group access expires after 90 days without an authorized request. Expiry
-does not itself delete data. When explicitly run in apply mode, the cleanup
-command removes expired groups and their memberships, invitations,
-entries, and entry revisions. It does not delete account identities, rate-limit
-records, organisation data, private Interact sessions, or copies already
-exported by members. No automatic deletion schedule is configured; expired data
-is deleted only by a reviewed apply-mode run.
+Guest-group access expires after 90 days without an authorized request in the
+application service. Expiry does not itself delete data. When explicitly run in
+apply mode, the cleanup command removes expired groups and their memberships,
+invitations, entries, and entry revisions. It does not delete account identities,
+rate-limit records, organisation data, private Interact sessions, or copies
+already exported by members. No automatic deletion schedule is configured in the
+repository; hosted scheduler configuration has not been verified. Expired data
+is deleted only by a reviewed apply-mode run in this repository.
+
+This is group-access retention, not a universal account or local-work retention
+period. Solo guest drafts on web are stored in origin-scoped browser
+`localStorage` at `intqaflow.guest.workspace.v1`; the app sets no expiry and
+does not clear them on sign-in or account creation. The browser may evict data;
+users can also clear the local copy or browser/site data. Same-origin tabs share
+that browser storage and auth context; tabs are not separate guest profiles.
+The current non-web storage implementation is process-memory only. Firebase
+identity persistence is managed by the Firebase SDK; this app does not set an
+identity-expiry policy, and actual hosted/device persistence has not been
+independently verified. Firebase anonymous-account cleanup/project retention
+configuration is also unverified. The backend stores only explicitly shared
+group content, not private solo drafts. Introducing backend draft storage would
+require a separate design for identity binding, access control, expiry, and
+cleanup.
+
+Invitations are individually time-limited (24 hours by default; API limits are
+one hour to seven days) and revoked/expired invitations cannot be redeemed.
+The default lifetime is not a guarantee of automatic deletion of the invitation
+row or its group.
 
 ## Review and execution
 
-No cleanup schedule is configured. The command must be reviewed with the
-environment owner before use. From `backend/`, with the intended `DATABASE_URL`
-and the normal application settings loaded:
+No cleanup schedule is configured in this repository; hosted scheduler state is
+unverified. The command must be reviewed with the environment owner before use.
+From `backend/`, with the intended `DATABASE_URL` and the normal application
+settings loaded:
 
 ```sh
 python -m app.maintenance.guest_retention --batch-size 100
@@ -53,14 +75,15 @@ membership or local browser work. Registered identities without an organisation
 can still use their local workspace and any groups already linked to their UID.
 Organisation membership and roles are independent of shared-group membership.
 
-Before a guest identity can switch away from a group where it is the only active
-administrator, the client blocks the switch. The existing administrator-transfer
-action changes roles immediately and has no recipient-acceptance step; it must
-not be described as an accepted transfer. Group closure/archive, invitation
-revocation as part of closure, and recovery from closure are not implemented.
-Do not switch away from the sole administrator until an explicitly accepted
-transfer flow or reviewed group-lifecycle process exists. No group data is
-automatically migrated, imported, or deleted by account creation or sign-in.
+Before signing into another account or starting fresh from a guest identity that
+is the only active group administrator, the client blocks the action. The
+existing administrator-transfer action changes roles immediately and has no
+recipient-acceptance step; it must not be described as an accepted transfer.
+Group closure/archive, invitation revocation as part of closure, and recovery
+from closure are not implemented. Keep the current identity until an explicitly
+accepted transfer flow or reviewed group-lifecycle process exists. No group
+data is automatically migrated, imported, or deleted by account creation or
+sign-in.
 
 ## Scheduler review
 

@@ -111,7 +111,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         final currentUser = auth.currentUser;
         if ((currentUser?.isAnonymous == true ||
                 _hasMeaningfulCurrentGuestState) &&
-            !await _confirmGuestIdentitySwitch(
+            !await _confirmCurrentGuestState(
               auth,
               currentUser,
               createSeparateAccount: true,
@@ -157,7 +157,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         final currentUser = auth.currentUser;
         if ((currentUser?.isAnonymous == true ||
                 (currentUser == null && _hasMeaningfulCurrentGuestState)) &&
-            !await _confirmGuestIdentitySwitch(
+            !await _confirmCurrentGuestState(
               auth,
               currentUser,
               createSeparateAccount: false,
@@ -242,7 +242,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   bool get _hasMeaningfulCurrentGuestState =>
       widget.hasMeaningfulGuestWork || widget.hasCurrentGuestGroupAccess;
 
-  Future<bool> _confirmGuestIdentitySwitch(
+  Future<bool> _confirmCurrentGuestState(
     FirebaseAuth auth,
     User? currentUser, {
     required bool createSeparateAccount,
@@ -250,14 +250,14 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     if (widget.guestGroupOwnershipUnavailable ||
         widget.hasSoleAdministeredGroup) {
       final message = widget.guestGroupOwnershipUnavailable
-          ? 'Shared-group administration could not be checked, so switching '
-                'accounts is paused to protect group access. Keep this identity '
-                'and retry after shared groups are available.'
+          ? 'Shared-group administration could not be checked, so sign-in and '
+                'separate-account creation are paused to protect group access. '
+                'Keep this identity and retry after shared groups are available.'
           : 'This identity is the only administrator of at least one shared '
                 'group. Keep this identity, or return to Shared groups → Manage '
-                'members and transfer administration before switching. The '
-                'current transfer takes effect immediately; recipient acceptance '
-                'and group closure are not supported yet.';
+                'members and use the existing transfer action before leaving it. '
+                'The current transfer takes effect immediately; recipient '
+                'acceptance and group closure are not supported yet.';
       if (mounted) {
         await showDialog<void>(
           context: context,
@@ -286,20 +286,22 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         title: Text(
           createSeparateAccount
               ? 'Start fresh with a separate account?'
-              : 'Sign in to a different account?',
+              : 'Sign in to your existing account?',
         ),
         content: Text(
           createSeparateAccount
               ? 'This starts a separate registered identity. The current guest '
                     'workspace is different from that new account: local work '
-                    'stays on this device, and shared-group membership or '
-                    'administration does not transfer. To keep group access, '
-                    'create an account from this guest instead.'
-              : 'This signs in to the destination account; it does not upgrade '
-                    'the current guest workspace. Local work stays on this '
-                    'device, while shared-group access remains with the current '
-                    'identity. To keep group access, create an account from this '
-                    'guest instead.',
+                    'stays in this browser unless you explicitly clear only its '
+                    'local copy from Workspace options. Shared-group membership '
+                    'or administration does not transfer or get deleted. To keep '
+                    'group access, create an account from this guest instead.'
+              : 'This signs in to your existing account; it does not upgrade '
+                    'the current guest identity. Local work stays in this browser. '
+                    'Keep it, or explicitly clear only the local copy from '
+                    'Workspace options; sign-in never clears it. Shared-group '
+                    'membership and ownership stay with the current identity and '
+                    'are not transferred.',
         ),
         actions: [
           TextButton(
@@ -307,13 +309,15 @@ class _SignInPageState extends ConsumerState<SignInPage> {
             child: Text(
               createSeparateAccount
                   ? 'Cancel account creation'
-                  : 'Keep guest identity',
+                  : currentUser?.isAnonymous == true
+                  ? 'Keep guest workspace'
+                  : 'Keep local workspace',
             ),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text(
-              createSeparateAccount ? 'Start fresh' : 'Sign in to destination',
+              createSeparateAccount ? 'Start fresh' : 'Continue to sign in',
             ),
           ),
         ],
@@ -333,7 +337,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         (auth.currentUser?.isAnonymous == true) != wasAnonymous) {
       setState(() {
         _error =
-            'The current identity changed while confirming. No account switch was started.';
+            'The current identity changed while confirming. No account action was started.';
       });
       return false;
     }

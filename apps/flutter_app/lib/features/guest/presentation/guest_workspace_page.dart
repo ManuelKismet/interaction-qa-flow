@@ -939,9 +939,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       onSelected: (action) {
         if (action == 'sign-in') _openSignIn();
         else if (action == 'create-account') {
+          _openSignIn(
+            createAccount: !widget.sharedIdentityActive,
+            linkGuest: widget.sharedIdentityActive,
+          );
+        } else if (action == 'start-fresh') {
           _openSignIn(createAccount: true);
-        } else if (action == 'link-guest') {
-          _openSignIn(linkGuest: true);
         } else if (action == 'retry-account') {
           widget.onRetryAccount?.call();
         } else if (action == 'sign-out') {
@@ -969,14 +972,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         if (!registered && widget.firebaseReady) ...[
           const PopupMenuDivider(),
           const PopupMenuItem(value: 'sign-in', child: Text('Sign in')),
-          const PopupMenuItem(
-            value: 'create-account',
-            child: Text('Create account'),
-          ),
           if (widget.sharedIdentityActive)
             const PopupMenuItem(
-              value: 'link-guest',
+              value: 'create-account',
               child: Text('Create account from this guest'),
+            )
+          else
+            const PopupMenuItem(
+              value: 'create-account',
+              child: Text('Create account'),
+            ),
+          if (widget.sharedIdentityActive)
+            const PopupMenuItem(
+              value: 'start-fresh',
+              child: Text('Start fresh with a separate account'),
             ),
         ],
         if (widget.onRetryAccount != null) ...[

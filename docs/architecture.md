@@ -74,8 +74,15 @@ infer the user's formal department.
 ## Guest access
 
 - Solo guest Knowledge, Interact sessions, templates, search, and backup/import
-  stay in browser-local storage; entering the guest workspace does not upload
-  drafts.
+  stay in browser-local storage under `intqaflow.guest.workspace.v1`; entering
+  the guest workspace does not upload drafts. The app has no local-draft expiry
+  or automatic cleanup. Local data
+  remains until explicitly cleared in the app or removed by browser/site-data
+  cleanup or browser storage policy; persistence is not guaranteed. Same-origin
+  tabs share the browser's storage and Firebase auth context; a tab is not an
+  isolated account workspace.
+  The non-web guest-storage implementation is in-memory and has no durable
+  retention guarantee.
 - Shared guest groups are a separate persistence scope in
   `backend/app/models/guest.py`, not an organisation or department. Their API
   verifies Firebase ID tokens and App Check independently and derives access
@@ -94,10 +101,15 @@ infer the user's formal department.
 - Group access expires after 90 days without an authorized request. The
   `backend/app/maintenance/guest_retention.py` command supports bounded,
   dry-run-first deletion of expired groups and their group-owned rows; no
-  scheduler is configured. Expiry denies access but does not itself delete data;
-  expired rows are removed only by a reviewed apply-mode run. Cleanup locks and
+  scheduler is configured in the repository, and hosted scheduler state is
+  unverified. Expiry denies access but does not itself delete data;
+  repository cleanup removes expired rows only in reviewed apply-mode runs.
+  Cleanup locks and
   rechecks each group before deleting, and does not touch organisation or
-  private-session data.
+  private-session data. Invitations expire after their configured lifetime
+  (24 hours by default, up to seven days); expired/revoked invitations are not
+  valid for preview or redemption. No backend store for private guest drafts
+  exists; group content is stored remotely only after an explicit group action.
 - Registered organisation routes continue to resolve active Firebase UID
   mappings and retain the existing tenant, department, private-session,
   governance, and audit checks. A linked guest identity can access only its

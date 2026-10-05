@@ -287,8 +287,8 @@ void main() {
       await tester.enterText(find.byType(TextField).last, 'safe-test-password');
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pumpAndSettle();
-      expect(find.text('Sign in to a different account?'), findsOneWidget);
-      await tester.tap(find.text('Keep guest identity'));
+      expect(find.text('Sign in to your existing account?'), findsOneWidget);
+      await tester.tap(find.text('Keep local workspace'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Back to guest workspace'));
@@ -303,6 +303,37 @@ void main() {
     },
   );
 
+  testWidgets('local-work clear option clears only the device copy', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      const GuestWorkspaceData(
+        sessions: [
+          {'id': 'local-session', 'title': 'Keep or clear me'},
+        ],
+      ),
+    );
+    await pumpGuestWorkspace(tester, store: store);
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear local guest copy'));
+    await tester.pumpAndSettle();
+    expect(find.text('Clear this device’s local work?'), findsOneWidget);
+    await tester.tap(find.text('Keep my work'));
+    await tester.pumpAndSettle();
+    expect((await store.load()).sessions.single['title'], 'Keep or clear me');
+
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear local guest copy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear local copy'));
+    await tester.pumpAndSettle();
+
+    expect((await store.load()).sessions, isEmpty);
+  });
+
   testWidgets('shared guest account offers explicit recovery linking', (
     tester,
   ) async {
@@ -316,8 +347,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Shared groups identity'), findsOneWidget);
     expect(find.text('Create account from this guest'), findsOneWidget);
+    expect(find.text('Start fresh with a separate account'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
     expect(find.text('Organisation admin'), findsNothing);
+  });
+
+  testWidgets('shared guest account creation defaults to same-UID linking', (
+    tester,
+  ) async {
+    final user = _TestUser(isAnonymous: true);
+    final auth = _TestFirebaseAuth(user);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestWorkspaceStoreProvider.overrideWithValue(
+            GuestWorkspaceStore(_MemoryGuestStorage()),
+          ),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            accountUser: user,
+            sharedIdentityActive: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create account from this guest'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Create account from this guest'), findsOneWidget);
+    expect(
+      find.textContaining('keep the same identity and group access'),
+      findsOneWidget,
+    );
+    expect(find.text('Start fresh with a separate account'), findsNothing);
   });
 
   testWidgets('registered account without membership is not shown as signed out', (
@@ -754,7 +822,9 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('This creates a separate account. It does not transfer shared-group access'),
+      find.textContaining(
+        'Start fresh with a separate registered identity. It does not transfer shared-group access',
+      ),
       findsOneWidget,
     );
     await tester.enterText(find.byType(TextField).first, 'new@example.test');
@@ -822,7 +892,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('current guest workspace is different'),
+      find.textContaining('current guest workspace is different from that new account'),
       findsOneWidget,
     );
     await tester.tap(find.text('Cancel account creation'));
@@ -858,14 +928,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Start fresh with a separate account?'), findsOneWidget);
-    expect(find.textContaining('local work stays on this device'), findsOneWidget);
-    expect(find.textContaining('shared-group membership or administration does not transfer'), findsOneWidget);
+    expect(find.textContaining('local work stays in this browser'), findsOneWidget);
+    expect(
+      find.textContaining('Shared-group membership or administration does not transfer'),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Cancel account creation'));
     await tester.pumpAndSettle();
     expect(auth.createAttempts, 0);
   });
 
-  testWidgets('empty anonymous bootstrap can sign in without a switch warning', (
+  testWidgets('empty anonymous bootstrap can sign in without a warning', (
     tester,
   ) async {
     final guest = _TestUser(isAnonymous: true);
@@ -882,7 +955,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in to a different account?'), findsNothing);
+    expect(find.text('Sign in to your existing account?'), findsNothing);
     expect(find.text('Start fresh with a separate account?'), findsNothing);
     expect(auth.signInAttempts, 1);
     expect(auth.lastSignInEmail, 'member@example.test');
@@ -908,10 +981,15 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in to a different account?'), findsOneWidget);
-    expect(find.textContaining('does not upgrade the current guest workspace'), findsOneWidget);
-    expect(find.text('Sign in to destination'), findsOneWidget);
-    await tester.tap(find.text('Sign in to destination'));
+    expect(find.text('Sign in to your existing account?'), findsOneWidget);
+    expect(find.textContaining('does not upgrade the current guest identity'), findsOneWidget);
+    expect(find.textContaining('explicitly clear only the local copy'), findsOneWidget);
+    expect(find.text('Continue to sign in'), findsOneWidget);
+    tester.widget<TextField>(find.byType(TextField).first).controller!.text =
+        'changed@example.test';
+    tester.widget<TextField>(find.byType(TextField).last).controller!.text =
+        'changed-password';
+    await tester.tap(find.text('Continue to sign in'));
     await tester.pumpAndSettle();
 
     expect(auth.signInAttempts, 1);
@@ -941,8 +1019,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Keep this shared-group identity'), findsOneWidget);
-    expect(find.textContaining('recipient acceptance and group closure are not supported yet'), findsOneWidget);
-    expect(find.text('Sign in to destination'), findsNothing);
+    expect(
+      find.textContaining(
+        'recipient acceptance and group closure are not supported yet',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Continue to sign in'), findsNothing);
     await tester.tap(find.text('Keep this identity'));
     await tester.pumpAndSettle();
     expect(auth.signInAttempts, 0);
@@ -1016,7 +1099,10 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('switching accounts is paused'), findsOneWidget);
+    expect(
+      find.textContaining('sign-in and separate-account creation are paused'),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Keep this identity'));
     await tester.pumpAndSettle();
     expect(auth.signInAttempts, 0);

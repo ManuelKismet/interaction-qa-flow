@@ -65,24 +65,52 @@ are not a live-auth or guest-group acceptance test.
 
 ## Account/workspace follow-up — 2026-10-05
 
-This source follow-up distinguishes three actions: linking credentials to the
-current guest UID, signing into a destination account, and creating a separate
-registered identity. Link mode retains the current UID; it does not upload
-device-local drafts or create organisation membership. Separate-account and
-sign-in warnings are shown only when the current local workspace has content or
-the current Firebase identity has group access. An empty anonymous identity can
-sign in without a “switch” prompt. Registered accounts without an organisation
-are labelled as a registered workspace, not a guest workspace; shared-group and
-organisation roles remain separate.
+The guest path presents account creation from this guest first. It links the
+credential to the current Firebase UID, retaining that identity's group
+memberships/admin roles; local drafts remain local and no organisation
+membership is created. “Start fresh with a separate account” is an explicit
+alternative; no dedicated account-switch or guest-profile feature is added.
+The intended model is one guest workspace per normal device/browser. Existing-
+account sign-in remains a normal sign-in action and is not blocked by an empty
+anonymous bootstrap identity. Meaningful local work or group access gets a
+concise warning. It explains that local work remains in this browser unless the
+user explicitly clears only the local copy under Workspace options.
+Sign-in/account creation never clears local drafts or group data. Registered
+accounts without an organisation are labelled as a registered workspace; group
+and organisation roles remain separate.
 
-Before sign-in or separate-account creation, the client checks current group
-membership and active administrator counts. It blocks switching if the current
-identity is the sole active administrator, or if ownership cannot be verified.
-The existing transfer action is immediate and does not ask the recipient to
-accept; this follow-up does not implement accepted transfers, group closure,
-archive/recovery, or transfer/closure invitation handling. Keep the existing
-identity until an accepted transfer or reviewed lifecycle process is available.
-No data is implicitly deleted or migrated.
+Before sign-in or start-fresh from a guest identity, the client checks current
+group membership and active administrator counts. It blocks the action if the
+current identity is the sole active administrator or if group ownership cannot
+be verified. The existing transfer action is immediate and does not ask the
+recipient to accept. Accepted transfer, group closure/archive, associated
+invitation handling, and recovery are not implemented. Do not leave a sole
+admin group by creating/signing into a separate identity; retain the current
+identity until a reviewed lifecycle process exists.
+
+### Observed retention behavior
+
+- Web solo drafts use origin-scoped `localStorage` key
+  `intqaflow.guest.workspace.v1`; the app does not apply expiry or automatically
+  clear local drafts on sign-in/account creation. Browser storage policies can
+  evict data; the user can also clear it in the UI or remove browser/site data.
+  Same-origin tabs share
+  local storage and Firebase auth context; tabs are not isolated profiles.
+- The non-web storage implementation is in-memory only. Firebase identity
+  persistence is left to the Firebase SDK; this app configures no identity
+  expiry, and hosted/device persistence behavior has not been independently
+  verified. Firebase anonymous-account cleanup/project retention configuration
+  is also unverified.
+- The backend stores explicitly shared group records, not private solo drafts.
+  Group access expires after 90 days without an authorized request, which denies
+  access but does not itself delete rows. Cleanup is a bounded dry run by
+  default; deletion requires a separate reviewed manual `--apply` run. The
+  repository configures no scheduler; hosted scheduler state is unverified.
+- Invitations expire after their configured lifetime (24 hours by default,
+  API range one hour to seven days); expiry/revocation prevents redemption but
+  does not itself mean the row was deleted.
+- Backend draft storage is not part of this UX work. Any such proposal needs an
+  explicit identity model, access controls, expiry, and cleanup design.
 
 Sign-in now snapshots the trimmed email and password at submission before any
 confirmation dialog, then uses the captured values. Optional
@@ -94,20 +122,21 @@ autofill behavior, or another remote credential condition. No password was read
 or reset, no hosted credential retry was performed, and the submitted account's
 password correctness remains unknown.
 
-Focused widget coverage was added for empty-anonymous sign-in, explicit
-meaningful-work warnings, destination credential capture, separate-identity
-disclosure, sole-admin blocking, unavailable-ownership fail-closed behavior,
-and registered-workspace labels. Existing linking coverage asserts that the
-same Firebase user/UID remains active. These Flutter tests, analyzer, and web
-build have not been run here because Flutter/Dart are unavailable. Backend
-behavior and authorization were not changed. The existing backend-validation
-workflow remains backend-only; its run at `daadc66` required action and had zero
-jobs, so it supplied no test logs.
+Focused widget coverage was added for empty-anonymous sign-in, meaningful-work
+warnings, form-value capture across confirmation, same-UID default linking,
+explicit start-fresh disclosure, sole-admin blocking, unavailable-ownership
+fail-closed behavior, and registered-workspace labels. Existing linking
+coverage asserts that the same Firebase user/UID remains active. These Flutter
+tests, analyzer, and web build have not been run here because Flutter/Dart are
+unavailable. Backend behavior and authorization were not changed. The exact
+pre-clarification head `2f4186c` backend-validation run was `action_required`
+with zero jobs/logs; it did not execute.
 
 ### Handoff and lessons
 
-- Before switching from an identity, evaluate its current workspace and
-  group-admin responsibilities; do not infer them from the destination account.
+- Keep normal sign-in separate from guest account linking and explicit start
+  fresh; evaluate current guest data/group-admin responsibilities, not a
+  signed-in account's history.
 - Linking is the continuity path. A separate account is not a data-transfer
   path, and local browser work remains on the device.
 - Never use an `invalid-credential` observation as evidence of a bad password or
