@@ -304,7 +304,9 @@ void main() {
       ),
       findsOneWidget,
     );
-    await tester.tap(find.text('Select a member').last);
+    final payrollSelector = find.byKey(const ValueKey('team-member-selector-team-1'));
+      await tester.ensureVisible(payrollSelector);
+      await tester.tap(payrollSelector);
     await tester.pumpAndSettle();
     await tester.tap(
       find
