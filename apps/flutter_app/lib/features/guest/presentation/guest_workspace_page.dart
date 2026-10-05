@@ -2556,6 +2556,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                                 groupId,
                                 item,
                                 action,
+                                context,
                               ),
                               itemBuilder: (context) => [
                                 for (final role in const ['viewer', 'contributor', 'editor'])
@@ -2620,8 +2621,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     String groupId,
     Map<String, dynamic> member,
     String action,
+    BuildContext membersDialogContext,
   ) async {
-    Navigator.of(context).pop();
     if (action == 'transfer_admin' || action == 'remove') {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -2646,6 +2647,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         ),
       );
       if (confirmed != true || !mounted) return;
+    }
+    if (membersDialogContext.mounted) {
+      Navigator.of(membersDialogContext).pop();
     }
     await _run(() async {
       if (action == 'remove') {

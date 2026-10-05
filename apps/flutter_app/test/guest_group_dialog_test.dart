@@ -153,6 +153,53 @@ class _ShareRepository extends GuestGroupRepository {
   }
 }
 
+class _MemberManagementRepository extends GuestGroupRepository {
+  _MemberManagementRepository() : super(Dio());
+
+  var removeRequests = 0;
+  var memberStatus = 'active';
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => [
+    {'id': 'group-1', 'name': 'Research group', 'role': 'admin'},
+  ];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async => {
+    'id': groupId,
+    'name': 'Research group',
+    'role': 'admin',
+    'members': [
+      if (memberStatus != 'removed')
+        {
+          'id': 'member-1',
+          'display_name': 'Invited viewer',
+          'role': 'viewer',
+          'status': memberStatus,
+        },
+    ],
+  };
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> listInvitations(String groupId) async =>
+      [];
+
+  @override
+  Future<void> removeMember({
+    required String groupId,
+    required String memberId,
+  }) async {
+    removeRequests++;
+    memberStatus = 'removed';
+  }
+}
+
 class _MemoryGuestStorage implements GuestStorage {
   String? value;
 
@@ -407,6 +454,43 @@ void main() {
       }
     },
   );
+
+  testWidgets('removing a member keeps the shared groups page mounted', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Manage members and invitations'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove member'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Remove this guest member?'), findsOneWidget);
+    expect(find.text('Shared groups'), findsOneWidget);
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Remove member').last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.removeRequests, 1);
+    expect(repository.memberStatus, 'removed');
+    expect(find.text('Shared groups'), findsOneWidget);
+    expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.text('Invited viewer'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   for (final action in ['Download / Share PDF', 'History']) {
     testWidgets(
