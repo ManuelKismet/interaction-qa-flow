@@ -46,6 +46,8 @@ void main() {
   testWidgets('non-owner employee sees session read-only but can report/export', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
     tester.view.physicalSize = const Size(360, 800);
     addTearDown(tester.view.resetPhysicalSize);
     final noParticipantQuery = (
@@ -115,6 +117,8 @@ void main() {
   });
 
   testWidgets('session owner retains editing controls', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
     tester.view.physicalSize = const Size(360, 800);
     addTearDown(tester.view.resetPhysicalSize);
     final noParticipantQuery = (
