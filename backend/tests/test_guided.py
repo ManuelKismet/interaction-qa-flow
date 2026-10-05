@@ -3,10 +3,12 @@ from uuid import UUID
 import pytest
 from sqlalchemy import func, select
 
+from app.models.answer import Answer
 from app.models.audit_event import AuditAction, AuditEvent
 from app.models.guided import GuidedQuestion, GuidedSession, KnowledgeProposal
 from app.models.question import Question
 from app.models.question_embedding import QuestionEmbedding
+from app.services import guided_knowledge
 from tests.test_answer_governance import headers, seed_governance
 
 
@@ -419,6 +421,87 @@ async def test_knowledge_proposal_rejects_or_creates_primary_knowledge_with_sour
         )
         assert created_question is not None
         assert await session.scalar(select(func.count()).select_from(Question)) == 3
+
+
+@pytest.mark.asyncio
+async def test_knowledge_proposal_acceptance_rolls_back_and_retries_atomically(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    guided = await create_session(client, ids)
+    participant = await add_participant(client, ids, guided["id"], "Alice")
+    question = await add_question(client, ids, guided["id"], "How do I claim mileage?")
+    guided_answer = await answer(
+        client, ids, question["id"], participant["id"], "Use the Expenses portal."
+    )
+    proposed = await client.post(
+        "/api/v1/guided/knowledge-proposals",
+        headers=headers(ids, "employee"),
+        json={
+            "guided_question_id": question["id"],
+            "guided_answer_id": guided_answer["id"],
+        },
+    )
+    proposal_id = UUID(proposed.json()["id"])
+
+    async with session_factory() as session:
+        initial_question_count = await session.scalar(
+            select(func.count()).select_from(Question)
+        )
+        initial_answer_count = await session.scalar(
+            select(func.count()).select_from(Answer)
+        )
+
+    async def fail_after_question(self, question_id, data, *, commit=True):
+        raise RuntimeError("injected answer creation failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(guided_knowledge.AnswerService, "create", fail_after_question)
+        with pytest.raises(RuntimeError, match="injected answer creation failure"):
+            await client.post(
+                f"/api/v1/guided/knowledge-proposals/{proposal_id}",
+                headers=headers(ids),
+                json={"action": "accept"},
+            )
+
+    async with session_factory() as session:
+        stored_proposal = await session.get(KnowledgeProposal, proposal_id)
+        assert stored_proposal.status == "pending"
+        assert stored_proposal.created_question_id is None
+        assert await session.scalar(select(func.count()).select_from(Question)) == (
+            initial_question_count
+        )
+        assert await session.scalar(select(func.count()).select_from(Answer)) == (
+            initial_answer_count
+        )
+        assert await session.scalar(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(
+                AuditEvent.entity_id == proposal_id,
+                AuditEvent.action == AuditAction.KNOWLEDGE_PROPOSAL_ACCEPTED.value,
+            )
+        ) == 0
+
+    retried = await client.post(
+        f"/api/v1/guided/knowledge-proposals/{proposal_id}",
+        headers=headers(ids),
+        json={"action": "accept"},
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "accepted"
+    async with session_factory() as session:
+        stored_proposal = await session.get(KnowledgeProposal, proposal_id)
+        assert stored_proposal.created_question_id == UUID(
+            retried.json()["created_question_id"]
+        )
+        assert await session.scalar(select(func.count()).select_from(Question)) == (
+            initial_question_count + 1
+        )
+        assert await session.scalar(select(func.count()).select_from(Answer)) == (
+            initial_answer_count + 1
+        )
 
 
 @pytest.mark.asyncio
