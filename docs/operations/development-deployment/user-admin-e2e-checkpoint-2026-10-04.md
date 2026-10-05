@@ -427,3 +427,8 @@ Lesson: distinguish a failed test assertion from a test file that cannot compile
 
 - Copilot current head 0f87f47c9ccbd1c2826938e7feed6780f4a15156. Reviewed diff from 07c1bc9: test-only auth override removal/restoration in finally with401 assertion retained, and updated Shared-group wording assertion. Application unchanged from reviewed shared-group/CSV implementation.
 - Exact clean head isolated full Flutter/analyze/build and backend suite running; disposable PostgreSQL only. Rollout helpers prepared with previous API review8e243bf rollback, not executed. No passed unrelated browser flow repeated. Hosted identity continuity and registered join checks will follow green gates and development rollout.
+
+### 2026-10-05 11:31 UTC — corrected head all independent gates green
+
+- Exact clean0f87f47c9ccbd1c2826938e7feed6780f4a15156: backend87 passed/18.56s, one existing deprecation warning, fresh disposable PostgreSQL stopped/password removed; Flutter118 passed/60s; analyzePASS; exact-head release buildPASS1.299s incremental. Both prior failing assertions corrected without production permission changes. Copilot notified5993545149.
+- Development backend staging started with no traffic; readiness/config preservation gates before switch. Deployed state remains frontendbd0ae05/backendreview8e243bf until actual completion evidence. Rollback APIreview8e243bf and Hosting3a19ea528a9ab376a. Hosted Shared groups and CSV safety acceptance pending, no full acceptance claim.
