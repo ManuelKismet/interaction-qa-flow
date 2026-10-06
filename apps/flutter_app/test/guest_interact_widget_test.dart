@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
@@ -44,16 +45,26 @@ void main() {
 
       final localSearch = _field('Search local Knowledge');
       expect(localSearch, findsOneWidget);
-      expect(
-        tester.widget<TextField>(localSearch).decoration!.helperText,
-        'Keyword and prefix search on this device; no semantic search.',
-      );
+      expect(tester.widget<TextField>(localSearch).decoration!.helperText, isNull);
+      expect(find.byTooltip('Search help'), findsOneWidget);
       expect(
         tester.getTopLeft(localSearch).dy,
         lessThan(tester.getTopLeft(find.text('Add a local question')).dy),
       );
       expect(find.text('Add a local question'), findsOneWidget);
       expect(find.text('Password rotation'), findsNothing);
+      await tester.tap(find.byTooltip('Search help'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Keyword and prefix search on this device; no semantic search.',
+        ),
+        findsOneWidget,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+
       await tester.enterText(localSearch, 'passw');
       await tester.pumpAndSettle();
       await tester.tap(find.text('Saved Q&A'));
@@ -343,6 +354,20 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Interact').first);
     await tester.pumpAndSettle();
+    expect(
+      find.text('Interact sessions stay private on this device.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byTooltip('Interact privacy information'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Interact sessions stay private on this device until you explicitly select one for a shared group.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(tester.getSize(_field('New Interact session')).width, lessThan(1040));
     final templatePicker = find.byWidgetPredicate(
       (widget) =>
@@ -389,6 +414,16 @@ void main() {
       }
 
       await showWorkspace();
+      expect(find.byTooltip('Active participant help'), findsOneWidget);
+      expect(find.byTooltip('Prepared question help'), findsOneWidget);
+      await tester.tap(find.byTooltip('Prepared question help'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Shared questions get separate answers from each participant.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
       expect(_answerField(tester).controller!.text, 'Alice answer');
       expect(find.text('Bob-only question'), findsNothing);
 
