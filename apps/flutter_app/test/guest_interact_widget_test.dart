@@ -66,7 +66,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Password rotation'), findsOneWidget);
       expect(find.text('Incident response'), findsOneWidget);
-      await tester.tap(find.byTooltip('Edit local Knowledge'));
+      final passwordRotationCard = find.ancestor(
+        of: find.text('Password rotation'),
+        matching: find.byType(Card),
+      );
+      await tester.tap(
+        find.descendant(
+          of: passwordRotationCard,
+          matching: find.byTooltip('Edit local Knowledge'),
+        ),
+      );
       await tester.pumpAndSettle();
       final dialogFields = find.descendant(
         of: find.byType(AlertDialog),
