@@ -1,6 +1,35 @@
 # Development deployment checkpoint
 
-## Current development checkpoint — 2026-10-06
+## Current development checkpoint — unified search, 2026-10-06
+
+Exact reviewed source `105a528f19b2383545b5cfae17197439ce065279` on
+`fix/unified-search-dev-20261006` is deployed to intqaflow-dev only.
+
+- Backend `intqaflow-dev-api-review105a528`,100% traffic; health/readiness200.
+- Cloud SQL schema0014,additive migration from0013; data counts/runtime
+  privileges/extensions/trigram indexes verified without new grants.
+- Hosting release1791323636722000/version4eb839685c6f21c7,36 files.
+  Both Hosting origins match the tested index/bootstrap/main bytes.
+- Independent backend111PASS4SKIP; fresh PostgreSQL4PASS; Flutter169PASS;
+  analyzer0errors/0warnings13infos; configured release buildPASS.
+- Main JS4497789 bytes/SHA256
+  `78a8f550a70e24dea13bdbd64bed183356c88035914bc4649ddedb29879ff2c1`.
+- Unified lexical/typo/semantic retrieval is scoped to accessible content.
+  Private embeddings remain owner-scoped,not shared/global. Browser-local
+  content is never uploaded automatically.
+- Rollback:backendreviewaafc112 and Hosting49afc5b14f53f3b0
+  (release1791307395456000). Retain additive schema0014/private data.
+- Remaining:real semantic-provider quality in fake-provider DEV;
+  authenticated personal-import/edit/multi-device E2E and F04/F08/F09;
+  live guest search/navigation smoke,inconclusive under cloud-browser input
+  automation. Local save/Saved Q&A listing verified. No production or merge.
+- Organisation improvements remain deferred. Recurring monitoring remains
+  cancelled. Detailed evidence/cleanup:
+  [unified-search checkpoint](unified-knowledge-search-checkpoint-2026-10-06.md).
+
+This snapshot supersedes historical current-state and rollback entries below.
+
+## Historical personal-workspace checkpoint — 2026-10-06
 
 The personal account workspace change is implemented and deployed to development.
 Reviewed source: `aafc112fbbf220eda1077895334dc16b4930eeab` on
