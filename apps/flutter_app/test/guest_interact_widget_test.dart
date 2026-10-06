@@ -125,7 +125,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Add a local question'), findsOneWidget);
       expect(find.text('Saved Q&A'), findsOneWidget);
-      expect(localSearch, findsOneWidget);
       final knowledgeScrollable = find
           .ancestor(
             of: find.text('Add a local question'),
@@ -138,6 +137,7 @@ void main() {
         scrollable: knowledgeScrollable,
       );
       await tester.pumpAndSettle();
+      expect(localSearch, findsOneWidget);
       final questionField = _field('Question');
       final detailsField = _field('Details');
       final answerField = _field('Answer');
