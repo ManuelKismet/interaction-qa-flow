@@ -16,7 +16,7 @@ SOURCE = Path("/workspaces/intqaflow-unified-search-dev-20261006/backend")
 CANDIDATE = "105a528f19b2383545b5cfae17197439ce065279"
 GCLOUD = str(ROOT / "gcloud/google-cloud-sdk/bin/gcloud")
 PREFIX = ROOT / "search-105a528"
-TABLES = ("questions", "answers", "guest_groups", "guest_group_members",
+TABLES = ("questions", "answers", "guest_groups", "guest_group_memberships",
           "guest_group_entries", "personal_workspace_items")
 NEW_TABLES = ("personal_workspace_items", "guest_group_entries")
 NEW_COLUMNS = ("knowledge_embedding", "embedding_model", "embedding_source_hash")
