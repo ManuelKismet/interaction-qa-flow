@@ -204,3 +204,16 @@ Exact PR13 candidate `6b0aee0da2f411f46962eec21708673ecec4be43` reviewed in isol
 Logs: `/tmp/intqaflow-review-6b0aee0-{account,unit,provider,analyze,probes}.log` in Codespace. No new live credential attempt, cloud configuration change, deployment, account reset/recreation or merge. F09 user-side sign-in, F04 recipient acceptance and F08 historical fixture gap remain unresolved. The Codespace was subsequently observed stopped; its review logs remain on disk, and no restart was needed to record these findings.
 
 Lesson: privacy-safe event fields alone do not ensure trustworthy diagnostics. Correlate each asynchronous callback with its originating attempt, test adverse event ordering, and keep telemetry state out of authentication decisions.
+
+
+### Scoped Saved Q&A DEV release — 6 October 2026
+
+Founder authorized ONLY the Saved Q&A access fix. Copilot UI289740b and dialog805dfcb were cherry-picked onto deployed1b73ee6; isolated application source7e39550 is preserved on fix/saved-qa-dev-20261006. Later commits change tests only; auth diagnostics excluded.
+
+Knowledge now has Saved Q&A beside Add a local question. It opens saved local entries/search/edit/remove and Back. Local storage/backups/group separation remain unchanged. The edit dialog owns controllers until actual unmount.
+
+Analyzer passed:14infos,no warning/error. Release web build passed using existing DEV defines/AUTH_DIAGNOSTICS flag. Full Flutter133pass/1new-test failure; independent disposable test copy then PASSED complete search/edit/delete/persistence/Back/add flow with target scrolling and downward Undo SnackBar dismissal, retaining assertions and unchanged app source. Temporary file removed. Official test-only correction pending verification: waiting5seconds alone still failed due notification obstruction; proven gesture sent in comment6012632814. Do not claim a single full-suite134-pass run.
+
+DEV Hosting release1791276172690000/versionce894e46fcb0ed4b,36files. Both hosting origins serve main.dart.js identical to tested build4432624bytes. Rollbackaf10c243f0df9ef8 retained. Live browser verified button, Saved Q&A/search/empty state and Back. Screenshot intqaflow-saved-qa-1791276278286.jpg saved. No live test content/account created. Backend unchanged, prior95/no-skips evidence retained. No production/backend/migration/IAM/AppCheck/merge action.
+
+Lesson: bound implementation to agreed user journey. Tests must await frames, scroll controls into view and handle notification overlays; runner failures alone are not product defects. Guesttester sign-in investigation remains separate and unresolved.
