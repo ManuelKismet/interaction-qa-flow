@@ -271,7 +271,10 @@ void main() {
 
       expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
       final enableGroupsButton = tester.widget<IconButton>(
-        find.byTooltip('Enable groups'),
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is IconButton && widget.tooltip == 'Enable groups',
+        ),
       );
       expect((enableGroupsButton.icon as Icon).icon, Icons.group_outlined);
       expect(
