@@ -1067,7 +1067,14 @@ void main() {
       250,
       scrollable: addQuestionScrollable,
     );
-    await tester.tap(saveLocally);
+    await tester.pumpAndSettle();
+    await Scrollable.ensureVisible(
+      tester.element(saveLocally),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(saveLocally.hitTestable());
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
 
     expect(repository.imports, isEmpty);
