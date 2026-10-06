@@ -233,9 +233,12 @@ active; the page's existing per-submit `_busy` guard remains the only duplicate
 submission guard. The Firebase options project ID nullability check was also
 aligned with the SDK's non-null API.
 
-Added coverage for async stale lookup completion, provider-scheduled account
-and membership lookups with auth-state-before-SDK and SDK-before-auth ordering,
-and equivalent sign-in behavior with enabled versus disabled diagnostics.
+Added `late lookup response cannot complete or clear a newer attempt`,
+`provider lookups are attributed in either auth and SDK event order`, and
+`an active diagnostic attempt cannot block an ordinary sign-in`. The provider
+test holds Riverpod subscriptions for the auth stream and auto-disposed lookup
+providers while exercising both event orders, avoiding premature disposal
+during loading.
 Flutter tests and analyzer were not run in this environment because Flutter/Dart
 are unavailable. No hosted rollout, credentials, account, or Firebase settings
 were changed; development rollout remains on hold pending independent review and

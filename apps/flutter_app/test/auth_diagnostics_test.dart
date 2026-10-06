@@ -418,6 +418,7 @@ void main() {
     final delayedResponse = Completer<String>();
     final lookupA = diagnostics.beginAccountLookup(userId: 'user-a')!;
     final lookupAFuture = delayedResponse.future.then(lookupA.complete);
+    lookupA.cancel();
     attemptA.complete();
 
     final attemptB = startAttempt('user-b');
