@@ -183,6 +183,21 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     }
   }
 
+  Future<bool> _saveBeforeLeaving() async {
+    if (_data == null || await _flushPendingSave()) return true;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to save local changes. Retry saving before leaving '
+            'this workspace.',
+          ),
+        ),
+      );
+    }
+    return false;
+  }
+
   Future<void> _startSharedGuestIdentity() async {
     final currentUser = ref.read(firebaseAuthProvider).currentUser;
     if (currentUser != null && !currentUser.isAnonymous) {
@@ -217,6 +232,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       ),
     );
     if (confirmed != true || !mounted) return;
+    if (!await _saveBeforeLeaving() || !mounted) return;
     try {
       await ref.read(firebaseAuthProvider).signInAnonymously();
     } on Object {
@@ -274,19 +290,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         guestGroupOwnershipUnavailable = true;
       }
     }
-    if (_data != null && !await _flushPendingSave()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Unable to save local changes. Retry saving before leaving '
-              'this workspace.',
-            ),
-          ),
-        );
-      }
-      return;
-    }
+    if (!await _saveBeforeLeaving() || !mounted) return;
     final data = _data;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -309,20 +313,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }
 
   Future<void> _openSharedGroups() async {
-    if (_data != null && !await _flushPendingSave()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Unable to save local changes. Retry saving before leaving '
-              'this workspace.',
-            ),
-          ),
-        );
-      }
-      return;
-    }
-    if (!mounted) return;
+    if (!await _saveBeforeLeaving() || !mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => const SharedGuestGroupsPage(),
@@ -395,6 +386,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       ),
     );
     if (confirmed == true && mounted) {
+      if (!await _saveBeforeLeaving() || !mounted) return;
       try {
         await ref.read(firebaseAuthProvider).signOut();
       } on Object {
