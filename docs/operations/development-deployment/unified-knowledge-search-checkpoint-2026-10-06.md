@@ -181,3 +181,8 @@ Server stopped after isolated checks. Validation evidence is copied to
 `/home/vscode/.local/share/intqaflow/search-validation-047d413`.
 Main worktree's four pre-existing dirty docs preserved. Recurring monitoring
 was cancelled by the founder; do not recreate it.
+
+Release compilation completed: `flutter build web --release` passed, exit0,
+99.3s compilation on exact `047d413`. This was an independent generic
+release compile, not the configured Firebase deployment bundle. Deployment
+remains gated on the one full-suite assertion failure above.
