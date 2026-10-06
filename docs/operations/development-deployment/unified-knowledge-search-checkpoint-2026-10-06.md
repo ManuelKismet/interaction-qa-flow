@@ -1,26 +1,75 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
-## Latest snapshot — independent final correction validated
+## Latest snapshot — DEV search rollout verified, 2026-10-06
 
-- Complete source `105a528f19b2383545b5cfae17197439ce065279` on
-  `fix/unified-search-dev-20261006`, pushed and GitHub readback verified.
-- Artifact `8efaf68383dc6577c4b57c96a60f4c303437ec48`, authored
-  `9698850d9477d47b29ffac1a657395153484f89e`, applied unchanged to98ca4f6.
-- Independent compile/head pass; backend111PASS4SKIP10warnings35.09s;
-  fresh PostgreSQL4PASS1.35s; isolated0014→0013→0014 pass.
-- Flutter169PASS~67s; analyzer0errors/0warnings13infos18.3s (exit1);
-  configured DEV release buildPASS62.3s/exit0.
-- First reused PostgreSQL DB run3PASS1FAIL (duplicate fixed-UID fixture from
-  retained prior run). Fresh separate database resolves contamination; both
-  outcomes retained. No live schema purge or application fix was used.
-- DEV backend build/zero-traffic staging in progress. No traffic switch,
-  hosted migration or Hosting publication at this snapshot.
-- DEV remains reviewaafc112/schema0013/Hosting49afc5b14f53f3b0 until verified
-  rollout evidence supersedes this snapshot.
-- Temporary PostgreSQL stopped; files and logs retained. Main four dirty docs
-  preserved. Live semantic-provider quality and authenticated personal-import
-  acceptance remain unverified; organisation improvements remain deferred.
-- Recurring monitoring remains cancelled by founder; do not recreate.
+Complete reviewed source `105a528f19b2383545b5cfae17197439ce065279` on
+`fix/unified-search-dev-20261006` is deployed to **intqaflow-dev only**.
+Artifact8efaf683, authored9698850d, was applied unchanged to98ca4f6.
+Source push and GitHub readback matched the full SHA.
+
+| Independent check on105a528 | Executed result |
+|---|---|
+| Compile / Alembic head | PASS / single0014 |
+| Backend full suite |111 passed,4 PostgreSQL skips,10 warnings,35.09s,exit0|
+| Fresh isolated PostgreSQL16 |4 passed,1.35s,exit0|
+| Isolated migration cycle |0014→0013→0014 PASS,exit0|
+| Full Flutter suite |169 passed,about67s,exit0|
+| Analyzer |0 errors,0 warnings,13 infos,18.3s,exit1 from infos|
+| Configured DEV release build |PASS,62.3s,exit0|
+
+The initial reused PostgreSQL test database run was3PASS1FAIL due to duplicate
+fixed-UID fixture records left by the earlier run; no hosted data was touched.
+A new separate disposable database passed all four tests. Both logs retained.
+Use a fresh empty test DB for these schema fixtures, separate from migrated
+public tables, rather than assuming schema cleanup removes public fixtures.
+
+### Verified runtime and artifacts
+
+- Backend `intqaflow-dev-api-review105a528`,100% traffic,health/ready200.
+  Staged at zero traffic first. Runtime spec identical except image;
+  service identity,SQL/VPC attachments,env/security settings preserved.
+- Backend image digest:
+  `31d1eb5487847352ff25e9b10de2711e8afca3a1f30d758f26cf28adee61be34`.
+- Additive Cloud SQL0013→0014 completed. Runtime table/column privileges,
+  vector/pg_trgm extensions and all three exact trigram indexes verified.
+  Before/after counts identical:questions5,answers5,groups6,memberships9,
+  group entries3,personal items0. No new grants,live downgrade or purge.
+- Hosting release `1791323636722000`,version `4eb839685c6f21c7`,36 files.
+- Both https://intqaflow-dev.web.app/ and https://intqaflow-dev.firebaseapp.com/
+  matched exact tested index/bootstrap/main bytes:
+  main4497789 bytes/SHA256
+  `78a8f550a70e24dea13bdbd64bed183356c88035914bc4649ddedb29879ff2c1`;
+  index1531 bytes/`a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858`;
+  bootstrap9805 bytes/`0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67`.
+- Live unauthenticated personal search rejected401.
+- Live guest local save and Saved Q&A listing verified with two synthetic
+  local-only smoke records titled “DEV search smoke105a528”. No import/account
+  action or automatic local upload performed. Records retained,not purged.
+  Live query/result/navigation smoke remains inconclusive because cloud-browser
+  Flutter text-input/focus automation did not reliably trigger query changes.
+  Do not count that search smoke as passed or infer a confirmed app defect.
+  The independent answer-ranking/Local-Private/no-upload widget regressions passed.
+
+### Rollback, remaining gaps and cleanup
+
+Rollback traffic to `intqaflow-dev-api-reviewaafc112` and Hosting to
+version `49afc5b14f53f3b0` (release1791307395456000).
+**Retain additive schema0014 and private data**; never live DB downgrade/purge.
+The previous reviewed revision/Hosting version remain the rollback targets.
+
+Meaningful semantic-provider quality remains unverified in fake-provider DEV.
+Authenticated personal-import/edit/multi-device E2E and F04/F08/F09 remain open.
+Live guest query/result/navigation smoke needs ordinary browser validation.
+Organisation owner/delegated-admin/Teams/join-request improvements remain
+explicitly deferred. No production,merge,IAM/AppCheck weakening or secret
+disclosure performed.
+
+Operational receipts/logs retained privately under
+`/home/vscode/.local/share/intqaflow/search-validation-105a528` and
+`search-105a528-*.json`. Disposable PostgreSQL stopped; migration proxy
+terminated by its finally block. Main worktree's four dirty docs preserved.
+Temporary stage-tag removal and final Codespace stop confirmation follow.
+Recurring monitoring remains cancelled by founder; do not recreate.
 
 ## Current state (original handoff history)
 
