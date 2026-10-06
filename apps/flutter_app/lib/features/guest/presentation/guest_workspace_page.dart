@@ -1155,43 +1155,10 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
   }
 
   Future<void> _edit(Map<String, dynamic> item) async {
-    final title = TextEditingController(text: item['title'] as String? ?? '');
-    final body = TextEditingController(text: item['body'] as String? ?? '');
-    final answer = TextEditingController(text: item['answer'] as String? ?? '');
     final updated = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit local Knowledge'),
-        content: SizedBox(
-          width: 560,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: title, decoration: const InputDecoration(labelText: 'Question')),
-              const SizedBox(height: 12),
-              TextField(controller: body, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Details')),
-              const SizedBox(height: 12),
-              TextField(controller: answer, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Answer')),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, {
-              ...item,
-              'title': title.text.trim(),
-              'body': body.text.trim(),
-              'answer': answer.text.trim(),
-            }),
-            child: const Text('Save locally'),
-          ),
-        ],
-      ),
+      builder: (context) => _GuestLocalKnowledgeEditDialog(item: item),
     );
-    title.dispose();
-    body.dispose();
-    answer.dispose();
     if (updated != null &&
         updated['title'].toString().isNotEmpty &&
         mounted) {
@@ -1334,6 +1301,91 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
       ),
     );
   }
+}
+
+class _GuestLocalKnowledgeEditDialog extends StatefulWidget {
+  const _GuestLocalKnowledgeEditDialog({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  State<_GuestLocalKnowledgeEditDialog> createState() =>
+      _GuestLocalKnowledgeEditDialogState();
+}
+
+class _GuestLocalKnowledgeEditDialogState
+    extends State<_GuestLocalKnowledgeEditDialog> {
+  late final TextEditingController _title;
+  late final TextEditingController _body;
+  late final TextEditingController _answer;
+
+  @override
+  void initState() {
+    super.initState();
+    _title = TextEditingController(
+      text: widget.item['title'] as String? ?? '',
+    );
+    _body = TextEditingController(
+      text: widget.item['body'] as String? ?? '',
+    );
+    _answer = TextEditingController(
+      text: widget.item['answer'] as String? ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    _answer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Edit local Knowledge'),
+    content: SizedBox(
+      width: 560,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _title,
+            decoration: const InputDecoration(labelText: 'Question'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _body,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: 'Details'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _answer,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: 'Answer'),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, {
+          ...widget.item,
+          'title': _title.text.trim(),
+          'body': _body.text.trim(),
+          'answer': _answer.text.trim(),
+        }),
+        child: const Text('Save locally'),
+      ),
+    ],
+  );
 }
 
 class _GuestInteractTab extends StatefulWidget {
