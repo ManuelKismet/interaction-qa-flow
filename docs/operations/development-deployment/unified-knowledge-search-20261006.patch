@@ -1,33 +1,50 @@
-From 04b09c259e8d5bed408b8ebf07268af3e5b218ef Mon Sep 17 00:00:00 2001
-From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
-Date: Tue, 6 Oct 2026 19:37:44 +0000
-Subject: [PATCH] Add unified Knowledge search
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: copilot <noreply@github.com>
+Date: Tue, 6 Oct 2026 20:04:40 +0000
+Subject: [PATCH] Correct unified Knowledge search review findings
 base-commit: aafc112fbbf220eda1077895334dc16b4930eeab
 
-Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
 ---
- .../lib/core/routing/app_router.dart          |   2 +
- .../guest/data/guest_group_repository.dart    |  15 +
- .../guest/domain/guest_workspace_data.dart    |  40 ++-
- .../presentation/guest_workspace_page.dart    | 311 +++++++++++++++++-
- .../test/guest_interact_widget_test.dart      |  19 +-
- .../versions/0013_unified_search_trigrams.py  |  32 ++
- backend/app/ai/embedding_service.py           |  28 +-
- backend/app/api/v1/routes/guest.py            |  14 +
- backend/app/repositories/guest.py             |  52 ++-
- backend/app/repositories/search.py            |  47 ++-
- backend/app/services/answer.py                |  30 ++
- backend/app/services/guest.py                 |  87 ++++-
- backend/app/services/question.py              |   2 +
- backend/tests/test_embeddings.py              |  27 +-
- backend/tests/test_guest_groups.py            |  62 ++++
- .../test_search_postgresql_integration.py     |  28 ++
- backend/tests/test_search_service.py          |  26 +-
- 17 files changed, 797 insertions(+), 25 deletions(-)
- create mode 100644 backend/alembic/versions/0013_unified_search_trigrams.py
-
+ apps/flutter_app/lib/core/routing/app_router.dart  |  11 +-
+ .../guest/data/guest_group_repository.dart         |  15 +
+ .../guest/data/personal_workspace_repository.dart  |  18 +
+ .../guest/domain/guest_workspace_data.dart         |  40 +-
+ .../guest/presentation/guest_workspace_page.dart   | 621 ++++++++++++++++++++-
+ .../features/questions/domain/question_models.dart |   9 +
+ apps/flutter_app/test/guest_group_dialog_test.dart |  32 ++
+ .../test/guest_interact_widget_test.dart           |  25 +-
+ .../versions/0014_unified_search_trigrams.py       |  65 +++
+ backend/app/ai/embedding_service.py                |  53 +-
+ backend/app/ai/private_knowledge_embedding.py      |  89 +++
+ backend/app/api/v1/routes/guest.py                 |  14 +
+ backend/app/api/v1/routes/personal_workspace.py    |  12 +
+ backend/app/models/guest.py                        |   4 +
+ backend/app/models/personal_workspace.py           |   4 +
+ backend/app/repositories/guest.py                  |  54 +-
+ backend/app/repositories/search.py                 |  47 +-
+ backend/app/schemas/search.py                      |   4 +-
+ backend/app/services/answer.py                     |  30 +
+ backend/app/services/canonical.py                  |  31 +-
+ backend/app/services/governance.py                 |  32 +-
+ backend/app/services/guest.py                      | 241 +++++++-
+ backend/app/services/personal_workspace.py         | 156 +++++-
+ backend/app/services/question.py                   |   3 +
+ backend/app/services/search.py                     |  14 +
+ .../backfill_private_knowledge_embeddings.py       |  76 +++
+ backend/tests/conftest.py                          |  43 +-
+ backend/tests/test_answer_governance.py            |  43 ++
+ backend/tests/test_canonical_questions.py          |  40 ++
+ backend/tests/test_embeddings.py                   |  80 ++-
+ backend/tests/test_guest_groups.py                 |  78 +++
+ backend/tests/test_personal_workspace.py           |  71 +++
+ .../tests/test_search_postgresql_integration.py    | 170 ++++++
+ backend/tests/test_search_service.py               |  26 +-
+ backend/tests/test_unified_search_migration.py     |  20 +
+ docs/architecture.md                               |  16 +-
+ 36 files changed, 2226 insertions(+), 61 deletions(-)
+---
 diff --git a/apps/flutter_app/lib/core/routing/app_router.dart b/apps/flutter_app/lib/core/routing/app_router.dart
-index 564df27..7d6f123 100644
+index 564df27c6d0bdbf57d5d197b44048b7fbc85ab01..e8a316192fe9ec037648e78f7bd716b84910d817 100644
 --- a/apps/flutter_app/lib/core/routing/app_router.dart
 +++ b/apps/flutter_app/lib/core/routing/app_router.dart
 @@ -1,5 +1,6 @@
@@ -37,7 +54,22 @@ index 564df27..7d6f123 100644
  import 'package:int_qa_flow/core/routing/session_deep_link.dart';
  import 'package:int_qa_flow/features/admin/presentation/admin_page.dart';
  import 'package:int_qa_flow/features/ask/presentation/ask_page.dart';
-@@ -63,6 +64,7 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+@@ -56,13 +57,21 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+           ),
+           GoRoute(
+             path: '/guest/groups',
+-            builder: (context, state) => const SharedGuestGroupsPage(),
++            builder: (context, state) {
++              final extra = state.extra;
++              final entry = extra is Map ? extra : const {};
++              return SharedGuestGroupsPage(
++                initialGroupId: entry['groupId'] as String?,
++                initialEntryId: entry['entryId'] as String?,
++              );
++            },
+           ),
+           GoRoute(
+             path: '/personal',
              builder: (context, state) => const GuestWorkspacePage(
                firebaseReady: true,
                personalWorkspaceEnabled: true,
@@ -46,7 +78,7 @@ index 564df27..7d6f123 100644
            ),
          ],
 diff --git a/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart b/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
-index 15966e9..887e479 100644
+index 15966e9e02a73f4767929ae7ad82e79c030a6aa7..887e479d90b57e6f8864f37f5a2187e17d0f5b87 100644
 --- a/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
 +++ b/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
 @@ -223,6 +223,21 @@ class GuestGroupRepository {
@@ -71,8 +103,37 @@ index 15966e9..887e479 100644
    Future<Map<String, dynamic>> createKnowledge({
      required String groupId,
      required String title,
+diff --git a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+index f359dd746c29f435ac14f67d0edd1ce56171b288..267501d7b858e0891feac9ae9d3ff445e6114f9e 100644
+--- a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
++++ b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+@@ -26,6 +26,24 @@ class PersonalWorkspaceRepository {
+     ];
+   }
+ 
++  Future<Map<String, dynamic>> searchKnowledge(
++    String query, {
++    required String expectedUid,
++  }) async {
++    final response = await _client.get<Map<String, dynamic>>(
++      '/api/v1/personal/items/search',
++      queryParameters: {'query': query, 'limit': 25},
++      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
++    );
++    final data = response.data ?? const <String, dynamic>{};
++    return {
++      'results': (data['results'] as List<dynamic>? ?? const [])
++          .whereType<Map<String, dynamic>>()
++          .toList(),
++      'partial': data['partial'] == true,
++    };
++  }
++
+   Future<List<Map<String, dynamic>>> importItems(
+     List<Map<String, dynamic>> items, {
+     required String expectedUid,
 diff --git a/apps/flutter_app/lib/features/guest/domain/guest_workspace_data.dart b/apps/flutter_app/lib/features/guest/domain/guest_workspace_data.dart
-index 2fb365c..2f951ca 100644
+index 2fb365c3d93c6ebd835cb9fe6cd4db99af2d0271..2f951ca82a96b0af6675e18b90efe01b0f6b2f0b 100644
 --- a/apps/flutter_app/lib/features/guest/domain/guest_workspace_data.dart
 +++ b/apps/flutter_app/lib/features/guest/domain/guest_workspace_data.dart
 @@ -242,10 +242,48 @@ bool matchesGuestKeywordOrPrefix(
@@ -126,7 +187,7 @@ index 2fb365c..2f951ca 100644
    required List<Map<String, dynamic>> existing,
    required List<Map<String, dynamic>> imported,
 diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
-index 95248a8..39531b6 100644
+index 95248a8d91b5039dac703fe8f46ff01b9da45b5f..fbee35179d010392f5d555584fa6b21038b00f87 100644
 --- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
 +++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
 @@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
@@ -146,11 +207,13 @@ index 95248a8..39531b6 100644
  import 'package:share_plus/share_plus.dart';
  
  void _showPdfFontFallbackNotice(BuildContext context) {
-@@ -1560,6 +1563,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -1560,6 +1563,32 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                        children: [
                          _GuestKnowledgeTab(
                            items: data.knowledge,
-+                          searchIdentityKey: _verifiedPersonalUid,
++                          searchIdentityKey: _verifiedPersonalUid == null
++                              ? null
++                              : '${_verifiedPersonalUid!}:${widget.membershipStatus.name}',
 +                          searchOrganization:
 +                              _verifiedPersonalUid != null &&
 +                                  widget.membershipStatus ==
@@ -159,48 +222,92 @@ index 95248a8..39531b6 100644
 +                                    .read(questionsRepositoryProvider)
 +                                    .searchQuestions(query, limit: 10)
 +                              : null,
++                          searchPersonal:
++                              _verifiedPersonalUid == null
++                              ? null
++                              : (query) => ref
++                                    .read(personalWorkspaceRepositoryProvider)
++                                    .searchKnowledge(
++                                      query,
++                                      expectedUid: _verifiedPersonalUid!,
++                                    ),
 +                          searchGroups: _verifiedPersonalUid == null
 +                              ? null
 +                              : (query) => ref
 +                                    .read(guestGroupRepositoryProvider)
 +                                    .searchKnowledge(query),
++                          reloadPersonalWorkspace: _loadPersonalWorkspace,
                            storageStatus: (item) =>
                                _storageStatus('knowledge', item),
                            isPersonalAccount: (item) =>
-@@ -2129,6 +2146,9 @@ class _AccountMembershipNotice extends StatelessWidget {
+@@ -2126,9 +2155,36 @@ class _AccountMembershipNotice extends StatelessWidget {
+   );
+ }
+ 
++class _UnifiedKnowledgeSearchHit {
++  const _UnifiedKnowledgeSearchHit({
++    required this.id,
++    required this.title,
++    required this.source,
++    required this.method,
++    required this.relevance,
++    required this.snippet,
++    required this.icon,
++    required this.onTap,
++  });
++
++  final String id;
++  final String title;
++  final String source;
++  final String method;
++  final double relevance;
++  final String? snippet;
++  final IconData icon;
++  final VoidCallback onTap;
++}
++
  class _GuestKnowledgeTab extends StatefulWidget {
    const _GuestKnowledgeTab({
      required this.items,
 +    required this.searchIdentityKey,
 +    required this.searchOrganization,
++    required this.searchPersonal,
 +    required this.searchGroups,
++    required this.reloadPersonalWorkspace,
      required this.storageStatus,
      required this.isPersonalAccount,
      required this.onCreate,
-@@ -2137,6 +2157,10 @@ class _GuestKnowledgeTab extends StatefulWidget {
+@@ -2137,6 +2193,12 @@ class _GuestKnowledgeTab extends StatefulWidget {
    });
  
    final List<Map<String, dynamic>> items;
 +  final String? searchIdentityKey;
 +  final Future<List<SemanticSearchResult>> Function(String)?
 +  searchOrganization;
++  final Future<Map<String, dynamic>> Function(String)? searchPersonal;
 +  final Future<Map<String, dynamic>> Function(String)? searchGroups;
++  final Future<void> Function() reloadPersonalWorkspace;
    final String Function(Map<String, dynamic>) storageStatus;
    final bool Function(Map<String, dynamic>) isPersonalAccount;
    final ValueChanged<Map<String, dynamic>> onCreate;
-@@ -2154,10 +2178,19 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+@@ -2154,10 +2216,24 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
    final _body = TextEditingController();
    final _answer = TextEditingController();
    final _titleFocus = FocusNode();
 +  Timer? _searchTimer;
 +  int _searchGeneration = 0;
 +  List<SemanticSearchResult> _organizationResults = [];
++  List<Map<String, dynamic>> _personalResults = [];
 +  List<Map<String, dynamic>> _groupResults = [];
 +  bool _organizationSearchFailed = false;
++  bool _organizationSearchPartial = false;
++  bool _personalSearchFailed = false;
 +  bool _groupSearchFailed = false;
++  bool _personalSearchPartial = false;
 +  bool _groupSearchPartial = false;
 +  bool _remoteSearchLoading = false;
    bool _showSavedQuestions = false;
++  String? _selectedKnowledgeItemId;
  
    @override
    void dispose() {
@@ -208,7 +315,7 @@ index 95248a8..39531b6 100644
      _query.dispose();
      _title.dispose();
      _body.dispose();
-@@ -2166,6 +2199,268 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+@@ -2166,6 +2242,465 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
      super.dispose();
    }
  
@@ -218,18 +325,25 @@ index 95248a8..39531b6 100644
 +    if (oldWidget.searchIdentityKey == widget.searchIdentityKey &&
 +        (oldWidget.searchOrganization != null) ==
 +            (widget.searchOrganization != null) &&
++        (oldWidget.searchPersonal != null) ==
++            (widget.searchPersonal != null) &&
 +        (oldWidget.searchGroups != null) == (widget.searchGroups != null)) {
 +      return;
 +    }
 +    _searchGeneration++;
 +    _searchTimer?.cancel();
 +    _organizationResults = [];
++    _personalResults = [];
 +    _groupResults = [];
++    _selectedKnowledgeItemId = null;
 +    _organizationSearchFailed = false;
++    _organizationSearchPartial = false;
++    _personalSearchFailed = false;
 +    _groupSearchFailed = false;
++    _personalSearchPartial = false;
 +    _groupSearchPartial = false;
 +    _remoteSearchLoading = false;
-+    if (_query.text.trim().length >= 3) {
++    if (_query.text.trim().isNotEmpty) {
 +      WidgetsBinding.instance.addPostFrameCallback((_) {
 +        if (mounted) _scheduleRemoteSearch(_query.text);
 +      });
@@ -242,13 +356,19 @@ index 95248a8..39531b6 100644
 +    final query = value.trim();
 +    setState(() {
 +      _organizationResults = [];
++      _personalResults = [];
 +      _groupResults = [];
 +      _organizationSearchFailed = false;
++      _organizationSearchPartial = false;
++      _personalSearchFailed = false;
 +      _groupSearchFailed = false;
++      _personalSearchPartial = false;
 +      _groupSearchPartial = false;
-+      _remoteSearchLoading = query.length >= 3 &&
++      _remoteSearchLoading = query.isNotEmpty &&
 +          query.length <= 100 &&
-+          (widget.searchOrganization != null || widget.searchGroups != null);
++          (widget.searchOrganization != null ||
++              widget.searchPersonal != null ||
++              widget.searchGroups != null);
 +    });
 +    if (!_remoteSearchLoading) return;
 +    _searchTimer = Timer(const Duration(milliseconds: 300), () {
@@ -259,19 +379,38 @@ index 95248a8..39531b6 100644
 +  Future<void> _searchRemote(String query, int generation) async {
 +    final identityKey = widget.searchIdentityKey;
 +    final searchOrganization = widget.searchOrganization;
++    final searchPersonal = widget.searchPersonal;
 +    final searchGroups = widget.searchGroups;
 +    var organizationFailed = false;
++    var organizationPartial = false;
++    var personalFailed = false;
 +    var groupsFailed = false;
 +    List<SemanticSearchResult> organizationResults = [];
++    List<Map<String, dynamic>> personalResults = [];
 +    List<Map<String, dynamic>> groupResults = [];
++    var personalSearchPartial = false;
 +    var groupSearchPartial = false;
 +    await Future.wait<void>([
 +      if (searchOrganization != null)
 +        (() async {
 +          try {
 +            organizationResults = await searchOrganization(query);
++            organizationPartial = organizationResults.length >= 10;
 +          } on Object {
 +            organizationFailed = true;
++          }
++        })(),
++      if (searchPersonal != null)
++        (() async {
++          try {
++            final response = await searchPersonal(query);
++            personalResults =
++                (response['results'] as List<dynamic>? ?? const [])
++                    .whereType<Map<String, dynamic>>()
++                    .toList();
++            personalSearchPartial = response['partial'] == true;
++          } on Object {
++            personalFailed = true;
 +          }
 +        })(),
 +      if (searchGroups != null)
@@ -294,9 +433,13 @@ index 95248a8..39531b6 100644
 +    }
 +    setState(() {
 +      _organizationResults = organizationResults;
++      _personalResults = personalResults;
 +      _groupResults = groupResults;
 +      _organizationSearchFailed = organizationFailed;
++      _organizationSearchPartial = organizationPartial;
++      _personalSearchFailed = personalFailed;
 +      _groupSearchFailed = groupsFailed;
++      _personalSearchPartial = personalSearchPartial;
 +      _groupSearchPartial = groupSearchPartial;
 +      _remoteSearchLoading = false;
 +    });
@@ -317,12 +460,229 @@ index 95248a8..39531b6 100644
 +
 +  String? _stringValue(Object? value) => value is String ? value : null;
 +
-+  Widget _remoteSearchResults(BuildContext context, String query) {
-+    if (query.trim().length < 3 || query.trim().length > 100) {
++  Future<void> _openPersonalResult(String id) async {
++    if (!widget.items.any((item) => item['id'] == id)) {
++      await widget.reloadPersonalWorkspace();
++    }
++    if (!mounted) return;
++    if (!widget.items.any((item) => item['id'] == id)) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text(
++            'This personal-account result could not be loaded. Retry the account refresh.',
++          ),
++        ),
++      );
++      return;
++    }
++    setState(() {
++      _selectedKnowledgeItemId = id;
++      _showSavedQuestions = true;
++    });
++  }
++
++  String? _matchingSnippet(String query, List<String?> candidates) {
++    final terms = query.toLowerCase().split(RegExp(r'\s+'));
++    for (final candidate in candidates.whereType<String>()) {
++      final folded = candidate.toLowerCase();
++      final positions = terms
++          .where((term) => term.isNotEmpty)
++          .map(folded.indexOf)
++          .where((index) => index >= 0)
++          .toList();
++      final index = positions.isEmpty
++          ? null
++          : positions.reduce((left, right) => left < right ? left : right);
++      if (index == null) continue;
++      final start = index > 70 ? index - 70 : 0;
++      final end = (start + 240).clamp(0, candidate.length).toInt();
++      return '${start > 0 ? '…' : ''}${candidate.substring(start, end)}'
++          '${end < candidate.length ? '…' : ''}';
++    }
++    final nonempty = candidates.whereType<String>().toList();
++    return nonempty.isEmpty ? null : nonempty.first;
++  }
++
++  double _localRelevance(String query, Map<String, dynamic> item) {
++    final foldedQuery = query.toLowerCase().trim();
++    final title = (item['title'] as String? ?? '').toLowerCase();
++    if (title == foldedQuery) return 1.9;
++    if (title.startsWith(foldedQuery)) return 1.7;
++    if (title.contains(foldedQuery)) return 1.5;
++    return 0.9;
++  }
++
++  Widget _remoteSearchResults(
++    BuildContext context,
++    String query,
++    List<Map<String, dynamic>> localMatches,
++  ) {
++    if (query.trim().isEmpty) {
 +      return const SizedBox.shrink();
 +    }
-+    final hasResults =
-+        _organizationResults.isNotEmpty || _groupResults.isNotEmpty;
++    if (query.trim().length > 100) {
++      return Padding(
++        padding: const EdgeInsets.only(top: 8),
++        child: Text(
++          'Authorised Knowledge search supports queries up to 100 characters. '
++          'Local Knowledge remains searchable.',
++          style: Theme.of(context).textTheme.bodySmall,
++        ),
++      );
++    }
++    final personalById = {
++      for (final result in _personalResults)
++        if (result['source_id'] is String)
++          result['source_id'] as String: result,
++    };
++    final localIds = localMatches
++        .map((item) => item['id'])
++        .whereType<String>()
++        .toSet();
++    final hits = <_UnifiedKnowledgeSearchHit>[];
++    for (final result in _organizationResults) {
++      final sourceLabels = <String>['Organisation: ${result.organisationName}'];
++      if (result.department != null) {
++        sourceLabels.add('Department: ${result.department!.name}');
++      }
++      if (result.team != null) sourceLabels.add('Team: ${result.team!.name}');
++      final snippet = _matchingSnippet(
++        query,
++        [result.canonicalBody, result.acceptedAnswerBody],
++      );
++      hits.add(
++        _UnifiedKnowledgeSearchHit(
++          id: result.questionId,
++          title: result.title,
++          source: sourceLabels.join(' · '),
++          method: _matchMethodLabel(result.matchMethod),
++          relevance: result.relevanceScore,
++          snippet: snippet ?? result.matchedText,
++          icon: Icons.business_outlined,
++          onTap: () => context.push('/questions/${result.questionId}'),
++        ),
++      );
++    }
++    for (final item in localMatches) {
++      final id = item['id'] as String? ?? '';
++      final accountResult = personalById[id];
++      final accountData = accountResult?['data'] is Map
++          ? Map<String, dynamic>.from(accountResult!['data'] as Map)
++          : const <String, dynamic>{};
++      final source = widget.isPersonalAccount(item)
++          ? 'Personal account'
++          : 'On this device';
++      final snippet = _stringValue(accountResult?['snippet']) ??
++          _matchingSnippet(query, [
++            _stringValue(item['body']),
++            _stringValue(item['answer']),
++          ]) ??
++          _matchingSnippet(query, [
++            _stringValue(accountData['body']),
++            _stringValue(accountData['answer']),
++          ]);
++      final localRelevance = _localRelevance(query, item);
++      final accountRelevance =
++          (accountResult?['relevance_score'] as num?)?.toDouble() ?? 0;
++      final personalMethod = accountResult?['match_method'] as String?;
++      hits.add(
++        _UnifiedKnowledgeSearchHit(
++          id: id,
++          title: item['title'] as String? ?? '',
++          source: '$source · ${widget.storageStatus(item)}',
++          method: personalMethod == null
++              ? 'keyword or prefix match'
++              : _matchMethodLabel(personalMethod),
++          relevance: accountRelevance > localRelevance
++              ? accountRelevance
++              : localRelevance,
++          snippet: snippet,
++          icon: widget.isPersonalAccount(item)
++              ? Icons.lock_outline
++              : Icons.devices_outlined,
++          onTap: () => _openPersonalResult(id),
++        ),
++      );
++    }
++    for (final result in _personalResults) {
++      final id =
++          result['source_id'] as String? ?? result['id'] as String? ?? '';
++      if (id.isEmpty || localIds.contains(id)) continue;
++      Map<String, dynamic>? sourceItem;
++      for (final item in widget.items) {
++        if (item['id'] == id) {
++          sourceItem = item;
++          break;
++        }
++      }
++      final isAccountSource =
++          sourceItem == null || widget.isPersonalAccount(sourceItem);
++      final data = result['data'] is Map
++          ? Map<String, dynamic>.from(result['data'] as Map)
++          : const <String, dynamic>{};
++      hits.add(
++        _UnifiedKnowledgeSearchHit(
++          id: id,
++          title: result['title'] as String? ?? '',
++          source: isAccountSource
++              ? 'Personal account'
++              : 'On this device · ${widget.storageStatus(sourceItem!)}',
++          method: _matchMethodLabel(
++            result['match_method'] as String? ?? 'keyword',
++          ),
++          relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
++          snippet: isAccountSource
++              ? _stringValue(result['snippet']) ??
++                    _matchingSnippet(query, [
++                      _stringValue(data['body']),
++                      _stringValue(data['answer']),
++                    ])
++              : _matchingSnippet(query, [
++                  _stringValue(sourceItem!['body']),
++                  _stringValue(sourceItem['answer']),
++                ]),
++          icon: isAccountSource ? Icons.lock_outline : Icons.devices_outlined,
++          onTap: () => _openPersonalResult(id),
++        ),
++      );
++    }
++    for (final result in _groupResults) {
++      final data = result['data'] is Map
++          ? Map<String, dynamic>.from(result['data'] as Map)
++          : const <String, dynamic>{};
++      final title = result['title'] as String? ?? '';
++      final groupName = result['group_name'] as String? ?? 'Group';
++      hits.add(
++        _UnifiedKnowledgeSearchHit(
++          id: result['id'] as String? ?? '',
++          title: title,
++          source: 'Group: $groupName',
++          method: _matchMethodLabel(
++            result['match_method'] as String? ?? 'keyword',
++          ),
++          relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
++          snippet:
++              _stringValue(result['snippet']) ??
++              _matchingSnippet(query, [
++                _stringValue(data['body']),
++                _stringValue(data['answer']),
++              ]),
++          icon: Icons.groups_outlined,
++          onTap: () => context.push(
++            '/guest/groups',
++            extra: {
++              'groupId': result['group_id'],
++              'entryId': result['id'],
++            },
++          ),
++        ),
++      );
++    }
++    hits.sort((left, right) {
++      final byScore = right.relevance.compareTo(left.relevance);
++      return byScore != 0 ? byScore : left.id.compareTo(right.id);
++    });
++    final hasResults = hits.isNotEmpty;
 +    return Column(
 +      crossAxisAlignment: CrossAxisAlignment.stretch,
 +      children: [
@@ -331,7 +691,10 @@ index 95248a8..39531b6 100644
 +            semanticsLabel: 'Searching authorized Knowledge sources',
 +          ),
 +        if (_organizationSearchFailed ||
++            _organizationSearchPartial ||
++            _personalSearchFailed ||
 +            _groupSearchFailed ||
++            _personalSearchPartial ||
 +            _groupSearchPartial)
 +          Padding(
 +            padding: const EdgeInsets.only(top: 8),
@@ -341,6 +704,16 @@ index 95248a8..39531b6 100644
 +                if (_organizationSearchFailed)
 +                  Text(
 +                    'Organisation search could not be completed.',
++                    style: Theme.of(context).textTheme.bodySmall,
++                  ),
++                if (_organizationSearchPartial)
++                  Text(
++                    'Organisation search reached its result limit. Some matches may be omitted.',
++                    style: Theme.of(context).textTheme.bodySmall,
++                  ),
++                if (_personalSearchFailed)
++                  Text(
++                    'Personal-account search could not be completed.',
 +                    style: Theme.of(context).textTheme.bodySmall,
 +                  ),
 +                if (_groupSearchFailed)
@@ -353,7 +726,14 @@ index 95248a8..39531b6 100644
 +                    'Group search reached its result limit. Some matches may be omitted.',
 +                    style: Theme.of(context).textTheme.bodySmall,
 +                  ),
-+                if (_organizationSearchFailed || _groupSearchFailed)
++                if (_personalSearchPartial)
++                  Text(
++                    'Personal-account search reached its result limit. Some matches may be omitted.',
++                    style: Theme.of(context).textTheme.bodySmall,
++                  ),
++                if (_organizationSearchFailed ||
++                    _personalSearchFailed ||
++                    _groupSearchFailed)
 +                  TextButton(
 +                    onPressed: () => _scheduleRemoteSearch(_query.text),
 +                    child: const Text('Retry available sources'),
@@ -363,111 +743,35 @@ index 95248a8..39531b6 100644
 +          ),
 +        if (!_remoteSearchLoading &&
 +            !_organizationSearchFailed &&
++            !_organizationSearchPartial &&
++            !_personalSearchFailed &&
 +            !_groupSearchFailed &&
++            !_personalSearchPartial &&
 +            !_groupSearchPartial &&
 +            !hasResults &&
-+            (widget.searchOrganization != null || widget.searchGroups != null))
++            (widget.searchOrganization != null ||
++                widget.searchPersonal != null ||
++                widget.searchGroups != null))
 +          Padding(
 +            padding: const EdgeInsets.only(top: 8),
 +            child: Text(
-+              'No matches in the available organisation or Group sources.',
++              'No matches in the available Knowledge sources.',
 +              style: Theme.of(context).textTheme.bodySmall,
 +            ),
 +          ),
-+        for (final result in _organizationResults)
++        for (final hit in hits)
 +          Card(
 +            child: ListTile(
-+              leading: const Icon(Icons.business_outlined),
-+              title: Text(result.title),
++              leading: Icon(hit.icon),
++              title: Text(hit.title),
 +              subtitle: Text(
 +                [
-+                  'Organisation Knowledge · '
-+                      '${_matchMethodLabel(result.matchMethod)}',
-+                  _snippet(result.canonicalBody),
-+                  _snippet(result.acceptedAnswerBody),
-+                ].whereType<String>().where((text) => text.isNotEmpty).join(
-+                  '\n\n',
-+                ),
++                  '${hit.source} · ${hit.method}',
++                  if (hit.snippet != null && hit.snippet!.isNotEmpty)
++                    _snippet(hit.snippet),
++                ].join('\n\n'),
 +              ),
-+              onTap: () => context.push('/questions/${result.questionId}'),
-+            ),
-+          ),
-+        for (final result in _groupResults)
-+          Builder(
-+            builder: (context) {
-+              final data = result['data'] is Map
-+                  ? Map<String, dynamic>.from(result['data'] as Map)
-+                  : const <String, dynamic>{};
-+              final title = result['title'] as String? ?? '';
-+              final groupName = result['group_name'] as String? ?? 'Group';
-+              final snippet = [
-+                _snippet(_stringValue(data['body'])),
-+                _snippet(_stringValue(data['answer'])),
-+              ].whereType<String>().where((text) => text.isNotEmpty).join(
-+                '\n\n',
-+              );
-+              return Card(
-+                child: ListTile(
-+                  leading: const Icon(Icons.groups_outlined),
-+                  title: Text(title),
-+                  subtitle: Text(
-+                    [
-+                      'Group Knowledge · $groupName',
-+                      if (snippet.isNotEmpty) snippet,
-+                    ].join('\n\n'),
-+                  ),
-+                  onTap: () => showDialog<void>(
-+                    context: context,
-+                    builder: (context) => AlertDialog(
-+                      title: Text(title),
-+                      content: SingleChildScrollView(
-+                        child: Text(
-+                          [
-+                            'Shared in $groupName',
-+                            data['body'],
-+                            data['answer'],
-+                          ]
-+                              .whereType<String>()
-+                              .where((text) => text.isNotEmpty)
-+                              .join('\n\n'),
-+                        ),
-+                      ),
-+                      actions: [
-+                        TextButton(
-+                          onPressed: () => Navigator.pop(context),
-+                          child: const Text('Close'),
-+                        ),
-+                      ],
-+                    ),
-+                  ),
-+                ),
-+              );
-+            },
-+          ),
-+      ],
-+    );
-+  }
-+
-+  Widget _localSearchResults(
-+    BuildContext context,
-+    String query,
-+    List<Map<String, dynamic>> matches,
-+  ) {
-+    if (query.trim().isEmpty || matches.isEmpty) {
-+      return const SizedBox.shrink();
-+    }
-+    return Column(
-+      crossAxisAlignment: CrossAxisAlignment.stretch,
-+      children: [
-+        const SizedBox(height: 16),
-+        Text('On this device', style: Theme.of(context).textTheme.titleMedium),
-+        for (final item in matches.take(5))
-+          Card(
-+            child: ListTile(
-+              leading: const Icon(Icons.devices_outlined),
-+              title: Text(item['title'] as String? ?? ''),
-+              subtitle: Text(widget.storageStatus(item)),
-+              onTap: () => setState(() => _showSavedQuestions = true),
++              onTap: hit.onTap,
 +            ),
 +          ),
 +      ],
@@ -477,35 +781,74 @@ index 95248a8..39531b6 100644
    void _create() {
      if (!_formKey.currentState!.validate()) {
        _titleFocus.requestFocus();
-@@ -2213,11 +2508,16 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+@@ -2205,6 +2740,11 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+     final matches = widget.items
+         .where((item) => matchesGuestKeywordOrPrefix(query, item))
+         .toList();
++    final savedItems = _selectedKnowledgeItemId == null
++        ? matches
++        : widget.items
++            .where((item) => item['id'] == _selectedKnowledgeItemId)
++            .toList();
+     final searchField = TextField(
+       controller: _query,
+       decoration: InputDecoration(
+@@ -2213,11 +2753,18 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
          suffixIcon: const _GuestInfoButton(
            tooltip: 'Search help',
            title: 'About Knowledge search',
 -          content: 'Keyword and prefix search of loaded local and '
 -              'personal-account Knowledge on this device; no semantic search.',
-+          content: 'Search local and personal-account Knowledge on this '
-+              'device, plus authorised organisation and Group Knowledge when '
-+              'available. Only your query is sent to those services; local '
-+              'content is never uploaded by search.',
++          content: 'Search local Knowledge on this device and all '
++              'personal-account Knowledge in your account, plus authorised '
++              'organisation and Group Knowledge when available. Only your '
++              'query is sent to those services; local content is never '
++              'uploaded by search.',
          ),
        ),
 -      onChanged: (_) => setState(() {}),
 +      onChanged: (value) {
++        _selectedKnowledgeItemId = null;
 +        setState(() {});
 +        _scheduleRemoteSearch(value);
 +      },
      );
      if (_showSavedQuestions) {
        return Align(
-@@ -2228,6 +2528,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+@@ -2228,27 +2775,42 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
              padding: const EdgeInsets.all(16),
              children: [
                searchField,
-+              _remoteSearchResults(context, query),
++              _remoteSearchResults(context, query, const []),
                const SizedBox(height: 16),
                Align(
                  alignment: Alignment.centerLeft,
-@@ -2245,7 +2546,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+                 child: TextButton.icon(
+-                  onPressed: () => setState(() => _showSavedQuestions = false),
++                  onPressed: () => setState(() {
++                    if (_selectedKnowledgeItemId != null) {
++                      _selectedKnowledgeItemId = null;
++                    } else {
++                      _showSavedQuestions = false;
++                    }
++                  }),
+                   icon: const Icon(Icons.arrow_back),
+-                  label: const Text('Back to add a local question'),
++                  label: Text(
++                    _selectedKnowledgeItemId == null
++                        ? 'Back to add a local question'
++                        : 'Back to all Saved Q&A',
++                  ),
+                 ),
+               ),
+               Text('Saved Q&A', style: Theme.of(context).textTheme.titleLarge),
+               const SizedBox(height: 12),
+-              if (matches.isEmpty)
++              if (matches.where((item) =>
++                      _selectedKnowledgeItemId == null ||
++                      item['id'] == _selectedKnowledgeItemId).isEmpty)
+                 Padding(
+                   padding: const EdgeInsets.all(24),
                    child: Text(
                      widget.items.isEmpty
                          ? 'No saved Q&A yet. Add a local question to get started.'
@@ -513,18 +856,191 @@ index 95248a8..39531b6 100644
 +                        : 'No local matches.',
                    ),
                  ),
-               for (final item in matches)
-@@ -2295,6 +2596,8 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+-              for (final item in matches)
++              for (final item in matches.where((item) =>
++                  _selectedKnowledgeItemId == null ||
++                  item['id'] == _selectedKnowledgeItemId))
+                 Card(
+                   child: ListTile(
+                     title: Text(item['title'] as String? ?? ''),
+@@ -2295,6 +2857,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
            padding: const EdgeInsets.all(16),
            children: [
              searchField,
-+            _remoteSearchResults(context, query),
-+            _localSearchResults(context, query, matches),
++            _remoteSearchResults(context, query, matches),
              const SizedBox(height: 16),
              Row(
                children: [
+@@ -3608,7 +4171,14 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
+ }
+ 
+ class SharedGuestGroupsPage extends ConsumerStatefulWidget {
+-  const SharedGuestGroupsPage({super.key});
++  const SharedGuestGroupsPage({
++    super.key,
++    this.initialGroupId,
++    this.initialEntryId,
++  });
++
++  final String? initialGroupId;
++  final String? initialEntryId;
+ 
+   @override
+   ConsumerState<SharedGuestGroupsPage> createState() =>
+@@ -3636,6 +4206,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+   final Map<String, Map<String, String>> _entryEditDrafts = {};
+   final Set<String> _uncertainArchivedDeletionIds = {};
+   bool _archivedDeleteNeedsSafeRefresh = false;
++  bool _initialEntryOpened = false;
+ 
+   GuestGroupRepository get _repository => ref.read(guestGroupRepositoryProvider);
+ 
+@@ -3646,7 +4217,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     final user = ref.read(firebaseAuthProvider).currentUser;
+     _activeUid = isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null;
+     if (_activeUid != null) {
+-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadGroups());
++      WidgetsBinding.instance.addPostFrameCallback(
++        (_) => _loadGroups(preferredGroupId: widget.initialGroupId),
++      );
+     }
+   }
+ 
+@@ -3682,7 +4255,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     super.dispose();
+   }
+ 
+-  Future<bool> _loadGroups() async {
++  Future<bool> _loadGroups({String? preferredGroupId}) async {
+     if (!mounted) return false;
+     final user = ref.read(firebaseAuthProvider).currentUser;
+     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+@@ -3704,25 +4277,41 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+       if (!_isCurrentLoad(uid, generation)) return false;
+       final archivedGroups = await _repository.listArchivedGroups();
+       if (!_isCurrentLoad(uid, generation)) return false;
+-      final selected = groups.any((group) => group['id'] == _groupId)
++      final preferred = preferredGroupId ?? _groupId;
++      final selected = groups.any((group) => group['id'] == preferred)
+           ? _groupId
+           : groups.isEmpty
+           ? null
+           : groups.first['id'] as String;
++      final selectedGroupId = groups.any((group) => group['id'] == preferred)
++          ? preferred
++          : selected;
+       if (!_isCurrentLoad(uid, generation)) return false;
+       setState(() {
+         _groups = groups;
+         _archivedGroups = archivedGroups;
+         _uncertainArchivedDeletionIds.clear();
+         _archivedDeleteNeedsSafeRefresh = false;
+-        _groupId = selected;
++        _groupId = selectedGroupId;
+       });
+-      if (selected != null) {
+-        return await _loadGroup(
+-          selected,
++      if (selectedGroupId != null) {
++        final loaded = await _loadGroup(
++          selectedGroupId,
+           uid: uid,
+           generation: generation,
+         );
++        if (loaded && widget.initialEntryId != null && !_initialEntryOpened) {
++          for (final entry in _entries) {
++            if (entry['id'] == widget.initialEntryId) {
++              _initialEntryOpened = true;
++              WidgetsBinding.instance.addPostFrameCallback((_) {
++                if (mounted) _openEntry(entry);
++              });
++              break;
++            }
++          }
++        }
++        return loaded;
+       } else {
+         if (!mounted) return false;
+         setState(() {
+diff --git a/apps/flutter_app/lib/features/questions/domain/question_models.dart b/apps/flutter_app/lib/features/questions/domain/question_models.dart
+index 7751d047262471f7dd66391ae0ff38ec3608ae54..573171ec8a8f52633026e7eee39696eb018b38c5 100644
+--- a/apps/flutter_app/lib/features/questions/domain/question_models.dart
++++ b/apps/flutter_app/lib/features/questions/domain/question_models.dart
+@@ -82,6 +82,8 @@ class SemanticSearchResult {
+     this.resolvedAt,
+     this.department,
+     this.team,
++    this.organisationName = 'Organisation',
++    this.relevanceScore = 0,
+   });
+ 
+   factory SemanticSearchResult.fromJson(Map<String, dynamic> json) =>
+@@ -118,6 +120,11 @@ class SemanticSearchResult {
+         team: json['team'] == null
+             ? null
+             : TeamSummary.fromJson(json['team'] as Map<String, dynamic>),
++        organisationName:
++            json['organisation_name'] as String? ?? 'Organisation',
++        relevanceScore:
++            (json['relevance_score'] as num?)?.toDouble() ??
++            (json['similarity'] as num).toDouble(),
+       );
+ 
+   final String questionId;
+@@ -143,6 +150,8 @@ class SemanticSearchResult {
+   final String? answerFreshnessStatus;
+   final DepartmentSummary? department;
+   final TeamSummary? team;
++  final String organisationName;
++  final double relevanceScore;
+ }
+ 
+ class QuestionSummary {
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index 9e5cc044a845b189b027c4ed3335e58d16c6577a..1653ae638a4efde8b2c9a06e446d9c0e76e2e0a9 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -1387,6 +1387,38 @@ void main() {
+     },
+   );
+ 
++  testWidgets('a search deep link opens its authorized Group entry', (
++    tester,
++  ) async {
++    final auth = _TestFirebaseAuth();
++    final repository = _PendingEntryRepository();
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(auth),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: const MaterialApp(
++          home: SharedGuestGroupsPage(
++            initialGroupId: 'group-1',
++            initialEntryId: 'entry-1',
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    final dialog = find.byType(AlertDialog);
++    expect(
++      find.descendant(of: dialog, matching: find.text('Shared entry')),
++      findsOneWidget,
++    );
++    expect(
++      find.descendant(of: dialog, matching: find.text('Shared answer')),
++      findsOneWidget,
++    );
++  });
++
+   testWidgets('removing a member keeps the groups page mounted', (
+     tester,
+   ) async {
 diff --git a/apps/flutter_app/test/guest_interact_widget_test.dart b/apps/flutter_app/test/guest_interact_widget_test.dart
-index 723fb29..25f93e8 100644
+index 723fb299679567456e281ee3b9d227e243c135dd..cc73f62c43dc97ae4865b1ecea0b2fd4dafaeb27 100644
 --- a/apps/flutter_app/test/guest_interact_widget_test.dart
 +++ b/apps/flutter_app/test/guest_interact_widget_test.dart
 @@ -10,6 +10,17 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
@@ -551,42 +1067,79 @@ index 723fb29..25f93e8 100644
          find.text(
 -          'Keyword and prefix search of loaded local and personal-account '
 -          'Knowledge on this device; no semantic search.',
-+          'Search local and personal-account Knowledge on this device, plus '
-+          'authorised organisation and Group Knowledge when available. Only '
-+          'your query is sent to those services; local content is never '
-+          'uploaded by search.',
++          'Search local Knowledge on this device and all personal-account '
++          'Knowledge in your account, plus authorised organisation and Group '
++          'Knowledge when available. Only your query is sent to those services; '
++          'local content is never uploaded by search.',
          ),
          findsOneWidget,
        );
-@@ -70,6 +83,8 @@ void main() {
+@@ -70,11 +83,17 @@ void main() {
  
        await tester.enterText(localSearch, 'passw');
        await tester.pumpAndSettle();
+-      await tester.tap(find.text('Saved Q&A'));
 +      expect(find.text('Password rotation'), findsOneWidget);
-+      expect(find.text('Local on this device'), findsOneWidget);
-       await tester.tap(find.text('Saved Q&A'));
++      expect(find.textContaining('On this device'), findsOneWidget);
++      expect(find.textContaining('Local on this device'), findsOneWidget);
++      await tester.tap(find.text('Password rotation'));
        await tester.pumpAndSettle();
        expect(localSearch, findsOneWidget);
-diff --git a/backend/alembic/versions/0013_unified_search_trigrams.py b/backend/alembic/versions/0013_unified_search_trigrams.py
+       expect(find.text('Password rotation'), findsOneWidget);
+       expect(find.text('Incident response'), findsNothing);
++      await tester.tap(find.text('Back to all Saved Q&A'));
++      await tester.pumpAndSettle();
++      expect(find.text('Incident response'), findsNothing);
+ 
+       await tester.enterText(localSearch, '');
+       await tester.pumpAndSettle();
+diff --git a/backend/alembic/versions/0014_unified_search_trigrams.py b/backend/alembic/versions/0014_unified_search_trigrams.py
 new file mode 100644
-index 0000000..9229971
+index 0000000000000000000000000000000000000000..bfed40758882db5a13f27126291b49c383db42f1
 --- /dev/null
-+++ b/backend/alembic/versions/0013_unified_search_trigrams.py
-@@ -0,0 +1,32 @@
-+"""Add trigram indexes for typo-tolerant Knowledge retrieval."""
++++ b/backend/alembic/versions/0014_unified_search_trigrams.py
+@@ -0,0 +1,65 @@
++"""Add isolated private embeddings and trigram indexes."""
 +
 +from collections.abc import Sequence
 +
++import sqlalchemy as sa
 +from alembic import op
 +
-+revision: str = "0013"
-+down_revision: str | None = "0012"
++revision: str = "0014"
++down_revision: str | None = "0013"
 +branch_labels: str | Sequence[str] | None = None
 +depends_on: str | Sequence[str] | None = None
 +
 +
 +def upgrade() -> None:
 +    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
++    from pgvector.sqlalchemy import Vector
++
++    op.add_column(
++        "personal_workspace_items",
++        sa.Column("knowledge_embedding", Vector(1536), nullable=True),
++    )
++    op.add_column(
++        "personal_workspace_items",
++        sa.Column("embedding_model", sa.String(255), nullable=True),
++    )
++    op.add_column(
++        "personal_workspace_items",
++        sa.Column("embedding_source_hash", sa.String(64), nullable=True),
++    )
++    op.add_column(
++        "guest_group_entries",
++        sa.Column("knowledge_embedding", Vector(1536), nullable=True),
++    )
++    op.add_column(
++        "guest_group_entries",
++        sa.Column("embedding_model", sa.String(255), nullable=True),
++    )
++    op.add_column(
++        "guest_group_entries",
++        sa.Column("embedding_source_hash", sa.String(64), nullable=True),
++    )
 +    op.execute(
 +        "CREATE INDEX ix_questions_title_trgm "
 +        "ON questions USING gin (title gin_trgm_ops)"
@@ -605,8 +1158,14 @@ index 0000000..9229971
 +    op.drop_index("ix_answers_body_trgm", table_name="answers")
 +    op.drop_index("ix_questions_body_trgm", table_name="questions")
 +    op.drop_index("ix_questions_title_trgm", table_name="questions")
++    op.drop_column("guest_group_entries", "embedding_source_hash")
++    op.drop_column("guest_group_entries", "embedding_model")
++    op.drop_column("guest_group_entries", "knowledge_embedding")
++    op.drop_column("personal_workspace_items", "embedding_source_hash")
++    op.drop_column("personal_workspace_items", "embedding_model")
++    op.drop_column("personal_workspace_items", "knowledge_embedding")
 diff --git a/backend/app/ai/embedding_service.py b/backend/app/ai/embedding_service.py
-index 35ad659..884695e 100644
+index 35ad659c67b0ee65682790718b657b8170d0bb3d..4a8ed76791e98fef4bb869aa586dd1a8043de162 100644
 --- a/backend/app/ai/embedding_service.py
 +++ b/backend/app/ai/embedding_service.py
 @@ -1,17 +1,25 @@
@@ -661,8 +1220,139 @@ index 35ad659..884695e 100644
          source_hash = embedding_source_hash(text, self.provider.model_name)
          existing = await self.embeddings.get_for_question(
              question.id,
+@@ -39,22 +63,21 @@ class EmbeddingService:
+         ):
+             return False
+ 
++        if existing is not None:
++            await self.session.delete(existing)
++            await self.session.commit()
++
+         vector = await self.provider.embed_text(text)
+         if len(vector) != self.provider.dimensions:
+             raise ValueError("Embedding dimensions do not match provider configuration")
+-        if existing:
+-            existing.embedding = vector
+-            existing.embedding_model = self.provider.model_name
+-            existing.source_hash = source_hash
+-        else:
+-            await self.embeddings.add(
+-                QuestionEmbedding(
+-                    organisation_id=question.organisation_id,
+-                    question_id=question.id,
+-                    embedding=vector,
+-                    embedding_model=self.provider.model_name,
+-                    source_hash=source_hash,
+-                )
++        await self.embeddings.add(
++            QuestionEmbedding(
++                organisation_id=question.organisation_id,
++                question_id=question.id,
++                embedding=vector,
++                embedding_model=self.provider.model_name,
++                source_hash=source_hash,
+             )
++        )
+         await self.session.commit()
+         return True
+\ No newline at end of file
+diff --git a/backend/app/ai/private_knowledge_embedding.py b/backend/app/ai/private_knowledge_embedding.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2ea213106a19c51e87672515dd548f61caa5cac
+--- /dev/null
++++ b/backend/app/ai/private_knowledge_embedding.py
+@@ -0,0 +1,89 @@
++import logging
++from typing import Any
++
++from sqlalchemy.ext.asyncio import AsyncSession
++
++from app.ai.embedding_provider import EmbeddingProvider, get_embedding_provider
++from app.ai.embedding_service import embedding_source_hash
++
++logger = logging.getLogger(__name__)
++
++
++def private_knowledge_text(title: str, data: dict[str, Any]) -> str:
++    parts = [title.strip()]
++    for key in ("body", "answer"):
++        value = data.get(key)
++        if isinstance(value, str) and value.strip():
++            parts.append(value.strip())
++    return "\n\n".join(parts)
++
++
++async def sync_private_knowledge_embedding(
++    session: AsyncSession,
++    item: Any,
++    *,
++    provider: EmbeddingProvider | None = None,
++) -> bool:
++    item.knowledge_embedding = None
++    item.embedding_model = None
++    item.embedding_source_hash = None
++    try:
++        provider = provider or get_embedding_provider()
++    except Exception:
++        logger.exception("Private Knowledge embeddings are unavailable")
++        await session.commit()
++        return False
++    if provider.model_name.startswith("deterministic-fake-"):
++        await session.commit()
++        return False
++    text = private_knowledge_text(item.title, item.data)
++    source_hash = embedding_source_hash(text, provider.model_name)
++    try:
++        vector = await provider.embed_text(text)
++        if len(vector) != provider.dimensions or len(vector) != 1536:
++            raise ValueError("Embedding dimensions do not match stored vectors")
++    except Exception:
++        logger.exception("Failed to generate private Knowledge embedding")
++        await session.commit()
++        return False
++    item.knowledge_embedding = vector
++    item.embedding_model = provider.model_name
++    item.embedding_source_hash = source_hash
++    await session.commit()
++    return True
++
++
++def knowledge_match(
++    query: str, title: str, data: dict[str, Any]
++) -> tuple[float, str | None, str | None]:
++    words = [word.casefold() for word in query.split() if word.strip()]
++    title_folded = title.casefold()
++    body = " ".join(
++        value.casefold()
++        for key in ("body", "answer")
++        if isinstance((value := data.get(key)), str)
++    )
++    if not words:
++        return 0.0, None, None
++    title_hits = [word for word in words if word in title_folded]
++    body_hits = [word for word in words if word in body]
++    if not title_hits and not body_hits:
++        return 0.0, None, None
++    if title_folded == query.casefold().strip():
++        return 2.0, "title", title
++    if len(title_hits) == len(words):
++        return 1.6, "title", title
++    if title_hits:
++        return 1.3, "title", title
++    if body_hits:
++        source = next(
++            (
++                value
++                for key in ("body", "answer")
++                if isinstance((value := data.get(key)), str)
++                and any(word in value.casefold() for word in body_hits)
++            ),
++            "",
++        )
++        return 0.9, "content", source[:240]
++    return 0.0, None, None
 diff --git a/backend/app/api/v1/routes/guest.py b/backend/app/api/v1/routes/guest.py
-index 66532b2..3c8ee61 100644
+index 66532b276877f3a08518f0c6b8301ea915468d42..8cb390d618e7f58decef863a0f8ab3dcf5c19728 100644
 --- a/backend/app/api/v1/routes/guest.py
 +++ b/backend/app/api/v1/routes/guest.py
 @@ -67,6 +67,20 @@ async def list_groups(
@@ -671,7 +1361,7 @@ index 66532b2..3c8ee61 100644
  
 +@router.get("/groups/search-knowledge")
 +async def search_member_knowledge(
-+    query: str = Query(min_length=3, max_length=100),
++    query: str = Query(min_length=1, max_length=100),
 +    limit: int = Query(default=25, ge=1, le=50),
 +    identity: GuestIdentity = Depends(get_guest_identity),
 +    session: AsyncSession = Depends(get_session),
@@ -686,8 +1376,69 @@ index 66532b2..3c8ee61 100644
  @router.get("/groups/archived")
  async def list_archived_groups(
      identity: GuestIdentity = Depends(get_guest_identity),
+diff --git a/backend/app/api/v1/routes/personal_workspace.py b/backend/app/api/v1/routes/personal_workspace.py
+index 27362d07d016762ca76f6a4f91b3a359aebf55ac..1469d1da87852376795732a982743364a98e25bd 100644
+--- a/backend/app/api/v1/routes/personal_workspace.py
++++ b/backend/app/api/v1/routes/personal_workspace.py
+@@ -59,6 +59,18 @@ async def list_items(
+     return await PersonalWorkspaceService(session).list_items(identity.firebase_uid)
+ 
+ 
++@router.get("/items/search")
++async def search_knowledge(
++    query: str = Query(min_length=1, max_length=200),
++    limit: int = Query(default=25, ge=1, le=50),
++    identity: GuestIdentity = Depends(get_guest_identity),
++    session: AsyncSession = Depends(get_session),
++) -> dict:
++    return await PersonalWorkspaceService(session).search_knowledge(
++        identity.firebase_uid, query, limit=limit
++    )
++
++
+ @router.post(
+     "/items/import",
+     response_model=PersonalWorkspaceImportResult,
+diff --git a/backend/app/models/guest.py b/backend/app/models/guest.py
+index 754a0fc6dbfae28ba450a7752b519fa6bb44d4e0..7e83a746b7559e42f2f845be9d7f19dd3e5e7eb0 100644
+--- a/backend/app/models/guest.py
++++ b/backend/app/models/guest.py
+@@ -15,6 +15,7 @@ from sqlalchemy import (
+     text,
+ )
+ from sqlalchemy.orm import Mapped, mapped_column
++from pgvector.sqlalchemy import Vector
+ 
+ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+ 
+@@ -148,6 +149,9 @@ class GuestGroupEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+     updated_by_uid: Mapped[str] = mapped_column(String(128), nullable=False)
+     client_import_key: Mapped[str | None] = mapped_column(String(64))
+     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
++    knowledge_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
++    embedding_model: Mapped[str | None] = mapped_column(String(255))
++    embedding_source_hash: Mapped[str | None] = mapped_column(String(64))
+ 
+ 
+ class GuestGroupEntryRevision(UUIDPrimaryKeyMixin, Base):
+diff --git a/backend/app/models/personal_workspace.py b/backend/app/models/personal_workspace.py
+index d7fe0ec276ae0bc9da552e983a49caccb8780207..61236f6a3412a9438f173d998a831dc571e53c76 100644
+--- a/backend/app/models/personal_workspace.py
++++ b/backend/app/models/personal_workspace.py
+@@ -1,3 +1,4 @@
++from pgvector.sqlalchemy import Vector
+ from sqlalchemy import CheckConstraint, Index, Integer, JSON, String, UniqueConstraint
+ from sqlalchemy.orm import Mapped, mapped_column
+ 
+@@ -26,3 +27,6 @@ class PersonalWorkspaceItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+     title: Mapped[str] = mapped_column(String(500), nullable=False)
+     data: Mapped[dict] = mapped_column(JSON, nullable=False)
+     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
++    knowledge_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
++    embedding_model: Mapped[str | None] = mapped_column(String(255))
++    embedding_source_hash: Mapped[str | None] = mapped_column(String(64))
 diff --git a/backend/app/repositories/guest.py b/backend/app/repositories/guest.py
-index 9986708..bdf2af6 100644
+index 9986708e7c2886be1eb840866342d48c6c5a6f86..11adb8196940330ee2b203b706e256c9f660b928 100644
 --- a/backend/app/repositories/guest.py
 +++ b/backend/app/repositories/guest.py
 @@ -3,7 +3,7 @@ import time
@@ -699,7 +1450,7 @@ index 9986708..bdf2af6 100644
  from sqlalchemy.dialects.postgresql import insert as postgres_insert
  from sqlalchemy.dialects.sqlite import insert as sqlite_insert
  from sqlalchemy.ext.asyncio import AsyncSession
-@@ -298,6 +298,56 @@ class GuestRepository:
+@@ -298,6 +298,58 @@ class GuestRepository:
              statement = statement.limit(limit)
          return list(await self.session.scalars(statement))
  
@@ -709,7 +1460,7 @@ index 9986708..bdf2af6 100644
 +        query_tokens: list[str],
 +        now: datetime,
 +        *,
-+        limit: int,
++        limit: int | None,
 +    ) -> list[tuple[GuestGroupEntry, str]]:
 +        searchable_data = cast(GuestGroupEntry.data, String)
 +        statement = (
@@ -749,7 +1500,9 @@ index 9986708..bdf2af6 100644
 +                    or_(*matches)
 +                )
 +            statement = statement.where(*token_matches)
-+        statement = statement.order_by(GuestGroupEntry.updated_at.desc()).limit(limit)
++        statement = statement.order_by(GuestGroupEntry.updated_at.desc())
++        if limit is not None:
++            statement = statement.limit(limit)
 +        result = await self.session.execute(statement)
 +        return list(result.all())
 +
@@ -757,7 +1510,7 @@ index 9986708..bdf2af6 100644
          self, group_id: UUID, firebase_uid: str, import_key: str
      ) -> GuestGroupEntry | None:
 diff --git a/backend/app/repositories/search.py b/backend/app/repositories/search.py
-index 878f6de..0db53a3 100644
+index 878f6deef47c66f364cd3d90b35623acab513c4d..0db53a3000cc5077c6ac17b3f2e1185ff77af23c 100644
 --- a/backend/app/repositories/search.py
 +++ b/backend/app/repositories/search.py
 @@ -1,7 +1,7 @@
@@ -885,8 +1638,30 @@ index 878f6de..0db53a3 100644
          )
          statement = self._limit_distinct_candidates(
              statement,
+diff --git a/backend/app/schemas/search.py b/backend/app/schemas/search.py
+index 07646339341bb02b58e3da29783c1b6ff47314d3..0da193b31c6fd64458bbaafcd7337ab3ee23ea60 100644
+--- a/backend/app/schemas/search.py
++++ b/backend/app/schemas/search.py
+@@ -30,7 +30,7 @@ class MatchMethod(StrEnum):
+ 
+ 
+ class SemanticSearchRequest(BaseModel):
+-    query: str = Field(min_length=3, max_length=1000)
++    query: str = Field(min_length=1, max_length=1000)
+     limit: int = Field(default=5, ge=1, le=10)
+     include_unanswered: bool = False
+ 
+@@ -46,6 +46,8 @@ class SemanticSearchResult(BaseModel):
+     match_source: MatchSource
+     match_method: MatchMethod
+     answer_id: UUID | None
++    organisation_name: str
++    relevance_score: float
+     title: str
+     accepted_answer_body: str | None
+     department: DepartmentSummary | None
 diff --git a/backend/app/services/answer.py b/backend/app/services/answer.py
-index 69c6d50..6a44e4a 100644
+index 69c6d50de5434c7804075ef44d1dbce163c0c5af..6a44e4af572b9634edc5a9f642d25009d12c30be 100644
 --- a/backend/app/services/answer.py
 +++ b/backend/app/services/answer.py
 @@ -1,8 +1,12 @@
@@ -981,18 +1756,222 @@ index 69c6d50..6a44e4a 100644
      async def _detail(self, answer: Answer) -> AnswerDetailResponse:
          question = await self.questions.get_for_organisation(
              answer.question_id,
+diff --git a/backend/app/services/canonical.py b/backend/app/services/canonical.py
+index 6bcac0079cd123716b3665d7bde0fc354bf929ae..a93443c86accff7e375ea0184837c388742b588e 100644
+--- a/backend/app/services/canonical.py
++++ b/backend/app/services/canonical.py
+@@ -1,10 +1,16 @@
++import logging
+ from datetime import UTC, datetime
+ from uuid import UUID
+ 
+ from sqlalchemy.exc import IntegrityError
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+-from app.ai.embedding_provider import EmbeddingProvider
++from app.ai.embedding_provider import (
++    EmbeddingProvider,
++    EmbeddingProviderError,
++    get_embedding_provider,
++)
++from app.ai.embedding_service import EmbeddingService
+ from app.core.config import Settings
+ from app.core.exceptions import ConflictError, NotFoundError
+ from app.models.answer import Answer, AnswerStatus
+@@ -31,6 +37,8 @@ from app.schemas.search import SemanticSearchResult
+ from app.services.permissions import PermissionService
+ from app.services.search import SearchService
+ 
++logger = logging.getLogger(__name__)
++
+ 
+ class CanonicalQuestionService:
+     def __init__(
+@@ -57,6 +65,8 @@ class CanonicalQuestionService:
+         actor = await self.permissions.actor(user_id, organisation_id)
+         response = await self._merge(canonical_question_id, organisation_id, actor, data)
+         await self.session.commit()
++        question = await self.canonical.question(canonical_question_id, organisation_id)
++        await self._sync_embedding_for_question(question)
+         return response
+ 
+     async def unmerge(
+@@ -87,8 +97,27 @@ class CanonicalQuestionService:
+         )
+         await self.session.commit()
+         await self.session.refresh(question)
++        await self._sync_embedding_for_question(question)
++        await self._sync_embedding_for_question(
++            await self.canonical.question(previous_root_id, organisation_id)
++        )
+         return question
+ 
++    async def _sync_embedding_for_question(self, question: Question | None) -> None:
++        if question is None:
++            return
++        try:
++            provider = self.embedding_provider or get_embedding_provider(self.settings)
++            await EmbeddingService(self.session, provider).sync_question(question)
++        except EmbeddingProviderError:
++            logger.exception(
++                "Failed to regenerate search embedding for question %s", question.id
++            )
++        except Exception:
++            logger.exception(
++                "Failed to persist search embedding for question %s", question.id
++            )
++
+     async def candidates(
+         self,
+         question_id: UUID,
+diff --git a/backend/app/services/governance.py b/backend/app/services/governance.py
+index c87fda410844be22e4411d8ec647b0c165e24d5e..64ed9c65b5b4c24da08850f0c4014224a0dc5c9c 100644
+--- a/backend/app/services/governance.py
++++ b/backend/app/services/governance.py
+@@ -1,8 +1,14 @@
++import logging
+ from datetime import UTC, datetime, timedelta
+ from uuid import UUID
+ 
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
++from app.ai.embedding_provider import (
++    EmbeddingProviderError,
++    get_embedding_provider,
++)
++from app.ai.embedding_service import EmbeddingService
+ from app.core.config import Settings
+ from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
+ from app.models.answer import Answer, AnswerStatus
+@@ -35,6 +41,8 @@ from app.schemas.governance import (
+ from app.schemas.user import UserSummary
+ from app.services.permissions import PermissionService
+ 
++logger = logging.getLogger(__name__)
++
+ 
+ class GovernanceService:
+     def __init__(self, session: AsyncSession, settings: Settings) -> None:
+@@ -80,6 +88,7 @@ class GovernanceService:
+         await self._audit(actor, AuditAction.ANSWER_VERIFIED, "answer", answer.id)
+         await self.session.commit()
+         await self.session.refresh(answer)
++        await self._sync_question_embedding(question)
+         return answer
+ 
+     async def unverify(
+@@ -88,7 +97,9 @@ class GovernanceService:
+         organisation_id: UUID,
+         user_id: UUID,
+     ) -> Answer:
+-        answer, _, actor = await self._managed_answer(answer_id, organisation_id, user_id)
++        answer, question, actor = await self._managed_answer(
++            answer_id, organisation_id, user_id
++        )
+         if answer.status != AnswerStatus.VERIFIED:
+             raise ConflictError("Only a verified answer can be unverified")
+         answer.status = AnswerStatus.COMMUNITY
+@@ -100,6 +111,7 @@ class GovernanceService:
+         await self._audit(actor, AuditAction.ANSWER_UNVERIFIED, "answer", answer.id)
+         await self.session.commit()
+         await self.session.refresh(answer)
++        await self._sync_question_embedding(question)
+         return answer
+ 
+     async def review(
+@@ -149,8 +161,24 @@ class GovernanceService:
+         )
+         await self.session.commit()
+         await self.session.refresh(challenge)
++        if accept:
++            await self._sync_question_embedding(question)
+         return AnswerChallengeResponse.model_validate(challenge)
+ 
++    async def _sync_question_embedding(self, question: Question | None) -> None:
++        if question is None:
++            return
++        try:
++            await EmbeddingService(
++                self.session, get_embedding_provider(self.settings)
++            ).sync_question(question)
++        except EmbeddingProviderError:
++            logger.exception(
++                "Failed to regenerate search embedding for question %s", question.id
++            )
++        except Exception:
++            logger.exception("Failed to persist search embedding for question %s", question.id)
++
+     async def list_challenges(
+         self,
+         answer_id: UUID,
+@@ -215,6 +243,8 @@ class GovernanceService:
+         await self._audit(actor, action, "answer_challenge", challenge.id)
+         await self.session.commit()
+         await self.session.refresh(challenge)
++        if accept:
++            await self._sync_question_embedding(question)
+         return AnswerChallengeResponse.model_validate(challenge)
+ 
+     async def versions(
 diff --git a/backend/app/services/guest.py b/backend/app/services/guest.py
-index 28f27a6..408cd3a 100644
+index 28f27a6bfd2594aef640fe000e7c3847a1eab2e3..8b9d51346b5ed9785a98f41aa4a8b9af1cf31d24 100644
 --- a/backend/app/services/guest.py
 +++ b/backend/app/services/guest.py
-@@ -1,5 +1,6 @@
+@@ -1,13 +1,25 @@
  import hashlib
  import json
++import logging
 +import re
  import secrets
  from datetime import datetime, timedelta, timezone
  from typing import Any
-@@ -679,6 +680,46 @@ class GuestService:
+ from uuid import UUID
+ 
+ from fastapi import HTTPException, status
++from sqlalchemy import select
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
++from app.ai.embedding_provider import EmbeddingProvider, get_embedding_provider
++from app.ai.embedding_provider import EmbeddingProviderError
++from app.ai.embedding_service import embedding_source_hash
++from app.ai.private_knowledge_embedding import (
++    knowledge_match,
++    private_knowledge_text,
++    sync_private_knowledge_embedding,
++)
++from app.core.config import get_settings
+ from app.models.guest import (
+     GuestGroup,
+     GuestGroupAdminTransfer,
+@@ -25,6 +37,8 @@ from app.schemas.guest import (
+     GuestMemberRoleUpdate,
+ )
+ 
++logger = logging.getLogger(__name__)
++
+ GUEST_GROUP_TTL = timedelta(days=90)
+ MAX_GUEST_GROUPS_PER_IDENTITY = 3
+ MAX_GUEST_GROUP_MEMBERS = 50
+@@ -94,8 +108,17 @@ def _require_explicit_session_sharing(payload: GuestGroupEntryCreate) -> None:
+ 
+ 
+ class GuestService:
+-    def __init__(self, session: AsyncSession) -> None:
++    def __init__(
++        self, session: AsyncSession, provider: EmbeddingProvider | None = None
++    ) -> None:
++        self.session = session
+         self.guest = GuestRepository(session)
++        self._provider_explicit = provider is not None
++        try:
++            self.provider = provider or get_embedding_provider()
++        except EmbeddingProviderError:
++            logger.exception("Group Knowledge embeddings are unavailable")
++            self.provider = None
+ 
+     # Acquire rate-limit rows before group rows to keep a consistent lock order.
+     async def _rate_limit(self, firebase_uid: str, action: str) -> None:
+@@ -679,6 +702,159 @@ class GuestService:
          await self.guest.commit()
          return result
  
@@ -1008,38 +1987,199 @@ index 28f27a6..408cd3a 100644
 +            raise HTTPException(status_code=422, detail="Search query is too long")
 +        words = re.findall(r"[a-z0-9]+", query.casefold())[:12]
 +        if not words:
++            await self.guest.commit()
 +            return {"results": [], "partial": False}
 +        rows = await self.guest.knowledge_entries_for_member(
 +            firebase_uid,
-+            words,
++            [],
 +            datetime.now(timezone.utc),
-+            limit=5000,
++            limit=None,
 +        )
-+        matches = [
-+            {
-+                "id": str(entry.id),
-+                "kind": "knowledge",
-+                "title": entry.title,
-+                "data": {
-+                    key: entry.data[key]
-+                    for key in ("body", "answer")
-+                    if isinstance(entry.data.get(key), str)
-+                },
-+                "group_id": str(entry.group_id),
-+                "group_name": group_name,
-+            }
-+            for entry, group_name in rows
-+            if _matches_query(words, entry.title, entry.data)
-+        ]
++        provider = self.provider
++        fake_embeddings = (
++            provider is None
++            or provider.model_name.startswith("deterministic-fake-")
++        )
++        semantic_available = self._provider_explicit or bool(
++            get_settings().embedding_api_key
++        )
++        matches: dict[str, dict[str, Any]] = {}
++        semantic_truncated = False
++        fresh_ids = set()
++        for entry, group_name in rows:
++            if (
++                provider is not None
++                and entry.embedding_model == provider.model_name
++                and entry.knowledge_embedding is not None
++                and entry.embedding_source_hash
++                == embedding_source_hash(
++                    private_knowledge_text(entry.title, entry.data),
++                    provider.model_name,
++                )
++            ):
++                fresh_ids.add(entry.id)
++            lexical_score, matched_in, snippet = knowledge_match(
++                query, entry.title, entry.data
++            )
++            if not lexical_score and _matches_query(
++                words,
++                entry.title,
++                entry.data,
++            ):
++                lexical_score, matched_in, snippet = (
++                    0.5,
++                    "content",
++                    entry.title[:240],
++                )
++            if lexical_score:
++                matches[str(entry.id)] = {
++                    "id": str(entry.id),
++                    "kind": "knowledge",
++                    "title": entry.title,
++                    "data": {
++                        key: entry.data[key]
++                        for key in ("body", "answer")
++                        if isinstance(entry.data.get(key), str)
++                    },
++                    "group_id": str(entry.group_id),
++                    "group_name": group_name,
++                    "match_method": "keyword",
++                    "similarity": 0.0,
++                    "relevance_score": lexical_score,
++                    "matched_in": matched_in,
++                    "snippet": snippet,
++                }
++        if not fake_embeddings and semantic_available and fresh_ids:
++            assert provider is not None
++            try:
++                query_embedding = await provider.embed_text(query.strip())
++                if len(query_embedding) != provider.dimensions:
++                    raise ValueError("Embedding dimensions do not match provider")
++                distance = GuestGroupEntry.knowledge_embedding.cosine_distance(
++                    query_embedding
++                )
++                semantic_rows = list(await self.session.execute(
++                    select(
++                        GuestGroupEntry,
++                        GuestGroup.name,
++                        (1 - distance).label("similarity"),
++                    )
++                    .join(
++                        GuestGroup,
++                        GuestGroup.id == GuestGroupEntry.group_id,
++                    )
++                    .join(
++                        GuestGroupMembership,
++                        GuestGroupMembership.group_id == GuestGroup.id,
++                    )
++                    .where(
++                        GuestGroupMembership.firebase_uid == firebase_uid,
++                        GuestGroupMembership.status == "active",
++                        GuestGroup.archived_at.is_(None),
++                        GuestGroup.expires_at > datetime.now(timezone.utc),
++                        GuestGroupEntry.kind == "knowledge",
++                        GuestGroupEntry.id.in_(fresh_ids),
++                        GuestGroupEntry.embedding_model == provider.model_name,
++                        GuestGroupEntry.knowledge_embedding.is_not(None),
++                    )
++                    .order_by(distance)
++                    .limit(limit + 1)
++                ))
++                semantic_truncated = len(semantic_rows) > limit
++                for entry, group_name, similarity in semantic_rows[:limit]:
++                    similarity = float(similarity)
++                    if similarity < get_settings().related_match_threshold:
++                        continue
++                    current = matches.get(str(entry.id))
++                    data = {
++                        key: entry.data[key]
++                        for key in ("body", "answer")
++                        if isinstance(entry.data.get(key), str)
++                    }
++                    matches[str(entry.id)] = {
++                        "id": str(entry.id),
++                        "kind": "knowledge",
++                        "title": entry.title,
++                        "data": data,
++                        "group_id": str(entry.group_id),
++                        "group_name": group_name,
++                        "match_method": "hybrid" if current else "semantic",
++                        "similarity": similarity,
++                        "relevance_score": max(
++                            current["relevance_score"] if current else 0.0,
++                            similarity,
++                        ),
++                        "matched_in": current["matched_in"] if current else None,
++                        "snippet": current["snippet"] if current else None,
++                    }
++            except Exception:
++                logger.exception(
++                    "Guest Knowledge semantic search failed for authorized groups"
++                )
++                semantic_truncated = False
++        ranked = sorted(
++            matches.values(),
++            key=lambda result: result["relevance_score"],
++            reverse=True,
++        )
++        await self.guest.commit()
 +        return {
-+            "results": matches[:limit],
-+            "partial": len(rows) >= 5000 or len(matches) > limit,
++            "results": ranked[:limit],
++            "partial": len(matches) > limit or semantic_truncated,
 +        }
 +
      async def create_entry(
          self,
          group_id: UUID,
-@@ -896,13 +937,55 @@ class GuestService:
+@@ -716,6 +892,11 @@ class GuestService:
+         self.guest.add(entry)
+         group.expires_at = datetime.now(timezone.utc) + GUEST_GROUP_TTL
+         await self.guest.commit()
++        if entry.kind == "knowledge":
++            await sync_private_knowledge_embedding(
++                self.session, entry, provider=self.provider
++            )
++            await self.session.refresh(entry)
+         return _entry_dict(entry)
+ 
+     async def import_entries(
+@@ -727,6 +908,7 @@ class GuestService:
+         await self._rate_limit(firebase_uid, "write")
+         group, _ = await self._member_can_write(group_id, firebase_uid)
+         results = []
++        created_entries: list[GuestGroupEntry] = []
+         for payload in entries:
+             if not payload.client_import_key:
+                 raise HTTPException(
+@@ -760,9 +942,15 @@ class GuestService:
+             )
+             self.guest.add(entry)
+             await self.guest.flush()
++            created_entries.append(entry)
+             results.append(_entry_dict(entry))
+         group.expires_at = datetime.now(timezone.utc) + GUEST_GROUP_TTL
+         await self.guest.commit()
++        for entry in created_entries:
++            if entry.kind == "knowledge":
++                await sync_private_knowledge_embedding(
++                    self.session, entry, provider=self.provider
++                )
+         return results
+ 
+     async def _check_group_storage(self, group_id: UUID, new_size: int) -> None:
+@@ -831,6 +1019,11 @@ class GuestService:
+         entry.revision += 1
+         group.expires_at = datetime.now(timezone.utc) + GUEST_GROUP_TTL
+         await self.guest.commit()
++        if entry.kind == "knowledge":
++            await sync_private_knowledge_embedding(
++                self.session, entry, provider=self.provider
++            )
++            await self.session.refresh(entry)
+         return _entry_dict(entry)
+ 
+     async def delete_entry(
+@@ -896,13 +1089,55 @@ class GuestService:
  
  def _matches_query(words: list[str], title: str, data: dict[str, Any]) -> bool:
      text = " ".join([title, *_strings(data)]).casefold()
@@ -1097,8 +2237,211 @@ index 28f27a6..408cd3a 100644
  def _strings(value: Any) -> list[str]:
      if isinstance(value, str):
          return [value]
+diff --git a/backend/app/services/personal_workspace.py b/backend/app/services/personal_workspace.py
+index 579fe81dbfe48a0952d0012c74bf63913f527da4..dbecc7b9f3ebf4ca8ced5186315f9cf0732f62d8 100644
+--- a/backend/app/services/personal_workspace.py
++++ b/backend/app/services/personal_workspace.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++import logging
+ from typing import Any
+ from uuid import UUID
+ 
+@@ -9,12 +10,23 @@ from sqlalchemy.dialects.postgresql import insert as postgres_insert
+ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
++from app.ai.embedding_provider import EmbeddingProvider, get_embedding_provider
++from app.ai.private_knowledge_embedding import (
++    knowledge_match,
++    private_knowledge_text,
++    sync_private_knowledge_embedding,
++)
++from app.ai.embedding_service import embedding_source_hash
++from app.ai.embedding_provider import EmbeddingProviderError
++from app.core.config import get_settings
+ from app.models.personal_workspace import PersonalWorkspaceItem
+ from app.schemas.personal_workspace import (
+     PersonalWorkspaceItemInput,
+     validate_personal_workspace_data,
+ )
+ 
++logger = logging.getLogger(__name__)
++
+ 
+ def _item_result(item: PersonalWorkspaceItem) -> dict[str, Any]:
+     return {
+@@ -30,8 +42,18 @@ def _item_result(item: PersonalWorkspaceItem) -> dict[str, Any]:
+ 
+ 
+ class PersonalWorkspaceService:
+-    def __init__(self, session: AsyncSession) -> None:
++    def __init__(
++        self,
++        session: AsyncSession,
++        provider: EmbeddingProvider | None = None,
++    ) -> None:
+         self.session = session
++        self._provider_explicit = provider is not None
++        try:
++            self.provider = provider or get_embedding_provider()
++        except EmbeddingProviderError:
++            logger.exception("Personal Knowledge embeddings are unavailable")
++            self.provider = None
+ 
+     async def list_items(self, firebase_uid: str) -> list[dict[str, Any]]:
+         result = await self.session.scalars(
+@@ -95,6 +117,18 @@ class PersonalWorkspaceService:
+             stored_by_key[payload.source_key] = _item_result(item)
+             created_by_key[payload.source_key] = was_created
+         await self.session.commit()
++        for payload in items:
++            if payload.kind == "knowledge" and created_by_key[payload.source_key]:
++                item = await self.session.scalar(
++                    select(PersonalWorkspaceItem).where(
++                        PersonalWorkspaceItem.firebase_uid == firebase_uid,
++                        PersonalWorkspaceItem.source_key == payload.source_key,
++                    )
++                )
++                if item is not None:
++                    await sync_private_knowledge_embedding(
++                        self.session, item, provider=self.provider
++                    )
+         return {
+             "items": [stored_by_key[item.source_key] for item in items],
+             "created": [created_by_key[item.source_key] for item in items],
+@@ -146,8 +180,128 @@ class PersonalWorkspaceService:
+         item.revision += 1
+         await self.session.commit()
+         await self.session.refresh(item)
++        if item.kind == "knowledge":
++            await sync_private_knowledge_embedding(
++                self.session, item, provider=self.provider
++            )
++            await self.session.refresh(item)
+         return _item_result(item)
+ 
++    async def search_knowledge(
++        self, firebase_uid: str, query: str, *, limit: int = 25
++    ) -> dict[str, Any]:
++        if not query.strip():
++            return {"results": [], "partial": False}
++        items = list(
++            await self.session.scalars(
++                select(PersonalWorkspaceItem)
++                .where(
++                    PersonalWorkspaceItem.firebase_uid == firebase_uid,
++                    PersonalWorkspaceItem.kind == "knowledge",
++                )
++                .order_by(PersonalWorkspaceItem.id)
++            )
++        )
++        provider = self.provider
++        fake_embeddings = (
++            provider is None
++            or provider.model_name.startswith("deterministic-fake-")
++        )
++        semantic_available = self._provider_explicit or bool(
++            get_settings().embedding_api_key
++        )
++        if not fake_embeddings and semantic_available:
++            assert provider is not None
++        fresh_ids = {
++            item.id
++            for item in items
++            if provider is not None
++            and item.embedding_model == provider.model_name
++            and item.knowledge_embedding is not None
++            and item.embedding_source_hash
++            == embedding_source_hash(
++                private_knowledge_text(item.title, item.data), provider.model_name
++            )
++        }
++
++        scores: dict[str, tuple[float, str, float, str | None, str | None]] = {}
++        semantic_truncated = False
++        for item in items:
++            lexical_score, matched_in, snippet = knowledge_match(
++                query, item.title, item.data
++            )
++            if lexical_score:
++                scores[str(item.id)] = (
++                    lexical_score,
++                    "keyword",
++                    0.0,
++                    matched_in,
++                    snippet,
++                )
++
++        if not fake_embeddings and semantic_available and fresh_ids:
++            assert provider is not None
++            try:
++                query_embedding = await provider.embed_text(query.strip())
++                if len(query_embedding) != provider.dimensions:
++                    raise ValueError("Embedding dimensions do not match provider")
++                distance = PersonalWorkspaceItem.knowledge_embedding.cosine_distance(
++                    query_embedding
++                )
++                semantic_rows = list(await self.session.execute(
++                    select(PersonalWorkspaceItem, (1 - distance).label("similarity"))
++                    .where(
++                        PersonalWorkspaceItem.firebase_uid == firebase_uid,
++                        PersonalWorkspaceItem.kind == "knowledge",
++                        PersonalWorkspaceItem.id.in_(fresh_ids),
++                        PersonalWorkspaceItem.embedding_model == provider.model_name,
++                        PersonalWorkspaceItem.knowledge_embedding.is_not(None),
++                    )
++                    .order_by(distance)
++                    .limit(limit + 1)
++                ))
++                semantic_truncated = len(semantic_rows) > limit
++                threshold = get_settings().related_match_threshold
++                for item, similarity in semantic_rows[:limit]:
++                    similarity = float(similarity)
++                    if similarity < threshold:
++                        continue
++                    current = scores.get(str(item.id))
++                    relevance = max(
++                        current[0] if current else 0.0,
++                        similarity,
++                    )
++                    scores[str(item.id)] = (
++                        relevance,
++                        "hybrid" if current else "semantic",
++                        similarity,
++                        current[3] if current else None,
++                        current[4] if current else None,
++                    )
++            except Exception:
++                logger.exception(
++                    "Personal Knowledge semantic search failed for an authorized query"
++                )
++                semantic_truncated = False
++
++        item_by_id = {str(item.id): item for item in items}
++        ranked = sorted(scores, key=lambda key: scores[key][0], reverse=True)[:limit]
++        return {
++            "results": [
++                {
++                    **_item_result(item_by_id[item_id]),
++                    "source_id": item_by_id[item_id].data.get("id", item_id),
++                    "match_method": scores[item_id][1],
++                    "similarity": scores[item_id][2],
++                    "relevance_score": scores[item_id][0],
++                    "matched_in": scores[item_id][3],
++                    "snippet": scores[item_id][4],
++                }
++                for item_id in ranked
++            ],
++            "partial": len(scores) > limit or semantic_truncated,
++        }
++
+     async def delete_item(
+         self,
+         firebase_uid: str,
 diff --git a/backend/app/services/question.py b/backend/app/services/question.py
-index 382766a..8efafd8 100644
+index 382766a2146bc03b3f30fb969bece7da2d3ddc81..da7932c48bbe66dad1d9cbef922e45cc7e9b8536 100644
 --- a/backend/app/services/question.py
 +++ b/backend/app/services/question.py
 @@ -354,6 +354,7 @@ class QuestionService:
@@ -1117,11 +2460,341 @@ index 382766a..8efafd8 100644
          return question
  
      async def archive(
+@@ -455,6 +457,7 @@ class QuestionService:
+         )
+         await self.session.commit()
+         await self.session.refresh(question)
++        await self._sync_embedding_safely(question)
+         return question
+ 
+     async def request_change(
+diff --git a/backend/app/services/search.py b/backend/app/services/search.py
+index 46fb5c702ea62d7eeee8ff4c657499fee9d1f78a..b549c6a58b05c51f96a1c1c7a4dfe0576c4038a1 100644
+--- a/backend/app/services/search.py
++++ b/backend/app/services/search.py
+@@ -4,11 +4,13 @@ from uuid import UUID
+ 
+ from sqlalchemy.exc import SQLAlchemyError
+ from sqlalchemy.ext.asyncio import AsyncSession
++from sqlalchemy import select
+ 
+ from app.ai.embedding_provider import EmbeddingProvider, EmbeddingProviderError
+ from app.core.config import Settings
+ from app.models.answer import AnswerStatus
+ from app.models.question import QuestionStatus
++from app.models.organisation import Organisation
+ from app.repositories.search import SearchRepository
+ from app.repositories.user import UserRepository
+ from app.schemas.department import DepartmentSummary
+@@ -34,6 +36,7 @@ class SearchService:
+     ) -> None:
+         self.provider = provider
+         self.settings = settings
++        self.session = session
+         self.search_repository = SearchRepository(session)
+         self.permissions = PermissionService(UserRepository(session))
+         self.clock = clock or (lambda: datetime.now(UTC))
+@@ -48,6 +51,9 @@ class SearchService:
+         include_unanswered: bool = False,
+     ) -> list[SemanticSearchResult]:
+         actor = await self.permissions.actor(user_id, organisation_id)
++        organisation_name = await self.session.scalar(
++            select(Organisation.name).where(Organisation.id == organisation_id)
++        )
+         lexical_candidates = await self.search_repository.lexical_candidates(
+             organisation_id=organisation_id,
+             actor=actor,
+@@ -121,6 +127,12 @@ class SearchService:
+                 challenge_count,
+             ) = candidate
+             semantic_similarity = semantic_entry[0][5] if semantic_entry else 0.0
++            lexical_score = lexical_entry[0][5] if lexical_entry else 0.0
++            lexical_relevance = (
++                1.0 + max(0.0, lexical_score) / (1.0 + max(0.0, lexical_score))
++                if lexical_entry
++                else 0.0
++            )
+             matched_ids = set()
+             if lexical_entry:
+                 matched_ids.update(lexical_entry[1])
+@@ -178,6 +190,8 @@ class SearchService:
+                 resolved_at=canonical_question.resolved_at,
+                 visibility=canonical_question.visibility,
+                 answer_id=answer.id if answer else None,
++                organisation_name=organisation_name or "Organisation",
++                relevance_score=max(lexical_relevance, semantic_similarity),
+                 challenge_count=challenge_count,
+                 has_open_challenge=challenge_count > 0,
+             )
+diff --git a/backend/scripts/backfill_private_knowledge_embeddings.py b/backend/scripts/backfill_private_knowledge_embeddings.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d59ff5953e96a0512ef1e89eab59a6ff29d1be87
+--- /dev/null
++++ b/backend/scripts/backfill_private_knowledge_embeddings.py
+@@ -0,0 +1,76 @@
++"""Opt-in backfill for real-provider semantic search of existing private Knowledge."""
++
++import asyncio
++
++from sqlalchemy import select
++from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
++
++from app.ai.embedding_provider import get_embedding_provider
++from app.ai.embedding_service import embedding_source_hash
++from app.ai.private_knowledge_embedding import (
++    private_knowledge_text,
++    sync_private_knowledge_embedding,
++)
++from app.core.config import get_settings
++from app.models.guest import GuestGroupEntry
++from app.models.personal_workspace import PersonalWorkspaceItem
++
++
++async def _backfill_model(session, provider, model, filters) -> int:
++    indexed = 0
++    last_id = None
++    while True:
++        statement = select(model).where(*filters)
++        if last_id is not None:
++            statement = statement.where(model.id > last_id)
++        rows = list(
++            await session.scalars(statement.order_by(model.id).limit(100))
++        )
++        if not rows:
++            return indexed
++        for item in rows:
++            last_id = item.id
++            current_hash = embedding_source_hash(
++                private_knowledge_text(item.title, item.data), provider.model_name
++            )
++            if (
++                item.embedding_model == provider.model_name
++                and item.embedding_source_hash == current_hash
++                and item.knowledge_embedding is not None
++            ):
++                continue
++            indexed += await sync_private_knowledge_embedding(
++                session, item, provider=provider
++            )
++
++
++async def main() -> None:
++    settings = get_settings()
++    provider = get_embedding_provider(settings)
++    if provider.model_name.startswith("deterministic-fake-"):
++        raise SystemExit("Use a real configured embedding provider for backfill.")
++    engine = create_async_engine(settings.database_url)
++    try:
++        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
++            personal_count = await _backfill_model(
++                session,
++                provider,
++                PersonalWorkspaceItem,
++                (PersonalWorkspaceItem.kind == "knowledge",),
++            )
++            group_count = await _backfill_model(
++                session,
++                provider,
++                GuestGroupEntry,
++                (GuestGroupEntry.kind == "knowledge",),
++            )
++        print(
++            "Indexed private Knowledge records: "
++            f"personal={personal_count}, groups={group_count}"
++        )
++    finally:
++        await engine.dispose()
++
++
++if __name__ == "__main__":
++    asyncio.run(main())
+diff --git a/backend/tests/conftest.py b/backend/tests/conftest.py
+index 3039f32a5b12510bbda76b2ec151e3d14c908a84..c408c14891a3673f3f21865f22bb9086c25d6212 100644
+--- a/backend/tests/conftest.py
++++ b/backend/tests/conftest.py
+@@ -6,6 +6,10 @@ from fastapi import Request
+ from httpx import ASGITransport, AsyncClient
+ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+ 
++from app.ai.embedding_provider import (
++    DeterministicFakeEmbeddingProvider,
++    EmbeddingProviderError,
++)
+ from app.core.database import get_session
+ from app.api.dependencies import (
+     AuthenticatedIdentity,
+@@ -16,10 +20,47 @@ from app.main import app
+ from app.models import Base
+ 
+ 
++class _UnavailableEmbeddingProvider:
++    model_name = "test-provider-unavailable"
++    dimensions = 1536
++
++    async def embed_text(self, _text: str) -> list[float]:
++        raise EmbeddingProviderError("Embedding calls are disabled in tests.")
++
++
+ @pytest_asyncio.fixture
+-async def app_client() -> AsyncIterator[
++async def app_client(monkeypatch) -> AsyncIterator[
+     tuple[AsyncClient, async_sessionmaker[AsyncSession]]
+ ]:
++    from app.services import guest as guest_service
++    from app.services import personal_workspace as personal_workspace_service
++    from app.services import answer as answer_service
++    from app.services import canonical as canonical_service
++    from app.services import governance as governance_service
++    from app.services import question as question_service
++    from app.api.v1.routes import questions as questions_route
++
++    def fake_provider(settings=None):
++        return _UnavailableEmbeddingProvider()
++
++    monkeypatch.setattr(
++        guest_service,
++        "get_embedding_provider",
++        fake_provider,
++    )
++    monkeypatch.setattr(
++        personal_workspace_service,
++        "get_embedding_provider",
++        fake_provider,
++    )
++    for service in (
++        answer_service,
++        canonical_service,
++        governance_service,
++        question_service,
++    ):
++        monkeypatch.setattr(service, "get_embedding_provider", fake_provider)
++    monkeypatch.setattr(questions_route, "get_embedding_provider", fake_provider)
+     test_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
+ 
+diff --git a/backend/tests/test_answer_governance.py b/backend/tests/test_answer_governance.py
+index 3fa08f0417b45283a66429053ce2f15e76822fcb..871f666e7d5aeed8e46b933e21ec5afcb6f1f366 100644
+--- a/backend/tests/test_answer_governance.py
++++ b/backend/tests/test_answer_governance.py
+@@ -14,6 +14,7 @@ from app.models.question import Question, QuestionStatus
+ from app.models.user import User, UserRole
+ from app.schemas.governance import FreshnessStatus
+ from app.services.freshness import answer_freshness
++from app.services import governance as governance_module
+ 
+ 
+ async def seed_governance(session_factory):
+@@ -182,6 +183,48 @@ async def test_verification_permissions_metadata_and_audit(app_client) -> None:
+         assert AuditAction.ANSWER_VERSION_CREATED.value in actions
+ 
+ 
++@pytest.mark.asyncio
++async def test_verification_and_accepted_challenges_refresh_answer_embeddings(
++    app_client, monkeypatch
++) -> None:
++    client, session_factory = app_client
++    ids = await seed_governance(session_factory)
++    synced_questions = []
++
++    async def record_sync(_service, question):
++        synced_questions.append(question.id)
++        return True
++
++    monkeypatch.setattr(
++        governance_module.EmbeddingService, "sync_question", record_sync
++    )
++    answer_id = ids["finance_answer"]
++    for path in ("verify", "unverify", "verify"):
++        response = await client.post(
++            f"/api/v1/answers/{answer_id}/{path}",
++            headers=headers(ids, "finance_owner"),
++            json={},
++        )
++        assert response.status_code == 200, response.text
++    challenge = await client.post(
++        f"/api/v1/answers/{answer_id}/challenges",
++        headers=headers(ids, "employee"),
++        json={
++            "type": "outdated",
++            "reason": "The process changed.",
++            "suggested_answer": "Use the new mileage portal.",
++        },
++    )
++    assert challenge.status_code == 201, challenge.text
++    accepted = await client.post(
++        f"/api/v1/challenges/{challenge.json()['id']}/accept",
++        headers=headers(ids, "finance_owner"),
++        json={},
++    )
++    assert accepted.status_code == 200, accepted.text
++    assert synced_questions == [ids["finance_question"]] * 4
++
++
+ @pytest.mark.asyncio
+ async def test_replacing_verified_answer_supersedes_and_versions(app_client) -> None:
+     client, session_factory = app_client
+diff --git a/backend/tests/test_canonical_questions.py b/backend/tests/test_canonical_questions.py
+index e22e1277530fbe01e791a353c6491b16192106ce..0231bc3f3a7ed73eaecd37554a249ba3f880f790 100644
+--- a/backend/tests/test_canonical_questions.py
++++ b/backend/tests/test_canonical_questions.py
+@@ -115,6 +115,46 @@ async def test_owner_merges_multiple_questions_and_preserves_history(app_client)
+     }
+ 
+ 
++@pytest.mark.asyncio
++async def test_merge_and_unmerge_refresh_canonical_search_embeddings(
++    app_client, monkeypatch
++) -> None:
++    client, session_factory = app_client
++    ids = await seed_governance(session_factory)
++    alias_id, _ = await add_question(
++        session_factory, ids, "Where do I find the travel policy?"
++    )
++    synced_questions = []
++
++    async def record_sync(_service, question):
++        synced_questions.append(question.id)
++        return True
++
++    monkeypatch.setattr(
++        canonical_module.EmbeddingService, "sync_question", record_sync
++    )
++    merged = await client.post(
++        f"/api/v1/questions/{ids['finance_question']}/merge",
++        headers=headers(ids, "finance_owner"),
++        json={
++            "duplicate_question_ids": [str(alias_id)],
++            "reason": "Same travel process",
++        },
++    )
++    assert merged.status_code == 200, merged.text
++    unmerged = await client.post(
++        f"/api/v1/questions/{alias_id}/unmerge",
++        headers=headers(ids, "finance_owner"),
++        json={"reason": "Search content should stand alone"},
++    )
++    assert unmerged.status_code == 200, unmerged.text
++    assert synced_questions == [
++        ids["finance_question"],
++        alias_id,
++        ids["finance_question"],
++    ]
++
++
+ @pytest.mark.asyncio
+ async def test_answer_conflict_requires_selection_and_copies_without_moving(app_client) -> None:
+     client, session_factory = app_client
 diff --git a/backend/tests/test_embeddings.py b/backend/tests/test_embeddings.py
-index d19a8bf..1a48244 100644
+index d19a8bf92b8ee736c877b600cc7a4c8aeb4e13b3..8fa77472b290993b23d52d96a91131f577c66600 100644
 --- a/backend/tests/test_embeddings.py
 +++ b/backend/tests/test_embeddings.py
-@@ -7,6 +7,7 @@ from app.ai.embedding_service import (
+@@ -2,11 +2,13 @@ import pytest
+ from sqlalchemy import select
+ 
+ from app.ai.embedding_provider import DeterministicFakeEmbeddingProvider
++from app.ai.embedding_provider import EmbeddingProviderError
+ from app.ai.embedding_service import (
+     EmbeddingService,
      embedding_source_hash,
      question_embedding_text,
  )
@@ -1129,27 +2802,37 @@ index d19a8bf..1a48244 100644
  from app.models.organisation import Organisation
  from app.models.question import Question
  from app.models.question_embedding import QuestionEmbedding
-@@ -23,10 +24,16 @@ class CountingEmbeddingProvider(DeterministicFakeEmbeddingProvider):
+@@ -23,10 +25,26 @@ class CountingEmbeddingProvider(DeterministicFakeEmbeddingProvider):
          return await super().embed_text(text)
  
  
 -def test_embedding_input_contains_only_question_content() -> None:
 -    text = question_embedding_text("  Mileage claims  ", "  How do I submit one? ")
++class FailingEmbeddingProvider(CountingEmbeddingProvider):
++    @property
++    def model_name(self) -> str:
++        return "test-real-model"
+ 
+-    assert text == "Mileage claims\n\nHow do I submit one?"
++    async def embed_text(self, text: str) -> list[float]:
++        self.calls += 1
++        raise EmbeddingProviderError("test provider unavailable")
++
++
 +def test_embedding_input_contains_question_and_answer_content() -> None:
 +    text = question_embedding_text(
 +        "  Mileage claims  ",
 +        "  How do I submit one? ",
 +        "  Use the approved travel form. ",
 +    )
- 
--    assert text == "Mileage claims\n\nHow do I submit one?"
++
 +    assert text == (
 +        "Mileage claims\n\nHow do I submit one?\n\nUse the approved travel form."
 +    )
      assert embedding_source_hash(text, "model-a") == embedding_source_hash(
          text,
          "model-a",
-@@ -61,6 +68,15 @@ async def test_embedding_sync_skips_unchanged_and_updates_changed_question(
+@@ -61,6 +79,15 @@ async def test_embedding_sync_skips_unchanged_and_updates_changed_question(
              body="Travel expense details",
          )
          session.add(question)
@@ -1165,7 +2848,7 @@ index d19a8bf..1a48244 100644
          await session.commit()
  
          service = EmbeddingService(session, provider)
-@@ -71,7 +87,10 @@ async def test_embedding_sync_skips_unchanged_and_updates_changed_question(
+@@ -71,7 +98,10 @@ async def test_embedding_sync_skips_unchanged_and_updates_changed_question(
          question.body = "Updated travel expense details"
          await session.commit()
          assert await service.sync_question(question) is True
@@ -1177,11 +2860,67 @@ index d19a8bf..1a48244 100644
  
          stored = (
              await session.execute(
+@@ -81,4 +111,44 @@ async def test_embedding_sync_skips_unchanged_and_updates_changed_question(
+             )
+         ).scalar_one()
+         assert stored.embedding_model == provider.model_name
+-        assert len(stored.embedding) == provider.dimensions
+\ No newline at end of file
++        assert len(stored.embedding) == provider.dimensions
++
++
++@pytest.mark.asyncio
++async def test_failed_reindex_removes_stale_question_embedding(app_client) -> None:
++    _, session_factory = app_client
++    provider = CountingEmbeddingProvider()
++    provider._model_name = "test-real-model"
++    async with session_factory() as session:
++        organisation = Organisation(name="Stale", slug="stale-embedding-example")
++        session.add(organisation)
++        await session.flush()
++        author = User(
++            organisation_id=organisation.id,
++            email="stale-embedding@example.test",
++            display_name="Stale Embedding Tester",
++        )
++        session.add(author)
++        await session.flush()
++        question = Question(
++            organisation_id=organisation.id,
++            author_id=author.id,
++            title="Current title",
++            body="Original content",
++        )
++        session.add(question)
++        await session.commit()
++
++        service = EmbeddingService(session, provider)
++        await service.sync_question(question)
++        question.body = "Changed content"
++        await session.commit()
++        with pytest.raises(EmbeddingProviderError):
++            await EmbeddingService(
++                session, FailingEmbeddingProvider()
++            ).sync_question(question)
++        assert await session.scalar(
++            select(QuestionEmbedding).where(
++                QuestionEmbedding.question_id == question.id
++            )
++        ) is None
+\ No newline at end of file
 diff --git a/backend/tests/test_guest_groups.py b/backend/tests/test_guest_groups.py
-index 0abb8ea..0abd120 100644
+index 0abb8eaf9e2b899786ec6cba71934bd2d26417f1..6d6dc0af91388a09e7a0e018e9f46029d77aac12 100644
 --- a/backend/tests/test_guest_groups.py
 +++ b/backend/tests/test_guest_groups.py
-@@ -160,6 +160,7 @@ async def test_all_group_routes_require_verified_registered_identity(
+@@ -4,6 +4,7 @@ from uuid import UUID
+ import pytest
+ from sqlalchemy import func, select
+ 
++from app.ai.embedding_provider import DeterministicFakeEmbeddingProvider
+ from app.api import dependencies
+ from app.api.dependencies import enforce_tenant_scope, get_development_identity
+ from app.main import app
+@@ -160,6 +161,7 @@ async def test_all_group_routes_require_verified_registered_identity(
          ("DELETE", f"/api/v1/guest/groups/{group_id}/permanent", None, None),
          ("DELETE", f"/api/v1/guest/groups/{group_id}", None, None),
          ("GET", f"/api/v1/guest/groups/{group_id}/entries", None, None),
@@ -1189,7 +2928,7 @@ index 0abb8ea..0abd120 100644
          (
              "POST",
              f"/api/v1/guest/groups/{group_id}/entries",
-@@ -245,6 +246,67 @@ async def test_all_group_routes_require_verified_registered_identity(
+@@ -245,6 +247,82 @@ async def test_all_group_routes_require_verified_registered_identity(
      assert account_state.json() == {"status": "shared_guest"}
  
  
@@ -1199,6 +2938,11 @@ index 0abb8ea..0abd120 100644
 +) -> None:
 +    client, _ = app_client
 +    install_test_tokens(monkeypatch)
++    monkeypatch.setattr(
++        guest_service,
++        "get_embedding_provider",
++        lambda: DeterministicFakeEmbeddingProvider(),
++    )
 +    group = await make_group(client, "search-owner", "Travel policies")
 +    headers = bearer("search-owner")
 +    knowledge = await client.post(
@@ -1232,6 +2976,16 @@ index 0abb8ea..0abd120 100644
 +        knowledge.json()["id"]
 +    ]
 +    assert owner_results.json()["results"][0]["group_name"] == "Travel policies"
++    assert owner_results.json()["results"][0]["match_method"] == "keyword"
++
++    short_query_results = await client.get(
++        "/api/v1/guest/groups/search-knowledge?query=mi",
++        headers=headers,
++    )
++    assert short_query_results.status_code == 200, short_query_results.text
++    assert [
++        item["id"] for item in short_query_results.json()["results"]
++    ] == [knowledge.json()["id"]]
 +
 +    other_results = await client.get(
 +        "/api/v1/guest/groups/search-knowledge?query=mileage",
@@ -1257,11 +3011,146 @@ index 0abb8ea..0abd120 100644
  @pytest.mark.asyncio
  async def test_anonymous_same_uid_cannot_reuse_registered_group_access(
      app_client, monkeypatch
+diff --git a/backend/tests/test_personal_workspace.py b/backend/tests/test_personal_workspace.py
+index 7745495897e0b71da5ea32cd0387a871e17fcd14..d121626166c4b63113a6887d977e753dce075297 100644
+--- a/backend/tests/test_personal_workspace.py
++++ b/backend/tests/test_personal_workspace.py
+@@ -4,6 +4,7 @@ from uuid import UUID
+ import pytest
+ from sqlalchemy import func, select
+ 
++from app.ai.embedding_provider import DeterministicFakeEmbeddingProvider
+ from app.api import dependencies
+ from app.main import app
+ from app.models.personal_workspace import PersonalWorkspaceItem
+@@ -51,6 +52,10 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
+ ) -> None:
+     client, session_factory = app_client
+     install_test_tokens(monkeypatch)
++    monkeypatch.setattr(
++        "app.services.personal_workspace.get_embedding_provider",
++        lambda: DeterministicFakeEmbeddingProvider(),
++    )
+     nested_session = {
+         "kind": "interact_session",
+         "source_key": "session:local-session",
+@@ -132,6 +137,24 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
+         "interact_session",
+         "template",
+     }
++    private_search = await client.get(
++        "/api/v1/personal/items/search",
++        headers=headers,
++        params={"query": "sentinel"},
++    )
++    assert private_search.status_code == 200, private_search.text
++    assert [item["id"] for item in private_search.json()["results"]] == [
++        result["items"][0]["id"]
++    ]
++    assert private_search.json()["results"][0]["match_method"] == "keyword"
++    assert private_search.json()["results"][0]["source_id"] == "local-id"
++    other_private_search = await client.get(
++        "/api/v1/personal/items/search",
++        headers=bearer("other"),
++        params={"query": "sentinel"},
++    )
++    assert other_private_search.status_code == 200
++    assert other_private_search.json() == {"results": [], "partial": False}
+     item_id = UUID(result["items"][0]["id"])
+     assert (await client.get("/api/v1/personal/items", headers=bearer("other"))).json() == []
+     denied_update = await client.put(
+@@ -524,3 +547,51 @@ async def test_personal_import_concurrent_replay_and_invalid_batch_are_atomic(
+             select(func.count()).select_from(PersonalWorkspaceItem)
+         )
+     assert count == 1
++
++
++@pytest.mark.asyncio
++async def test_personal_search_covers_all_owner_items_beyond_first_page(
++    app_client, monkeypatch
++) -> None:
++    client, _ = app_client
++    install_test_tokens(monkeypatch)
++    monkeypatch.setattr(
++        "app.services.personal_workspace.get_embedding_provider",
++        lambda: DeterministicFakeEmbeddingProvider(),
++    )
++    items = []
++    for index in range(35):
++        source_id = f"item-{index}"
++        data = {
++            "id": source_id,
++            "title": f"Personal item {index}",
++            "body": "rare full scope marker" if index == 34 else "ordinary entry",
++        }
++        items.append(
++            {
++                "kind": "knowledge",
++                "source_key": f"knowledge:{source_id}",
++                "title": data["title"],
++                "data": data,
++            }
++        )
++    headers = bearer("complete-account-scope")
++    imported = await client.post(
++        "/api/v1/personal/items/import",
++        headers=headers,
++        json={"items": items},
++    )
++    assert imported.status_code == 201, imported.text
++
++    listed = await client.get("/api/v1/personal/items", headers=headers)
++    assert len(listed.json()) == len(items)
++    search = await client.get(
++        "/api/v1/personal/items/search",
++        headers=headers,
++        params={"query": "full scope marker", "limit": 1},
++    )
++    assert search.status_code == 200, search.text
++    assert [result["source_id"] for result in search.json()["results"]] == [
++        "item-34"
++    ]
++    assert search.json()["partial"] is False
 diff --git a/backend/tests/test_search_postgresql_integration.py b/backend/tests/test_search_postgresql_integration.py
-index f3cf0bf..572a7f8 100644
+index f3cf0bfbe7a2b71b584c93c69b1764405e17b1c7..f2c1215fea28e53d2c8d4ebc8eb9e836d1b2ec8a 100644
 --- a/backend/tests/test_search_postgresql_integration.py
 +++ b/backend/tests/test_search_postgresql_integration.py
-@@ -30,6 +30,12 @@ async def test_lexical_candidates_execute_on_postgresql() -> None:
+@@ -1,4 +1,5 @@
+ import os
++from datetime import UTC, datetime, timedelta
+ from uuid import uuid4
+ 
+ import pytest
+@@ -7,10 +8,28 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+ 
+ from app.models import Base
+ from app.models.answer import Answer, AnswerStatus
++from app.models.guest import (
++    GuestGroup,
++    GuestGroupEntry,
++    GuestGroupMembership,
++)
+ from app.models.organisation import Organisation
++from app.models.personal_workspace import PersonalWorkspaceItem
+ from app.models.question import Question, QuestionStatus
+ from app.models.user import User
++from app.ai.embedding_service import embedding_source_hash
++from app.ai.private_knowledge_embedding import private_knowledge_text
+ from app.repositories.search import SearchRepository
++from app.services.guest import GuestService
++from app.services.personal_workspace import PersonalWorkspaceService
++
++
++class FixedEmbeddingProvider:
++    model_name = "test-real-embedding"
++    dimensions = 1536
++
++    async def embed_text(self, _text: str) -> list[float]:
++        return [1.0] + [0.0] * (self.dimensions - 1)
+ 
+ 
+ @pytest.mark.asyncio
+@@ -30,6 +49,12 @@ async def test_lexical_candidates_execute_on_postgresql() -> None:
                  await connection.execute(
                      text(f'SET search_path TO "{schema_name}", public')
                  )
@@ -1274,7 +3163,7 @@ index f3cf0bf..572a7f8 100644
                  await connection.run_sync(Base.metadata.create_all)
                  await connection.commit()
  
-@@ -78,6 +84,28 @@ async def test_lexical_candidates_execute_on_postgresql() -> None:
+@@ -78,6 +103,151 @@ async def test_lexical_candidates_execute_on_postgresql() -> None:
                      )
                      assert candidates
                      assert candidates[0][0].id == question.id
@@ -1300,11 +3189,134 @@ index f3cf0bf..572a7f8 100644
 +                    )
 +                    assert typo_candidates
 +                    assert typo_candidates[0][0].id == question.id
++            finally:
++                await connection.rollback()
++                await connection.execute(
++                    text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
++                )
++                await connection.commit()
++    finally:
++        await engine.dispose()
++
++
++@pytest.mark.asyncio
++async def test_private_semantic_search_is_owner_and_membership_scoped() -> None:
++    database_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
++    if not database_url:
++        pytest.skip("POSTGRES_TEST_DATABASE_URL is not configured")
++
++    engine = create_async_engine(database_url)
++    schema_name = f"private_search_test_{uuid4().hex}"
++    provider = FixedEmbeddingProvider()
++    try:
++        async with engine.connect() as connection:
++            await connection.execute(text(f'CREATE SCHEMA "{schema_name}"'))
++            await connection.commit()
++            try:
++                await connection.execute(
++                    text(f'SET search_path TO "{schema_name}", public')
++                )
++                await connection.run_sync(Base.metadata.create_all)
++                await connection.commit()
++                async with AsyncSession(
++                    bind=connection,
++                    expire_on_commit=False,
++                ) as session:
++                    vector = await provider.embed_text("semantic query")
++                    personal_items = []
++                    for uid in ("personal-owner-a", "personal-owner-b"):
++                        title = f"Private record {uid}"
++                        data = {
++                            "id": uid,
++                            "title": title,
++                            "body": "Content unrelated to the query",
++                        }
++                        personal_items.append(
++                            PersonalWorkspaceItem(
++                                firebase_uid=uid,
++                                source_key=f"knowledge:{uid}",
++                                kind="knowledge",
++                                title=title,
++                                data=data,
++                                revision=1,
++                                knowledge_embedding=vector,
++                                embedding_model=provider.model_name,
++                                embedding_source_hash=embedding_source_hash(
++                                    private_knowledge_text(title, data),
++                                    provider.model_name,
++                                ),
++                            )
++                        )
++                    session.add_all(personal_items)
++
++                    entries = []
++                    for uid in ("group-owner-a", "group-owner-b"):
++                        group = GuestGroup(
++                            name=f"Group for {uid}",
++                            created_by_uid=uid,
++                            expires_at=datetime.now(UTC) + timedelta(days=1),
++                        )
++                        await session.flush()
++                        session.add(
++                            GuestGroupMembership(
++                                group_id=group.id,
++                                firebase_uid=uid,
++                                display_name=uid,
++                                role="admin",
++                                status="active",
++                                approved_by_uid=uid,
++                            )
++                        )
++                        title = f"Group record {uid}"
++                        data = {"body": "Content unrelated to the query"}
++                        entries.append(
++                            GuestGroupEntry(
++                                group_id=group.id,
++                                kind="knowledge",
++                                title=title,
++                                data=data,
++                                created_by_uid=uid,
++                                updated_by_uid=uid,
++                                revision=1,
++                                knowledge_embedding=vector,
++                                embedding_model=provider.model_name,
++                                embedding_source_hash=embedding_source_hash(
++                                    private_knowledge_text(title, data),
++                                    provider.model_name,
++                                ),
++                            )
++                        )
++                    session.add_all(entries)
++                    await session.commit()
++
++                    owner_results = await PersonalWorkspaceService(
++                        session, provider
++                    ).search_knowledge("personal-owner-a", "semantic query")
++                    assert [
++                        item["title"] for item in owner_results["results"]
++                    ] == ["Private record personal-owner-a"]
++                    outsider_results = await PersonalWorkspaceService(
++                        session, provider
++                    ).search_knowledge("personal-outsider", "semantic query")
++                    assert outsider_results == {"results": [], "partial": False}
++
++                    member_results = await GuestService(
++                        session, provider
++                    ).search_member_knowledge("group-owner-a", "semantic query")
++                    assert [
++                        item["title"] for item in member_results["results"]
++                    ] == ["Group record group-owner-a"]
++                    nonmember_results = await GuestService(
++                        session, provider
++                    ).search_member_knowledge(
++                        "group-outsider", "semantic query"
++                    )
++                    assert nonmember_results == {"results": [], "partial": False}
              finally:
                  await connection.rollback()
                  await connection.execute(
 diff --git a/backend/tests/test_search_service.py b/backend/tests/test_search_service.py
-index 442e71c..395a495 100644
+index 442e71cf4043e7f11379f2ebce2a3aec1f1348f6..395a49532d72c84a57611ef2c97e47c5e576799d 100644
 --- a/backend/tests/test_search_service.py
 +++ b/backend/tests/test_search_service.py
 @@ -186,7 +186,7 @@ async def test_semantic_candidate_limit_partitions_by_canonical_question() -> No
@@ -1347,3 +3359,62 @@ index 442e71c..395a495 100644
  @pytest.mark.asyncio
  async def test_search_ranks_fresh_verified_before_overdue_and_community() -> None:
      now = datetime(2026, 2, 1, tzinfo=UTC)
+diff --git a/backend/tests/test_unified_search_migration.py b/backend/tests/test_unified_search_migration.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..37616a0f2cbb1b3b1fb922082bcc8e2767194eec
+--- /dev/null
++++ b/backend/tests/test_unified_search_migration.py
+@@ -0,0 +1,20 @@
++from pathlib import Path
++
++from alembic.config import Config
++from alembic.script import ScriptDirectory
++
++
++def test_unified_search_migration_follows_personal_workspace_revision() -> None:
++    backend_root = Path(__file__).resolve().parents[1]
++    config = Config(str(backend_root / "alembic.ini"))
++    config.set_main_option("script_location", str(backend_root / "alembic"))
++    scripts = ScriptDirectory.from_config(config)
++
++    personal_workspace = scripts.get_revision("0013")
++    unified_search = scripts.get_revision("0014")
++
++    assert personal_workspace is not None
++    assert unified_search is not None
++    assert personal_workspace.down_revision == "0012"
++    assert unified_search.down_revision == "0013"
++    assert scripts.get_heads() == ["0014"]
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 0741513d7b5b2650ad210f783fb373044ff332b2..7fb7a258a5a9d534c7dd1ac41f0fd6ff61d77d85 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -152,12 +152,24 @@ infer the user's formal department.
+ 
+ ## Semantic search
+ 
+-- Canonical embedding input is the trimmed question title followed by the body,
+-  when present. Author, tenant, timestamps, reactions, and answers are excluded.
++- Canonical embedding input is the trimmed question title and body, followed by
++  the best eligible verified or accepted answer when present. Author, tenant,
++  timestamps, and reactions are excluded.
+ - `question_embeddings` stores vectors separately from questions. A source hash
+   avoids provider calls when text and model are unchanged.
+ - Question creation and title/body updates commit before best-effort embedding
+   synchronization, so provider outages do not make core Q&A writes unusable.
++- Verification, unverification, accepted challenge replacements, canonical
++  merge/unmerge, and question restoration also synchronize affected vectors.
++  Changed vectors are removed before re-embedding, so provider failures leave
++  keyword search available rather than exposing stale semantic results.
++- Personal-account and Group Knowledge vectors live on their own source rows,
++  not in `question_embeddings`. Personal queries filter by Firebase UID and
++  Group queries filter by active membership, group archive state, and expiry
++  before ranking; stored source hashes are checked before a vector can match.
++  Writes synchronize new and changed records. Existing records can be indexed
++  with `cd backend && python scripts/backfill_private_knowledge_embeddings.py`;
++  this is an explicit operator action and is not part of migrations.
+ - The default provider uses an OpenAI-compatible embeddings API. A deterministic
+   fake implements the same interface for tests and local development.
+ - Candidate retrieval uses pgvector cosine distance. The search service owns
+-- 
+2.45.0
