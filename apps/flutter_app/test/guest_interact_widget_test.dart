@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -855,11 +856,128 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('malformed nested backup is rejected and input is retained', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'existing', 'title': 'Existing local item'},
+        ],
+      ),
+    );
+    final existingStoredValue = storage.value;
+    const malformedBackup = '''
+{
+  "schema_version": 1,
+  "knowledge": [],
+  "sessions": [
+    {
+      "id": "bad",
+      "questions": [
+        {"id": "root", "answers": [null]}
+      ]
+    }
+  ],
+  "templates": []
+}
+''';
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local JSON backup'));
+    await tester.pumpAndSettle();
+    await tester.enterText(_field('Paste backup JSON'), malformedBackup);
+    await tester.tap(find.text('Preview import'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('This is not a valid IntQAFlow local JSON backup.'),
+      findsOneWidget,
+    );
+    expect(storage.value, existingStoredValue);
+    expect((await store.load()).knowledge.single['title'], 'Existing local item');
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local JSON backup'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(_field('Paste backup JSON')).controller!.text,
+      malformedBackup,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('malformed nested stored content remains unchanged and retryable', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage()
+      ..value = jsonEncode({
+        'schema_version': 1,
+        'knowledge': [],
+        'sessions': [
+          {
+            'id': 'session',
+            'participants': [
+              {'id': 'participant', 'name': 'Alice'},
+            ],
+            'questions': [
+              {
+                'id': 'root',
+                'answers': [
+                  {
+                    'participant_id': 'participant',
+                    'follow_ups': [
+                      {'id': 'branch', 'answers': [null]},
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        'templates': [],
+      });
+    final original = storage.value;
+    final store = GuestWorkspaceStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('stored copy was not changed'), findsOneWidget);
+    expect(find.text('Retry loading'), findsOneWidget);
+    expect(storage.value, original);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a stale save completion never reports newer edits as saved', (
     tester,
   ) async {
     final storage = _MemoryGuestStorage();
-    await GuestWorkspaceStore(storage).save(const GuestWorkspaceData());
     final store = _DelayedFirstSaveStore(storage);
     await tester.pumpWidget(
       ProviderScope(
@@ -893,6 +1011,141 @@ void main() {
     ]);
     expect(store.writeSnapshots.last, ['Latest change', 'First change']);
     expect(find.textContaining('Saved on this device'), findsOneWidget);
+  });
+
+  testWidgets('queued local save flushes when the workspace is disposed', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(_field('Question'), 'Queued before navigation');
+    final saveButton = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+
+    expect(
+      (await store.load()).knowledge.single['title'],
+      'Queued before navigation',
+    );
+  });
+
+  testWidgets('dispose serializes newer work after an in-flight save', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage();
+    final store = _DelayedFirstSaveStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final saveButton = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.enterText(_field('Question'), 'First in-flight change');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pump(const Duration(milliseconds: 300));
+    await store.firstWriteStarted.future;
+    await tester.enterText(_field('Question'), 'Latest queued change');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    store.releaseFirstWrite();
+    await tester.pumpAndSettle();
+
+    expect(
+      store.writeSnapshots,
+      [
+        ['First in-flight change'],
+        ['Latest queued change', 'First in-flight change'],
+      ],
+    );
+    expect(
+      (await store.load()).knowledge.map((item) => item['title']),
+      ['Latest queued change', 'First in-flight change'],
+    );
+  });
+
+  testWidgets('failed disposed save remains recoverable after navigation', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage();
+    final store = _DelayedFirstSaveStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final saveButton = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.enterText(_field('Question'), 'First failed change');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pump(const Duration(milliseconds: 300));
+    await store.firstWriteStarted.future;
+    await tester.enterText(_field('Question'), 'Latest recoverable change');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    storage.failWrites = true;
+    store.releaseFirstWrite();
+    await tester.pumpAndSettle();
+    expect(store.hasPendingChanges, isTrue);
+    expect(storage.value, isNull);
+    expect(
+      (await store.load()).knowledge.map((item) => item['title']),
+      ['Latest recoverable change', 'First failed change'],
+    );
+
+    storage.failWrites = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Your changes are not saved. Keep this page open and retry.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Retry saving'));
+    await tester.pumpAndSettle();
+
+    expect(store.hasPendingChanges, isFalse);
+    expect(
+      (await store.load()).knowledge.map((item) => item['title']),
+      ['Latest recoverable change', 'First failed change'],
+    );
   });
 
   testWidgets('corrupt local data is preserved and the initial load can retry', (

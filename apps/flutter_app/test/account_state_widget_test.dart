@@ -509,6 +509,57 @@ void main() {
     );
   });
 
+  testWidgets('unexpected sign-in exceptions show a safe retry message', (
+    tester,
+  ) async {
+    final auth = _TestFirebaseAuth(null);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(home: SignInPage()),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+    await tester.enterText(find.byType(TextField).last, 'secret-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(auth.signInAttempts, 1);
+    expect(
+      find.text('Unable to complete sign-in. Check your connection and try again.'),
+      findsOneWidget,
+    );
+    final renderedText = tester.widgetList<Text>(
+      find.descendant(
+        of: find.byType(SignInPage),
+        matching: find.byType(Text),
+      ),
+    ).map((widget) => widget.data ?? '');
+    expect(
+      renderedText.any((text) => text.contains('Unexpected sign-in')),
+      isFalse,
+    );
+    expect(
+      renderedText.any((text) => text.contains('secret-password')),
+      isFalse,
+    );
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      'account@example.test',
+    );
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+      'secret-password',
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Sign in'))
+          .onPressed,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('an active diagnostic attempt cannot block an ordinary sign-in', (
     tester,
   ) async {

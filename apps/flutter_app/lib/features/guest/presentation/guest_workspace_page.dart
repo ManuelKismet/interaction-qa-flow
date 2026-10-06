@@ -70,16 +70,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   int _savedRevision = 0;
   Future<bool>? _saveOperation;
   Timer? _autosaveTimer;
+  late final GuestWorkspaceStore _workspaceStore;
 
   @override
   void initState() {
     super.initState();
+    _workspaceStore = ref.read(guestWorkspaceStoreProvider);
     _load();
   }
 
   @override
   void dispose() {
     _autosaveTimer?.cancel();
+    _autosaveTimer = null;
+    unawaited(_flushPendingSave());
     super.dispose();
   }
 
@@ -88,12 +92,18 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     final revisionAtStart = _dataRevision;
     setState(() => _isLoading = true);
     try {
-      final data = await ref.read(guestWorkspaceStoreProvider).load();
+      final data = await _workspaceStore.load();
       if (mounted) {
         setState(() {
           if (_dataRevision == revisionAtStart && _data == null) {
             _data = data;
-            _savedRevision = _dataRevision;
+            if (_workspaceStore.hasPendingChanges) {
+              _dataRevision++;
+              _unsavedChanges = true;
+              _saveStatus = 'Unable to save locally';
+            } else {
+              _savedRevision = _dataRevision;
+            }
           }
           _loadError = null;
         });
@@ -111,6 +121,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   }
 
   void _save(GuestWorkspaceData data) {
+    _workspaceStore.rememberPending(data);
     setState(() {
       _data = data;
       _dataRevision++;
@@ -123,29 +134,39 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     );
   }
 
-  Future<bool> _flushPendingSave() {
+  Future<bool> _flushPendingSave() async {
     _autosaveTimer?.cancel();
     _autosaveTimer = null;
-    final operation = _saveOperation;
-    if (operation != null) {
-      return operation.then(
-        (saved) => saved && _savedRevision == _dataRevision,
-      );
-    }
-    final nextOperation = _writeLatestSnapshots();
-    _saveOperation = nextOperation;
-    return nextOperation.whenComplete(() {
+    while (_savedRevision < _dataRevision) {
+      final operation = _saveOperation;
+      if (operation != null) {
+        final saved = await operation;
+        if (identical(_saveOperation, operation)) _saveOperation = null;
+        if (!saved) return false;
+        continue;
+      }
+      final nextOperation = _writeLatestSnapshots();
+      _saveOperation = nextOperation;
+      final saved = await nextOperation;
       if (identical(_saveOperation, nextOperation)) _saveOperation = null;
-    });
+      if (!saved) return false;
+    }
+    if (mounted && _savedRevision == _dataRevision) {
+      setState(() {
+        _saveStatus = 'Saved on this device';
+        _unsavedChanges = false;
+      });
+    }
+    return _savedRevision == _dataRevision;
   }
 
   Future<bool> _writeLatestSnapshots() async {
     try {
-      while (mounted && _savedRevision < _dataRevision) {
+      while (_savedRevision < _dataRevision) {
         final revision = _dataRevision;
         final snapshot = _data;
         if (snapshot == null) return false;
-        await ref.read(guestWorkspaceStoreProvider).save(snapshot);
+        await _workspaceStore.save(snapshot);
         _savedRevision = revision;
       }
       if (mounted && _savedRevision == _dataRevision) {
@@ -433,12 +454,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final saved = await _flushPendingSave();
-    if (!mounted) return;
     final latest = _data;
     if (latest == null) return;
-    final localChangesSaved =
-        saved && !_unsavedChanges && _savedRevision == _dataRevision;
+    final revisionAtCopy = _dataRevision;
     try {
       await Clipboard.setData(ClipboardData(text: latest.encodeBackup()));
     } on Object {
@@ -449,10 +467,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       return;
     }
     if (!mounted) return;
+    final newerWorkAdded = revisionAtCopy != _dataRevision;
+    final localChangesSaved =
+        !_unsavedChanges && _savedRevision == _dataRevision;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          localChangesSaved
+          newerWorkAdded
+              ? localChangesSaved
+                    ? 'Local JSON backup copied, but newer work was added while copying. Copy again to include it.'
+                    : 'Local JSON backup copied, but newer work was added while copying. Copy again to include it. Local changes are not saved; keep this page open and retry saving.'
+              : localChangesSaved
               ? 'Local JSON backup copied to clipboard.'
               : 'Local JSON backup copied to clipboard. Local changes are not saved. Keep this page open and retry saving.',
         ),

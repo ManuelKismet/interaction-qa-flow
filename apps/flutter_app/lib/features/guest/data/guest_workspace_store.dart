@@ -13,11 +13,20 @@ final guestWorkspaceStoreProvider = Provider<GuestWorkspaceStore>((ref) {
 });
 
 class GuestWorkspaceStore {
-  const GuestWorkspaceStore(this._storage);
+  GuestWorkspaceStore(this._storage);
 
   final GuestStorage _storage;
+  GuestWorkspaceData? _pendingData;
+
+  bool get hasPendingChanges => _pendingData != null;
+
+  void rememberPending(GuestWorkspaceData data) {
+    _pendingData = data;
+  }
 
   Future<GuestWorkspaceData> load() async {
+    final pending = _pendingData;
+    if (pending != null) return pending;
     final raw = _storage.read();
     if (raw == null || raw.isEmpty) return const GuestWorkspaceData();
     final decoded = jsonDecode(raw);
@@ -28,11 +37,18 @@ class GuestWorkspaceStore {
   }
 
   Future<void> save(GuestWorkspaceData data) async {
-    _storage.write(jsonEncode(data.toJson()));
+    try {
+      _storage.write(jsonEncode(data.toJson()));
+      if (identical(_pendingData, data)) _pendingData = null;
+    } on Object {
+      _pendingData ??= data;
+      rethrow;
+    }
   }
 
   Future<void> clear() async {
     _storage.remove();
+    _pendingData = null;
   }
 
   Future<GuestWorkspaceData> importSelected({

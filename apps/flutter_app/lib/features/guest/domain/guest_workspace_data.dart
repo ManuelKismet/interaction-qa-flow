@@ -33,9 +33,9 @@ class GuestWorkspaceData {
       throw const FormatException('Unsupported guest backup version.');
     }
     return GuestWorkspaceData(
-      knowledge: _maps(json['knowledge']),
-      sessions: _maps(json['sessions']),
-      templates: _maps(json['templates']),
+      knowledge: _maps(json['knowledge'], _validateKnowledge),
+      sessions: _maps(json['sessions'], _validateSession),
+      templates: _maps(json['templates'], _validateTemplate),
     );
   }
 
@@ -70,16 +70,117 @@ class GuestWorkspaceData {
     templates: templates ?? this.templates,
   );
 
-  static List<Map<String, dynamic>> _maps(Object? value) {
+  static List<Map<String, dynamic>> _maps(
+    Object? value,
+    void Function(Map<String, dynamic>) validate,
+  ) {
     if (value == null) return const [];
     if (value is! List) {
       throw const FormatException('Guest backup collections must be lists.');
     }
-    return [
-      for (final item in value)
-        if (item is Map<String, dynamic>) item else
-          throw const FormatException('Guest backup entries must be objects.'),
-    ];
+    final result = <Map<String, dynamic>>[];
+    for (final item in value) {
+      if (item is! Map<String, dynamic>) {
+        throw const FormatException('Guest backup entries must be objects.');
+      }
+      _requiredString(item, 'id');
+      validate(item);
+      result.add(item);
+    }
+    return result;
+  }
+
+  static void _validateKnowledge(Map<String, dynamic> item) {
+    _optionalStrings(item, const ['title', 'body', 'answer']);
+  }
+
+  static void _validateSession(Map<String, dynamic> session) {
+    _optionalString(session, 'title');
+    _validateObjects(session, 'participants', _validateParticipant);
+    _validateObjects(session, 'questions', _validateQuestion);
+  }
+
+  static void _validateTemplate(Map<String, dynamic> template) {
+    _optionalString(template, 'name');
+    _validateObjects(template, 'participant_slots', _validateParticipantSlot);
+    _validateObjects(template, 'questions', _validateQuestion);
+  }
+
+  static void _validateParticipant(Map<String, dynamic> participant) {
+    _requiredString(participant, 'id');
+    _optionalString(participant, 'name');
+  }
+
+  static void _validateParticipantSlot(Map<String, dynamic> slot) {
+    _optionalStrings(slot, const ['id', 'label']);
+  }
+
+  static void _validateQuestion(Map<String, dynamic> question) {
+    _requiredString(question, 'id');
+    _optionalStrings(question, const [
+      'text',
+      'scope',
+      'target_participant_id',
+      'target_participant_slot',
+    ]);
+    _validateObjects(question, 'answers', _validateAnswer);
+    _validateObjects(question, 'follow_ups', _validateQuestion);
+  }
+
+  static void _validateAnswer(Map<String, dynamic> answer) {
+    _optionalStrings(answer, const [
+      'participant_id',
+      'participant_slot',
+      'body',
+    ]);
+    final collapsed = answer['branches_collapsed'];
+    if (collapsed != null && collapsed is! bool) {
+      throw const FormatException('Guest backup answer fields are invalid.');
+    }
+    _validateObjects(answer, 'follow_ups', _validateQuestion);
+  }
+
+  static void _validateObjects(
+    Map<String, dynamic> parent,
+    String key,
+    void Function(Map<String, dynamic>) validate,
+  ) {
+    final value = parent[key];
+    if (value == null) return;
+    if (value is! List) {
+      throw const FormatException(
+        'Guest backup nested collections are invalid.',
+      );
+    }
+    for (final item in value) {
+      if (item is! Map<String, dynamic>) {
+        throw const FormatException(
+          'Guest backup nested entries must be objects.',
+        );
+      }
+      validate(item);
+    }
+  }
+
+  static void _requiredString(Map<String, dynamic> object, String key) {
+    if (object[key] is! String || (object[key] as String).isEmpty) {
+      throw const FormatException(
+        'Guest backup entry identifiers are invalid.',
+      );
+    }
+  }
+
+  static void _optionalStrings(Map<String, dynamic> object, List<String> keys) {
+    for (final key in keys) {
+      _optionalString(object, key);
+    }
+  }
+
+  static void _optionalString(Map<String, dynamic> object, String key) {
+    final value = object[key];
+    if (value != null && value is! String) {
+      throw const FormatException('Guest backup entry fields are invalid.');
+    }
   }
 }
 

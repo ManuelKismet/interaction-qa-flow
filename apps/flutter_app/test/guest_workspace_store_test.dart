@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
@@ -182,6 +184,66 @@ void main() {
     final root = (retried.sessions.single['questions'] as List).single;
     final branch = ((root as Map)['answers'] as List).single;
     expect((((branch as Map)['follow_ups'] as List).single as Map)['id'], 'nested');
+  });
+
+  test('malformed nested stored data is rejected without rewriting it', () async {
+    final storage = MemoryGuestStorage()
+      ..value = jsonEncode({
+        'schema_version': 1,
+        'knowledge': [],
+        'sessions': [
+          {
+            'id': 'session',
+            'participants': [
+              {'id': 'participant', 'name': 'Alice'},
+            ],
+            'questions': [
+              {
+                'id': 'root',
+                'answers': [
+                  {
+                    'participant_id': 'participant',
+                    'follow_ups': [
+                      {'id': 'branch', 'answers': [null]},
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        'templates': [],
+      });
+    final original = storage.value;
+
+    await expectLater(
+      GuestWorkspaceStore(storage).load(),
+      throwsFormatException,
+    );
+
+    expect(storage.value, original);
+  });
+
+  test('malformed nested backup templates are rejected', () {
+    final backup = jsonEncode({
+      'schema_version': 1,
+      'knowledge': [],
+      'sessions': [],
+      'templates': [
+        {
+          'id': 'template',
+          'name': 'Malformed template',
+          'questions': [
+            {'id': 'question', 'answers': 'not a list'},
+          ],
+        },
+      ],
+    });
+
+    expect(
+      () => GuestWorkspaceData.decodeBackup(backup),
+      throwsFormatException,
+    );
   });
 }
 

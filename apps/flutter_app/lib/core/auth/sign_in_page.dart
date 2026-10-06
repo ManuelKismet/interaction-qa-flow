@@ -4,6 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_diagnostics.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 
+void _completeDiagnosticSafely(AuthDiagnosticAttempt? attempt) {
+  try {
+    attempt?.complete();
+  } on Object {
+    return;
+  }
+}
+
 class SignInPage extends ConsumerStatefulWidget {
   const SignInPage({
     this.linkGuestIdentity = false,
@@ -269,21 +277,31 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       setState(() {
         _error = message;
       });
-    } catch (_) {
+    } on Object {
       try {
         if (diagnosticAttempt?.firebaseCallStarted == true) {
           diagnosticAttempt?.recordFirebaseFailure('other');
         } else {
-          diagnosticAttempt?.complete();
+          _completeDiagnosticSafely(diagnosticAttempt);
         }
       } on Object {
-        diagnosticAttempt?.complete();
+        _completeDiagnosticSafely(diagnosticAttempt);
       }
-      rethrow;
+      if (mounted) {
+        setState(() {
+          _error = isResetOperation
+              ? 'Unable to complete the password-reset request. Please try again later.'
+              : isSeparateAccountCreation
+              ? 'Unable to complete account creation. Check whether the account already exists before trying again.'
+              : _createAccountMode && _linkGuestMode
+              ? 'Unable to confirm account linking. Try signing in with this email first; do not start a separate account.'
+              : 'Unable to complete sign-in. Check your connection and try again.';
+        });
+      }
     } finally {
       if (diagnosticAttempt != null &&
           !diagnosticAttempt.firebaseCallSucceeded) {
-        diagnosticAttempt.complete();
+        _completeDiagnosticSafely(diagnosticAttempt);
       }
       if (mounted) setState(() => _busy = false);
     }
