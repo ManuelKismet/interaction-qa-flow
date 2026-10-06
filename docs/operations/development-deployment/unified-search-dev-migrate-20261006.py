@@ -59,7 +59,7 @@ async def privileges(url, after=False):
                 indexes = (await conn.execute(text(
                     "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexdef LIKE '%gin%'"
                 ))).scalars().all()
-                assert len(indexes) >= 3, "Trigram indexes missing"
+                assert {"ix_questions_title_trgm", "ix_questions_body_trgm", "ix_answers_body_trgm"}.issubset(indexes), "Trigram indexes missing"
     finally:
         await engine.dispose()
 
