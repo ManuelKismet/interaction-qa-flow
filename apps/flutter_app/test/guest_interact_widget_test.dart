@@ -7,6 +7,110 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 
 void main() {
+  testWidgets(
+    'Saved Q&A search edits and removes local entries and returns to the form',
+    (tester) async {
+      final storage = _MemoryGuestStorage();
+      final store = GuestWorkspaceStore(storage);
+      await store.save(
+        const GuestWorkspaceData(
+          knowledge: [
+            {
+              'id': 'password-rotation',
+              'title': 'Password rotation',
+              'body': 'Rotate keys quarterly.',
+              'answer': 'Use the approved vault.',
+              'visibility': 'local_guest',
+            },
+            {
+              'id': 'incident-response',
+              'title': 'Incident response',
+              'body': 'Notify the response lead.',
+              'answer': 'Follow the local runbook.',
+              'visibility': 'local_guest',
+            },
+          ],
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+          child: const MaterialApp(
+            home: GuestWorkspacePage(firebaseReady: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add a local question'), findsOneWidget);
+      expect(find.text('Password rotation'), findsNothing);
+      await tester.tap(find.text('Saved Q&A'));
+      await tester.pumpAndSettle();
+      expect(find.text('Search saved Q&A'), findsOneWidget);
+      expect(find.text('Password rotation'), findsOneWidget);
+      expect(find.text('Incident response'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).first, 'passw');
+      expect(find.text('Password rotation'), findsOneWidget);
+      expect(find.text('Incident response'), findsNothing);
+      await tester.tap(find.byTooltip('Edit local Knowledge'));
+      await tester.pumpAndSettle();
+      final dialogFields = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(dialogFields.at(0), 'Rotated guidance');
+      await tester.enterText(dialogFields.at(1), 'Updated rotation details.');
+      await tester.enterText(dialogFields.at(2), 'Updated vault answer.');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save locally'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      var saved = await store.load();
+      final edited = saved.knowledge.singleWhere(
+        (item) => item['id'] == 'password-rotation',
+      );
+      expect(edited['title'], 'Rotated guidance');
+      expect(edited['body'], 'Updated rotation details.');
+      expect(edited['answer'], 'Updated vault answer.');
+
+      await tester.enterText(find.byType(TextField).first, '');
+      await tester.pumpAndSettle();
+      final incidentCard = find.ancestor(
+        of: find.text('Incident response'),
+        matching: find.byType(Card),
+      );
+      await tester.tap(
+        find.descendant(
+          of: incidentCard,
+          matching: find.byTooltip('Remove local Knowledge'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
+      saved = await store.load();
+      expect(saved.knowledge.map((item) => item['id']), ['password-rotation']);
+
+      await tester.tap(find.text('Back to add a local question'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add a local question'), findsOneWidget);
+      expect(find.text('Saved Q&A'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, 'New local question');
+      await tester.enterText(find.byType(TextField).at(1), 'Details');
+      await tester.enterText(find.byType(TextField).at(2), 'Answer');
+      await tester.tap(find.text('Save locally'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
+      saved = await store.load();
+      expect(
+        saved.knowledge.map((item) => item['title']),
+        ['New local question', 'Rotated guidance'],
+      );
+      expect(storage.read(), isNotEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('long labels and nested branches fit a narrow guest layout', (
     tester,
   ) async {
@@ -168,7 +272,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(tester.getSize(_field('Search local Knowledge')).width, lessThanOrEqualTo(840));
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(_field('Search saved Q&A')).width,
+      lessThanOrEqualTo(840),
+    );
+    await tester.tap(find.text('Back to add a local question'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Interact').first);
     await tester.pumpAndSettle();
     expect(tester.getSize(_field('New Interact session')).width, lessThan(1040));
