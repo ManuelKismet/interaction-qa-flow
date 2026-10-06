@@ -190,7 +190,11 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
   List<Map<String, dynamic>> items;
   var listCalls = 0;
   var failedImports = 0;
+  int? importFailureStatus;
   final imports = <List<Map<String, dynamic>>>[];
+  int updateConflicts = 0;
+  List<Map<String, dynamic>>? conflictItems;
+  final updateRevisions = <int>[];
   var deleteCalls = 0;
 
   @override
@@ -209,6 +213,16 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     imports.add(payload);
     if (failedImports > 0) {
       failedImports--;
+      if (importFailureStatus != null) {
+        final request = RequestOptions(path: '/api/v1/personal/items/import');
+        throw DioException(
+          requestOptions: request,
+          response: Response(
+            requestOptions: request,
+            statusCode: importFailureStatus,
+          ),
+        );
+      }
       throw StateError('Simulated uncertain response.');
     }
     return [
@@ -224,9 +238,45 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
   }
 
   @override
+  Future<Map<String, dynamic>> updateItem({
+    required String id,
+    required String expectedUid,
+    required int expectedRevision,
+    required String title,
+    required Map<String, dynamic> data,
+  }) async {
+    updateRevisions.add(expectedRevision);
+    if (updateConflicts > 0) {
+      updateConflicts--;
+      items = conflictItems ?? items;
+      final request = RequestOptions(path: '/api/v1/personal/items/$id');
+      throw DioException(
+        requestOptions: request,
+        response: Response(
+          requestOptions: request,
+          statusCode: 409,
+        ),
+      );
+    }
+    final current = items.firstWhere((item) => item['id'] == id);
+    final saved = {
+      ...current,
+      'title': title,
+      'data': data,
+      'revision': expectedRevision + 1,
+    };
+    items = [
+      for (final item in items)
+        if (item['id'] == id) saved else item,
+    ];
+    return saved;
+  }
+
+  @override
   Future<void> deleteItem(
     String id, {
     required String expectedUid,
+    required int expectedRevision,
   }) async {
     deleteCalls++;
   }
@@ -707,6 +757,142 @@ void main() {
     expect((await store.load()).knowledge, hasLength(2));
     expect(find.text('Import this item'), findsOneWidget);
     expect(find.text('Keep this item local'), findsOneWidget);
+  });
+
+  testWidgets('permanent import limit errors ask for a smaller selection', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'large', 'title': 'Large item', 'body': 'Keep the local copy'},
+          {'id': 'small', 'title': 'Small item', 'body': 'Keep this too'},
+        ],
+      ),
+    );
+    final repository = _TestPersonalWorkspaceRepository([])
+      ..failedImports = 1
+      ..importFailureStatus = 422;
+    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            personalWorkspaceEnabled: true,
+            accountUser: user,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local work'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import selected work'));
+    await tester.pumpAndSettle();
+
+    expect(repository.imports, hasLength(1));
+    expect(find.textContaining('Select fewer items or smaller items'), findsOneWidget);
+    expect(find.text('Change selection'), findsOneWidget);
+    expect(find.text('Retry import'), findsNothing);
+    expect((await store.load()).knowledge, hasLength(2));
+
+    await tester.tap(find.text('Change selection'));
+    await tester.pumpAndSettle();
+    expect(find.text('Import selected work'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(repository.imports, hasLength(1));
+  });
+
+  testWidgets('revision conflicts reload before an explicit pending-edit save', (
+    tester,
+  ) async {
+    Map<String, dynamic> item({
+      required String title,
+      required int revision,
+    }) => {
+      'id': 'remote-record',
+      'kind': 'knowledge',
+      'source_key': 'knowledge:remote-id',
+      'title': title,
+      'data': {
+        'id': 'remote-id',
+        'title': title,
+        'body': 'Remote details',
+        'answer': 'Remote answer',
+      },
+      'revision': revision,
+      'created_at': '2026-10-06T00:00:00+00:00',
+      'updated_at': '2026-10-06T00:00:00+00:00',
+    };
+
+    final latestAccountItem = item(title: 'Latest account title', revision: 2);
+    final repository = _TestPersonalWorkspaceRepository([
+      item(title: 'Original account title', revision: 1),
+    ])
+      ..updateConflicts = 1
+      ..conflictItems = [latestAccountItem];
+    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            personalWorkspaceEnabled: true,
+            accountUser: user,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Edit local Knowledge'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextFormField),
+      ).first,
+      'My pending edit',
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Save locally'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.updateRevisions, [1]);
+    expect(find.text('My pending edit'), findsOneWidget);
+    await tester.tap(find.text('Review account change'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Latest saved version (revision 2)'), findsOneWidget);
+    expect(find.text('Your pending edit: My pending edit'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('My pending edit'), findsOneWidget);
+
+    await tester.tap(find.text('Review account change'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save my pending edit'));
+    await tester.pumpAndSettle();
+
+    expect(repository.updateRevisions, [1, 2]);
+    expect(find.text('My pending edit'), findsOneWidget);
+    expect(find.text('Latest account title'), findsNothing);
   });
 
   testWidgets('new local work is not uploaded before explicit import', (

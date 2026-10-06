@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import GuestIdentity, get_guest_identity, require_app_check
@@ -93,10 +93,13 @@ async def update_item(
 @router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_item(
     item_id: UUID,
+    expected_revision: int = Query(ge=1),
     identity: GuestIdentity = Depends(get_guest_identity),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     await PersonalWorkspaceService(session).delete_item(
-        identity.firebase_uid, item_id
+        identity.firebase_uid,
+        item_id,
+        expected_revision=expected_revision,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

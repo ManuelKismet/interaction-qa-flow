@@ -147,6 +147,7 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
     hidden_delete = await client.delete(
         f"/api/v1/personal/items/{item_id}",
         headers=bearer("other"),
+        params={"expected_revision": 1},
     )
     assert hidden_delete.status_code == 204
     assert len(
@@ -195,10 +196,21 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
     deleted = await client.delete(
         f"/api/v1/personal/items/{item_id}",
         headers=headers,
+        params={"expected_revision": 1},
+    )
+    assert deleted.status_code == 409
+    deleted = await client.delete(
+        f"/api/v1/personal/items/{item_id}",
+        headers=headers,
+        params={"expected_revision": 2},
     )
     assert deleted.status_code == 204
     assert (
-        await client.delete(f"/api/v1/personal/items/{item_id}", headers=headers)
+        await client.delete(
+            f"/api/v1/personal/items/{item_id}",
+            headers=headers,
+            params={"expected_revision": 2},
+        )
     ).status_code == 204
     remaining = await client.get("/api/v1/personal/items", headers=headers)
     assert {item["kind"] for item in remaining.json()} == {
@@ -265,6 +277,100 @@ async def test_personal_workspace_denies_anonymous_unverified_and_overrides(
         },
     )
     assert body_override.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_personal_workspace_validates_stable_ids_and_nested_content(
+    app_client, monkeypatch
+) -> None:
+    client, _ = app_client
+    install_test_tokens(monkeypatch)
+    headers = bearer("content-validation")
+    session = {
+        "kind": "interact_session",
+        "source_key": "interact_session:session-id",
+        "title": "Session",
+        "data": {
+            "id": "session-id",
+            "participants": [{"id": "participant-id", "name": "Alice"}],
+            "questions": [
+                {
+                    "id": "question-id",
+                    "text": "Question",
+                    "answers": [{"participant_id": "participant-id", "body": "Answer"}],
+                }
+            ],
+        },
+    }
+    template = {
+        "kind": "template",
+        "source_key": "template:template-id",
+        "title": "Template",
+        "data": {
+            "id": "template-id",
+            "name": "Template",
+            "participant_slots": [{"id": "slot-id", "label": "Participant 1"}],
+            "questions": [{"id": "question-id", "text": "Question"}],
+        },
+    }
+    for item in [
+        {**knowledge(), "data": {**knowledge()["data"], "id": "different-id"}},
+        {**session, "data": {**session["data"], "participants": [{"name": "Alice"}]}},
+        {
+            **template,
+            "data": {
+                **template["data"],
+                "questions": [
+                    {
+                        "id": "question-id",
+                        "text": "Question",
+                        "answers": [
+                            {
+                                "participant_slot": "slot-id",
+                                "follow_ups": [{"text": "Missing ID"}],
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+    ]:
+        response = await client.post(
+            "/api/v1/personal/items/import",
+            headers=headers,
+            json={"items": [item]},
+        )
+        assert response.status_code == 422
+
+    valid_items = [knowledge(), session, template]
+    imported = await client.post(
+        "/api/v1/personal/items/import",
+        headers=headers,
+        json={"items": valid_items},
+    )
+    assert imported.status_code == 201, imported.text
+    assert [item["source_key"] for item in imported.json()["items"]] == [
+        item["source_key"] for item in valid_items
+    ]
+
+    for record in imported.json()["items"]:
+        updated_data = record["data"]
+        if record["kind"] == "knowledge":
+            updated_data["id"] = "changed-id"
+        elif record["kind"] == "interact_session":
+            updated_data["questions"] = [{"text": "Missing question ID"}]
+        else:
+            updated_data["questions"] = [{"id": "question-id"}]
+        response = await client.put(
+            f"/api/v1/personal/items/{record['id']}",
+            headers=headers,
+            json={
+                "expected_revision": 1,
+                "title": record["title"],
+                "data": updated_data,
+            },
+        )
+        assert response.status_code == 422
 
 
 @pytest.mark.asyncio

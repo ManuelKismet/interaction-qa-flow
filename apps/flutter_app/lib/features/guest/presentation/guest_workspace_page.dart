@@ -40,8 +40,6 @@ class _PersonalWorkspaceWrite {
     required this.kind,
     required this.sourceKey,
     required this.sourceId,
-    this.itemId,
-    this.revision,
     this.title,
     this.data,
   });
@@ -50,7 +48,6 @@ class _PersonalWorkspaceWrite {
   final String kind;
   final String sourceKey;
   final String sourceId;
-  final String? itemId;
   final String? title;
   final Map<String, dynamic>? data;
 }
@@ -101,6 +98,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   final Map<String, _PersonalWorkspaceWrite> _pendingPersonalWrites = {};
   String? _personalError;
   List<Map<String, dynamic>> _pendingPersonalImport = [];
+  bool _personalImportNeedsReselection = false;
+  String? _personalConflictSourceKey;
+  bool _personalConflictReloadFailed = false;
   int _personalGeneration = 0;
   String? _personalOwnerUid;
   bool _personalLoading = false;
@@ -129,6 +129,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     _pendingPersonalItems = [];
     _pendingPersonalWrites.clear();
     _pendingPersonalImport = [];
+    _personalImportNeedsReselection = false;
+    _personalConflictSourceKey = null;
+    _personalConflictReloadFailed = false;
     _personalError = null;
     _personalLoading = false;
     if (uid != null) {
@@ -364,7 +367,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         continue;
       }
       final key = '$kind:${data['id']}';
-      final replacement = submittedByKey[key]?.data;
+      final replacement = submittedByKey[key];
       if (replacement == null) {
         _enqueuePersonalWrite(
           _PersonalWorkspaceWrite(
@@ -372,7 +375,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             kind: kind,
             sourceKey: record['source_key'] as String,
             sourceId: data['id'] as String,
-            itemId: record['id'] as String,
           ),
         );
       } else if (jsonEncode(replacement) != jsonEncode(data) ||
@@ -383,7 +385,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             kind: kind,
             sourceKey: record['source_key'] as String,
             sourceId: data['id'] as String,
-            itemId: record['id'] as String,
             title: _personalTitle(kind, replacement),
             data: replacement,
           ),
@@ -414,8 +415,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   Future<void> _processPersonalWrites(
     String uid,
     int generation,
-    PersonalWorkspaceRepository repository,
-  ) async {
+    PersonalWorkspaceRepository repository, {
+    String? prioritySourceKey,
+  }) async {
     if (_personalSaving || !mounted) return;
     _personalSaving = true;
     try {
@@ -423,14 +425,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           generation == _personalGeneration &&
           uid == _verifiedPersonalUid &&
           _pendingPersonalWrites.isNotEmpty) {
-        final entry = _pendingPersonalWrites.entries.first;
+        final priorityEntry = prioritySourceKey == null
+            ? null
+            : _pendingPersonalWrites.entries
+                  .where((entry) => entry.value.sourceKey == prioritySourceKey)
+                  .firstOrNull;
+        final entry = priorityEntry ?? _pendingPersonalWrites.entries.first;
         final write = entry.value;
         try {
           Map<String, dynamic>? saved;
-          if (write.action == 'update') {
-            final current = _personalItems.firstWhere(
-              (item) => item['source_key'] == write.sourceKey,
-            );
+          final current = _personalItems
+              .where((item) => item['source_key'] == write.sourceKey)
+              .firstOrNull;
+          if (current == null && write.action == 'delete') {
+            saved = null;
+          } else if (current == null) {
+            throw StateError('The personal item is not loaded.');
+          } else if (write.action == 'update') {
             saved = await repository.updateItem(
               id: current['id'] as String,
               expectedUid: uid,
@@ -440,8 +451,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             );
           } else {
             await repository.deleteItem(
-              write.itemId!,
+              current['id'] as String,
               expectedUid: uid,
+              expectedRevision: current['revision'] as int,
             );
           }
           if (!mounted ||
@@ -468,6 +480,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               );
             }
           });
+        } on DioException catch (error) {
+          if (error.response?.statusCode == 409) {
+            await _reloadPersonalConflict(uid, generation, write);
+          } else if (mounted && generation == _personalGeneration) {
+            setState(() {
+              _personalError =
+                  'A personal account change was not confirmed. Your local copy is unchanged; retry the account save.';
+            });
+          }
+          return;
         } on Object {
           if (mounted && generation == _personalGeneration) {
             setState(() {
@@ -486,13 +508,218 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     }
   }
 
-  Future<void> _retryPersonalWrites() async {
+  Future<void> _reloadPersonalConflict(
+    String uid,
+    int generation,
+    _PersonalWorkspaceWrite write,
+  ) async {
+    if (mounted && generation == _personalGeneration) {
+      setState(() {
+        _personalConflictSourceKey = write.sourceKey;
+        _personalConflictReloadFailed = true;
+        _personalError =
+            'This account item changed elsewhere. Your pending edit is preserved while the latest version is reloaded.';
+      });
+    }
+    try {
+      final items = await ref
+          .read(personalWorkspaceRepositoryProvider)
+          .listItems(expectedUid: uid);
+      if (!mounted ||
+          generation != _personalGeneration ||
+          uid != _verifiedPersonalUid) {
+        return;
+      }
+      setState(() {
+        _personalItems = items;
+        _personalConflictReloadFailed = false;
+        _personalError =
+            'The latest account version is loaded. Review it before choosing whether to keep your pending edit.';
+      });
+    } on Object {
+      if (mounted &&
+          generation == _personalGeneration &&
+          uid == _verifiedPersonalUid) {
+        setState(() {
+          _personalConflictReloadFailed = true;
+          _personalError =
+              'The latest account version could not be loaded. Your pending edit is preserved; retry the reload before reconciling.';
+        });
+      }
+    }
+  }
+
+  Future<void> _reloadPendingPersonalConflict() async {
+    final sourceKey = _personalConflictSourceKey;
+    final uid = _verifiedPersonalUid;
+    if (sourceKey == null || uid == null) return;
+    final write = _pendingPersonalWrites.values
+        .where((item) => item.sourceKey == sourceKey)
+        .firstOrNull;
+    if (write == null) return;
+    await _reloadPersonalConflict(uid, _personalGeneration, write);
+  }
+
+  Future<void> _reviewPersonalConflict() async {
+    final sourceKey = _personalConflictSourceKey;
+    if (sourceKey == null) return;
+    final write = _pendingPersonalWrites.values
+        .where((item) => item.sourceKey == sourceKey)
+        .firstOrNull;
+    if (write == null) return;
+    final current = _personalItems
+        .where((item) => item['source_key'] == sourceKey)
+        .firstOrNull;
+    final uid = _verifiedPersonalUid;
+    if (uid == null) return;
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Review account version'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              write.action == 'delete'
+                  ? 'Your pending change: remove this account item.'
+                  : 'Your pending edit: ${write.title ?? 'Updated item'}',
+            ),
+            const SizedBox(height: 12),
+            if (current == null)
+              const Text('The saved account copy no longer exists.')
+            else
+              Text(
+                'Latest saved version (revision ${current['revision']}): '
+                '${current['title']}',
+              ),
+            const SizedBox(height: 12),
+            const Text(
+              'Your pending edit remains available until you choose an option.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'account'),
+            child: const Text('Use latest account version'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'pending'),
+            child: Text(
+              write.action == 'delete'
+                  ? 'Remove latest account version'
+                  : current == null
+                  ? 'Restore my pending edit'
+                  : 'Save my pending edit',
+            ),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted || uid != _verifiedPersonalUid) return;
+
+    if (choice == 'account') {
+      setState(() {
+        _pendingPersonalWrites.remove(
+          '${write.kind}:${write.sourceId}',
+        );
+        _pendingPersonalItems.removeWhere(
+          (item) =>
+              item['kind'] == write.kind &&
+              (item['data'] as Map?)?['id'] == write.sourceId,
+        );
+        _personalConflictSourceKey = null;
+        _personalConflictReloadFailed = false;
+        _personalError = _pendingPersonalWrites.isEmpty
+            ? null
+            : 'Other account edits are still pending.';
+      });
+      return;
+    }
+
+    if (current == null && write.action == 'delete') {
+      setState(() {
+        _pendingPersonalWrites.remove('${write.kind}:${write.sourceId}');
+        _pendingPersonalItems.removeWhere(
+          (item) =>
+              item['kind'] == write.kind &&
+              (item['data'] as Map?)?['id'] == write.sourceId,
+        );
+        _personalConflictSourceKey = null;
+        _personalConflictReloadFailed = false;
+        _personalError = _pendingPersonalWrites.isEmpty
+            ? null
+            : 'Other account edits are still pending.';
+      });
+      return;
+    }
+
+    if (current == null) {
+      try {
+        final restored = await ref
+            .read(personalWorkspaceRepositoryProvider)
+            .importItems(
+              [
+                {
+                  'kind': write.kind,
+                  'source_key': write.sourceKey,
+                  'title': write.title,
+                  'data': write.data,
+                },
+              ],
+              expectedUid: uid,
+            );
+        if (!mounted || uid != _verifiedPersonalUid) return;
+        setState(() {
+          _personalItems.removeWhere(
+            (item) => item['source_key'] == write.sourceKey,
+          );
+          _personalItems.add(restored.single);
+          _pendingPersonalWrites.remove('${write.kind}:${write.sourceId}');
+          _pendingPersonalItems.removeWhere(
+            (item) =>
+                item['kind'] == write.kind &&
+                (item['data'] as Map?)?['id'] == write.sourceId,
+          );
+          _personalConflictSourceKey = null;
+          _personalConflictReloadFailed = false;
+          _personalError = _pendingPersonalWrites.isEmpty
+              ? null
+              : 'Other account edits are still pending.';
+        });
+      } on Object {
+        if (mounted) {
+          setState(() {
+            _personalError =
+                'The pending edit could not be restored. It remains available; refresh account status before trying again.';
+          });
+        }
+      }
+      return;
+    }
+
+    setState(() {
+      _personalConflictSourceKey = null;
+      _personalConflictReloadFailed = false;
+      _personalError = null;
+    });
+    await _retryPersonalWrites(sourceKey: sourceKey);
+  }
+
+  Future<void> _retryPersonalWrites({String? sourceKey}) async {
     final uid = _verifiedPersonalUid;
     if (uid == null) return;
     await _processPersonalWrites(
       uid,
       _personalGeneration,
       ref.read(personalWorkspaceRepositoryProvider),
+      prioritySourceKey: sourceKey,
     );
   }
 
@@ -685,6 +912,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             _pendingPersonalItems = [];
             _pendingPersonalWrites.clear();
             _pendingPersonalImport = [];
+            _personalImportNeedsReselection = false;
+            _personalConflictSourceKey = null;
+            _personalConflictReloadFailed = false;
             _personalError = null;
             _personalOwnerUid = null;
           });
@@ -885,6 +1115,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     }
     if (selected.isEmpty) return;
     _pendingPersonalImport = selected;
+    _personalImportNeedsReselection = false;
     await _submitPersonalImport(uid, _personalGeneration);
   }
 
@@ -913,6 +1144,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           _personalItems.add(item);
         }
         _pendingPersonalImport = [];
+        _personalImportNeedsReselection = false;
         _personalError = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -922,6 +1154,25 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           ),
         ),
       );
+    } on DioException catch (error) {
+      if (!mounted ||
+          uid != _verifiedPersonalUid ||
+          generation != _personalGeneration) {
+        return;
+      }
+      if ({413, 422}.contains(error.response?.statusCode)) {
+        setState(() {
+          _pendingPersonalImport = [];
+          _personalImportNeedsReselection = true;
+          _personalError =
+              'This selection exceeds account import limits or contains invalid content. Select fewer items or smaller items and try again. Your local originals are unchanged.';
+        });
+        return;
+      }
+      setState(() {
+        _personalError =
+            'The account import was not confirmed. Local copies remain on this device; retry safely.';
+      });
     } on Object {
       if (!mounted ||
           uid != _verifiedPersonalUid ||
@@ -1195,13 +1446,25 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       content: Text(_personalError!),
                       actions: [
                         TextButton(
-                          onPressed: _pendingPersonalImport.isNotEmpty
+                          onPressed: _personalImportNeedsReselection
+                              ? _openPersonalImport
+                              : _personalConflictSourceKey != null
+                              ? _personalConflictReloadFailed
+                                  ? _reloadPendingPersonalConflict
+                                  : _reviewPersonalConflict
+                              : _pendingPersonalImport.isNotEmpty
                               ? _retryPersonalImport
                               : _pendingPersonalWrites.isNotEmpty
                               ? _retryPersonalWrites
                               : _refreshPersonalWorkspace,
                           child: Text(
-                            _pendingPersonalImport.isNotEmpty
+                            _personalImportNeedsReselection
+                                ? 'Change selection'
+                                : _personalConflictSourceKey != null
+                                ? _personalConflictReloadFailed
+                                    ? 'Reload account version'
+                                    : 'Review account change'
+                                : _pendingPersonalImport.isNotEmpty
                                 ? 'Retry import'
                                 : _pendingPersonalWrites.isNotEmpty
                                 ? 'Retry account save'

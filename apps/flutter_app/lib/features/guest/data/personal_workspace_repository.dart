@@ -70,9 +70,11 @@ class PersonalWorkspaceRepository {
   Future<void> deleteItem(
     String id, {
     required String expectedUid,
+    required int expectedRevision,
   }) async {
     await _client.delete<void>(
       '/api/v1/personal/items/$id',
+      queryParameters: {'expected_revision': expectedRevision},
       options: Options(
         extra: {'expectedFirebaseUid': expectedUid},
       ),

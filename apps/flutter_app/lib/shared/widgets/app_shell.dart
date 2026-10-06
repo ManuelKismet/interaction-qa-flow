@@ -79,6 +79,7 @@ class AppShell extends ConsumerWidget {
   }
 
   Widget _accountMenu(
+    BuildContext context,
     WidgetRef ref,
     ActiveMembership membership, {
     bool showLabel = true,
@@ -160,7 +161,7 @@ class AppShell extends ConsumerWidget {
               title: const Text('IntQAFlow'),
               actions: [
                 if (membership != null)
-                  _accountMenu(ref, membership, showLabel: true),
+                  _accountMenu(context, ref, membership, showLabel: true),
               ],
             ),
       body: Row(
@@ -181,6 +182,7 @@ class AppShell extends ConsumerWidget {
               trailing: membership == null
                   ? null
                   : _accountMenu(
+                      context,
                       ref,
                       membership,
                       showLabel: MediaQuery.sizeOf(context).width >= 1100,
