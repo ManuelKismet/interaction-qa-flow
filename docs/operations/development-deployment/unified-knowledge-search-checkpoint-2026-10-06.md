@@ -1,6 +1,28 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
-## Current state
+## Latest snapshot — independent final correction validated
+
+- Complete source `105a528f19b2383545b5cfae17197439ce065279` on
+  `fix/unified-search-dev-20261006`, pushed and GitHub readback verified.
+- Artifact `8efaf68383dc6577c4b57c96a60f4c303437ec48`, authored
+  `9698850d9477d47b29ffac1a657395153484f89e`, applied unchanged to98ca4f6.
+- Independent compile/head pass; backend111PASS4SKIP10warnings35.09s;
+  fresh PostgreSQL4PASS1.35s; isolated0014→0013→0014 pass.
+- Flutter169PASS~67s; analyzer0errors/0warnings13infos18.3s (exit1);
+  configured DEV release buildPASS62.3s/exit0.
+- First reused PostgreSQL DB run3PASS1FAIL (duplicate fixed-UID fixture from
+  retained prior run). Fresh separate database resolves contamination; both
+  outcomes retained. No live schema purge or application fix was used.
+- DEV backend build/zero-traffic staging in progress. No traffic switch,
+  hosted migration or Hosting publication at this snapshot.
+- DEV remains reviewaafc112/schema0013/Hosting49afc5b14f53f3b0 until verified
+  rollout evidence supersedes this snapshot.
+- Temporary PostgreSQL stopped; files and logs retained. Main four dirty docs
+  preserved. Live semantic-provider quality and authenticated personal-import
+  acceptance remain unverified; organisation improvements remain deferred.
+- Recurring monitoring remains cancelled by founder; do not recreate.
+
+## Current state (original handoff history)
 
 Founder reviewed the seven search improvements and authorised implementation.
 Copilot handoff was published as [PR 13 comment](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6023733274).
