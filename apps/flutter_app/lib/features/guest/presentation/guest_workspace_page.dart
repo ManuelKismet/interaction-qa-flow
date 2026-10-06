@@ -1128,6 +1128,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
   final _title = TextEditingController();
   final _body = TextEditingController();
   final _answer = TextEditingController();
+  bool _showSavedQuestions = false;
 
   @override
   void dispose() {
@@ -1204,6 +1205,79 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     final matches = widget.items
         .where((item) => matchesGuestKeywordOrPrefix(query, item))
         .toList();
+    if (_showSavedQuestions) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 840),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _showSavedQuestions = false),
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Back to add a local question'),
+                ),
+              ),
+              Text('Saved Q&A', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _query,
+                decoration: const InputDecoration(
+                  labelText: 'Search saved Q&A',
+                  helperText:
+                      'Keyword and prefix search on this device; no semantic search.',
+                  helperMaxLines: 3,
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+              if (matches.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    widget.items.isEmpty
+                        ? 'No saved Q&A yet. Add a local question to get started.'
+                        : 'No local matches. Shared organisation Knowledge is not shown here.',
+                  ),
+                ),
+              for (final item in matches)
+                Card(
+                  child: ListTile(
+                    title: Text(item['title'] as String? ?? ''),
+                    subtitle: Text(
+                      [
+                        item['body'],
+                        item['answer'],
+                      ].whereType<String>().where((text) => text.isNotEmpty).join(
+                        '\n\n',
+                      ),
+                    ),
+                    isThreeLine: true,
+                    trailing: Wrap(
+                      children: [
+                        IconButton(
+                          tooltip: 'Edit local Knowledge',
+                          onPressed: () => _edit(item),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove local Knowledge',
+                          onPressed: () => widget.onDelete(item['id'] as String),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -1211,22 +1285,23 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextField(
-              controller: _query,
-              decoration: const InputDecoration(
-                labelText: 'Search local Knowledge',
-                helperText:
-                    'Keyword and prefix search on this device; no semantic search.',
-                helperMaxLines: 3,
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (_) => setState(() {}),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Add a local question',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      setState(() => _showSavedQuestions = true),
+                  icon: const Icon(Icons.bookmark_outline),
+                  label: const Text('Saved Q&A'),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Add a local question',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _title,
               decoration: const InputDecoration(labelText: 'Question'),
@@ -1254,43 +1329,6 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                 label: const Text('Save locally'),
               ),
             ),
-            const Divider(height: 28),
-            if (matches.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'No local matches. Shared organisation Knowledge is not shown here.',
-                ),
-              ),
-            for (final item in matches)
-              Card(
-                child: ListTile(
-                  title: Text(item['title'] as String? ?? ''),
-                  subtitle: Text(
-                    [
-                      item['body'],
-                      item['answer'],
-                    ].whereType<String>().where((text) => text.isNotEmpty).join(
-                      '\n\n',
-                    ),
-                  ),
-                  isThreeLine: true,
-                  trailing: Wrap(
-                    children: [
-                      IconButton(
-                        tooltip: 'Edit local Knowledge',
-                        onPressed: () => _edit(item),
-                        icon: const Icon(Icons.edit_outlined),
-                      ),
-                      IconButton(
-                        tooltip: 'Remove local Knowledge',
-                        onPressed: () => widget.onDelete(item['id'] as String),
-                        icon: const Icon(Icons.delete_outline),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
           ],
         ),
       ),
