@@ -2208,13 +2208,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     final searchField = TextField(
       controller: _query,
       decoration: InputDecoration(
-        labelText: 'Search local Knowledge',
+        labelText: 'Search Knowledge',
         prefixIcon: const Icon(Icons.search),
         suffixIcon: const _GuestInfoButton(
           tooltip: 'Search help',
-          title: 'About local Knowledge search',
-          content:
-              'Keyword and prefix search on this device; no semantic search.',
+          title: 'About Knowledge search',
+          content: 'Keyword and prefix search of loaded local and '
+              'personal-account Knowledge on this device; no semantic search.',
         ),
       ),
       onChanged: (_) => setState(() {}),
@@ -2564,6 +2564,9 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
   }
 
   void _deleteSession(Map<String, dynamic> session) {
+    final isPersonalAccount = widget
+        .storageStatus('interact_session', session)
+        .startsWith('Personal account');
     widget.onChange(
       widget.data.copyWith(
         sessions: widget.data.sessions
@@ -2574,7 +2577,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          widget.storageStatus.startsWith('Personal account')
+          isPersonalAccount
               ? 'Personal account session removal queued. Any local copy '
                   'remains on this device.'
               : 'Local session removed.',

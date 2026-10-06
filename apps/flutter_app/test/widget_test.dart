@@ -18,11 +18,11 @@ void main() {
     expect(find.text('Interact'), findsOneWidget);
     expect(find.text('Sign in to IntQAFlow'), findsNothing);
     expect(find.text('Add a local question'), findsOneWidget);
-    expect(find.text('Search local Knowledge'), findsOneWidget);
+    expect(find.text('Search Knowledge'), findsOneWidget);
     expect(find.text('Saved Q&A'), findsOneWidget);
     await tester.tap(find.text('Saved Q&A'));
     await tester.pumpAndSettle();
-    expect(find.text('Search local Knowledge'), findsOneWidget);
+    expect(find.text('Search Knowledge'), findsOneWidget);
     await tester.tap(find.text('Back to add a local question'));
     await tester.pumpAndSettle();
     expect(find.text('Create session locally'), findsNothing);

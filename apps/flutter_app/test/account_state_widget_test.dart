@@ -699,6 +699,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect((await store.load()).knowledge, isEmpty);
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
     expect(find.text('Personal account item'), findsOneWidget);
     expect(repository.deleteCalls, 0);
   });

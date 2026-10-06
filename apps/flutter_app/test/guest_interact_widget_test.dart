@@ -45,7 +45,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final localSearch = _field('Search local Knowledge');
+      final localSearch = _field('Search Knowledge');
       expect(localSearch, findsOneWidget);
       expect(tester.widget<TextField>(localSearch).decoration!.helperText, isNull);
       expect(find.byTooltip('Search help'), findsOneWidget);
@@ -59,7 +59,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          'Keyword and prefix search on this device; no semantic search.',
+          'Keyword and prefix search of loaded local and personal-account '
+          'Knowledge on this device; no semantic search.',
         ),
         findsOneWidget,
       );
@@ -372,11 +373,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_field('Search local Knowledge'), findsOneWidget);
+    expect(_field('Search Knowledge'), findsOneWidget);
     await tester.tap(find.text('Saved Q&A'));
     await tester.pumpAndSettle();
     expect(
-      tester.getSize(_field('Search local Knowledge')).width,
+      tester.getSize(_field('Search Knowledge')).width,
       lessThanOrEqualTo(840),
     );
     await tester.tap(find.text('Back to add a local question'));
