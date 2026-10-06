@@ -859,7 +859,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sign in'));
+    await tester.tap(find.text('Already have an account? Sign in'));
     await tester.pumpAndSettle();
 
     expect(find.byType(SignInPage), findsNothing);
