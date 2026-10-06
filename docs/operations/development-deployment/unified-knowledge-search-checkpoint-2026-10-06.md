@@ -68,7 +68,10 @@ Operational receipts/logs retained privately under
 `/home/vscode/.local/share/intqaflow/search-validation-105a528` and
 `search-105a528-*.json`. Disposable PostgreSQL stopped; migration proxy
 terminated by its finally block. Main worktree's four dirty docs preserved.
-Temporary stage-tag removal and final Codespace stop confirmation follow.
+Temporary staging tag removal passed (exit0), leaving reviewed105a528 at100%.
+Post-cleanup both-origin exact-byte,health/ready and private rejection checks
+passed again (exit0). GitHub UI confirmed “Codespace bookish happiness stopped”.
+Files/evidence retained; no database/proxy or rollout runner left active.
 Recurring monitoring remains cancelled by founder; do not recreate.
 
 ## Current state (original handoff history)
