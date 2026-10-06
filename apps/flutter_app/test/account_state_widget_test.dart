@@ -144,6 +144,19 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   }
 }
 
+class _UnexpectedSignInAuth extends _TestFirebaseAuth {
+  _UnexpectedSignInAuth() : super(null);
+
+  @override
+  Future<UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    signInAttempts++;
+    throw StateError('private transport detail');
+  }
+}
+
 class _MemoryGuestStorage implements GuestStorage {
   String? value;
 
@@ -537,6 +550,33 @@ void main() {
     expect(tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Sign in'),
     ).onPressed, isNotNull);
+  });
+
+  testWidgets('baseline unexpected sign-in failure stays safe and retryable', (
+    tester,
+  ) async {
+    final auth = _UnexpectedSignInAuth();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(home: SignInPage()),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'user@example.test');
+    await tester.enterText(find.byType(TextField).last, 'private-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(auth.signInAttempts, 1);
+    expect(find.text('Sign-in failed. Please try again.'), findsOneWidget);
+    expect(find.textContaining('private transport detail'), findsNothing);
+    expect(find.textContaining('private-password'), findsNothing);
+    expect(
+      tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Sign in'),
+      ).onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('an active diagnostic attempt cannot block an ordinary sign-in', (

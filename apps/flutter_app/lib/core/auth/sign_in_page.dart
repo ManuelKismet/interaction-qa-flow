@@ -269,6 +269,15 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       setState(() {
         _error = message;
       });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _error = isResetOperation
+            ? 'Unable to send a reset email. Please try again.'
+            : isSeparateAccountCreation
+            ? 'Unable to create the account. Check the details and try again.'
+            : 'Sign-in failed. Please try again.';
+      });
     } finally {
       if (diagnosticAttempt != null &&
           !diagnosticAttempt.firebaseCallSucceeded) {
