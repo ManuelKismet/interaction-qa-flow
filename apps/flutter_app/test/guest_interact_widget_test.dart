@@ -51,6 +51,7 @@ void main() {
       expect(find.text('Incident response'), findsOneWidget);
 
       await tester.enterText(find.byType(TextField).first, 'passw');
+      await tester.pumpAndSettle();
       expect(find.text('Password rotation'), findsOneWidget);
       expect(find.text('Incident response'), findsNothing);
       await tester.tap(find.byTooltip('Edit local Knowledge'));
