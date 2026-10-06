@@ -124,6 +124,19 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   }
 }
 
+class _UnexpectedSignInAuth extends _TestFirebaseAuth {
+  _UnexpectedSignInAuth() : super(null);
+
+  @override
+  Future<UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    signInAttempts++;
+    throw StateError('private transport detail');
+  }
+}
+
 class _MemoryGuestStorage implements GuestStorage {
   String? value;
 
@@ -497,6 +510,43 @@ void main() {
       renderedText.any((text) => text.contains('secret-password')),
       isFalse,
     );
+  });
+
+  testWidgets('unexpected sign-in errors show a safe recovery message', (
+    tester,
+  ) async {
+    final auth = _UnexpectedSignInAuth();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(home: SignInPage()),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+    await tester.enterText(find.byType(TextField).last, 'secret-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(auth.signInAttempts, 1);
+    expect(
+      find.text('Unable to complete this account request. Please try again.'),
+      findsOneWidget,
+    );
+    final renderedText = tester.widgetList<Text>(
+      find.descendant(
+        of: find.byType(SignInPage),
+        matching: find.byType(Text),
+      ),
+    ).map((widget) => widget.data ?? '');
+    expect(
+      renderedText.any((text) => text.contains('private transport')),
+      isFalse,
+    );
+    expect(
+      renderedText.any((text) => text.contains('secret-password')),
+      isFalse,
+    );
+    expect(find.text('Please wait…'), findsNothing);
   });
 
   testWidgets('registered account without membership is not shown as signed out', (

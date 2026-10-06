@@ -236,6 +236,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       setState(() {
         _error = message + (diagnostics ? ' [auth/$code]' : '');
       });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to complete this account request. Please try again.';
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
