@@ -133,3 +133,6 @@ Its server was stopped after the isolated migration round-trip; files retained
 for resumable checks. Logs are private under /tmp/intqaflow-search-*.log in the
 Codespace. Main worktree's four pre-existing dirty docs were preserved.
 Organisation improvements remain explicitly deferred until founder instruction.
+
+Cleanup confirmed: Codespace bookish happiness stopped after review source and
+checkpoint were pushed. Restart only for the next independent correction check.
