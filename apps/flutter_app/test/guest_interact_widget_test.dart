@@ -385,14 +385,19 @@ void main() {
     await tester.tap(find.text('Interact').first);
     await tester.pumpAndSettle();
     expect(
-      find.text('Interact sessions stay private on this device.'),
+      find.text(
+        'New Interact sessions stay local. '
+        'Imported sessions stay in your personal account.',
+      ),
       findsOneWidget,
     );
     await tester.tap(find.byTooltip('Interact privacy information'));
     await tester.pumpAndSettle();
     expect(
       find.text(
-        'Interact sessions stay private on this device until you explicitly select one for a group.',
+        'New sessions stay on this device unless you explicitly import them. '
+        'Imported sessions and their edits stay in your personal account; '
+        'group sharing is separate.',
       ),
       findsOneWidget,
     );
@@ -402,7 +407,7 @@ void main() {
     final templatePicker = find.byWidgetPredicate(
       (widget) =>
           widget is DropdownButtonFormField<String?> &&
-          widget.decoration.labelText == 'Optional local template',
+          widget.decoration.labelText == 'Optional template',
     );
     expect(tester.getSize(templatePicker).width, lessThanOrEqualTo(1040));
   });

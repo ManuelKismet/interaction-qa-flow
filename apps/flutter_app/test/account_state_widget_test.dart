@@ -765,6 +765,11 @@ void main() {
     expect((await store.load()).knowledge, hasLength(2));
     await tester.tap(find.text('Saved Q&A'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Keep this item local'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Import this item'), findsOneWidget);
     expect(find.text('Keep this item local'), findsOneWidget);
   });
@@ -1037,7 +1042,11 @@ void main() {
       'Keep this Knowledge item local',
     );
     final saveLocally = find.text('Save locally');
-    await tester.ensureVisible(saveLocally);
+    await tester.scrollUntilVisible(
+      saveLocally,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(saveLocally);
     await tester.pumpAndSettle();
 
