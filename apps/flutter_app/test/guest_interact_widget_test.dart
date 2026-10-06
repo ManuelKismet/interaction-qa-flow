@@ -126,9 +126,30 @@ void main() {
       expect(find.text('Add a local question'), findsOneWidget);
       expect(find.text('Saved Q&A'), findsOneWidget);
       expect(localSearch, findsOneWidget);
-      await tester.enterText(_field('Question'), 'New local question');
-      await tester.enterText(_field('Details'), 'Details');
-      await tester.enterText(_field('Answer'), 'Answer');
+      final knowledgeScrollable = find
+          .ancestor(
+            of: find.text('Add a local question'),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        localSearch,
+        -200,
+        scrollable: knowledgeScrollable,
+      );
+      await tester.pumpAndSettle();
+      final questionField = _field('Question');
+      final detailsField = _field('Details');
+      final answerField = _field('Answer');
+      await tester.ensureVisible(questionField);
+      await tester.pumpAndSettle();
+      await tester.enterText(questionField, 'New local question');
+      await tester.ensureVisible(detailsField);
+      await tester.pumpAndSettle();
+      await tester.enterText(detailsField, 'Details');
+      await tester.ensureVisible(answerField);
+      await tester.pumpAndSettle();
+      await tester.enterText(answerField, 'Answer');
       await tester.drag(find.byType(SnackBar), const Offset(0, 100));
       await tester.pumpAndSettle();
       final saveLocalQuestion = find.widgetWithText(
