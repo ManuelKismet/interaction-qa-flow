@@ -1,0 +1,126 @@
+From 84ff1cca5f04f24c45016ea9a8f8a5ed95b99127 Mon Sep 17 00:00:00 2001
+From: Copilot <copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 16:46:33 +0000
+Subject: [PATCH] Fix personal workspace UI follow-up issues
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../guest/presentation/guest_workspace_page.dart    | 13 ++++++++-----
+ .../flutter_app/test/account_state_widget_test.dart |  2 ++
+ .../test/guest_interact_widget_test.dart            |  9 +++++----
+ apps/flutter_app/test/widget_test.dart              |  4 ++--
+ 4 files changed, 17 insertions(+), 11 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 1eec1bc..bb28d60 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -2209,13 +2209,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+     final searchField = TextField(
+       controller: _query,
+       decoration: InputDecoration(
+-        labelText: 'Search local Knowledge',
++        labelText: 'Search Knowledge',
+         prefixIcon: const Icon(Icons.search),
+         suffixIcon: const _GuestInfoButton(
+           tooltip: 'Search help',
+-          title: 'About local Knowledge search',
+-          content:
+-              'Keyword and prefix search on this device; no semantic search.',
++          title: 'About Knowledge search',
++          content: 'Keyword and prefix search of loaded local and '
++              'personal-account Knowledge on this device; no semantic search.',
+         ),
+       ),
+       onChanged: (_) => setState(() {}),
+@@ -2565,6 +2565,9 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+   }
+ 
+   void _deleteSession(Map<String, dynamic> session) {
++    final isPersonalAccount = widget
++        .storageStatus('interact_session', session)
++        .startsWith('Personal account');
+     widget.onChange(
+       widget.data.copyWith(
+         sessions: widget.data.sessions
+@@ -2575,7 +2578,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+     ScaffoldMessenger.of(context).showSnackBar(
+       SnackBar(
+         content: Text(
+-          widget.storageStatus.startsWith('Personal account')
++          isPersonalAccount
+               ? 'Personal account session removal queued. Any local copy '
+                   'remains on this device.'
+               : 'Local session removed.',
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 1b3af07..0a1a09b 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -699,6 +699,8 @@ void main() {
+     await tester.pumpAndSettle();
+ 
+     expect((await store.load()).knowledge, isEmpty);
++    await tester.tap(find.text('Saved Q&A'));
++    await tester.pumpAndSettle();
+     expect(find.text('Personal account item'), findsOneWidget);
+     expect(repository.deleteCalls, 0);
+   });
+diff --git a/apps/flutter_app/test/guest_interact_widget_test.dart b/apps/flutter_app/test/guest_interact_widget_test.dart
+index f9415a1..0000dd4 100644
+--- a/apps/flutter_app/test/guest_interact_widget_test.dart
++++ b/apps/flutter_app/test/guest_interact_widget_test.dart
+@@ -45,7 +45,7 @@ void main() {
+       );
+       await tester.pumpAndSettle();
+ 
+-      final localSearch = _field('Search local Knowledge');
++      final localSearch = _field('Search Knowledge');
+       expect(localSearch, findsOneWidget);
+       expect(tester.widget<TextField>(localSearch).decoration!.helperText, isNull);
+       expect(find.byTooltip('Search help'), findsOneWidget);
+@@ -59,7 +59,8 @@ void main() {
+       await tester.pumpAndSettle();
+       expect(
+         find.text(
+-          'Keyword and prefix search on this device; no semantic search.',
++          'Keyword and prefix search of loaded local and personal-account '
++          'Knowledge on this device; no semantic search.',
+         ),
+         findsOneWidget,
+       );
+@@ -372,11 +373,11 @@ void main() {
+     );
+     await tester.pumpAndSettle();
+ 
+-    expect(_field('Search local Knowledge'), findsOneWidget);
++    expect(_field('Search Knowledge'), findsOneWidget);
+     await tester.tap(find.text('Saved Q&A'));
+     await tester.pumpAndSettle();
+     expect(
+-      tester.getSize(_field('Search local Knowledge')).width,
++      tester.getSize(_field('Search Knowledge')).width,
+       lessThanOrEqualTo(840),
+     );
+     await tester.tap(find.text('Back to add a local question'));
+diff --git a/apps/flutter_app/test/widget_test.dart b/apps/flutter_app/test/widget_test.dart
+index 4c2825b..ce6ab77 100644
+--- a/apps/flutter_app/test/widget_test.dart
++++ b/apps/flutter_app/test/widget_test.dart
+@@ -18,11 +18,11 @@ void main() {
+     expect(find.text('Interact'), findsOneWidget);
+     expect(find.text('Sign in to IntQAFlow'), findsNothing);
+     expect(find.text('Add a local question'), findsOneWidget);
+-    expect(find.text('Search local Knowledge'), findsOneWidget);
++    expect(find.text('Search Knowledge'), findsOneWidget);
+     expect(find.text('Saved Q&A'), findsOneWidget);
+     await tester.tap(find.text('Saved Q&A'));
+     await tester.pumpAndSettle();
+-    expect(find.text('Search local Knowledge'), findsOneWidget);
++    expect(find.text('Search Knowledge'), findsOneWidget);
+     await tester.tap(find.text('Back to add a local question'));
+     await tester.pumpAndSettle();
+     expect(find.text('Create session locally'), findsNothing);
+base-commit: 1842442603414aa29d68fd1e6d5beaaf6bf643e2
+-- 
+2.55.0
+
