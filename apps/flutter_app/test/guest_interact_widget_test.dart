@@ -248,7 +248,22 @@ void main() {
             widget.decoration.labelText == 'Active participant',
       ),
     );
-    expect(participantGuidance.decoration.helperMaxLines, 3);
+    expect(participantGuidance.decoration.helperText, isNull);
+    expect(participantGuidance.decoration.helperMaxLines, isNull);
+    final participantHelp = find.byTooltip('Active participant help');
+    expect(participantHelp, findsOneWidget);
+    await tester.ensureVisible(participantHelp);
+    await tester.pumpAndSettle();
+    await tester.tap(participantHelp);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Answers and individual questions are shown for this participant.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
