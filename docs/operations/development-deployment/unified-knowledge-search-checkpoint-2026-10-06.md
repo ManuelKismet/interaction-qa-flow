@@ -189,3 +189,41 @@ remains gated on the one full-suite assertion failure above.
 
 Final logs and exit files copied to retained validation directory. GitHub UI
 confirmed Codespace bookish happiness stopped after build completion.
+
+
+## Final badge-test retest and remaining application corrections — 2026-10-06
+
+Artifact `ddb0360f40e81cce16adfdf6d19dca3eb4df179f`, authored
+`bbe7349b3a9c169a2bb77519bf423f0c6fe4a56e`, was applied unchanged to047d413,
+producing `98ca4f612a4334cf4d95ee10ff294be0a000903d` on the same isolated
+worktree/branch. Source pushed and GitHub branch readback verified.
+
+- Full Flutter:167 passed,1 failed,about70s,exit1.
+- Analyzer:0errors/0warnings/13infos,16.9s,exit1 from infos.
+- App/backend code unchanged by this one-line test patch; prior111 backend
+  pass, isolated PostgreSQL4pass/migration cycle, and release compilation
+  apply to the unchanged app tree, not newly executed checks here.
+
+The compact Local Chip assertion still fails at
+`guest_interact_widget_test.dart:87` (zero matching Chips). Static review
+confirmed an APPLICATION contract gap: local/loaded-account result source is
+still constructed as origin plus storage status, and the renderer uses that
+whole string as its Chip label. Separate compact Local/Private badges from
+storage status, which already has its own field. Also local `_localRelevance`
+still scores all answer/body-only matches0.9, below semantic-only remote1.0;
+backend scoring was corrected but the on-device path was missed.
+
+[One consolidated targeted correction](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6025761236)
+requests application fixes plus meaningful Local/Private and cross-source
+answer-ranking regressions against exact98ca4f6, retaining all navigation,
+edit/remove/local-retention checks. Do not merely suppress the test or broaden
+badge text contract. Next: apply Copilot incremental correction unchanged,
+repeat independent relevant gates, then DEV rollout only when passing.
+
+No cloud deployment/migration/traffic/Hosting/security changes made in this
+retest. DEV remains aafc112/schema0013. Organisation improvements and live
+semantic-provider/authenticated-import acceptance gaps remain deferred or
+unverified as previously recorded. Validation evidence retained under
+`/home/vscode/.local/share/intqaflow/search-validation-98ca4f6`.
+Main worktree's four dirty docs remain preserved; recurring monitoring remains
+cancelled. Codespace cleanup confirmation will follow.
