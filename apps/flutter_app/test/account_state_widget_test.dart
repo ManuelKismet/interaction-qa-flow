@@ -287,7 +287,12 @@ void main() {
       await store.save(
         const GuestWorkspaceData(
           sessions: [
-            {'id': 'local-session', 'title': 'Work in progress'},
+            {
+              'id': 'local-session',
+              'title': 'Work in progress',
+              'participants': [],
+              'questions': [],
+            },
           ],
         ),
       );
@@ -325,7 +330,12 @@ void main() {
     await store.save(
       const GuestWorkspaceData(
         sessions: [
-          {'id': 'local-session', 'title': 'Keep or clear me'},
+          {
+            'id': 'local-session',
+            'title': 'Keep or clear me',
+            'participants': [],
+            'questions': [],
+          },
         ],
       ),
     );
