@@ -269,6 +269,32 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     );
   }
 
+  String _storageStatus(String kind, Map<String, dynamic> item) {
+    final id = item['id'];
+    if (id is! String) return 'Local on this device';
+    final write = _pendingPersonalWrites['$kind:$id'];
+    if (write?.action == 'delete') {
+      return _personalError == null
+          ? 'Local copy · account removal pending'
+          : 'Local copy · account removal not confirmed';
+    }
+    final isPersonal = [
+      ..._personalItems,
+      ..._pendingPersonalItems,
+    ].any(
+      (record) =>
+          record['kind'] == kind &&
+          (record['data'] as Map?)?['id'] == id,
+    );
+    if (!isPersonal) return 'Local on this device';
+    if (write?.action == 'update') {
+      return _personalError == null
+          ? 'Personal account · saving changes'
+          : 'Personal account · save not confirmed';
+    }
+    return 'Personal account · saved';
+  }
+
   void _save(GuestWorkspaceData submitted) {
     final previousLocal = _data ?? const GuestWorkspaceData();
     final uid = _verifiedPersonalUid;
@@ -1534,6 +1560,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       children: [
                         _GuestKnowledgeTab(
                           items: data.knowledge,
+                          storageStatus: (item) =>
+                              _storageStatus('knowledge', item),
+                          isPersonalAccount: (item) =>
+                              _storageStatus('knowledge', item).startsWith(
+                                'Personal account',
+                              ),
                           onCreate: (item) => _save(
                             data.copyWith(knowledge: [item, ...data.knowledge]),
                           ),
@@ -1549,6 +1581,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                         ),
                         _GuestInteractTab(
                           data: data,
+                          storageStatus: _storageStatus,
                           onChange: _save,
                           onSaveTemplate: (template) => _save(
                             data.copyWith(
@@ -1569,6 +1602,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   Future<void> _deleteKnowledge(GuestWorkspaceData data, String id) async {
     final removed = data.knowledge.where((item) => item['id'] == id).firstOrNull;
     if (removed == null) return;
+    final isPersonal = _storageStatus('knowledge', removed).startsWith(
+      'Personal account',
+    );
     _save(
       data.copyWith(
         knowledge: data.knowledge.where((item) => item['id'] != id).toList(),
@@ -1576,7 +1612,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Local Knowledge item removed.'),
+        content: Text(
+          isPersonal
+              ? 'Personal account copy removal queued. Any local copy remains '
+                  'on this device.'
+              : 'Local Knowledge item removed.',
+        ),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
@@ -1612,12 +1653,19 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         (hasDuplicateParticipantIds
             ? 'Unavailable (duplicate participant IDs)'
             : 'Not selected');
+    final storageDescription =
+        _storageStatus('interact_session', session).startsWith(
+          'Personal account',
+        )
+        ? 'Stored in your personal account'
+        : 'Stored locally on this device';
     final allParticipants = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Export session PDF'),
         content: Text(
-          'Stored locally on this device. Choose the participant scope to preview before exporting. Current participant: $selectedParticipantName.',
+          '$storageDescription. Choose the participant scope to preview '
+          'before exporting. Current participant: $selectedParticipantName.',
         ),
         actions: [
           TextButton(
@@ -2004,7 +2052,7 @@ class _GuestNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = isRegistered
-        ? 'Registered personal account · $saveStatus'
+        ? 'Registered personal account · Local copy · $saveStatus'
         : 'Guest workspace · $saveStatus';
     final explanation = isRegistered
         ? 'Registered workspace. Local drafts stay in this browser profile '
@@ -2081,12 +2129,16 @@ class _AccountMembershipNotice extends StatelessWidget {
 class _GuestKnowledgeTab extends StatefulWidget {
   const _GuestKnowledgeTab({
     required this.items,
+    required this.storageStatus,
+    required this.isPersonalAccount,
     required this.onCreate,
     required this.onUpdate,
     required this.onDelete,
   });
 
   final List<Map<String, dynamic>> items;
+  final String Function(Map<String, dynamic>) storageStatus;
+  final bool Function(Map<String, dynamic>) isPersonalAccount;
   final ValueChanged<Map<String, dynamic>> onCreate;
   final ValueChanged<Map<String, dynamic>> onUpdate;
   final ValueChanged<String> onDelete;
@@ -2135,7 +2187,10 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
   Future<void> _edit(Map<String, dynamic> item) async {
     final updated = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => _EditGuestKnowledgeDialog(item: item),
+      builder: (context) => _EditGuestKnowledgeDialog(
+        item: item,
+        isPersonalAccount: widget.isPersonalAccount(item),
+      ),
     );
     if (updated != null &&
         updated['title'].toString().isNotEmpty &&
@@ -2201,6 +2256,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                       [
                         item['body'],
                         item['answer'],
+                        widget.storageStatus(item),
                       ].whereType<String>().where((text) => text.isNotEmpty).join(
                         '\n\n',
                       ),
@@ -2209,12 +2265,16 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                     trailing: Wrap(
                       children: [
                         IconButton(
-                          tooltip: 'Edit local Knowledge',
+                          tooltip: widget.isPersonalAccount(item)
+                              ? 'Edit personal-account Knowledge'
+                              : 'Edit local Knowledge',
                           onPressed: () => _edit(item),
                           icon: const Icon(Icons.edit_outlined),
                         ),
                         IconButton(
-                          tooltip: 'Remove local Knowledge',
+                          tooltip: widget.isPersonalAccount(item)
+                              ? 'Remove personal-account Knowledge'
+                              : 'Remove local Knowledge',
                           onPressed: () => widget.onDelete(item['id'] as String),
                           icon: const Icon(Icons.delete_outline),
                         ),
@@ -2299,9 +2359,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
 }
 
 class _EditGuestKnowledgeDialog extends StatefulWidget {
-  const _EditGuestKnowledgeDialog({required this.item});
+  const _EditGuestKnowledgeDialog({
+    required this.item,
+    required this.isPersonalAccount,
+  });
 
   final Map<String, dynamic> item;
+  final bool isPersonalAccount;
 
   @override
   State<_EditGuestKnowledgeDialog> createState() =>
@@ -2337,7 +2401,11 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Edit local Knowledge'),
+    title: Text(
+      widget.isPersonalAccount
+          ? 'Edit personal-account Knowledge'
+          : 'Edit local Knowledge',
+    ),
     content: Form(
       key: _formKey,
       child: SizedBox(
@@ -2389,7 +2457,9 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
             'answer': _answer.text.trim(),
           });
         },
-        child: const Text('Save locally'),
+        child: Text(
+          widget.isPersonalAccount ? 'Save account changes' : 'Save locally',
+        ),
       ),
     ],
   );
@@ -2398,12 +2468,14 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
 class _GuestInteractTab extends StatefulWidget {
   const _GuestInteractTab({
     required this.data,
+    required this.storageStatus,
     required this.onChange,
     required this.onSaveTemplate,
     required this.onPrint,
   });
 
   final GuestWorkspaceData data;
+  final String Function(String, Map<String, dynamic>) storageStatus;
   final ValueChanged<GuestWorkspaceData> onChange;
   final ValueChanged<Map<String, dynamic>> onSaveTemplate;
   final void Function(Map<String, dynamic>, String?) onPrint;
@@ -2501,7 +2573,12 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
     );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Local session removed.'),
+        content: Text(
+          widget.storageStatus.startsWith('Personal account')
+              ? 'Personal account session removal queued. Any local copy '
+                  'remains on this device.'
+              : 'Local session removed.',
+        ),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () => widget.onChange(
@@ -2548,15 +2625,18 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Interact sessions stay private on this device.',
+                      'New Interact sessions stay local. '
+                      'Imported sessions stay in your personal account.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
                   const _GuestInfoButton(
                     tooltip: 'Interact privacy information',
-                    title: 'About local Interact sessions',
+                    title: 'About Interact storage',
                     content:
-                        'Interact sessions stay private on this device until you explicitly select one for a group.',
+                        'New sessions stay on this device unless you explicitly '
+                        'import them. Imported sessions and their edits stay in '
+                        'your personal account; group sharing is separate.',
                   ),
                 ],
               ),
@@ -2566,7 +2646,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                   initialValue: _selectedTemplateId,
                   isExpanded: true,
                   decoration: const InputDecoration(
-                    labelText: 'Optional local template',
+                    labelText: 'Optional template',
                   ),
                   items: [
                     const DropdownMenuItem<String>(
@@ -2577,7 +2657,8 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                       DropdownMenuItem(
                         value: template['id'] as String,
                         child: Text(
-                          template['name'] as String? ?? 'Local template',
+                          '${template['name'] as String? ?? 'Template'} · '
+                          '${widget.storageStatus('template', template)}',
                         ),
                       ),
                   ],
@@ -2648,6 +2729,10 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                 _GuestSessionEditor(
                   key: ValueKey(session['id']),
                   session: session,
+                  storageStatus: widget.storageStatus(
+                    'interact_session',
+                    session,
+                  ),
                   onChange: _updateSession,
                   onDelete: () => _deleteSession(session),
                   onSaveTemplate: () => _saveTemplate(session),
@@ -2658,7 +2743,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
               if (widget.data.templates.isNotEmpty) ...[
                 const Divider(height: 28),
                 Text(
-                  'Local templates',
+                  'Templates',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 for (final template in widget.data.templates)
@@ -2666,7 +2751,9 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                     leading: const Icon(Icons.description_outlined),
                     title: Text(template['name'] as String? ?? 'Template'),
                     subtitle: Text(
-                      '${(template['questions'] as List? ?? const []).length} prepared questions',
+                      '${widget.storageStatus('template', template)} · '
+                      '${(template['questions'] as List? ?? const []).length} '
+                      'prepared questions',
                     ),
                   ),
               ],
@@ -2679,6 +2766,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
 class _GuestSessionEditor extends StatefulWidget {
   const _GuestSessionEditor({
     required this.session,
+    required this.storageStatus,
     required this.onChange,
     required this.onDelete,
     required this.onSaveTemplate,
@@ -2688,6 +2776,7 @@ class _GuestSessionEditor extends StatefulWidget {
   });
 
   final Map<String, dynamic> session;
+  final String storageStatus;
   final ValueChanged<Map<String, dynamic>> onChange;
   final VoidCallback onDelete;
   final VoidCallback onSaveTemplate;
@@ -2774,7 +2863,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       context: context,
       builder: (context) => _GuestRequiredTextDialog(
         title: 'Rename participant',
-        submitLabel: 'Save name locally',
+        submitLabel: widget.storageStatus.startsWith('Personal account')
+            ? 'Save account changes'
+            : 'Save name locally',
         fields: [
           _GuestRequiredTextField(
             label: 'Participant name',
@@ -2852,7 +2943,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(
-          '${participants.length} participants · Private on this device',
+          '${participants.length} participants · ${widget.storageStatus}',
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
@@ -3032,6 +3123,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               _GuestQuestionEditor(
                 key: ValueKey(question['id']),
                 question: question,
+                isPersonalAccount:
+                    widget.storageStatus.startsWith('Personal account'),
                 participants: activeParticipant == null
                     ? const []
                     : [activeParticipant],
@@ -3079,6 +3172,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
 class _GuestQuestionEditor extends StatefulWidget {
   const _GuestQuestionEditor({
     required this.question,
+    required this.isPersonalAccount,
     required this.participants,
     required this.onUpdate,
     required this.onRemove,
@@ -3088,6 +3182,7 @@ class _GuestQuestionEditor extends StatefulWidget {
   });
 
   final Map<String, dynamic> question;
+  final bool isPersonalAccount;
   final List<Map<String, dynamic>> participants;
   final ValueChanged<Map<String, dynamic>> onUpdate;
   final VoidCallback onRemove;
@@ -3200,6 +3295,7 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
                   _GuestAnswerEditor(
                     key: ValueKey('${id}_${participant['id']}'),
                     participant: participant,
+                    isPersonalAccount: widget.isPersonalAccount,
                     answer: _answers
                         .where(
                           (answer) =>
@@ -3258,6 +3354,7 @@ Map<String, dynamic>? _answerForParticipant(
 class _GuestAnswerEditor extends StatefulWidget {
   const _GuestAnswerEditor({
     required this.participant,
+    required this.isPersonalAccount,
     required this.answer,
     required this.onAnswerChanged,
     required this.onAddFollowUp,
@@ -3267,6 +3364,7 @@ class _GuestAnswerEditor extends StatefulWidget {
   });
 
   final Map<String, dynamic> participant;
+  final bool isPersonalAccount;
   final Map<String, dynamic>? answer;
   final ValueChanged<String> onAnswerChanged;
   final ValueChanged<String> onAddFollowUp;
@@ -3357,8 +3455,10 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
             focusNode: _answerFocus,
             minLines: 2,
             maxLines: 6,
-            decoration: const InputDecoration(
-              labelText: 'Local answer',
+            decoration: InputDecoration(
+              labelText: widget.isPersonalAccount
+                  ? 'Personal-account answer'
+                  : 'Local answer',
               alignLabelWithHint: true,
             ),
             onChanged: widget.onAnswerChanged,
@@ -3449,6 +3549,7 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                       _GuestQuestionEditor(
                         key: ValueKey((branch as Map<String, dynamic>)['id']),
                         question: branch,
+                        isPersonalAccount: widget.isPersonalAccount,
                         participants: [widget.participant],
                         nested: true,
                         onRemove: () => _removeNestedBranch(branch),

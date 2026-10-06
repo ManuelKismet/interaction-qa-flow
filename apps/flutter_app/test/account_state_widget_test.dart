@@ -523,7 +523,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.textContaining(
-        'This is a local workspace.',
+        'Guest workspace active in this browser profile.',
       ),
       findsOneWidget,
     );
@@ -625,13 +625,19 @@ void main() {
       page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'a')),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
     expect(find.text('Account A private item'), findsOneWidget);
     expect((await storage.load()).knowledge, isEmpty);
+    await tester.tap(find.text('Back to add a local question'));
+    await tester.pumpAndSettle();
 
     repository.items = [personalItem('b', 'Account B private item')];
     await tester.pumpWidget(
       page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'b')),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Saved Q&A'));
     await tester.pumpAndSettle();
 
     expect(find.text('Account A private item'), findsNothing);
@@ -755,6 +761,8 @@ void main() {
       repository.imports[1].single['source_key'],
     );
     expect((await store.load()).knowledge, hasLength(2));
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
     expect(find.text('Import this item'), findsOneWidget);
     expect(find.text('Keep this item local'), findsOneWidget);
   });
@@ -858,7 +866,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Edit local Knowledge'));
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.descendant(
@@ -870,7 +880,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(AlertDialog),
-        matching: find.text('Save locally'),
+        matching: find.text('Save account changes'),
       ),
     );
     await tester.pumpAndSettle();
@@ -893,6 +903,107 @@ void main() {
     expect(repository.updateRevisions, [1, 2]);
     expect(find.text('My pending edit'), findsOneWidget);
     expect(find.text('Latest account title'), findsNothing);
+  });
+
+  testWidgets('editing an imported nested session updates the account copy', (
+    tester,
+  ) async {
+    final session = <String, dynamic>{
+      'id': 'session-id',
+      'title': 'Imported nested session',
+      'participants': [
+        {'id': 'alice', 'name': 'Alice'},
+      ],
+      'questions': [
+        {
+          'id': 'root-question',
+          'text': 'Root question',
+          'scope': 'shared',
+          'answers': [
+            {
+              'participant_id': 'alice',
+              'body': 'Original answer',
+              'branches_collapsed': false,
+              'follow_ups': [
+                {
+                  'id': 'nested-question',
+                  'text': 'Existing nested follow-up',
+                  'scope': 'participant',
+                  'target_participant_id': 'alice',
+                  'answers': [
+                    {
+                      'participant_id': 'alice',
+                      'body': 'Nested answer',
+                      'branches_collapsed': false,
+                      'follow_ups': <Map<String, dynamic>>[],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    final repository = _TestPersonalWorkspaceRepository([
+      {
+        'id': 'remote-session',
+        'kind': 'interact_session',
+        'source_key': 'interact_session:session-id',
+        'title': 'Imported nested session',
+        'data': session,
+        'revision': 1,
+        'created_at': '2026-10-06T00:00:00+00:00',
+        'updated_at': '2026-10-06T00:00:00+00:00',
+      },
+    ]);
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            personalWorkspaceEnabled: true,
+            accountUser: user,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Interact'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Imported nested session'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Existing nested follow-up'), findsOneWidget);
+    final answer = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'Personal-account answer',
+        )
+        .first;
+    await tester.ensureVisible(answer);
+    await tester.enterText(answer, 'Updated account answer');
+    await tester.pumpAndSettle();
+
+    expect(repository.updateRevisions, [1]);
+    final savedSession = repository.items.single['data'] as Map;
+    final rootQuestion = (savedSession['questions'] as List).single as Map;
+    final rootAnswer = (rootQuestion['answers'] as List).single as Map;
+    expect(rootAnswer['body'], 'Updated account answer');
+    expect(
+      ((rootAnswer['follow_ups'] as List).single as Map)['text'],
+      'Existing nested follow-up',
+    );
+    expect((await store.load()).sessions, isEmpty);
+    expect(find.textContaining('Personal account · saved'), findsOneWidget);
   });
 
   testWidgets('new local work is not uploaded before explicit import', (
@@ -923,7 +1034,9 @@ void main() {
       find.byType(TextFormField).first,
       'Keep this Knowledge item local',
     );
-    await tester.tap(find.text('Save locally'));
+    final saveLocally = find.text('Save locally');
+    await tester.ensureVisible(saveLocally);
+    await tester.tap(saveLocally);
     await tester.pumpAndSettle();
 
     expect(repository.imports, isEmpty);
@@ -1274,7 +1387,12 @@ void main() {
     expect(find.byTooltip('Workspace options'), findsOneWidget);
     expect(find.byTooltip('Guest workspace options'), findsNothing);
     expect(find.textContaining('guest'), findsNothing);
-    expect(find.text('Registered workspace · Saved on this device'), findsOneWidget);
+    expect(
+      find.text(
+        'Registered personal account · Local copy · Saved on this device',
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.byTooltip('Workspace storage information'));
     await tester.pumpAndSettle();
     expect(

@@ -41,7 +41,11 @@ async def test_overlapping_reverse_order_personal_imports_do_not_deadlock() -> N
                 kind="knowledge",
                 source_key=f"knowledge:{item_id}",
                 title=f"Item {item_id}",
-                data={"id": item_id, "answer": item_id},
+                data={
+                    "id": item_id,
+                    "title": f"Item {item_id}",
+                    "answer": item_id,
+                },
             )
             for item_id in ("a", "b")
         ]

@@ -627,7 +627,10 @@ void main() {
               find.textContaining('Check your email for the verification link'),
               findsOneWidget,
             );
-            expect(find.text('Sign in'), findsOneWidget);
+            expect(
+              find.text('Already have an account? Sign in'),
+              findsOneWidget,
+            );
             expect(find.text('Create account'), findsNothing);
           }
         }
@@ -1370,7 +1373,10 @@ void main() {
               find.textContaining('Check your email for the verification link'),
               findsOneWidget,
             );
-            expect(find.text('Sign in'), findsOneWidget);
+            expect(
+              find.text('Already have an account? Sign in'),
+              findsOneWidget,
+            );
             expect(find.text('Create account'), findsNothing);
           }
         }
