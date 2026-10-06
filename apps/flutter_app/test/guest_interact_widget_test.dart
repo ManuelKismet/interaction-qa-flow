@@ -81,18 +81,26 @@ void main() {
         of: find.text('Incident response'),
         matching: find.byType(Card),
       );
-      await tester.tap(
-        find.descendant(
-          of: incidentCard,
-          matching: find.byTooltip('Remove local Knowledge'),
-        ),
+      final removeIncident = find.descendant(
+        of: incidentCard,
+        matching: find.byTooltip('Remove local Knowledge'),
       );
+      await tester.ensureVisible(removeIncident);
+      await tester.pumpAndSettle();
+      await tester.tap(removeIncident);
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 300));
       saved = await store.load();
       expect(saved.knowledge.map((item) => item['id']), ['password-rotation']);
 
-      await tester.tap(find.text('Back to add a local question'));
+      final backButton = find.text('Back to add a local question');
+      await tester.ensureVisible(backButton);
+      await tester.pumpAndSettle();
+      await tester.tap(backButton);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.widgetWithText(OutlinedButton, 'Saved Q&A'),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Add a local question'), findsOneWidget);
       expect(find.text('Saved Q&A'), findsOneWidget);
