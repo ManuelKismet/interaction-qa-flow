@@ -32,10 +32,30 @@ class GuestWorkspaceData {
     if (json['schema_version'] != 1) {
       throw const FormatException('Unsupported guest backup version.');
     }
+    final knowledge = _maps(json['knowledge']);
+    final sessions = _maps(json['sessions']);
+    final templates = _maps(json['templates']);
+    for (final item in knowledge) {
+      _validateStrings(item, const ['id', 'title', 'body', 'answer']);
+    }
+    for (final session in sessions) {
+      _validateStrings(session, const ['id', 'title', 'visibility']);
+      _validateMapList(session, 'participants', const ['id', 'name']);
+      _validateQuestions(session['questions']);
+    }
+    for (final template in templates) {
+      _validateStrings(template, const ['id', 'name']);
+      _validateMapList(
+        template,
+        'participant_slots',
+        const ['id', 'label'],
+      );
+      _validateQuestions(template['questions'], template: true);
+    }
     return GuestWorkspaceData(
-      knowledge: _maps(json['knowledge']),
-      sessions: _maps(json['sessions']),
-      templates: _maps(json['templates']),
+      knowledge: knowledge,
+      sessions: sessions,
+      templates: templates,
     );
   }
 
@@ -80,6 +100,68 @@ class GuestWorkspaceData {
         if (item is Map<String, dynamic>) item else
           throw const FormatException('Guest backup entries must be objects.'),
     ];
+  }
+
+  static void _validateStrings(
+    Map<String, dynamic> item,
+    List<String> fields,
+  ) {
+    for (final field in fields) {
+      final value = item[field];
+      if (value != null && value is! String) {
+        throw FormatException('Guest backup field "$field" must be text.');
+      }
+    }
+  }
+
+  static void _validateMapList(
+    Map<String, dynamic> item,
+    String field,
+    List<String> stringFields,
+  ) {
+    final value = item[field];
+    if (value == null) return;
+    if (value is! List || value.any((entry) => entry is! Map<String, dynamic>)) {
+      throw FormatException('Guest backup field "$field" must be a list of objects.');
+    }
+    for (final entry in value.cast<Map<String, dynamic>>()) {
+      _validateStrings(entry, stringFields);
+    }
+  }
+
+  static void _validateQuestions(Object? value, {bool template = false}) {
+    if (value == null) return;
+    if (value is! List) {
+      throw const FormatException('Guest questions must be a list.');
+    }
+    for (final item in value) {
+      if (item is! Map<String, dynamic>) {
+        throw const FormatException('Guest questions must contain objects.');
+      }
+      _validateStrings(item, [
+        'id',
+        'text',
+        if (template) 'target_participant_slot' else 'target_participant_id',
+        'scope',
+      ]);
+      _validateQuestions(item['follow_ups'], template: template);
+      final answers = item['answers'];
+      if (answers == null) continue;
+      if (answers is! List) {
+        throw const FormatException('Guest answers must be a list.');
+      }
+      for (final answer in answers) {
+        if (answer is! Map<String, dynamic>) {
+          throw const FormatException('Guest answers must contain objects.');
+        }
+        _validateStrings(answer, const [
+          'participant_id',
+          'participant_slot',
+          'body',
+        ]);
+        _validateQuestions(answer['follow_ups'], template: template);
+      }
+    }
   }
 }
 

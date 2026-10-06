@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
@@ -676,6 +677,101 @@ void main() {
       findsNothing,
     );
     expect(find.textContaining('Saved on this device'), findsOneWidget);
+  });
+
+  testWidgets('queued local work is persisted when the page is disposed', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(_field('Question'), 'Saved while leaving');
+    final saveButton = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+
+    expect((await store.load()).knowledge.single['title'], 'Saved while leaving');
+  });
+
+  testWidgets('failed local save still allows backup copy with accurate status', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage()..failWrites = true;
+    final store = GuestWorkspaceStore(storage);
+    String? copiedText;
+    var failClipboard = false;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            if (failClipboard) {
+              throw PlatformException(code: 'clipboard-unavailable');
+            }
+            copiedText = (call.arguments as Map)['text'] as String;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(_field('Question'), 'Rescue this work');
+    final saveButton = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy local JSON backup'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy backup'));
+    await tester.pumpAndSettle();
+    expect(
+      GuestWorkspaceData.decodeBackup(copiedText!).knowledge.single['title'],
+      'Rescue this work',
+    );
+    expect(
+      find.textContaining('copied to clipboard. Local changes are still not saved'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Your changes are not saved. Keep this page open and retry.'),
+      findsOneWidget,
+    );
+
+    failClipboard = true;
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy local JSON backup'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy backup'));
+    await tester.pumpAndSettle();
+    expect(find.text('Unable to copy the local JSON backup.'), findsOneWidget);
+    expect(
+      find.text('Your changes are not saved. Keep this page open and retry.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('failed backup import preserves source and current local data', (

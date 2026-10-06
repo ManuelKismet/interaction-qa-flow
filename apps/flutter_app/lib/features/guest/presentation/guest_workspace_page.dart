@@ -59,8 +59,10 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
   ConsumerState<GuestWorkspacePage> createState() => _GuestWorkspacePageState();
 }
 
-class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
+class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+    with WidgetsBindingObserver {
   GuestWorkspaceData? _data;
+  late GuestWorkspaceStore _store;
   String? _loadError;
   String? _pendingImportJson;
   String _saveStatus = 'Saved on this device';
@@ -74,12 +76,27 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   @override
   void initState() {
     super.initState();
+    _store = ref.read(guestWorkspaceStoreProvider);
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_flushPendingSave());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autosaveTimer?.cancel();
+    if (_savedRevision < _dataRevision) {
+      unawaited(_flushPendingSave());
+    }
     super.dispose();
   }
 
@@ -88,7 +105,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     final revisionAtStart = _dataRevision;
     setState(() => _isLoading = true);
     try {
-      final data = await ref.read(guestWorkspaceStoreProvider).load();
+      final data = await _store.load();
       if (mounted) {
         setState(() {
           if (_dataRevision == revisionAtStart && _data == null) {
@@ -132,20 +149,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         (saved) => saved && _savedRevision == _dataRevision,
       );
     }
-    final nextOperation = _writeLatestSnapshots();
+    final nextOperation = _writeLatestSnapshots(_store);
     _saveOperation = nextOperation;
     return nextOperation.whenComplete(() {
       if (identical(_saveOperation, nextOperation)) _saveOperation = null;
     });
   }
 
-  Future<bool> _writeLatestSnapshots() async {
+  Future<bool> _writeLatestSnapshots(GuestWorkspaceStore store) async {
     try {
-      while (mounted && _savedRevision < _dataRevision) {
+      while (_savedRevision < _dataRevision) {
         final revision = _dataRevision;
         final snapshot = _data;
         if (snapshot == null) return false;
-        await ref.read(guestWorkspaceStoreProvider).save(snapshot);
+        await store.save(snapshot);
         _savedRevision = revision;
       }
       if (mounted && _savedRevision == _dataRevision) {
@@ -257,6 +274,18 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         guestGroupOwnershipUnavailable = true;
       }
     }
+    if (_data != null && !await _flushPendingSave()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unable to save local changes. Retry saving before leaving this workspace.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     final data = _data;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -274,6 +303,27 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
           hasSoleAdministeredGroup: hasSoleAdministeredGroup,
           guestGroupOwnershipUnavailable: guestGroupOwnershipUnavailable,
         ),
+      ),
+    );
+  }
+
+  Future<void> _openSharedGroups() async {
+    if (_data != null && !await _flushPendingSave()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unable to save local changes. Retry saving before leaving this workspace.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const SharedGuestGroupsPage(),
       ),
     );
   }
@@ -387,7 +437,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     final pendingSave = _saveOperation;
     if (pendingSave != null) await pendingSave;
     try {
-      await ref.read(guestWorkspaceStoreProvider).clear();
+      await _store.clear();
     } on Object {
       if (mounted) {
         if (hadUnpersistedWork) {
@@ -435,30 +485,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    if (_unsavedChanges) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'The backup was not copied because local changes could not be saved. Retry saving first.',
-          ),
-        ),
-      );
-      return;
-    }
-    if (!await _flushPendingSave()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'The backup was not copied because local changes could not be saved.',
-            ),
-          ),
-        );
-      }
-      return;
-    }
+    final saved = !_unsavedChanges && await _flushPendingSave();
     final latest = _data;
     if (latest == null) return;
+    final backupRevision = _dataRevision;
     try {
       await Clipboard.setData(ClipboardData(text: latest.encodeBackup()));
     } on Object {
@@ -470,7 +500,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Local JSON backup copied to clipboard.')),
+      SnackBar(
+        content: Text(
+          saved && backupRevision == _dataRevision
+              ? 'Local JSON backup copied to clipboard.'
+              : 'Latest local JSON backup copied to clipboard. Local changes are still not saved on this device; retry saving.',
+        ),
+      ),
     );
   }
 
@@ -601,11 +637,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
             if (canOpenGuestGroups)
               IconButton(
                 tooltip: 'Shared groups',
-                onPressed: () => Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const SharedGuestGroupsPage(),
-                  ),
-                ),
+                onPressed: _openSharedGroups,
                 icon: const Icon(Icons.group_outlined),
               )
             else if (_canStartSharedGuestIdentity)

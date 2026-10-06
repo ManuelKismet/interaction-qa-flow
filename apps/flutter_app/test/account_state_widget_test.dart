@@ -104,8 +104,8 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   @override
   FirebaseApp get app => _TestFirebaseApp();
 
-  final FirebaseAuthException? createError;
-  final FirebaseAuthException? signInError;
+  final Object? createError;
+  final Object? signInError;
   int createAttempts = 0;
   int signInAttempts = 0;
   int signOutAttempts = 0;
@@ -507,6 +507,33 @@ void main() {
       renderedText.any((text) => text.contains('secret-password')),
       isFalse,
     );
+  });
+
+  testWidgets('unexpected sign-in exceptions show safe recovery feedback', (
+    tester,
+  ) async {
+    final auth = _TestFirebaseAuth(
+      null,
+      signInError: StateError('internal credential transport detail'),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(home: SignInPage()),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+    await tester.enterText(find.byType(TextField).last, 'private-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(auth.signInAttempts, 1);
+    expect(find.text('Sign-in failed. Please try again.'), findsOneWidget);
+    expect(find.textContaining('internal credential transport detail'), findsNothing);
+    expect(find.textContaining('private-password'), findsNothing);
+    expect(tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Sign in'),
+    ).onPressed, isNotNull);
   });
 
   testWidgets('an active diagnostic attempt cannot block an ordinary sign-in', (
