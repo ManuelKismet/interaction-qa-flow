@@ -20,9 +20,6 @@ class _TestUser extends Fake implements User {
     required this.isAnonymous,
     this.isEmailVerified = false,
     this.testUid = 'account-uid',
-    this.linkError,
-    this.verificationEmailError,
-    this.reloadError,
   });
 
   @override
@@ -40,9 +37,6 @@ class _TestUser extends Fake implements User {
   String get uid => testUid;
 
   final String testUid;
-  final FirebaseAuthException? linkError;
-  final FirebaseAuthException? verificationEmailError;
-  final FirebaseAuthException? reloadError;
   int verificationEmailAttempts = 0;
   int linkAttempts = 0;
   int reloadAttempts = 0;
@@ -52,19 +46,16 @@ class _TestUser extends Fake implements User {
     ActionCodeSettings? actionCodeSettings,
   ]) async {
     verificationEmailAttempts++;
-    if (verificationEmailError != null) throw verificationEmailError!;
   }
 
   @override
   Future<void> reload() async {
     reloadAttempts++;
-    if (reloadError != null) throw reloadError!;
   }
 
   @override
   Future<UserCredential> linkWithCredential(AuthCredential credential) async {
     linkAttempts++;
-    if (linkError != null) throw linkError!;
     isAnonymous = false;
     return _TestUserCredential(this);
   }

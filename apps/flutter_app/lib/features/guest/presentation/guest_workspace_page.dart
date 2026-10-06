@@ -492,7 +492,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               _personalItems.removeWhere(
                 (item) => item['source_key'] == write.sourceKey,
               );
-              _personalItems.add(saved!);
+              _personalItems.add(saved);
             } else {
               _personalItems.removeWhere(
                 (item) => item['source_key'] == write.sourceKey,
