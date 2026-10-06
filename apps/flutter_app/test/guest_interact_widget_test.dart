@@ -809,6 +809,10 @@ void main() {
         findsOneWidget,
       );
       expect(
+        find.text('Local JSON backup copied to clipboard.'),
+        findsNothing,
+      );
+      expect(
         find.text('Your changes are not saved. Keep this page open and retry.'),
         findsOneWidget,
       );
