@@ -93,6 +93,28 @@ void main() {
     client.close();
   });
 
+  test('does not retry a personal request with a different Firebase UID', () async {
+    final tokens = _FakeTokenSource()..currentUid = 'owner-a';
+    final adapter = _RecordingAdapter((_) {
+      tokens.currentUid = 'owner-b';
+      return _unauthorized();
+    });
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await expectLater(
+      client.get<void>(
+        '/api/v1/personal/items',
+        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
+      ),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(tokens.forceRefreshCount, 0);
+    expect(tokens.signedOut, isFalse);
+    expect(adapter.requests, hasLength(1));
+    client.close();
+  });
+
   test('keeps a linked guest identity after organisation membership lookup returns 401', () async {
     final tokens = _FakeTokenSource();
     final adapter = _RecordingAdapter((_) => _unauthorized());
@@ -127,6 +149,9 @@ void main() {
 }
 
 class _FakeTokenSource implements ApiTokenSource {
+  @override
+  String? currentUid = 'test-uid';
+
   String currentToken = 'current-id-token';
   int forceRefreshCount = 0;
   bool signedOut = false;

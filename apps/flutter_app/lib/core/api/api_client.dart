@@ -19,6 +19,8 @@ final apiClientProvider = Provider<Dio>((ref) {
 });
 
 abstract interface class ApiTokenSource {
+  String? get currentUid;
+
   Future<String?> idToken({bool forceRefresh = false});
 
   Future<String?> appCheckToken();
@@ -31,6 +33,9 @@ class _FirebaseTokenSource implements ApiTokenSource {
 
   final FirebaseAuth auth;
   final FirebaseAppCheck appCheck;
+
+  @override
+  String? get currentUid => auth.currentUser?.uid;
 
   @override
   Future<String?> idToken({bool forceRefresh = false}) async =>
@@ -76,16 +81,25 @@ Dio createApiClient(
       onError: (error, handler) async {
         final options = error.requestOptions;
         final detail = jsonEncode(error.response?.data ?? '').toLowerCase();
+        final expectedUid = options.extra['expectedFirebaseUid'];
         if (error.response?.statusCode != 401 ||
             options.extra['authRetried'] == true ||
-            detail.contains('app check')) {
+            detail.contains('app check') ||
+            (expectedUid is String &&
+                tokenSource.currentUid != expectedUid)) {
           handler.next(error);
           return;
         }
         try {
           final idToken = await tokenSource.idToken(forceRefresh: true);
+          if (expectedUid is String &&
+              tokenSource.currentUid != expectedUid) {
+            handler.next(error);
+            return;
+          }
           if (idToken == null) {
-            if (options.uri.path != '/api/v1/account/state') {
+            if (expectedUid is! String &&
+                options.uri.path != '/api/v1/account/state') {
               await tokenSource.signOut();
             }
             handler.next(error);
@@ -100,7 +114,8 @@ Dio createApiClient(
               !{
                 '/api/v1/auth/me',
                 '/api/v1/account/state',
-              }.contains(options.uri.path)) {
+              }.contains(options.uri.path) &&
+              expectedUid is! String) {
             await tokenSource.signOut();
           }
           handler.next(retryError);
@@ -118,7 +133,14 @@ Future<void> _attachTokens(
   ApiTokenSource tokenSource, {
   String? idToken,
 }) async {
+  final expectedUid = options.extra['expectedFirebaseUid'];
+  if (expectedUid is String && tokenSource.currentUid != expectedUid) {
+    throw StateError('The signed-in account changed before the request.');
+  }
   final currentIdToken = idToken ?? await tokenSource.idToken();
+  if (expectedUid is String && tokenSource.currentUid != expectedUid) {
+    throw StateError('The signed-in account changed before the request.');
+  }
   final appCheckToken = await tokenSource.appCheckToken();
   if (currentIdToken == null ||
       currentIdToken.isEmpty ||

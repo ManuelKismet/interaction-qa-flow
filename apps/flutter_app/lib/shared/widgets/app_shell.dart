@@ -88,6 +88,8 @@ class AppShell extends ConsumerWidget {
         onSelected: (value) {
           if (value == 'sign-out') {
             ref.read(firebaseAuthProvider).signOut();
+          } else if (value == 'personal') {
+            context.go('/personal');
           }
         },
         itemBuilder: (context) => [
@@ -112,6 +114,10 @@ class AppShell extends ConsumerWidget {
             ),
           ),
           const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: 'personal',
+            child: Text('Personal workspace'),
+          ),
           const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
         ],
         child: Padding(

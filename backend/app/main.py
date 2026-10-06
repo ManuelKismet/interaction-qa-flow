@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.router import api_router
 from app.api.v1.routes.account_state import router as account_state_router
 from app.api.v1.routes.guest import router as guest_router
+from app.api.v1.routes.personal_workspace import router as personal_workspace_router
 from app.core.config import get_settings
 from app.core.exceptions import (
     ConflictError,
@@ -103,3 +104,4 @@ async def readiness(
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(account_state_router, prefix="/api/v1")
 app.include_router(guest_router, prefix="/api/v1")
+app.include_router(personal_workspace_router, prefix="/api/v1")

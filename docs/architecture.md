@@ -93,10 +93,9 @@ infer the user's formal department.
   rejected. Every group operation requires a non-anonymous Firebase identity
   with a verified email; organisation membership is not required. Anonymous and
   unverified identities are denied access, including read-only operations.
-  Existing group content remains keyed to its Firebase UID; linking credentials
-  to that same UID and verifying the email restores eligibility without
-  migrating the content. Every invitation redemption remains pending until a
-  group admin approves it.
+  Group content remains keyed to its Firebase UID; a separate personal account
+  does not inherit memberships. Every invitation redemption remains pending
+  until a group admin approves it.
 - Group roles and invitation approval are enforced by guest services on every
   content, search, history, export, and membership request. Invitation previews
   disclose validity only. Group membership does not grant organisation,
@@ -123,11 +122,29 @@ infer the user's formal department.
   exists; group content is stored remotely only after an explicit group action.
 - Anonymous guests can continue using local Knowledge, Interact, templates, and
   backup/import. Creating or signing into an account does not upload, migrate,
-  or delete that local data; account creation also does not purge existing
-  Groups content.
+  or delete that local data. Account creation uses normal Firebase registration;
+  it does not link credentials to an anonymous UID or transfer existing Groups
+  membership.
+- Verified registered accounts may explicitly import selected local Knowledge
+  items, Interact sessions, or templates into the separate
+  `personal_workspace_items` store. Rows are scoped to the verified Firebase UID,
+  not an organisation, and are available across devices after signing into that
+  account. The personal API independently verifies the Firebase ID token,
+  registered provider, verified email, and App Check; request-supplied identity
+  headers are rejected. Personal content is not part of organisation search,
+  Groups, or organisation routes. Imports are idempotent by account and stable
+  source key, and never remove the local originals.
+- Personal rows persist until their owner deletes them; signing out does not
+  delete server data. Firebase account deletion does not cascade to these rows.
+  This feature adds no expiry or automatic purge.
+- Migration `0013` creates the personal workspace table without backfilling
+  existing local or group data. For an isolated development database, run
+  `cd backend && alembic upgrade head` using its intended `DATABASE_URL`.
+  Hosted migrations require the existing reviewed development migration process;
+  this feature work does not run a hosted migration.
 - Registered organisation routes continue to resolve active Firebase UID
   mappings and retain the existing tenant, department, private-session,
-  governance, and audit checks. A linked guest identity can access only its
+  governance, and audit checks. A registered identity can access only its
   existing group memberships. Each Firebase UID maps to one account and each
   account belongs to one organisation; multiple organisation memberships per
   account are not supported. Group roles remain independent of organisation

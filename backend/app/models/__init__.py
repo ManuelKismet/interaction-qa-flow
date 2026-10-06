@@ -43,6 +43,7 @@ from app.models.guest import (
     GuestGroupMembership,
 )
 from app.models.organisation import Organisation
+from app.models.personal_workspace import PersonalWorkspaceItem
 from app.models.question import Question, QuestionStatus, QuestionVisibility
 from app.models.question_embedding import QuestionEmbedding
 from app.models.question_version import QuestionVersion
@@ -91,6 +92,7 @@ __all__ = [
     "KnowledgeProposal",
     "KnowledgeProposalStatus",
     "Organisation",
+    "PersonalWorkspaceItem",
     "Question",
     "QuestionChangeRequest",
     "QuestionEmbedding",

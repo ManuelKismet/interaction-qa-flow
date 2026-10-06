@@ -8,6 +8,7 @@ import 'package:int_qa_flow/app.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
+import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
@@ -18,6 +19,7 @@ class _TestUser extends Fake implements User {
   _TestUser({
     required this.isAnonymous,
     this.isEmailVerified = false,
+    this.testUid = 'account-uid',
     this.linkError,
     this.verificationEmailError,
     this.reloadError,
@@ -35,8 +37,9 @@ class _TestUser extends Fake implements User {
   String? get email => 'account@example.test';
 
   @override
-  String get uid => 'account-uid';
+  String get uid => testUid;
 
+  final String testUid;
   final FirebaseAuthException? linkError;
   final FirebaseAuthException? verificationEmailError;
   final FirebaseAuthException? reloadError;
@@ -181,6 +184,54 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
   }
 }
 
+class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+  _TestPersonalWorkspaceRepository(this.items) : super(Dio());
+
+  List<Map<String, dynamic>> items;
+  var listCalls = 0;
+  var failedImports = 0;
+  final imports = <List<Map<String, dynamic>>>[];
+  var deleteCalls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listItems({
+    required String expectedUid,
+  }) async {
+    listCalls++;
+    return items;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> importItems(
+    List<Map<String, dynamic>> payload, {
+    required String expectedUid,
+  }) async {
+    imports.add(payload);
+    if (failedImports > 0) {
+      failedImports--;
+      throw StateError('Simulated uncertain response.');
+    }
+    return [
+      for (final item in payload)
+        {
+          ...item,
+          'id': 'record-${item['source_key']}',
+          'revision': 1,
+          'created_at': '2026-10-06T00:00:00+00:00',
+          'updated_at': '2026-10-06T00:00:00+00:00',
+        },
+    ];
+  }
+
+  @override
+  Future<void> deleteItem(
+    String id, {
+    required String expectedUid,
+  }) async {
+    deleteCalls++;
+  }
+}
+
 class _SignInLauncher extends StatelessWidget {
   const _SignInLauncher();
 
@@ -190,10 +241,10 @@ class _SignInLauncher extends StatelessWidget {
       child: TextButton(
         onPressed: () => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
-            builder: (_) => const SignInPage(linkGuestIdentity: true),
+            builder: (_) => const SignInPage(createAccount: true),
           ),
         ),
-        child: const Text('Open account linking'),
+        child: const Text('Open personal account creation'),
       ),
     ),
   );
@@ -222,7 +273,7 @@ Future<void> _expectSeparateAccountError(
   final passwordField = tester.widget<TextField>(find.byType(TextField).last);
   expect(passwordField.obscureText, isTrue);
   await tester.tap(
-    find.widgetWithText(FilledButton, 'Create a separate account'),
+    find.widgetWithText(FilledButton, 'Create account'),
   );
   await tester.pumpAndSettle();
 
@@ -337,7 +388,7 @@ void main() {
   });
 
   testWidgets(
-    'sign-in return keeps guest workspace content available',
+    'leaving sign-in keeps the local workspace available',
     (tester) async {
       final store = GuestWorkspaceStore(_MemoryGuestStorage());
       await store.save(
@@ -358,17 +409,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Already have an account? Sign in'));
       await tester.pumpAndSettle();
-      expect(find.text('Back to guest workspace'), findsOneWidget);
-      await tester.enterText(find.byType(TextField).first, 'member@example.test');
-      await tester.enterText(find.byType(TextField).last, 'safe-test-password');
-      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-      await tester.pumpAndSettle();
-      expect(find.text('Sign in to your existing account?'), findsOneWidget);
-      await tester.tap(find.text('Keep local workspace'));
+      expect(find.text('Back to workspace'), findsOneWidget);
+      await tester.tap(find.text('Back to workspace'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Back to guest workspace'));
-      await tester.pumpAndSettle();
       expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
       await tester.tap(find.text('Interact').first);
       await tester.pumpAndSettle();
@@ -415,7 +459,7 @@ void main() {
     expect((await store.load()).sessions, isEmpty);
   });
 
-  testWidgets('shared guest account offers explicit recovery linking', (
+  testWidgets('anonymous auth is treated as a local guest workspace', (
     tester,
   ) async {
     await pumpGuestWorkspace(
@@ -424,27 +468,12 @@ void main() {
       sharedIdentityActive: true,
     );
 
-    expect(
-      find.text('Guest sign-in active · Saved on this device'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining(
-        'People using this profile share that sign-in and its local drafts.',
-      ),
-      findsNothing,
-    );
+    expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
     await tester.tap(find.byTooltip('Workspace storage information'));
     await tester.pumpAndSettle();
     expect(
       find.textContaining(
-        'People using this profile share that sign-in and its local drafts.',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining(
-        'Groups require a registered account with a verified email.',
+        'This is a local workspace.',
       ),
       findsOneWidget,
     );
@@ -452,19 +481,22 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
-    expect(find.text('Anonymous guest workspace'), findsOneWidget);
+    expect(find.text('Local guest workspace'), findsOneWidget);
     expect(find.text('Already have an account? Sign in'), findsOneWidget);
-    expect(find.text('Create account from this guest'), findsOneWidget);
-    expect(find.text('Start fresh with a separate account'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Create account from this guest'), findsNothing);
+    expect(find.text('Start fresh with a separate account'), findsNothing);
     expect(find.text('Sign out'), findsNothing);
     expect(find.text('Organisation admin'), findsNothing);
   });
 
-  testWidgets('shared guest account creation defaults to same-UID linking', (
+  testWidgets('local guest account creation uses normal registration', (
     tester,
   ) async {
     final user = _TestUser(isAnonymous: true);
-    final auth = _TestFirebaseAuth(user);
+    final registered = _TestUser(isAnonymous: false);
+    final auth = _TestFirebaseAuth(user)
+      ..createCredential = _TestUserCredential(registered);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -485,32 +517,234 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Create account from this guest'));
+    await tester.tap(find.text('Create account'));
     await tester.pumpAndSettle();
 
     expect(find.byType(SignInPage), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Create account'), findsOneWidget);
     expect(
-      find.widgetWithText(FilledButton, 'Create account from this guest'),
+      find.textContaining('A personal account is separate from local work.'),
       findsOneWidget,
     );
-    expect(
-      find.textContaining('Create a registered account from this guest identity'),
-      findsOneWidget,
-    );
-    expect(find.text('Start fresh with a separate account'), findsNothing);
 
-    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
+    await tester.enterText(find.byType(TextField).first, 'account@example.test');
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Create account from this guest'),
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.pumpAndSettle();
+
+    expect(user.linkAttempts, 0);
+    expect(user.isAnonymous, isTrue);
+    expect(auth.createAttempts, 1);
+    expect(auth.signInAttempts, 0);
+  });
+
+  testWidgets('personal workspace data is cleared between account identities', (
+    tester,
+  ) async {
+    Map<String, dynamic> personalItem(String id, String title) => {
+      'id': 'record-$id',
+      'kind': 'knowledge',
+      'source_key': 'knowledge:$id',
+      'title': title,
+      'data': {'id': id, 'title': title, 'body': 'Private content'},
+      'revision': 1,
+      'created_at': '2026-10-06T00:00:00+00:00',
+      'updated_at': '2026-10-06T00:00:00+00:00',
+    };
+
+    final repository = _TestPersonalWorkspaceRepository([
+      personalItem('a', 'Account A private item'),
+    ]);
+    final storage = GuestWorkspaceStore(_MemoryGuestStorage());
+    Widget page(User user) => ProviderScope(
+      overrides: [
+        firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+        guestWorkspaceStoreProvider.overrideWithValue(storage),
+        personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+      ],
+      child: MaterialApp(
+        home: GuestWorkspacePage(
+          firebaseReady: true,
+          personalWorkspaceEnabled: true,
+          accountUser: user,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'a')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Account A private item'), findsOneWidget);
+    expect((await storage.load()).knowledge, isEmpty);
+
+    repository.items = [personalItem('b', 'Account B private item')];
+    await tester.pumpWidget(
+      page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'b')),
     );
     await tester.pumpAndSettle();
 
-    expect(user.linkAttempts, 1);
-    expect(user.uid, 'account-uid');
-    expect(user.isAnonymous, isFalse);
-    expect(auth.createAttempts, 0);
-    expect(auth.signInAttempts, 0);
+    expect(find.text('Account A private item'), findsNothing);
+    expect(find.text('Account B private item'), findsOneWidget);
+    expect(repository.listCalls, 2);
+    expect((await storage.load()).knowledge, isEmpty);
+  });
+
+  testWidgets('clearing local work does not delete personal account items', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'local-id', 'title': 'Local item', 'body': 'Local'},
+        ],
+      ),
+    );
+    final repository = _TestPersonalWorkspaceRepository([
+      {
+        'id': 'remote-record',
+        'kind': 'knowledge',
+        'source_key': 'knowledge:remote-id',
+        'title': 'Personal account item',
+        'data': {
+          'id': 'remote-id',
+          'title': 'Personal account item',
+          'body': 'Remote',
+        },
+        'revision': 1,
+        'created_at': '2026-10-06T00:00:00+00:00',
+        'updated_at': '2026-10-06T00:00:00+00:00',
+      },
+    ]);
+    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            personalWorkspaceEnabled: true,
+            accountUser: user,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear local copy on this device'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear local copy'));
+    await tester.pumpAndSettle();
+
+    expect((await store.load()).knowledge, isEmpty);
+    expect(find.text('Personal account item'), findsOneWidget);
+    expect(repository.deleteCalls, 0);
+  });
+
+  testWidgets('personal import retries selected items without removing locals', (
+    tester,
+  ) async {
+    final localData = GuestWorkspaceData(
+      knowledge: [
+        {'id': 'selected', 'title': 'Import this item', 'body': 'Selected'},
+        {'id': 'local-only', 'title': 'Keep this item local', 'body': 'Private'},
+      ],
+    );
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(localData);
+    final repository = _TestPersonalWorkspaceRepository([])..failedImports = 1;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(
+            _TestFirebaseAuth(
+              _TestUser(isAnonymous: false, isEmailVerified: true),
+            ),
+          ),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            personalWorkspaceEnabled: true,
+            accountUser: _TestUser(isAnonymous: false, isEmailVerified: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local work'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Keep this item local'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import selected work'));
+    await tester.pumpAndSettle();
+
+    expect(repository.imports, hasLength(1));
+    expect(repository.imports.single, hasLength(1));
+    expect(repository.imports.single.single['source_key'], 'knowledge:selected');
+    expect(find.text('Retry import'), findsOneWidget);
+    await tester.tap(find.text('Retry import'));
+    await tester.pumpAndSettle();
+
+    expect(repository.imports, hasLength(2));
+    expect(
+      repository.imports[0].single['source_key'],
+      repository.imports[1].single['source_key'],
+    );
+    expect((await store.load()).knowledge, hasLength(2));
+    expect(find.text('Import this item'), findsOneWidget);
+    expect(find.text('Keep this item local'), findsOneWidget);
+  });
+
+  testWidgets('new local work is not uploaded before explicit import', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    final repository = _TestPersonalWorkspaceRepository([]);
+    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            personalWorkspaceEnabled: true,
+            accountUser: user,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextFormField).first,
+      'Keep this Knowledge item local',
+    );
+    await tester.tap(find.text('Save locally'));
+    await tester.pumpAndSettle();
+
+    expect(repository.imports, isEmpty);
+    expect(
+      (await store.load()).knowledge.single['title'],
+      'Keep this Knowledge item local',
+    );
   });
 
   testWidgets('existing-account sign-in errors do not reveal Firebase details', (
@@ -1005,139 +1239,32 @@ void main() {
     expect(attempts, 0);
   });
 
-  testWidgets('link conflict keeps the current shared guest identity', (
+  testWidgets('registration from anonymous session uses separate account flow', (
     tester,
   ) async {
-    final user = _TestUser(
-      isAnonymous: true,
-      linkError: FirebaseAuthException(code: 'credential-already-in-use'),
-    );
-    final auth = _TestFirebaseAuth(user);
+    final anonymousUser = _TestUser(isAnonymous: true);
+    final registeredUser = _TestUser(isAnonymous: false);
+    final auth = _TestFirebaseAuth(anonymousUser)
+      ..createCredential = _TestUserCredential(registeredUser);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(
-          home: SignInPage(linkGuestIdentity: true),
-        ),
+        child: const MaterialApp(home: _SignInLauncher()),
       ),
     );
-    expect(
-      find.textContaining('Create a registered account from this guest identity'),
-      findsOneWidget,
-    );
+    await tester.tap(find.text('Open personal account creation'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'account@example.test');
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Create account from this guest'),
-    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
 
+    expect(anonymousUser.linkAttempts, 0);
+    expect(anonymousUser.isAnonymous, isTrue);
+    expect(auth.createAttempts, 1);
+    expect(registeredUser.verificationEmailAttempts, 1);
     expect(
-      find.textContaining('This guest identity remains active'),
-      findsOneWidget,
-    );
-    expect(auth.createAttempts, 0);
-    expect(auth.signInAttempts, 0);
-    expect(identical(auth.currentUser, user), isTrue);
-  });
-
-  testWidgets('guest account linking verifies, refreshes, and closes on success', (
-    tester,
-  ) async {
-    final user = _TestUser(isAnonymous: true);
-    final auth = _TestFirebaseAuth(user);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(home: _SignInLauncher()),
-      ),
-    );
-    await tester.tap(find.text('Open account linking'));
-    await tester.pumpAndSettle();
-    expect(find.text('Create account from this guest'), findsNWidgets(2));
-
-    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Create account from this guest'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(user.linkAttempts, 1);
-    expect(user.isAnonymous, isFalse);
-    expect(user.uid, 'account-uid');
-    expect(user.verificationEmailAttempts, 1);
-    expect(user.reloadAttempts, 1);
-    expect(find.byType(SignInPage), findsNothing);
-    expect(
-      find.textContaining('The guest identity remains linked'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('guest linking reports verification-email failure after linking', (
-    tester,
-  ) async {
-    final user = _TestUser(
-      isAnonymous: true,
-      verificationEmailError: FirebaseAuthException(code: 'network-request-failed'),
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user))],
-        child: const MaterialApp(home: _SignInLauncher()),
-      ),
-    );
-    await tester.tap(find.text('Open account linking'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Create account from this guest'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(user.isAnonymous, isFalse);
-    expect(user.verificationEmailAttempts, 1);
-    expect(find.byType(SignInPage), findsNothing);
-    expect(
-      find.textContaining('verification email could not be sent'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('group access remain linked'),
-      findsNothing,
-    );
-  });
-
-  testWidgets('guest linking reports account refresh failure after linking', (
-    tester,
-  ) async {
-    final user = _TestUser(
-      isAnonymous: true,
-      reloadError: FirebaseAuthException(code: 'network-request-failed'),
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user))],
-        child: const MaterialApp(home: _SignInLauncher()),
-      ),
-    );
-    await tester.tap(find.text('Open account linking'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Create account from this guest'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(user.isAnonymous, isFalse);
-    expect(user.verificationEmailAttempts, 1);
-    expect(user.reloadAttempts, 1);
-    expect(find.byType(SignInPage), findsNothing);
-    expect(
-      find.textContaining('account status could not be refreshed'),
+      find.textContaining('nothing is uploaded unless you choose items'),
       findsOneWidget,
     );
   });
@@ -1157,15 +1284,12 @@ void main() {
       ),
     );
     expect(
-      find.textContaining(
-        'Start fresh with a separate registered identity. '
-        'It does not transfer local work',
-      ),
+      find.textContaining('A personal account is separate from local work.'),
       findsOneWidget,
     );
     await tester.enterText(find.byType(TextField).first, 'new@example.test');
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(find.widgetWithText(FilledButton, 'Create a separate account'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
 
     expect(auth.createAttempts, 1);
@@ -1175,7 +1299,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('does not add organisation membership'),
+      find.textContaining('nothing is uploaded unless you choose items'),
       findsOneWidget,
     );
   });
@@ -1204,80 +1328,13 @@ void main() {
     );
   });
 
-  testWidgets('separate account creation preserves local-work confirmation', (
+  testWidgets('sign-in proceeds without local-work ownership confirmation', (
     tester,
   ) async {
-    final user = _TestUser(isAnonymous: true);
-    final auth = _TestFirebaseAuth(user);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(
-          home: SignInPage(
-            createAccount: true,
-            hasMeaningfulGuestWork: true,
-          ),
-        ),
-      ),
-    );
-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Create a separate account'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.textContaining('current guest workspace is different from that new account'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('group access'), findsNothing);
-    await tester.tap(find.text('Cancel account creation'));
-    await tester.pumpAndSettle();
-    expect(auth.createAttempts, 0);
-    expect(identical(auth.currentUser, user), isTrue);
-    expect(
-      find.textContaining('Account creation cancelled. Your guest identity'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('start fresh discloses local-work retention before signup', (
-    tester,
-  ) async {
-    final auth = _TestFirebaseAuth(null);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(
-          home: SignInPage(
-            createAccount: true,
-            hasMeaningfulGuestWork: true,
-          ),
-        ),
-      ),
-    );
-    await tester.enterText(find.byType(TextField).first, 'new@example.test');
-    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
-    await tester.tap(
-      find.widgetWithText(FilledButton, 'Create a separate account'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Start fresh with a separate account?'), findsOneWidget);
-    expect(find.textContaining('local work stays in this browser'), findsOneWidget);
-    expect(find.textContaining('group membership'), findsNothing);
-    await tester.tap(find.text('Cancel account creation'));
-    await tester.pumpAndSettle();
-    expect(auth.createAttempts, 0);
-  });
-
-  testWidgets('empty anonymous guest signs in without workspace confirmation', (
-    tester,
-  ) async {
-    final guest = _TestUser(isAnonymous: true);
-    final auth = _TestFirebaseAuth(guest)
-      ..signInCredential = _TestUserCredential(_TestUser(isAnonymous: false));
+    final auth = _TestFirebaseAuth(null)
+      ..signInCredential = _TestUserCredential(
+        _TestUser(isAnonymous: false, isEmailVerified: true),
+      );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
@@ -1296,54 +1353,43 @@ void main() {
     expect(auth.lastSignInPassword, 'safe-test-password');
   });
 
-  testWidgets('sign-in confirmation identifies local workspace and destination', (
+  testWidgets('account creation does not prompt before normal registration', (
     tester,
   ) async {
-    final guest = _TestUser(isAnonymous: true);
-    final auth = _TestFirebaseAuth(guest)
-      ..signInCredential = _TestUserCredential(_TestUser(isAnonymous: false));
+    final auth = _TestFirebaseAuth(null)
+      ..createCredential = _TestUserCredential(
+        _TestUser(isAnonymous: false),
+      );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
         child: const MaterialApp(
-          home: SignInPage(hasMeaningfulGuestWork: true),
+          home: SignInPage(createAccount: true),
         ),
       ),
     );
-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+    await tester.enterText(find.byType(TextField).first, 'new@example.test');
     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in to your existing account?'), findsOneWidget);
-    expect(find.textContaining('does not upgrade the current guest identity'), findsOneWidget);
-    expect(find.textContaining('explicitly clear only the local copy'), findsOneWidget);
-    expect(find.text('Continue to sign in'), findsOneWidget);
-    tester.widget<TextField>(find.byType(TextField).first).controller!.text =
-        'changed@example.test';
-    tester.widget<TextField>(find.byType(TextField).last).controller!.text =
-        'changed-password';
-    await tester.tap(find.text('Continue to sign in'));
-    await tester.pumpAndSettle();
-
-    expect(auth.signInAttempts, 1);
-    expect(auth.lastSignInEmail, 'destination@example.test');
-    expect(auth.lastSignInPassword, 'safe-test-password');
+    expect(find.text('Sign in to your existing account?'), findsNothing);
+    expect(find.text('Start fresh with a separate account?'), findsNothing);
+    expect(auth.createAttempts, 1);
   });
 
-  testWidgets('guest sign-in is blocked only for local-work confirmation', (
+  testWidgets('sign-in errors are shown without guest ownership warnings', (
     tester,
   ) async {
-    final guest = _TestUser(isAnonymous: true);
     final auth = _TestFirebaseAuth(
-      guest,
+      null,
       signInError: FirebaseAuthException(code: 'network-request-failed'),
     );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
         child: const MaterialApp(
-          home: SignInPage(hasMeaningfulGuestWork: true),
+          home: SignInPage(),
         ),
       ),
     );
@@ -1352,13 +1398,14 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in to your existing account?'), findsOneWidget);
+    expect(find.text('Sign in to your existing account?'), findsNothing);
     expect(find.textContaining('group access'), findsNothing);
     expect(find.text('Keep this group identity'), findsNothing);
-    await tester.tap(find.text('Continue to sign in'));
-    await tester.pumpAndSettle();
     expect(auth.signInAttempts, 1);
-    expect(identical(auth.currentUser, guest), isTrue);
+    expect(
+      find.textContaining('Unable to reach the sign-in service'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('opening sign-in never preflights Groups ownership', (
@@ -1409,10 +1456,6 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    if (find.text('Continue to sign in').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Continue to sign in'));
-      await tester.pumpAndSettle();
-    }
     expect(auth.signInAttempts, 1);
     expect(find.text('Keep this group identity'), findsNothing);
     expect(identical(auth.currentUser, guest), isTrue);

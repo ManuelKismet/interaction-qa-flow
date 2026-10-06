@@ -19,10 +19,10 @@ The current non-web storage implementation is process-memory only. Firebase
 identity persistence is managed by the Firebase SDK; this app does not set an
 identity-expiry policy, and actual hosted/device persistence has not been
 independently verified. Firebase anonymous-account cleanup/project retention
-configuration is also unverified. The backend stores only explicitly shared
-group content, not private solo drafts. Introducing backend draft storage would
-require a separate design for identity binding, access control, expiry, and
-cleanup.
+configuration is also unverified. The backend also stores explicitly imported
+personal work in `personal_workspace_items`; this is separate from Groups and
+organisation content, and each row is bound to the verified registered Firebase
+UID. No local or group content is backfilled.
 
 Invitations are individually time-limited (24 hours by default; API limits are
 one hour to seven days) and revoked/expired invitations cannot be redeemed.
@@ -69,15 +69,25 @@ confirms its grants; do not broaden IAM or database privileges for this task.
 ## Account identity continuity
 
 Shared-group membership and administrator roles are keyed to the Firebase UID.
-Creating an account from the current guest identity links credentials to that
-same UID; after email verification, that registered identity can continue to
-access groups already linked to the UID. Groups require a non-anonymous Firebase
-identity with a verified email, but do not require organisation membership.
-Signing into or creating a separate identity does not transfer group membership
-or local browser work. Anonymous guests retain local Knowledge, Interact,
-templates, and import/export; account creation or sign-in does not upload,
-migrate, or delete that local data or automatically purge existing Groups data.
-Organisation membership and roles are independent of shared-group membership.
+Groups require a non-anonymous Firebase identity with a verified email, but do
+not require organisation membership. Creating or signing into a personal
+account uses ordinary Firebase account flows and does not link an anonymous
+identity, transfer group membership, or change the local browser copy. Local
+Knowledge, Interact sessions, templates, and import/export remain available to
+anonymous guests. After email verification, a registered account can explicitly
+select local items to import to its UID-private personal workspace. Imports
+preserve the local originals, are safe to retry using a stable source key, and
+are not exposed through Groups or organisation search. Organisation membership
+and roles are independent of both personal storage and group membership.
+
+The `0013_personal_workspace` Alembic migration creates the empty table; it does
+not import or rewrite existing data. For an isolated development database, run
+`cd backend && alembic upgrade head` with the intended `DATABASE_URL`. Apply
+hosted migrations only through the existing reviewed development migration
+process; no hosted migration or deployment is part of this feature change.
+Personal rows have no configured expiry or automatic purge; signing out leaves
+them stored, Firebase account deletion does not cascade to them, and removal
+must be initiated by the owning account.
 
 Administration transfer is recipient-accepted. An active group admin may request
 transfer to an active member; the request expires after seven days. The requester

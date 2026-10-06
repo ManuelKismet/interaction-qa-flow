@@ -15,6 +15,7 @@ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/core/platform/pdf_download.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
+import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
@@ -33,6 +34,27 @@ void _showPdfFontFallbackNotice(BuildContext context) {
   );
 }
 
+class _PersonalWorkspaceWrite {
+  const _PersonalWorkspaceWrite({
+    required this.action,
+    required this.kind,
+    required this.sourceKey,
+    required this.sourceId,
+    this.itemId,
+    this.revision,
+    this.title,
+    this.data,
+  });
+
+  final String action;
+  final String kind;
+  final String sourceKey;
+  final String sourceId;
+  final String? itemId;
+  final String? title;
+  final Map<String, dynamic>? data;
+}
+
 String _pdfFontPreviewMessage() => kIsWeb
     ? 'If the bundled font lacks a character, direct PDF is skipped. The full report opens in browser print; check print preview for glyph support.'
     : 'If the bundled font lacks a character, direct PDF is skipped. Use the web report’s browser-print export to retain the full text.';
@@ -40,6 +62,7 @@ String _pdfFontPreviewMessage() => kIsWeb
 class GuestWorkspacePage extends ConsumerStatefulWidget {
   const GuestWorkspacePage({
     required this.firebaseReady,
+    this.personalWorkspaceEnabled = false,
     this.sharedIdentityActive = false,
     this.accountUser,
     this.membershipStatus,
@@ -49,6 +72,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
   });
 
   final bool firebaseReady;
+  final bool personalWorkspaceEnabled;
   final bool sharedIdentityActive;
   final User? accountUser;
   final AccountMembershipStatus? membershipStatus;
@@ -72,13 +96,46 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   int _savedRevision = 0;
   Future<bool>? _saveOperation;
   Timer? _autosaveTimer;
+  List<Map<String, dynamic>> _personalItems = [];
+  List<Map<String, dynamic>> _pendingPersonalItems = [];
+  final Map<String, _PersonalWorkspaceWrite> _pendingPersonalWrites = {};
+  String? _personalError;
+  List<Map<String, dynamic>> _pendingPersonalImport = [];
+  int _personalGeneration = 0;
+  String? _personalOwnerUid;
+  bool _personalLoading = false;
+  bool _personalSaving = false;
 
   @override
   void initState() {
     super.initState();
     _store = ref.read(guestWorkspaceStoreProvider);
+    _personalOwnerUid = _verifiedPersonalUid;
     WidgetsBinding.instance.addObserver(this);
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_refreshPersonalWorkspace());
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant GuestWorkspacePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final uid = _verifiedPersonalUid;
+    if (uid == _personalOwnerUid) return;
+    _personalGeneration++;
+    _personalOwnerUid = uid;
+    _personalItems = [];
+    _pendingPersonalItems = [];
+    _pendingPersonalWrites.clear();
+    _pendingPersonalImport = [];
+    _personalError = null;
+    _personalLoading = false;
+    if (uid != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_refreshPersonalWorkspace());
+      });
+    }
   }
 
   @override
@@ -127,9 +184,150 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     }
   }
 
-  void _save(GuestWorkspaceData data) {
+  String? get _verifiedPersonalUid {
+    if (!widget.personalWorkspaceEnabled || !widget.firebaseReady) return null;
+    final user = _currentAccountUser;
+    return isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null;
+  }
+
+  Future<void> _refreshPersonalWorkspace() async {
+    final uid = _verifiedPersonalUid;
+    if (uid == null || !mounted) return;
+    final generation = ++_personalGeneration;
     setState(() {
-      _data = data;
+      _personalLoading = true;
+      _personalError = null;
+    });
+    try {
+      final items = await ref
+          .read(personalWorkspaceRepositoryProvider)
+          .listItems(expectedUid: uid);
+      if (!mounted ||
+          generation != _personalGeneration ||
+          uid != _verifiedPersonalUid) {
+        return;
+      }
+      setState(() {
+        _personalItems = items;
+        _personalLoading = false;
+      });
+    } on Object {
+      if (!mounted ||
+          generation != _personalGeneration ||
+          uid != _verifiedPersonalUid) {
+        return;
+      }
+      setState(() {
+        _personalLoading = false;
+        _personalError =
+            'Personal account work could not be loaded. Local work is unchanged; retry when connected.';
+      });
+    }
+  }
+
+  GuestWorkspaceData _withPersonalWorkspace(GuestWorkspaceData local) {
+    List<Map<String, dynamic>> combine(
+      String kind,
+      List<Map<String, dynamic>> localItems,
+    ) {
+      final personal = <String, Map<String, dynamic>>{};
+      for (final record in _personalItems.where(
+        (item) => item['kind'] == kind,
+      )) {
+        final data = record['data'];
+        if (data is Map<String, dynamic> && data['id'] is String) {
+          personal[data['id'] as String] = data;
+        }
+      }
+      for (final record in _pendingPersonalItems.where(
+        (item) => item['kind'] == kind,
+      )) {
+        final data = record['data'];
+        if (data is Map<String, dynamic> && data['id'] is String) {
+          personal[data['id'] as String] = data;
+        }
+      }
+      for (final write in _pendingPersonalWrites.values.where(
+        (item) => item.kind == kind && item.action == 'delete',
+      )) {
+        personal.remove(write.sourceId);
+      }
+      return [
+        ...personal.values,
+        for (final item in localItems)
+          if (!personal.containsKey(item['id'])) item,
+      ];
+    }
+
+    return GuestWorkspaceData(
+      knowledge: combine('knowledge', local.knowledge),
+      sessions: combine('interact_session', local.sessions),
+      templates: combine('template', local.templates),
+    );
+  }
+
+  void _save(GuestWorkspaceData submitted) {
+    final previousLocal = _data ?? const GuestWorkspaceData();
+    final uid = _verifiedPersonalUid;
+    final remoteKeys = {
+      for (final record in _personalItems)
+        if (record['kind'] is String &&
+            record['data'] is Map &&
+            (record['data'] as Map)['id'] is String)
+          '${record['kind']}:${(record['data'] as Map)['id']}',
+    };
+
+    List<Map<String, dynamic>> keepLocal(
+      String kind,
+      List<Map<String, dynamic>> previous,
+      List<Map<String, dynamic>> next,
+    ) {
+      final previousById = {
+        for (final item in previous)
+          if (item['id'] is String) item['id'] as String: item,
+      };
+      final nextById = {
+        for (final item in next)
+          if (item['id'] is String) item['id'] as String: item,
+      };
+      final local = <Map<String, dynamic>>[];
+      for (final entry in previousById.entries) {
+        if (remoteKeys.contains('$kind:${entry.key}')) {
+          local.add(entry.value);
+        } else if (nextById.containsKey(entry.key)) {
+          local.add(nextById[entry.key]!);
+        }
+      }
+      for (final entry in nextById.entries) {
+        if (!previousById.containsKey(entry.key) &&
+            !remoteKeys.contains('$kind:${entry.key}')) {
+          local.add(entry.value);
+        }
+      }
+      return local;
+    }
+
+    final local = uid == null
+        ? submitted
+        : GuestWorkspaceData(
+            knowledge: keepLocal(
+              'knowledge',
+              previousLocal.knowledge,
+              submitted.knowledge,
+            ),
+            sessions: keepLocal(
+              'interact_session',
+              previousLocal.sessions,
+              submitted.sessions,
+            ),
+            templates: keepLocal(
+              'template',
+              previousLocal.templates,
+              submitted.templates,
+            ),
+          );
+    setState(() {
+      _data = local;
       _dataRevision++;
       _saveStatus = 'Saving locally…';
     });
@@ -138,6 +336,181 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       const Duration(milliseconds: 250),
       _flushPendingSave,
     );
+    if (uid != null) {
+      unawaited(_syncPersonalWorkspace(uid, submitted));
+    }
+  }
+
+  Future<void> _syncPersonalWorkspace(
+    String uid,
+    GuestWorkspaceData submitted,
+  ) async {
+    final generation = _personalGeneration;
+    final repository = ref.read(personalWorkspaceRepositoryProvider);
+    final submittedByKey = {
+      for (final item in submitted.knowledge)
+        'knowledge:${item['id']}': item,
+      for (final item in submitted.sessions)
+        'interact_session:${item['id']}': item,
+      for (final item in submitted.templates) 'template:${item['id']}': item,
+    };
+
+    for (final record in _personalItems) {
+      final data = record['data'];
+      final kind = record['kind'];
+      if (data is! Map<String, dynamic> ||
+          kind is! String ||
+          data['id'] is! String) {
+        continue;
+      }
+      final key = '$kind:${data['id']}';
+      final replacement = submittedByKey[key]?.data;
+      if (replacement == null) {
+        _enqueuePersonalWrite(
+          _PersonalWorkspaceWrite(
+            action: 'delete',
+            kind: kind,
+            sourceKey: record['source_key'] as String,
+            sourceId: data['id'] as String,
+            itemId: record['id'] as String,
+          ),
+        );
+      } else if (jsonEncode(replacement) != jsonEncode(data) ||
+          _personalTitle(kind, replacement) != record['title']) {
+        _enqueuePersonalWrite(
+          _PersonalWorkspaceWrite(
+            action: 'update',
+            kind: kind,
+            sourceKey: record['source_key'] as String,
+            sourceId: data['id'] as String,
+            itemId: record['id'] as String,
+            title: _personalTitle(kind, replacement),
+            data: replacement,
+          ),
+        );
+      }
+    }
+
+    await _processPersonalWrites(uid, generation, repository);
+  }
+
+  void _enqueuePersonalWrite(_PersonalWorkspaceWrite write) {
+    setState(() {
+      _pendingPersonalWrites['${write.kind}:${write.sourceId}'] = write;
+      _pendingPersonalItems.removeWhere(
+        (item) => item['kind'] == write.kind &&
+            (item['data'] as Map?)?['id'] == write.sourceId,
+      );
+      if (write.action != 'delete') {
+        _pendingPersonalItems.add({
+          'kind': write.kind,
+          'data': write.data,
+        });
+      }
+      _personalError = null;
+    });
+  }
+
+  Future<void> _processPersonalWrites(
+    String uid,
+    int generation,
+    PersonalWorkspaceRepository repository,
+  ) async {
+    if (_personalSaving || !mounted) return;
+    _personalSaving = true;
+    try {
+      while (mounted &&
+          generation == _personalGeneration &&
+          uid == _verifiedPersonalUid &&
+          _pendingPersonalWrites.isNotEmpty) {
+        final entry = _pendingPersonalWrites.entries.first;
+        final write = entry.value;
+        try {
+          Map<String, dynamic>? saved;
+          if (write.action == 'update') {
+            final current = _personalItems.firstWhere(
+              (item) => item['source_key'] == write.sourceKey,
+            );
+            saved = await repository.updateItem(
+              id: current['id'] as String,
+              expectedUid: uid,
+              expectedRevision: current['revision'] as int,
+              title: write.title!,
+              data: write.data!,
+            );
+          } else {
+            await repository.deleteItem(
+              write.itemId!,
+              expectedUid: uid,
+            );
+          }
+          if (!mounted ||
+              generation != _personalGeneration ||
+              uid != _verifiedPersonalUid) {
+            return;
+          }
+          setState(() {
+            if (saved != null) {
+              _personalItems.removeWhere(
+                (item) => item['source_key'] == write.sourceKey,
+              );
+              _personalItems.add(saved!);
+            } else {
+              _personalItems.removeWhere(
+                (item) => item['source_key'] == write.sourceKey,
+              );
+            }
+            if (identical(_pendingPersonalWrites[entry.key], write)) {
+              _pendingPersonalWrites.remove(entry.key);
+              _pendingPersonalItems.removeWhere(
+                (item) => item['kind'] == write.kind &&
+                    (item['data'] as Map?)?['id'] == write.sourceId,
+              );
+            }
+          });
+        } on Object {
+          if (mounted && generation == _personalGeneration) {
+            setState(() {
+              _personalError =
+                  'A personal account change was not confirmed. Your local copy is unchanged; retry the account save.';
+            });
+          }
+          return;
+        }
+      }
+      if (mounted && generation == _personalGeneration) {
+        setState(() => _personalError = null);
+      }
+    } finally {
+      _personalSaving = false;
+    }
+  }
+
+  Future<void> _retryPersonalWrites() async {
+    final uid = _verifiedPersonalUid;
+    if (uid == null) return;
+    await _processPersonalWrites(
+      uid,
+      _personalGeneration,
+      ref.read(personalWorkspaceRepositoryProvider),
+    );
+  }
+
+  String _personalTitle(String kind, Map<String, dynamic> item) =>
+      kind == 'template'
+      ? item['name'] as String? ?? 'Interact template'
+      : item['title'] as String? ??
+            (kind == 'knowledge' ? 'Knowledge item' : 'Interact session');
+
+  String _personalSourceKey(String kind, String sourceId) {
+    final key = '$kind:$sourceId';
+    if (key.length > 128 ||
+        !RegExp(r'^[A-Za-z0-9._:-]+$').hasMatch(key)) {
+      throw const FormatException(
+        'This item has an unsupported local ID and cannot be saved to an account.',
+      );
+    }
+    return key;
   }
 
   Future<bool> _flushPendingSave() {
@@ -200,23 +573,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 
   Future<void> _openSignIn({
     bool createAccount = false,
-    bool linkGuest = false,
   }) async {
     if (_data == null && _loadError == null) await _load();
     if (!mounted) return;
     if (!await _saveBeforeLeaving() || !mounted) return;
-    final data = _data;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => SignInPage(
           createAccount: createAccount,
-          linkGuestIdentity: linkGuest,
-          hasMeaningfulGuestWork:
-              data == null ||
-              _loadError != null ||
-              data.knowledge.isNotEmpty ||
-              data.sessions.isNotEmpty ||
-              data.templates.isNotEmpty,
         ),
       ),
     );
@@ -279,8 +643,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       if (action == 'sign-in') {
         await _openSignIn();
       } else if (action == 'create-account') {
-        final linkGuest = user?.isAnonymous == true;
-        await _openSignIn(createAccount: true, linkGuest: linkGuest);
+        await _openSignIn(createAccount: true);
       }
       return;
     }
@@ -315,6 +678,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       if (!await _saveBeforeLeaving() || !mounted) return;
       try {
         await ref.read(firebaseAuthProvider).signOut();
+        _personalGeneration++;
+        if (mounted) {
+          setState(() {
+            _personalItems = [];
+            _pendingPersonalItems = [];
+            _pendingPersonalWrites.clear();
+            _pendingPersonalImport = [];
+            _personalError = null;
+            _personalOwnerUid = null;
+          });
+        }
       } on Object {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -377,7 +751,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       return;
     }
     if (!mounted) return;
-    _save(const GuestWorkspaceData());
+    setState(() {
+      _data = const GuestWorkspaceData();
+      _dataRevision++;
+      _saveStatus = 'Saving locally…';
+    });
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(
+      const Duration(milliseconds: 250),
+      _flushPendingSave,
+    );
   }
 
   Future<void> _copyLocalBackup() async {
@@ -430,6 +813,126 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ),
       ),
     );
+  }
+
+  bool _hasMeaningfulWork(GuestWorkspaceData data) =>
+      data.knowledge.isNotEmpty ||
+      data.sessions.isNotEmpty ||
+      data.templates.isNotEmpty;
+
+  Future<void> _openPersonalImport() async {
+    final uid = _verifiedPersonalUid;
+    final local = _data;
+    if (uid == null || local == null) return;
+    if (!_hasMeaningfulWork(local)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('There is no local work to import.')),
+      );
+      return;
+    }
+    if (_unsavedChanges || !await _flushPendingSave()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Save local changes on this device before selecting an account import.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted || uid != _verifiedPersonalUid) return;
+    final selection = await showDialog<_GuestImportSelection>(
+      context: context,
+      builder: (context) => _GuestImportPreview(
+        data: local,
+        title: 'Import local work into your personal account',
+        confirmLabel: 'Import selected work',
+        includeTemplates: true,
+        personalAccountImport: true,
+      ),
+    );
+    if (selection == null || !mounted || uid != _verifiedPersonalUid) return;
+    final selected = <Map<String, dynamic>>[];
+    void addItems(
+      String kind,
+      List<Map<String, dynamic>> items,
+      Set<String> selectedIds,
+    ) {
+      for (final item in items) {
+        if (!selectedIds.contains(item['id'])) continue;
+        final sourceId = item['id'];
+        if (sourceId is! String) continue;
+        selected.add({
+          'kind': kind,
+          'source_key': _personalSourceKey(kind, sourceId),
+          'title': _personalTitle(kind, item),
+          'data': item,
+        });
+      }
+    }
+
+    try {
+      addItems('knowledge', local.knowledge, selection.knowledgeIds);
+      addItems('interact_session', local.sessions, selection.sessionIds);
+      addItems('template', local.templates, selection.templateIds);
+    } on FormatException catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message.toString())),
+      );
+      return;
+    }
+    if (selected.isEmpty) return;
+    _pendingPersonalImport = selected;
+    await _submitPersonalImport(uid, _personalGeneration);
+  }
+
+  Future<void> _retryPersonalImport() async {
+    final uid = _verifiedPersonalUid;
+    if (uid == null || _pendingPersonalImport.isEmpty) return;
+    await _submitPersonalImport(uid, _personalGeneration);
+  }
+
+  Future<void> _submitPersonalImport(String uid, int generation) async {
+    final payload = _pendingPersonalImport;
+    try {
+      final items = await ref
+          .read(personalWorkspaceRepositoryProvider)
+          .importItems(payload, expectedUid: uid);
+      if (!mounted ||
+          uid != _verifiedPersonalUid ||
+          generation != _personalGeneration) {
+        return;
+      }
+      setState(() {
+        for (final item in items) {
+          _personalItems.removeWhere(
+            (existing) => existing['source_key'] == item['source_key'],
+          );
+          _personalItems.add(item);
+        }
+        _pendingPersonalImport = [];
+        _personalError = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Selected work is available in your personal account. Local copies remain on this device.',
+          ),
+        ),
+      );
+    } on Object {
+      if (!mounted ||
+          uid != _verifiedPersonalUid ||
+          generation != _personalGeneration) {
+        return;
+      }
+      setState(() {
+        _personalError =
+            'The account import was not confirmed. Local copies remain on this device; retry safely.';
+      });
+    }
   }
 
   Future<void> _importLocalBackup() async {
@@ -553,7 +1056,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 
   @override
   Widget build(BuildContext context) {
-    final data = _data;
+    final localData = _data;
+    final data = localData == null ? null : _withPersonalWorkspace(localData);
     final groupIdentity = widget.firebaseReady
         ? ref.watch(authStateProvider).value ??
               ref.read(firebaseAuthProvider).currentUser
@@ -591,6 +1095,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                 if (value == 'clear') _clearLocalCopy();
                 if (value == 'backup') _copyLocalBackup();
                 if (value == 'import') _importLocalBackup();
+                if (value == 'account-import') _openPersonalImport();
               },
               itemBuilder: (context) => [
                 PopupMenuItem(
@@ -601,6 +1106,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                   value: 'import',
                   child: Text('Import local JSON backup'),
                 ),
+                if (_verifiedPersonalUid != null)
+                  const PopupMenuItem(
+                    value: 'account-import',
+                    child: Text('Import local work into my account'),
+                  ),
                 PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'clear',
@@ -645,7 +1155,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             : Column(
                 children: [
                   _GuestNotice(
-                    sharedIdentityActive: widget.sharedIdentityActive,
                     isRegistered: _hasSignedInNonGuestUser,
                     saveStatus: _saveStatus,
                   ),
@@ -664,6 +1173,42 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                   if (widget.authUnavailable)
                     const _AccountMembershipNotice(
                       text: 'Account status could not be verified. This workspace is local; organisation access is not assumed.',
+                    ),
+                  if (_verifiedPersonalUid != null &&
+                      localData != null &&
+                      _hasMeaningfulWork(localData))
+                    MaterialBanner(
+                      content: const Text(
+                        'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: _personalSaving || _personalLoading
+                              ? null
+                              : _openPersonalImport,
+                          child: const Text('Import local work'),
+                        ),
+                      ],
+                    ),
+                  if (_personalError != null)
+                    MaterialBanner(
+                      content: Text(_personalError!),
+                      actions: [
+                        TextButton(
+                          onPressed: _pendingPersonalImport.isNotEmpty
+                              ? _retryPersonalImport
+                              : _pendingPersonalWrites.isNotEmpty
+                              ? _retryPersonalWrites
+                              : _refreshPersonalWorkspace,
+                          child: Text(
+                            _pendingPersonalImport.isNotEmpty
+                                ? 'Retry import'
+                                : _pendingPersonalWrites.isNotEmpty
+                                ? 'Retry account save'
+                                : 'Retry account load',
+                          ),
+                        ),
+                      ],
                     ),
                   if (widget.membershipStatus ==
                       AccountMembershipStatus.noMembership)
@@ -1089,7 +1634,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         AccountMembershipStatus.inactive => 'Organisation membership inactive',
         AccountMembershipStatus.unavailable =>
           'Organisation membership unavailable',
-        _ => 'Registered account',
+        _ => 'Registered personal account',
       };
       explanation = switch (widget.membershipStatus) {
         AccountMembershipStatus.noMembership =>
@@ -1100,17 +1645,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           'Organisation access is inactive. Local work remains on this device.',
         AccountMembershipStatus.unavailable =>
           'Organisation access could not be verified. No organisation access is being assumed.',
-        _ => 'Organisation roles and group roles are separate.',
+        _ => 'This registered personal account is separate from the local '
+            'copy on this device. Importing local work is optional; organisation '
+            'and group access remain separate.',
       };
-    } else if (widget.sharedIdentityActive) {
-      stateText = 'Anonymous guest workspace';
-      explanation =
-          'Anonymous guest identities can use local Knowledge and Interact '
-          'only. Groups require a registered account with a verified email.';
     } else {
       stateText = 'Local guest workspace';
       explanation =
-          'Solo work stays in this browser until you explicitly share it.';
+          'This is a local workspace. Knowledge, Interact sessions, answers, '
+          'and templates stay in this browser until you choose items to import '
+          'to a verified personal account or explicitly share selected copies '
+          'with a group.';
     }
 
     return PopupMenuButton<String>(
@@ -1118,11 +1663,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       onSelected: (action) {
         if (action == 'sign-in') _openSignIn();
         else if (action == 'create-account') {
-          _openSignIn(
-            createAccount: !widget.sharedIdentityActive,
-            linkGuest: widget.sharedIdentityActive,
-          );
-        } else if (action == 'start-fresh') {
           _openSignIn(createAccount: true);
         } else if (action == 'retry-account') {
           widget.onRetryAccount?.call();
@@ -1154,21 +1694,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             value: 'sign-in',
             child: Text('Already have an account? Sign in'),
           ),
-          if (widget.sharedIdentityActive)
-            const PopupMenuItem(
-              value: 'create-account',
-              child: Text('Create account from this guest'),
-            )
-          else
-            const PopupMenuItem(
-              value: 'create-account',
-              child: Text('Create account'),
-            ),
-          if (widget.sharedIdentityActive)
-            const PopupMenuItem(
-              value: 'start-fresh',
-              child: Text('Start fresh with a separate account'),
-            ),
+          const PopupMenuItem(
+            value: 'create-account',
+            child: Text('Create account'),
+          ),
         ],
         if (widget.onRetryAccount != null) ...[
             const PopupMenuDivider(),
@@ -1202,30 +1731,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 
 class _GuestNotice extends StatelessWidget {
   const _GuestNotice({
-    required this.sharedIdentityActive,
     required this.isRegistered,
     required this.saveStatus,
   });
 
-  final bool sharedIdentityActive;
   final bool isRegistered;
   final String saveStatus;
 
   @override
   Widget build(BuildContext context) {
-    final status = sharedIdentityActive
-        ? 'Guest sign-in active · $saveStatus'
-        : isRegistered
-        ? 'Registered workspace · $saveStatus'
+    final status = isRegistered
+        ? 'Registered personal account · $saveStatus'
         : 'Guest workspace · $saveStatus';
-    final explanation = sharedIdentityActive
-        ? 'An anonymous guest sign-in is active in this browser profile. '
-            'People using this profile share that sign-in and its local drafts. '
-            'Groups require a registered account with a verified email.'
-        : isRegistered
+    final explanation = isRegistered
         ? 'Registered workspace. Local drafts stay in this browser profile '
-            'and may be visible to people using it. Group and organisation '
-            'access are separate.'
+            'and may be visible to people using it. This local copy is separate '
+            'from your personal account. Importing selected items to your account '
+            'is optional. Group and organisation access are separate.'
         : 'Guest workspace active in this browser profile. People using this '
             'profile can see its local work. Groups require a registered '
             'account with a verified email. Clearing browser data or losing '
@@ -4158,7 +4680,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                         builder: (_) => const SignInPage(),
                       ),
                     ),
-                    child: const Text('Sign in'),
+                    child: const Text('Already have an account? Sign in'),
                   ),
                   if (!needsEmailVerification)
                     FilledButton(
@@ -4166,7 +4688,6 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                         MaterialPageRoute<void>(
                           builder: (_) => SignInPage(
                             createAccount: true,
-                            linkGuestIdentity: user?.isAnonymous == true,
                           ),
                         ),
                       ),
@@ -5008,6 +5529,7 @@ class _GuestImportPreview extends StatefulWidget {
     this.confirmLabel = 'Import selected locally',
     this.includeTemplates = true,
     this.shareWithGroup = false,
+    this.personalAccountImport = false,
     this.groupName,
   });
 
@@ -5016,6 +5538,7 @@ class _GuestImportPreview extends StatefulWidget {
   final String confirmLabel;
   final bool includeTemplates;
   final bool shareWithGroup;
+  final bool personalAccountImport;
   final String? groupName;
 
   @override
@@ -5053,6 +5576,8 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
                     'from this identity was already shared to this group, '
                     'its existing group copy is reused without being '
                     'overwritten.'
+                  : widget.personalAccountImport
+                  ? 'Selected items are copied to your private personal account, available after sign-in on other devices. Your browser-local originals stay on this device. The data is not added to an organisation, group, or shared Knowledge index.'
                   : 'Selected items are added locally. Existing items with matching IDs are kept unchanged.',
             ),
           ),
@@ -5097,9 +5622,13 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
       FilledButton(
-        onPressed: widget.shareWithGroup &&
-                _knowledge.isEmpty &&
-                _sessions.isEmpty
+        onPressed: (widget.shareWithGroup &&
+                    _knowledge.isEmpty &&
+                    _sessions.isEmpty) ||
+                (widget.personalAccountImport &&
+                    _knowledge.isEmpty &&
+                    _sessions.isEmpty &&
+                    _templates.isEmpty)
             ? null
             : () => Navigator.pop(
                 context,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,11 +41,7 @@ class IntQaFlowApp extends ConsumerWidget {
         if (user.isAnonymous) {
           return ProviderScope(
             key: ValueKey(user.uid),
-            child: _guestApp(
-              firebaseReady: true,
-              accountUser: user,
-              sharedIdentityActive: true,
-            ),
+            child: _AnonymousSessionToLocalWorkspace(user: user),
           );
         }
         return ProviderScope(
@@ -56,8 +54,48 @@ class IntQaFlowApp extends ConsumerWidget {
       },
     );
   }
+}
 
-  MaterialApp _accountStatusApp(String title, String message) => MaterialApp(
+class _AnonymousSessionToLocalWorkspace extends ConsumerStatefulWidget {
+  const _AnonymousSessionToLocalWorkspace({required this.user});
+
+  final User user;
+
+  @override
+  ConsumerState<_AnonymousSessionToLocalWorkspace> createState() =>
+      _AnonymousSessionToLocalWorkspaceState();
+}
+
+class _AnonymousSessionToLocalWorkspaceState
+    extends ConsumerState<_AnonymousSessionToLocalWorkspace> {
+  var _signOutFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_endAnonymousSession());
+  }
+
+  Future<void> _endAnonymousSession() async {
+    try {
+      final auth = ref.read(firebaseAuthProvider);
+      final currentUser = auth.currentUser;
+      if (currentUser?.uid == widget.user.uid && currentUser!.isAnonymous) {
+        await auth.signOut();
+      }
+    } on Object {
+      if (mounted) setState(() => _signOutFailed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _guestApp(
+    firebaseReady: _signOutFailed,
+    accountUser: _signOutFailed ? widget.user : null,
+  );
+}
+
+MaterialApp _accountStatusApp(String title, String message) => MaterialApp(
     title: 'IntQAFlow',
     debugShowCheckedModeBanner: false,
     theme: AppTheme.light,
@@ -76,8 +114,6 @@ class IntQaFlowApp extends ConsumerWidget {
       ),
     ),
   );
-}
-
 MaterialApp _guestApp({
   required bool firebaseReady,
   User? accountUser,
@@ -91,6 +127,7 @@ MaterialApp _guestApp({
   theme: AppTheme.light,
   home: GuestWorkspacePage(
     firebaseReady: firebaseReady,
+    personalWorkspaceEnabled: true,
     accountUser: accountUser,
     sharedIdentityActive: sharedIdentityActive,
     membershipStatus: membershipStatus,

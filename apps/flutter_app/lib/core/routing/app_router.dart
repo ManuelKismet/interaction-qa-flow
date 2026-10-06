@@ -58,6 +58,13 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
             path: '/guest/groups',
             builder: (context, state) => const SharedGuestGroupsPage(),
           ),
+          GoRoute(
+            path: '/personal',
+            builder: (context, state) => const GuestWorkspacePage(
+              firebaseReady: true,
+              personalWorkspaceEnabled: true,
+            ),
+          ),
         ],
       ),
     ],
