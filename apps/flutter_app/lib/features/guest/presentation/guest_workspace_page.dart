@@ -2434,6 +2434,15 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     if (title == foldedQuery) return 1.9;
     if (title.startsWith(foldedQuery)) return 1.7;
     if (title.contains(foldedQuery)) return 1.5;
+    final answerAndBody = [
+      _stringValue(item['answer']),
+      _stringValue(item['body']),
+    ].whereType<String>().join(' ').toLowerCase();
+    if (answerAndBody.contains(foldedQuery)) return 1.3;
+    final terms = foldedQuery
+        .split(RegExp(r'\s+'))
+        .where((term) => term.isNotEmpty);
+    if (terms.isNotEmpty && terms.every(answerAndBody.contains)) return 1.2;
     return 0.9;
   }
 
@@ -2514,7 +2523,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
         _UnifiedKnowledgeSearchHit(
           id: id,
           title: item['title'] as String? ?? '',
-          source: '$source · ${widget.storageStatus(item)}',
+          source: source,
           method: personalMethod == null
               ? 'keyword or prefix match'
               : _matchMethodLabel(personalMethod),

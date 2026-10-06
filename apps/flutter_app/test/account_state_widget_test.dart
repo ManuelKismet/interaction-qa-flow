@@ -825,6 +825,138 @@ void main() {
     );
   });
 
+  testWidgets(
+    'local and private answer matches outrank semantic-only results without '
+    'uploading local content',
+    (tester) async {
+      const query = 'needle phrase';
+      final localItem = {
+        'id': 'local-answer-match',
+        'title': 'Local answer evidence',
+        'body': '',
+        'answer': 'A precise needle phrase appears in this answer.',
+      };
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(GuestWorkspaceData(knowledge: [localItem]));
+      final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+      final repository = _TestPersonalWorkspaceRepository([
+        {
+          'id': 'private-record',
+          'kind': 'knowledge',
+          'source_key': 'knowledge:private-answer-match',
+          'title': 'Private answer evidence',
+          'data': {
+            'id': 'private-answer-match',
+            'title': 'Private answer evidence',
+            'body': '',
+            'answer': 'Another precise needle phrase appears here.',
+          },
+          'revision': 1,
+          'created_at': '2026-10-06T00:00:00+00:00',
+          'updated_at': '2026-10-06T00:00:00+00:00',
+        },
+      ])..searchHandler = (searchQuery, uid) async {
+        expect(searchQuery, query);
+        expect(uid, user.uid);
+        return {
+          'results': [
+            {
+              'id': 'semantic-record',
+              'source_id': 'semantic-only',
+              'title': 'Remote semantic match',
+              'data': {
+                'id': 'semantic-only',
+                'title': 'Remote semantic match',
+                'body': 'Related guidance without the query words.',
+                'answer': '',
+              },
+              'snippet': 'Related guidance without the query words.',
+              'match_method': 'semantic',
+              'relevance_score': 1,
+            },
+          ],
+          'partial': false,
+        };
+      };
+      final groups = _TestGuestGroupRepository([], {});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+            guestWorkspaceStoreProvider.overrideWithValue(store),
+            personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+            guestGroupRepositoryProvider.overrideWithValue(groups),
+          ],
+          child: MaterialApp(
+            home: GuestWorkspacePage(
+              firebaseReady: true,
+              personalWorkspaceEnabled: true,
+              accountUser: user,
+              membershipStatus: AccountMembershipStatus.noMembership,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final searchField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.labelText == 'Search Knowledge',
+      );
+      await tester.enterText(searchField, query);
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+
+      Finder resultCard(String title) => find.ancestor(
+        of: find.text(title),
+        matching: find.byType(Card),
+      );
+
+      final localCard = resultCard('Local answer evidence');
+      final privateCard = resultCard('Private answer evidence');
+      final semanticCard = resultCard('Remote semantic match');
+      expect(localCard, findsOneWidget);
+      expect(privateCard, findsOneWidget);
+      expect(semanticCard, findsOneWidget);
+      expect(
+        find.descendant(
+          of: localCard,
+          matching: find.widgetWithText(Chip, 'Local'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: privateCard,
+          matching: find.widgetWithText(Chip, 'Private'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: privateCard,
+          matching: find.text('Personal account · saved'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getTopLeft(localCard).dy,
+        lessThan(tester.getTopLeft(semanticCard).dy),
+      );
+      expect(
+        tester.getTopLeft(privateCard).dy,
+        lessThan(tester.getTopLeft(semanticCard).dy),
+      );
+      expect(repository.searches, [(query, user.uid)]);
+      expect(repository.imports, isEmpty);
+      expect(
+        (await store.load()).knowledge.single['answer'],
+        localItem['answer'],
+      );
+    },
+  );
+
   testWidgets('clearing local work does not delete personal account items', (
     tester,
   ) async {
