@@ -69,10 +69,17 @@ void main() {
               ],
               'questions': [
                 {
+                  'id': 'question',
+                  'text': 'Prompt',
                   'answers': [
                     {
+                      'participant_id': 'participant',
                       'follow_ups': [
-                        {'answers': 'not a list'},
+                        {
+                          'id': 'follow-up',
+                          'text': 'Follow-up',
+                          'answers': 'not a list',
+                        },
                       ],
                     },
                     {
