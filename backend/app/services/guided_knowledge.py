@@ -172,70 +172,84 @@ class GuidedKnowledgeService:
         proposal = await self._proposal(proposal_id, organisation_id)
         if proposal.status != KnowledgeProposalStatus.PENDING:
             raise ConflictError("Knowledge proposal has already been reviewed")
-        now = datetime.now(UTC)
-        if data.action == "reject":
-            proposal.status = KnowledgeProposalStatus.REJECTED
-            action = AuditAction.KNOWLEDGE_PROPOSAL_REJECTED
-        elif data.action == "link":
-            if not data.existing_question_id:
-                raise ConflictError("Linking requires an existing question")
-            existing = await self.questions.get_for_organisation(
-                data.existing_question_id, organisation_id
-            )
-            if not existing:
-                raise NotFoundError("Existing knowledge question not found")
-            proposal.status = KnowledgeProposalStatus.DUPLICATE
-            proposal.linked_question_id = existing.canonical_question_id or existing.id
-            action = AuditAction.KNOWLEDGE_PROPOSAL_LINKED_TO_EXISTING
-        else:
-            question = await QuestionService(
-                self.session, embedding_provider=self.provider
-            ).create(
-                QuestionCreate(
-                    organisation_id=organisation_id,
-                    author_id=proposal.proposed_by,
-                    department_id=proposal.department_id,
-                    team_id=proposal.team_id,
-                    title=proposal.proposed_question_text,
-                    body=(
-                        f"Proposed from Guided session {proposal.guided_session_id}."
-                    ),
-                    visibility=(
-                        QuestionVisibility.DEPARTMENT
-                        if proposal.department_id
-                        else QuestionVisibility.ORGANISATION
-                    ),
+        question = None
+        question_service = None
+        try:
+            now = datetime.now(UTC)
+            if data.action == "reject":
+                proposal.status = KnowledgeProposalStatus.REJECTED
+                action = AuditAction.KNOWLEDGE_PROPOSAL_REJECTED
+            elif data.action == "link":
+                if not data.existing_question_id:
+                    raise ConflictError("Linking requires an existing question")
+                existing = await self.questions.get_for_organisation(
+                    data.existing_question_id, organisation_id
                 )
+                if not existing:
+                    raise NotFoundError("Existing knowledge question not found")
+                proposal.status = KnowledgeProposalStatus.DUPLICATE
+                proposal.linked_question_id = (
+                    existing.canonical_question_id or existing.id
+                )
+                action = AuditAction.KNOWLEDGE_PROPOSAL_LINKED_TO_EXISTING
+            else:
+                question_service = QuestionService(
+                    self.session, embedding_provider=self.provider
+                )
+                question = await question_service.create(
+                    QuestionCreate(
+                        organisation_id=organisation_id,
+                        author_id=proposal.proposed_by,
+                        department_id=proposal.department_id,
+                        team_id=proposal.team_id,
+                        title=proposal.proposed_question_text,
+                        body=(
+                            f"Proposed from Guided session {proposal.guided_session_id}."
+                        ),
+                        visibility=(
+                            QuestionVisibility.DEPARTMENT
+                            if proposal.department_id
+                            else QuestionVisibility.ORGANISATION
+                        ),
+                    ),
+                    commit=False,
+                    sync_embedding=False,
+                )
+                await AnswerService(self.session).create(
+                    question.id,
+                    AnswerCreate(
+                        organisation_id=organisation_id,
+                        author_id=proposal.proposed_by,
+                        body=proposal.proposed_answer_text,
+                    ),
+                    commit=False,
+                )
+                proposal.status = KnowledgeProposalStatus.ACCEPTED
+                proposal.created_question_id = question.id
+                action = AuditAction.KNOWLEDGE_PROPOSAL_ACCEPTED
+            proposal.reviewed_by = user_id
+            proposal.reviewed_at = now
+            await self._audit(
+                organisation_id,
+                user_id,
+                action,
+                proposal.id,
+                {
+                    "created_question_id": str(proposal.created_question_id)
+                    if proposal.created_question_id
+                    else None,
+                    "linked_question_id": str(proposal.linked_question_id)
+                    if proposal.linked_question_id
+                    else None,
+                },
             )
-            await AnswerService(self.session).create(
-                question.id,
-                AnswerCreate(
-                    organisation_id=organisation_id,
-                    author_id=proposal.proposed_by,
-                    body=proposal.proposed_answer_text,
-                ),
-            )
-            proposal.status = KnowledgeProposalStatus.ACCEPTED
-            proposal.created_question_id = question.id
-            action = AuditAction.KNOWLEDGE_PROPOSAL_ACCEPTED
-        proposal.reviewed_by = user_id
-        proposal.reviewed_at = now
-        await self._audit(
-            organisation_id,
-            user_id,
-            action,
-            proposal.id,
-            {
-                "created_question_id": str(proposal.created_question_id)
-                if proposal.created_question_id
-                else None,
-                "linked_question_id": str(proposal.linked_question_id)
-                if proposal.linked_question_id
-                else None,
-            },
-        )
-        await self.session.commit()
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            raise
         await self.session.refresh(proposal)
+        if question is not None and question_service is not None:
+            await question_service._sync_embedding_safely(question)
         return KnowledgeProposalResponse.model_validate(proposal)
 
     async def _proposal(

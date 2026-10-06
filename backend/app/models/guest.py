@@ -7,10 +7,12 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     JSON,
+    Index,
     String,
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,6 +25,8 @@ class GuestGroup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     created_by_uid: Mapped[str] = mapped_column(String(128), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_by_uid: Mapped[str | None] = mapped_column(String(128))
 
 
 class GuestGroupMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -50,6 +54,42 @@ class GuestGroupMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     approved_by_uid: Mapped[str | None] = mapped_column(String(128))
+
+
+class GuestGroupAdminTransfer(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "guest_group_admin_transfers"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'accepted', 'declined', 'cancelled', 'expired')",
+            name="ck_guest_admin_transfer_status",
+        ),
+        Index(
+            "uq_guest_admin_transfer_pending_group",
+            "group_id",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("guest_groups.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    requested_by_uid: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_membership_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("guest_group_memberships.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class GuestGroupInvitation(UUIDPrimaryKeyMixin, Base):

@@ -14,6 +14,52 @@ class GovernanceRepository {
 
   final Dio _client;
 
+  Future<List<OrganisationMember>> organisationMembers() => _list(
+        '/api/v1/auth/members',
+        OrganisationMember.fromJson,
+      );
+
+  Future<OrganisationMember> addOrganisationMember({
+    required String email,
+    required String role,
+    String? departmentId,
+  }) async {
+    try {
+      final response = await _client.post<Map<String, dynamic>>(
+        '/api/v1/auth/members',
+        data: {
+          'email': email,
+          'role': role,
+          'department_id': departmentId,
+        },
+      );
+      return OrganisationMember.fromJson(response.data!);
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
+  Future<OrganisationMember> updateOrganisationMember(
+    String memberId, {
+    String? role,
+    String? departmentId,
+    bool clearDepartment = false,
+  }) async {
+    try {
+      final response = await _client.patch<Map<String, dynamic>>(
+        '/api/v1/auth/members/$memberId',
+        data: {
+          if (role != null) 'role': role,
+          if (departmentId != null) 'department_id': departmentId,
+          if (clearDepartment) 'department_id': null,
+        },
+      );
+      return OrganisationMember.fromJson(response.data!);
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   Future<void> verify(String answerId, {int? reviewDays}) => _mutate(
         '/api/v1/answers/$answerId/verify',
         {'review_days': ?reviewDays},
@@ -85,6 +131,17 @@ class GovernanceRepository {
         '/api/v1/department-answer-owners',
         DepartmentAnswerOwner.fromJson,
       );
+
+  Future<Set<String>> myDepartmentOwnerIds() async {
+    try {
+      final response = await _client.get<List<dynamic>>(
+        '/api/v1/department-answer-owners/mine',
+      );
+      return (response.data ?? const []).cast<String>().toSet();
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
 
   Future<void> assignOwner(String departmentId, String userId) => _mutate(
         '/api/v1/departments/$departmentId/answer-owners',

@@ -36,6 +36,7 @@ from app.models.guided import (
 from app.models.guest import (
     GuestActionRateLimit,
     GuestGroup,
+    GuestGroupAdminTransfer,
     GuestGroupEntry,
     GuestGroupEntryRevision,
     GuestGroupInvitation,
@@ -82,6 +83,7 @@ __all__ = [
     "GuidedTemplateVersion",
     "GuestActionRateLimit",
     "GuestGroup",
+    "GuestGroupAdminTransfer",
     "GuestGroupEntry",
     "GuestGroupEntryRevision",
     "GuestGroupInvitation",

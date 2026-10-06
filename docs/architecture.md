@@ -2,8 +2,11 @@
 
 IntQAFlow is a monorepo with one shared backend for **IntQAFlow Knowledge** and
 **IntQAFlow Interact**, plus future Teams, browser extension, and agent clients.
-They are modules of one platform: Interact can produce reusable Knowledge, and
-Knowledge can be referenced during Interact sessions.
+The intended end-user delivery direction is browser extensions and application
+plugins such as Microsoft Teams, with the web interface supporting administration
+and functions those clients do not provide. The standalone web interface remains
+supported. They are modules of one platform: Interact can produce reusable
+Knowledge, and Knowledge can be referenced during Interact sessions.
 
 The application shell exposes Knowledge and Interact as primary destinations.
 Knowledge owns the route-backed Ask/Search and Questions views; Review remains
@@ -74,29 +77,54 @@ infer the user's formal department.
 ## Guest access
 
 - Solo guest Knowledge, Interact sessions, templates, search, and backup/import
-  stay in browser-local storage; entering the guest workspace does not upload
-  drafts.
+  stay in browser-local storage under `intqaflow.guest.workspace.v1`; entering
+  the guest workspace does not upload drafts. The app has no local-draft expiry
+  or automatic cleanup. Local data
+  remains until explicitly cleared in the app or removed by browser/site-data
+  cleanup or browser storage policy; persistence is not guaranteed. Same-origin
+  tabs share the browser's storage and Firebase auth context; a tab is not an
+  isolated account workspace.
+  The non-web guest-storage implementation is in-memory and has no durable
+  retention guarantee.
 - Shared guest groups are a separate persistence scope in
   `backend/app/models/guest.py`, not an organisation or department. Their API
   verifies Firebase ID tokens and App Check independently and derives access
   from the Firebase UID's group membership; caller-supplied identity headers are
-  rejected.
+  rejected. Anonymous Firebase identities and registered identities with a
+  verified email may create groups or redeem invitations; unverified registered
+  identities are denied these actions. Every invitation redemption remains
+  pending until a group admin approves it.
 - Group roles and invitation approval are enforced by guest services on every
   content, search, history, export, and membership request. Invitation previews
   disclose validity only. Group membership does not grant organisation,
   department, or private Interact access.
+- Administration transfer requires recipient acceptance and serializes role
+  changes under the group-row lock. Active admins may archive groups; only the
+  recorded archiver UID can restore during the 30-day recovery window. Archived
+  membership/content remain stored, invitations are revoked, and archived groups
+  are excluded from automatic expiry cleanup pending separate retention review.
 - Import is a deliberate selection and confirmation. Local items remain in the
   browser after sharing, and Interact entries require explicit
   `share_with_group` confirmation. Exports cannot be revoked after download.
 - Group access expires after 90 days without an authorized request. The
   `backend/app/maintenance/guest_retention.py` command supports bounded,
   dry-run-first deletion of expired groups and their group-owned rows; no
-  scheduler is configured. Cleanup locks and rechecks each group before
-  deleting, and does not touch organisation or private-session data.
+  scheduler is configured in the repository, and hosted scheduler state is
+  unverified. Expiry denies access but does not itself delete data;
+  repository cleanup removes expired rows only in reviewed apply-mode runs.
+  Cleanup locks and
+  rechecks each group before deleting, and does not touch organisation or
+  private-session data. Invitations expire after their configured lifetime
+  (24 hours by default, up to seven days); expired/revoked invitations are not
+  valid for preview or redemption. No backend store for private guest drafts
+  exists; group content is stored remotely only after an explicit group action.
 - Registered organisation routes continue to resolve active Firebase UID
   mappings and retain the existing tenant, department, private-session,
   governance, and audit checks. A linked guest identity can access only its
-  existing group memberships.
+  existing group memberships. Each Firebase UID maps to one account and each
+  account belongs to one organisation; multiple organisation memberships per
+  account are not supported. Group roles remain independent of organisation
+  roles, and group membership does not create organisation membership.
 
 ## Semantic search
 
@@ -191,10 +219,14 @@ infer the user's formal department.
   and audit behavior.
 - Legacy import normalizes local Interact JSON into the same answer-
   owned recursive graph. Native sessions and template sets have portable JSON;
-  session reports also support CSV and browser print/PDF.
+  session reports also support CSV and browser print/PDF. CSV export prefixes
+  formula-like user text, including formulas after leading whitespace/control
+  characters, so spreadsheet software treats it as text; JSON export retains the
+  original values.
 
 ## Deferred work
 
 Generative AI, team-only visibility for primary Q&A, Microsoft Teams
 integration, browser extensions, document ingestion, and agent access remain
-intentionally deferred.
+intentionally deferred. The delivery direction above does not change these
+implementation phases; no extension or plugin is delivered by this work.

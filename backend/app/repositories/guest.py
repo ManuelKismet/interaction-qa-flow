@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.guest import (
     GuestActionRateLimit,
     GuestGroup,
+    GuestGroupAdminTransfer,
     GuestGroupEntry,
     GuestGroupEntryRevision,
     GuestGroupInvitation,
@@ -141,20 +142,65 @@ class GuestRepository:
                 GuestGroupMembership.firebase_uid == firebase_uid,
                 GuestGroupMembership.status == "active",
                 GuestGroup.expires_at > now,
+                GuestGroup.archived_at.is_(None),
             )
             .order_by(GuestGroup.name)
             .with_for_update(of=GuestGroup)
         )
         return list(result.all())
 
-    async def invitation(
-        self, token_hash: str
-    ) -> GuestGroupInvitation | None:
-        return await self.session.scalar(
-            select(GuestGroupInvitation).where(
-                GuestGroupInvitation.token_hash == token_hash
+    async def archived_groups_for_admin(
+        self, firebase_uid: str
+    ) -> list[tuple[GuestGroup, GuestGroupMembership]]:
+        result = await self.session.execute(
+            select(GuestGroup, GuestGroupMembership)
+            .join(
+                GuestGroupMembership,
+                GuestGroupMembership.group_id == GuestGroup.id,
             )
+            .where(
+                GuestGroup.archived_by_uid == firebase_uid,
+                GuestGroupMembership.firebase_uid == firebase_uid,
+                GuestGroupMembership.status == "active",
+                GuestGroupMembership.role == "admin",
+            )
+            .order_by(GuestGroup.archived_at.desc())
         )
+        return list(result.all())
+
+    async def pending_admin_transfer(
+        self, group_id: UUID, *, lock: bool = False
+    ) -> GuestGroupAdminTransfer | None:
+        statement = select(GuestGroupAdminTransfer).where(
+            GuestGroupAdminTransfer.group_id == group_id,
+            GuestGroupAdminTransfer.status == "pending",
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return await self.session.scalar(statement)
+
+    async def admin_transfer(
+        self, group_id: UUID, transfer_id: UUID, *, lock: bool = False
+    ) -> GuestGroupAdminTransfer | None:
+        statement = select(GuestGroupAdminTransfer).where(
+            GuestGroupAdminTransfer.group_id == group_id,
+            GuestGroupAdminTransfer.id == transfer_id,
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return await self.session.scalar(statement)
+
+    async def invitation(
+        self, token_hash: str, *, lock: bool = False
+    ) -> GuestGroupInvitation | None:
+        statement = select(GuestGroupInvitation).where(
+            GuestGroupInvitation.token_hash == token_hash
+        )
+        if lock:
+            statement = statement.with_for_update().execution_options(
+                populate_existing=True
+            )
+        return await self.session.scalar(statement)
 
     async def invitation_by_id(
         self, group_id: UUID, invitation_id: UUID

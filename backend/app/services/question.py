@@ -78,7 +78,13 @@ class QuestionService:
         )
         self.settings = get_settings()
 
-    async def create(self, data: QuestionCreate) -> Question:
+    async def create(
+        self,
+        data: QuestionCreate,
+        *,
+        commit: bool = True,
+        sync_embedding: bool = True,
+    ) -> Question:
         if not await self.users.get_for_organisation(
             data.author_id,
             data.organisation_id,
@@ -98,9 +104,13 @@ class QuestionService:
 
         question = Question(**data.model_dump())
         await self.questions.add(question)
-        await self.session.commit()
-        await self.session.refresh(question)
-        await self._sync_embedding_safely(question)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(question)
+            if sync_embedding:
+                await self._sync_embedding_safely(question)
+        else:
+            await self.session.flush()
         return question
 
     async def list(

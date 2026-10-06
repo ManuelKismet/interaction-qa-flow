@@ -47,6 +47,8 @@ class AnswerService:
         self,
         question_id: UUID,
         data: AnswerCreate,
+        *,
+        commit: bool = True,
     ) -> AnswerDetailResponse:
         question, _ = await self._visible_question(
             question_id, data.organisation_id, data.author_id
@@ -65,8 +67,11 @@ class AnswerService:
         )
         if question.status == QuestionStatus.OPEN:
             question.status = QuestionStatus.ANSWERED
-        await self.session.commit()
-        await self.session.refresh(answer)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(answer)
+        else:
+            await self.session.flush()
         return await self._detail(answer)
 
     async def list(

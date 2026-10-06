@@ -77,10 +77,13 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
         isAuthor && hasContributions && !isAdmin && question.status != 'archived';
     final canRestore = question.status == 'archived' &&
         (isAdmin || (isAuthor && !hasContributions && !isProtected));
-    final canGovern = {
-      'admin',
-      'answer_owner',
-    }.contains(membership?.role);
+    final departmentOwnerIds = membership?.role == 'answer_owner'
+        ? ref.watch(myDepartmentOwnerIdsProvider).asData?.value
+        : null;
+    final departmentId = question.department?.id;
+    final canGovern = isAdmin ||
+        (departmentId != null &&
+            departmentOwnerIds?.contains(departmentId) == true);
     final otherAnswers = question.answers
         .where((answer) => !answer.isAccepted)
         .toList(growable: false);
@@ -1227,6 +1230,7 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     ref.invalidate(questionsProvider);
     ref.invalidate(commentsProvider(widget.questionId));
     ref.invalidate(questionDetailProvider(widget.questionId));
+    ref.invalidate(myDepartmentOwnerIdsProvider);
     await ref.read(questionDetailProvider(widget.questionId).future);
   }
 }

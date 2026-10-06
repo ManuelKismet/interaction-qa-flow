@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:int_qa_flow/core/api/api_exception.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 
@@ -66,10 +67,115 @@ void main() {
     expect(sourceSession['visibility'], 'private_local');
     client.close();
   });
+
+  test('group listing uses the guest endpoint and decodes group membership', () async {
+    final adapter = _RecordingAdapter();
+    final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+      ..httpClientAdapter = adapter;
+
+    final groups = await GuestGroupRepository(client).listGroups();
+
+    expect(adapter.requestPath, '/api/v1/guest/groups');
+    expect(groups, [
+      {'id': 'shared-entry'},
+    ]);
+    client.close();
+  });
+
+  test(
+    'entry updates send the revision used to make the edit',
+    () async {
+      final adapter = _RecordingAdapter(
+        responseBody: '{"id":"entry-id","revision":2}',
+      );
+      final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+        ..httpClientAdapter = adapter;
+
+      await GuestGroupRepository(client).updateEntry(
+        groupId: 'group-id',
+        entryId: 'entry-id',
+        expectedRevision: 1,
+        title: 'Updated title',
+        data: const {'answer': 'Updated answer'},
+      );
+
+      expect(
+        adapter.requestPath,
+        '/api/v1/guest/groups/group-id/entries/entry-id',
+      );
+      expect(adapter.requestBody, {
+        'expected_revision': 1,
+        'title': 'Updated title',
+        'data': {'answer': 'Updated answer'},
+      });
+      client.close();
+    },
+  );
+
+  test(
+    'stale entry update conflicts ask the user to refresh before saving',
+    () async {
+      final adapter = _RecordingAdapter(
+        statusCode: 409,
+        responseBody: '{"detail":"stale revision"}',
+      );
+      final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+        ..httpClientAdapter = adapter;
+
+      await expectLater(
+        GuestGroupRepository(client).updateEntry(
+          groupId: 'group-id',
+          entryId: 'entry-id',
+          expectedRevision: 1,
+          title: 'Updated title',
+          data: const {},
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.message,
+            'message',
+            contains('Refresh and review the latest version'),
+          ),
+        ),
+      );
+      client.close();
+    },
+  );
+
+  test('group listing errors are sanitized and distinguish unauthorized requests', () async {
+    final adapter = _RecordingAdapter(
+      statusCode: 401,
+      responseBody: '{"detail":"private server detail"}',
+    );
+    final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+      ..httpClientAdapter = adapter;
+
+    await expectLater(
+      GuestGroupRepository(client).listGroups(),
+      throwsA(
+        isA<ApiException>()
+            .having((error) => error.message, 'message', contains('not authorized'))
+            .having(
+              (error) => error.message,
+              'message',
+              isNot(contains('private server detail')),
+            ),
+      ),
+    );
+    client.close();
+  });
 }
 
 class _RecordingAdapter implements HttpClientAdapter {
+  _RecordingAdapter({
+    this.statusCode = 200,
+    this.responseBody = '[{"id":"shared-entry"}]',
+  });
+
+  final int statusCode;
+  final String responseBody;
   Map<String, dynamic>? requestBody;
+  String? requestPath;
 
   @override
   Future<ResponseBody> fetch(
@@ -77,11 +183,16 @@ class _RecordingAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    requestBody = jsonDecode(await utf8.decoder.bind(requestStream!).join())
-        as Map<String, dynamic>;
+    requestPath = options.uri.path;
+    if (requestStream != null) {
+      final encodedBody = await utf8.decoder.bind(requestStream).join();
+      if (encodedBody.isNotEmpty) {
+        requestBody = jsonDecode(encodedBody) as Map<String, dynamic>;
+      }
+    }
     return ResponseBody.fromString(
-      '[{"id":"shared-entry"}]',
-      200,
+      responseBody,
+      statusCode,
       headers: {Headers.contentTypeHeader: ['application/json']},
     );
   }
