@@ -36,21 +36,44 @@ class GuestWorkspaceData {
     final sessions = _maps(json['sessions']);
     final templates = _maps(json['templates']);
     for (final item in knowledge) {
-      _validateStrings(item, const ['id', 'title', 'body', 'answer']);
+      _validateStrings(
+        item,
+        const ['id', 'title', 'body', 'answer'],
+        required: const ['id', 'title'],
+      );
     }
     for (final session in sessions) {
-      _validateStrings(session, const ['id', 'title', 'visibility']);
-      _validateMapList(session, 'participants', const ['id', 'name']);
-      _validateQuestions(session['questions']);
+      _validateStrings(
+        session,
+        const ['id', 'title', 'visibility'],
+        required: const ['id'],
+      );
+      _validateMapList(
+        session,
+        'participants',
+        const ['id', 'name'],
+        required: true,
+        requiredStringFields: const ['id'],
+      );
+      _validateQuestions(session['questions'], required: true);
     }
     for (final template in templates) {
-      _validateStrings(template, const ['id', 'name']);
+      _validateStrings(
+        template,
+        const ['id', 'name'],
+        required: const ['id', 'name'],
+      );
       _validateMapList(
         template,
         'participant_slots',
         const ['id', 'label'],
+        requiredStringFields: const ['id'],
       );
-      _validateQuestions(template['questions'], template: true);
+      _validateQuestions(
+        template['questions'],
+        template: true,
+        required: true,
+      );
     }
     return GuestWorkspaceData(
       knowledge: knowledge,
@@ -104,10 +127,16 @@ class GuestWorkspaceData {
 
   static void _validateStrings(
     Map<String, dynamic> item,
-    List<String> fields,
-  ) {
+    List<String> fields, {
+    List<String> required = const [],
+  }) {
     for (final field in fields) {
       final value = item[field];
+      if (required.contains(field) && (value is! String || value.isEmpty)) {
+        throw FormatException(
+          'Guest backup field "$field" must be non-empty text.',
+        );
+      }
       if (value != null && value is! String) {
         throw FormatException('Guest backup field "$field" must be text.');
       }
@@ -117,10 +146,12 @@ class GuestWorkspaceData {
   static void _validateMapList(
     Map<String, dynamic> item,
     String field,
-    List<String> stringFields,
-  ) {
+    List<String> stringFields, {
+    bool required = false,
+    List<String> requiredStringFields = const [],
+  }) {
     final value = item[field];
-    if (value == null) return;
+    if (value == null && !required) return;
     if (value is! List ||
         value.any((entry) => entry is! Map<String, dynamic>)) {
       throw FormatException(
@@ -128,12 +159,20 @@ class GuestWorkspaceData {
       );
     }
     for (final entry in value.cast<Map<String, dynamic>>()) {
-      _validateStrings(entry, stringFields);
+      _validateStrings(
+        entry,
+        stringFields,
+        required: requiredStringFields,
+      );
     }
   }
 
-  static void _validateQuestions(Object? value, {bool template = false}) {
-    if (value == null) return;
+  static void _validateQuestions(
+    Object? value, {
+    bool template = false,
+    bool required = false,
+  }) {
+    if (value == null && !required) return;
     if (value is! List) {
       throw const FormatException('Guest questions must be a list.');
     }
@@ -141,12 +180,16 @@ class GuestWorkspaceData {
       if (item is! Map<String, dynamic>) {
         throw const FormatException('Guest questions must contain objects.');
       }
-      _validateStrings(item, [
-        'id',
-        'text',
-        if (template) 'target_participant_slot' else 'target_participant_id',
-        'scope',
-      ]);
+      _validateStrings(
+        item,
+        [
+          'id',
+          'text',
+          if (template) 'target_participant_slot' else 'target_participant_id',
+          'scope',
+        ],
+        required: const ['id', 'text'],
+      );
       _validateQuestions(item['follow_ups'], template: template);
       final answers = item['answers'];
       if (answers == null) continue;
@@ -161,7 +204,13 @@ class GuestWorkspaceData {
           'participant_id',
           'participant_slot',
           'body',
-        ]);
+        ], required: [template ? 'participant_slot' : 'participant_id']);
+        final branchesCollapsed = answer['branches_collapsed'];
+        if (branchesCollapsed != null && branchesCollapsed is! bool) {
+          throw const FormatException(
+            'Guest answer field "branches_collapsed" must be a boolean.',
+          );
+        }
         _validateQuestions(answer['follow_ups'], template: template);
       }
     }

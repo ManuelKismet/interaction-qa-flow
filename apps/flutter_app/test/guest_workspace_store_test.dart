@@ -41,6 +41,27 @@ void main() {
           'schema_version': 1,
           'knowledge': [],
           'sessions': [
+            {'id': 'missing-participants'},
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {
+              'id': 'missing-questions',
+              'participants': [
+                {'id': 'p1'},
+              ],
+            },
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
             {
               'id': 'session',
               'participants': [
@@ -53,6 +74,45 @@ void main() {
                       'follow_ups': [
                         {'answers': 'not a list'},
                       ],
+                    },
+                    {
+                      'schema_version': 1,
+                      'knowledge': [],
+                      'sessions': [
+                        {
+                          'id': 'session',
+                          'participants': [
+                            {'name': 'Missing ID'},
+                          ],
+                          'questions': [],
+                        },
+                      ],
+                      'templates': [],
+                    },
+                    {
+                      'schema_version': 1,
+                      'knowledge': [],
+                      'sessions': [
+                        {
+                          'id': 'session',
+                          'participants': [
+                            {'id': 'p1'},
+                          ],
+                          'questions': [
+                            {
+                              'id': 'question',
+                              'text': 'Question',
+                              'answers': [
+                                {
+                                  'participant_id': 'p1',
+                                  'branches_collapsed': 'yes',
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                      'templates': [],
                     },
                   ],
                 },
