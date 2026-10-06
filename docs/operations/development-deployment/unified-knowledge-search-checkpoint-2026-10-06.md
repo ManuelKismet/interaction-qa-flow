@@ -1,6 +1,42 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
-## Latest snapshot — DEV search rollout verified, 2026-10-06
+## Active follow-up — Ask & search unified parity, founder-authorised 2026-10-06
+
+Founder reports the deployed search works in their manual test. Scope/account,
+queries and source-navigation coverage were not specified, so record this as
+founder-reported success, not Codex-executed authenticated/multi-source E2E.
+The earlier cloud-browser search smoke remains separately inconclusive.
+
+Static review on exact deployed105a528 confirmed organisation AskPage uses
+organisation-only questionsRepository search and related-question rows with
+department/team/answer/match labels. It does not yet share the unified
+Local/Private/Group/Organisation search coverage and explicit origin labels.
+
+Founder explicitly approved extending the same unified search to Ask & search.
+[ONE targeted Copilot handoff](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6026591268)
+uses complete base `105a528f19b2383545b5cfae17197439ce065279` on
+`fix/unified-search-dev-20261006`, not the older patch-carrier head.
+Apply only its future incremental patch unchanged; never reconstruct old patches.
+
+Preserve existing form/submission/selectors and Ask as new question. Accessible
+Local/Private/Group/Organisation results get actual source names and assigned
+department/team labels, useful snippets, shared ranking/query lifecycle and
+correct source navigation. A local/private match never blocks deliberate new
+organisation submission and never copies/uploads private/local content
+automatically. Existing access boundaries, membership checks, no-org personal
+usage, query/identity freshness, retry/partial failures and original retention
+remain mandatory. Shared reusable logic and meaningful actual AskPage/widget
+regressions required; no unnecessary schema or deferred organisation work.
+
+Copilot owns app/tests; Codex independently reviews/applies/tests in the existing
+isolated worktree and manages DEV-only rollout after passing gates. No new patch
+is independently tested or deployed at this handoff. Current runtime remains
+review105a528/schema0014/Hosting4eb839685c6f21c7 as recorded below.
+Codespace remains stopped while awaiting artifact. Recurring monitoring remains
+cancelled; do not recreate. Real-provider quality, authenticated personal-import
+E2E/F04/F08/F09 and deferred organisation work remain separate.
+
+## Latest deployed snapshot — DEV search rollout verified, 2026-10-06
 
 Complete reviewed source `105a528f19b2383545b5cfae17197439ce065279` on
 `fix/unified-search-dev-20261006` is deployed to **intqaflow-dev only**.
