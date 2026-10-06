@@ -314,6 +314,28 @@ void main() {
     },
   );
 
+  testWidgets('local workspace does not access Firebase when unavailable', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          guestWorkspaceStoreProvider.overrideWithValue(
+            GuestWorkspaceStore(_MemoryGuestStorage()),
+          ),
+        ],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+    expect(find.byTooltip('Groups'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'sign-in return keeps guest workspace content available',
     (tester) async {
@@ -420,7 +442,12 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.textContaining('Groups are separate'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Groups require a registered account with a verified email.',
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Account'));

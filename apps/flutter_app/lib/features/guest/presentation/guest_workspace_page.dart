@@ -530,10 +530,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final groupIdentity =
-        ref.watch(authStateProvider).value ??
-        ref.read(firebaseAuthProvider).currentUser;
-    final canUseGroups = isVerifiedRegisteredFirebaseUser(groupIdentity);
+    final groupIdentity = widget.firebaseReady
+        ? ref.watch(authStateProvider).value ??
+              ref.read(firebaseAuthProvider).currentUser
+        : null;
+    final canUseGroups =
+        widget.firebaseReady &&
+        isVerifiedRegisteredFirebaseUser(groupIdentity);
     final guestGroupsState = canUseGroups
         ? ref.watch(currentGuestGroupsProvider)
         : null;
@@ -2772,8 +2775,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
       return false;
     }
-    final currentUser = user!;
-    final uid = currentUser.uid;
+    final uid = user.uid;
     final generation = ++_loadGeneration;
     setState(() {
       _busy = true;
@@ -2837,11 +2839,11 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   }
 
   bool _isCurrentLoad(String uid, int generation) {
+    if (!mounted || generation != _loadGeneration || uid != _activeUid) {
+      return false;
+    }
     final user = ref.read(firebaseAuthProvider).currentUser;
-    return mounted &&
-        generation == _loadGeneration &&
-        uid == _activeUid &&
-        user?.uid == uid &&
+    return user?.uid == uid &&
         isVerifiedRegisteredFirebaseUser(user);
   }
 
@@ -2854,7 +2856,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
       return false;
     }
-    final loadUid = uid ?? user!.uid;
+    final loadUid = uid ?? user.uid;
     final loadGeneration = generation ?? ++_loadGeneration;
     if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
     setState(() {
@@ -2980,7 +2982,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
       return;
     }
-    final uid = user!.uid;
+    final uid = user.uid;
     final generation = ++_loadGeneration;
     final groupId = archived['id'] as String;
     final failure = _error ?? 'The request could not be verified.';
@@ -3030,7 +3032,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
       return;
     }
-    final uid = user!.uid;
+    final uid = user.uid;
     final generation = ++_loadGeneration;
     setState(() => _busy = true);
     try {

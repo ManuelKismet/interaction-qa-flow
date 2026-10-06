@@ -749,7 +749,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('About groups'), findsOneWidget);
     expect(
-      find.textContaining('Group data remains associated with its Firebase UID.'),
+      find.textContaining(
+        'Group data remains associated with its Firebase UID;',
+      ),
       findsOneWidget,
     );
     await tester.tap(find.text('Close'));
@@ -1040,7 +1042,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          firebaseAuthProvider.overrideWithValue(
+            _TestFirebaseAuth(_TestUser(anonymous: true, verified: false)),
+          ),
           guestGroupRepositoryProvider.overrideWithValue(
             _EmptyGroupsRepository(),
           ),
