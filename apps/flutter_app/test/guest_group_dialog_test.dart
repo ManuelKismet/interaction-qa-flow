@@ -300,6 +300,26 @@ class _IdentityTransitionGroupsRepository extends GuestGroupRepository {
   }) async => const [];
 }
 
+class _PendingGroupsRepository extends GuestGroupRepository {
+  _PendingGroupsRepository() : super(Dio());
+
+  final groups = Completer<List<Map<String, dynamic>>>();
+  var listGroupsCalls = 0;
+  var listArchivedGroupsCalls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() {
+    listGroupsCalls++;
+    return groups.future;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
+    listArchivedGroupsCalls++;
+    return const [];
+  }
+}
+
 class _ShareRepository extends GuestGroupRepository {
   _ShareRepository() : super(Dio());
 
@@ -575,7 +595,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Groups'), findsOneWidget);
+        if (eligible || user.isAnonymous) {
+          expect(find.text('Groups'), findsOneWidget);
+        }
         if (eligible) {
           final createButton = tester.widget<FilledButton>(
             find.widgetWithText(FilledButton, 'Create group'),
@@ -587,13 +609,27 @@ void main() {
           expect(joinButton.onPressed, isNotNull);
           expect(repository.listGroupsCalls, 1);
         } else {
-          expect(
-            find.textContaining('Groups require a registered account'),
-            findsOneWidget,
-          );
           expect(find.text('Create group'), findsNothing);
           expect(repository.listGroupsCalls, 0);
           expect(repository.listArchivedGroupsCalls, 0);
+          if (user.isAnonymous) {
+            expect(
+              find.textContaining('Groups require a registered account'),
+              findsOneWidget,
+            );
+            expect(find.text('Create account'), findsOneWidget);
+          } else {
+            expect(
+              find.text('Verify your email to use Groups'),
+              findsOneWidget,
+            );
+            expect(
+              find.textContaining('Check your email for the verification link'),
+              findsOneWidget,
+            );
+            expect(find.text('Sign in'), findsOneWidget);
+            expect(find.text('Create account'), findsNothing);
+          }
         }
         expect(identical(user, auth.currentUser), isTrue);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -641,6 +677,33 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
     router.dispose();
+  });
+
+  testWidgets('pending Groups response is ignored after page disposal', (
+    tester,
+  ) async {
+    final repository = _PendingGroupsRepository();
+    final user = _TestUser(anonymous: false, verified: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pump();
+    expect(repository.listGroupsCalls, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    repository.groups.complete([
+      {'id': 'late-group', 'name': 'Late group', 'role': 'viewer'},
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(repository.listArchivedGroupsCalls, 0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('UID change clears Groups state and ignores stale loads', (

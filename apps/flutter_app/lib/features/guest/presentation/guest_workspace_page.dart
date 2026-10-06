@@ -225,6 +225,30 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   Future<void> _openSharedGroups() async {
     if (!await _saveBeforeLeaving() || !mounted) return;
     final user = ref.read(firebaseAuthProvider).currentUser;
+    if (user != null && !user.isAnonymous && !user.emailVerified) {
+      final signIn = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Verify your email to use Groups'),
+          content: const Text(
+            'Check your email for the verification link. After verifying, '
+            'sign in again to access Groups. No new account is needed.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Already have an account? Sign in'),
+            ),
+          ],
+        ),
+      );
+      if (signIn == true && mounted) await _openSignIn();
+      return;
+    }
     if (!isVerifiedRegisteredFirebaseUser(user)) {
       final action = await showDialog<String>(
         context: context,
@@ -4100,8 +4124,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final user = ref.watch(firebaseAuthProvider).currentUser;
     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
       final eligible = isVerifiedRegisteredFirebaseUser(user);
+      final needsEmailVerification =
+          user != null && !user.isAnonymous && !user.emailVerified;
       return Scaffold(
-        appBar: AppBar(title: const Text('Groups')),
+        appBar: AppBar(
+          title: Text(
+            needsEmailVerification
+                ? 'Verify your email to use Groups'
+                : 'Groups',
+          ),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -4109,9 +4141,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  eligible
-                      ? 'Checking account access…'
-                      : 'Groups require a registered account with a verified email.',
+                  needsEmailVerification
+                      ? 'Check your email for the verification link. After '
+                            'verifying, sign in again to access Groups. No new '
+                            'account is needed.'
+                      : eligible
+                          ? 'Checking account access…'
+                          : 'Groups require a registered account with a verified email.',
                   textAlign: TextAlign.center,
                 ),
                 if (!eligible) ...[
@@ -4124,17 +4160,18 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                     ),
                     child: const Text('Sign in'),
                   ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (_) => SignInPage(
-                          createAccount: true,
-                          linkGuestIdentity: user?.isAnonymous == true,
+                  if (!needsEmailVerification)
+                    FilledButton(
+                      onPressed: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => SignInPage(
+                            createAccount: true,
+                            linkGuestIdentity: user?.isAnonymous == true,
+                          ),
                         ),
                       ),
+                      child: const Text('Create account'),
                     ),
-                    child: const Text('Create account'),
-                  ),
                 ],
               ],
             ),

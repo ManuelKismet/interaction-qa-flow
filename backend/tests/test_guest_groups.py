@@ -246,6 +246,99 @@ async def test_all_group_routes_require_verified_registered_identity(
 
 
 @pytest.mark.asyncio
+async def test_anonymous_same_uid_cannot_reuse_registered_group_access(
+    app_client, monkeypatch
+) -> None:
+    client, _ = app_client
+    install_test_tokens(monkeypatch)
+    owner_uid = "registered-group-owner"
+    member_uid = "registered-group-member"
+    group = await make_group(client, owner_uid, "Registered group")
+    group_id = group["id"]
+
+    invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer(owner_uid),
+        json={"role": "contributor", "expires_in_hours": 24},
+    )
+    assert invitation.status_code == 200, invitation.text
+    join = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer(member_uid),
+        json={
+            "token": invitation.json()["token"],
+            "display_name": "Registered member",
+        },
+    )
+    assert join.status_code == 200, join.text
+    approved = await client.post(
+        f"/api/v1/guest/groups/{group_id}/members/{join.json()['id']}/approve",
+        headers=bearer(owner_uid),
+    )
+    assert approved.status_code == 200, approved.text
+
+    anonymous_owner = bearer(owner_uid, "anonymous")
+    anonymous_member = bearer(member_uid, "anonymous")
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}",
+            headers=anonymous_owner,
+        )
+    ).status_code == 403
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}",
+            headers=anonymous_member,
+        )
+    ).status_code == 403
+    denied_write = await client.post(
+        f"/api/v1/guest/groups/{group_id}/entries",
+        headers=anonymous_member,
+        json={
+            "kind": "knowledge",
+            "title": "Anonymous write",
+            "data": {"body": "Must be denied"},
+        },
+    )
+    assert denied_write.status_code == 403
+    denied_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=anonymous_owner,
+        json={"role": "viewer", "expires_in_hours": 24},
+    )
+    assert denied_invitation.status_code == 403
+
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}",
+            headers=bearer(owner_uid),
+        )
+    ).status_code == 200
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}",
+            headers=bearer(member_uid),
+        )
+    ).status_code == 200
+    allowed_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer(owner_uid),
+        json={"role": "viewer", "expires_in_hours": 24},
+    )
+    assert allowed_invitation.status_code == 200, allowed_invitation.text
+    allowed_write = await client.post(
+        f"/api/v1/guest/groups/{group_id}/entries",
+        headers=bearer(member_uid),
+        json={
+            "kind": "knowledge",
+            "title": "Registered write",
+            "data": {"body": "Allowed for the registered member"},
+        },
+    )
+    assert allowed_write.status_code == 201, allowed_write.text
+
+
+@pytest.mark.asyncio
 async def test_group_invites_roles_removal_and_group_boundary(app_client, monkeypatch) -> None:
     client, session_factory = app_client
     install_test_tokens(monkeypatch)

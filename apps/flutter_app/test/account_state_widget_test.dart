@@ -636,6 +636,17 @@ void main() {
       find.textContaining('Verify this account’s email before using Groups'),
       findsOneWidget,
     );
+    await tester.tap(find.byTooltip('Groups'));
+    await tester.pumpAndSettle();
+    expect(find.text('Verify your email to use Groups'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Check your email for the verification link. After verifying,',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Create an account'), findsNothing);
+    expect(find.text('Create account'), findsNothing);
   });
 
   testWidgets('verified account without an organisation can open groups', (
