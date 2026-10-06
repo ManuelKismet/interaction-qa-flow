@@ -279,7 +279,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Unable to save local changes. Retry saving before leaving this workspace.',
+              'Unable to save local changes. Retry saving before leaving '
+              'this workspace.',
             ),
           ),
         );
@@ -313,7 +314,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Unable to save local changes. Retry saving before leaving this workspace.',
+              'Unable to save local changes. Retry saving before leaving '
+              'this workspace.',
             ),
           ),
         );

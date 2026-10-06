@@ -121,8 +121,11 @@ class GuestWorkspaceData {
   ) {
     final value = item[field];
     if (value == null) return;
-    if (value is! List || value.any((entry) => entry is! Map<String, dynamic>)) {
-      throw FormatException('Guest backup field "$field" must be a list of objects.');
+    if (value is! List ||
+        value.any((entry) => entry is! Map<String, dynamic>)) {
+      throw FormatException(
+        'Guest backup field "$field" must be a list of objects.',
+      );
     }
     for (final entry in value.cast<Map<String, dynamic>>()) {
       _validateStrings(entry, stringFields);

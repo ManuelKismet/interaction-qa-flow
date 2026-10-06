@@ -529,7 +529,10 @@ void main() {
 
     expect(auth.signInAttempts, 1);
     expect(find.text('Sign-in failed. Please try again.'), findsOneWidget);
-    expect(find.textContaining('internal credential transport detail'), findsNothing);
+    expect(
+      find.textContaining('internal credential transport detail'),
+      findsNothing,
+    );
     expect(find.textContaining('private-password'), findsNothing);
     expect(tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Sign in'),
