@@ -1232,7 +1232,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ),
         if (!registered && widget.firebaseReady) ...[
           const PopupMenuDivider(),
-          const PopupMenuItem(value: 'sign-in', child: Text('Sign in')),
+          const PopupMenuItem(
+            value: 'sign-in',
+            child: Text('Already have an account? Sign in'),
+          ),
           if (widget.sharedIdentityActive)
             const PopupMenuItem(
               value: 'create-account',

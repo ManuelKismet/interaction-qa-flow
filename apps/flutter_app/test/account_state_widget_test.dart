@@ -287,7 +287,7 @@ void main() {
       await tester.tap(find.byTooltip('Account'));
       await tester.pumpAndSettle();
       expect(find.text('Local guest workspace'), findsOneWidget);
-      expect(find.text('Sign in'), findsOneWidget);
+      expect(find.text('Already have an account? Sign in'), findsOneWidget);
       expect(find.text('Create account'), findsOneWidget);
       expect(find.text('Sign out'), findsNothing);
     },
@@ -313,7 +313,7 @@ void main() {
 
       await tester.tap(find.byTooltip('Account'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sign in'));
+      await tester.tap(find.text('Already have an account? Sign in'));
       await tester.pumpAndSettle();
       expect(find.text('Back to guest workspace'), findsOneWidget);
       await tester.enterText(find.byType(TextField).first, 'member@example.test');
@@ -405,6 +405,7 @@ void main() {
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
     expect(find.text('Shared groups identity'), findsOneWidget);
+    expect(find.text('Already have an account? Sign in'), findsOneWidget);
     expect(find.text('Create account from this guest'), findsOneWidget);
     expect(find.text('Start fresh with a separate account'), findsOneWidget);
     expect(find.text('Sign out'), findsNothing);
@@ -1282,7 +1283,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sign in'));
+    await tester.tap(find.text('Already have an account? Sign in'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'destination@example.test');
     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
