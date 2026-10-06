@@ -1256,7 +1256,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               child: Text('Retry account check'),
             ),
         ],
-        if (user != null) ...[
+        if (registered) ...[
           const PopupMenuDivider(),
           const PopupMenuItem(
             value: 'sign-out',
