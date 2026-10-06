@@ -1,5 +1,76 @@
 # Development guest, regular-user and admin end-to-end acceptance
 
+## Current development checkpoint — 2026-10-06
+
+The personal account workspace change is implemented and deployed to development.
+Reviewed source: `aafc112fbbf220eda1077895334dc16b4930eeab` on
+`fix/saved-qa-dev-20261006`. This snapshot supersedes older current-state
+statements below; dated entries remain historical evidence.
+
+| Component | Verified development state |
+|---|---|
+| Frontend | [web.app](https://intqaflow-dev.web.app/) and [firebaseapp.com](https://intqaflow-dev.firebaseapp.com/) serve the same app |
+| Authentication | Firebase Authentication; guests use browser-local content without an anonymous account |
+| API | [Cloud Run API](https://intqaflow-dev-api-bycdjb22qq-nw.a.run.app), service `intqaflow-dev-api`, London |
+| Database | PostgreSQL in Google Cloud SQL, instance `intqaflow-dev-pg`, project `intqaflow-dev`, region `europe-west2`; not a Firebase database |
+| Backend release | `intqaflow-dev-api-reviewaafc112`, 100% traffic |
+| Database schema | `0013`; additive `personal_workspace_items` table |
+| Hosting release | `1791307395456000`, version `49afc5b14f53f3b0`, 36 files |
+
+The browser calls the separate API; the API connects to PostgreSQL. Guests'
+Knowledge and Interact content stays in their browser. Registration creates a
+separate real account and never uploads local content automatically. Verified
+registered users can explicitly import selected items to their private account
+while retaining local originals. New local work stays local until selected for
+import. Personal content and Groups require no organisation membership; personal
+content is excluded from organisation/group/global and semantic indexes.
+
+### Independent verification and limits
+
+- Backend: **106 passed**, no skips, including an actual isolated PostgreSQL
+  concurrent import regression and migration cycle. Most API tests use SQLite;
+  the suite is not entirely PostgreSQL-backed.
+- Flutter: **164 passed** on `3efc327`. After the behavior-preserving warning
+  cleanup, the final source passed **35 focused account tests**, analysis with
+  **zero errors/warnings** (13 existing informational notices), and a release
+  web build.
+- Live development: API health/readiness returned 200; missing/invalid personal
+  API identity returned 401. Migration `0012 → 0013` preserved all six groups,
+  and runtime CRUD privileges were verified without additional grants.
+- Both Hosting origins matched the release bundle: 4,480,260 bytes,
+  SHA-256 `687215d3c46ab8e77bd1b8ef8a4d5d8019756659ced1804259f0e679aa9acb6a`.
+  Guest browser reload retained Knowledge/Interact content and confirmed storage
+  labels, navigation placement and the registered/verified Groups gate.
+- **Live authenticated personal import/edit/multi-device browser acceptance
+  remains outstanding.** Automated tests, health checks and bundle matching do
+  not establish that result. Do not close F04/F08/F09 solely from this rollout.
+
+### Resume and rollback
+
+Next acceptance step: use an authorised ordinary verified registered account to
+check selected import, local-original retention, account editing/deletion,
+sign-out/account switching and retrieval on another browser/device. Record
+actual results against the deployed source before closing related acceptance
+items. Keep production, data purges and security weakening outside this scope.
+
+Rollback backend traffic to `intqaflow-dev-api-reviewfc9f5cc` and Hosting to
+release `1791296037202000` (version `62ab4165c63e4fc3`) if needed.
+Retain schema 0013 and personal data; do not downgrade or purge the live database.
+The temporary database proxy was terminated and the Codespace stopped after
+source/docs were pushed; pre-existing dirty documentation was preserved.
+
+Copilot owns application/test changes; Codex owns configuration, documentation,
+independent review/validation and the authorised development rollout. Continue
+routine work within the user's existing authorisation without repeat permission
+prompts. See [workflow lessons](personal-workspace-workflow-lessons-2026-10-06.md)
+for the implementation and verification sequence.
+
+## Historical acceptance log — starting 2026-10-04
+
+The entries below retain the evidence and decisions as recorded at the time.
+Earlier guest-group, anonymous identity, source, deployment and pending states
+are superseded by later entries and the current snapshot above.
+
 User scope: finish remaining guest checks, regular-user account creation and complete user/admin flows. Exclude old local database. Reuse already verified common features rather than repeat unchanged flows. All work targets intqaflow-dev; there is no production environment.
 
 Deployed reviewed code: dca98b796e00b77b947b2176f9060df51ee884b3. Source checks: 101 Flutter and 82 backend tests passed; analysis/release build passed. Coordinated dev rollout and stale API rejection passed. One-page nested PDF verified. Detailed prior evidence in codespace-appcheck-2026-10-04.md and pr13-follow-up-checkpoint-2026-10-04.md. Prior multi-account live artifact reports private-session/private-Knowledge, organisation visibility and foreign-tenant denials passed; that artifact used observation-mode App Check and does not establish current full UI flow acceptance.
