@@ -772,6 +772,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
       await tester.enterText(_field('Question'), 'Latest rescue work');
+      await tester.ensureVisible(saveButton);
+      await tester.pumpAndSettle();
       await tester.tap(saveButton);
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
@@ -865,7 +867,7 @@ void main() {
 
     expect(
       find.text(
-        'The backup could not be imported. Your current local work was kept.',
+        'Unable to import the selected backup. Your current work was kept.',
       ),
       findsOneWidget,
     );

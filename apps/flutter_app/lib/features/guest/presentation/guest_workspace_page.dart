@@ -2862,7 +2862,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         _groupId = selected;
       });
       if (selected != null) {
-        return _loadGroup(selected);
+        return await _loadGroup(selected);
       } else {
         if (!mounted) return false;
         setState(() {
