@@ -1,4 +1,4 @@
-From 1649dad869a405f054f9b9f4efbb01ba8adba05a Mon Sep 17 00:00:00 2001
+From af80e625dce436f945784f1d3db798fe61f50b28 Mon Sep 17 00:00:00 2001
 From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 15:39:38 +0000
 Subject: [PATCH] Add UID-private personal workspace imports
@@ -10,7 +10,7 @@ Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
  .../lib/core/auth/sign_in_page.dart           | 215 +-----
  .../lib/core/routing/app_router.dart          |   7 +
  .../data/personal_workspace_repository.dart   |  81 +++
- .../presentation/guest_workspace_page.dart    | 653 ++++++++++++++++--
+ .../presentation/guest_workspace_page.dart    | 652 ++++++++++++++++--
  .../lib/shared/widgets/app_shell.dart         |   6 +
  .../test/account_state_widget_test.dart       | 607 ++++++++--------
  apps/flutter_app/test/api_client_test.dart    |  25 +
@@ -24,7 +24,7 @@ Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
  backend/tests/test_personal_workspace.py      | 309 +++++++++
  docs/architecture.md                          |  31 +-
  docs/operations/guest-group-retention.md      |  36 +-
- 19 files changed, 1914 insertions(+), 573 deletions(-)
+ 19 files changed, 1913 insertions(+), 573 deletions(-)
  create mode 100644 apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
  create mode 100644 backend/alembic/versions/0013_personal_workspace.py
  create mode 100644 backend/app/api/v1/routes/personal_workspace.py
@@ -644,7 +644,7 @@ index 0000000000000000000000000000000000000000..292d8c004567b4cd7acd9b83fd9c066c
 +  }
 +}
 diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
-index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df3736b5b39f 100644
+index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..50a71a14aded6528b2f2b9c1983692ec4f334ba4 100644
 --- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
 +++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
 @@ -15,6 +15,7 @@ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
@@ -655,7 +655,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
  import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
  import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
  import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
-@@ -33,6 +34,27 @@ void _showPdfFontFallbackNotice(BuildContext context) {
+@@ -33,6 +34,26 @@ void _showPdfFontFallbackNotice(BuildContext context) {
    );
  }
  
@@ -666,7 +666,6 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
 +    required this.sourceKey,
 +    required this.sourceId,
 +    this.itemId,
-+    this.revision,
 +    this.title,
 +    this.data,
 +  });
@@ -683,7 +682,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
  String _pdfFontPreviewMessage() => kIsWeb
      ? 'If the bundled font lacks a character, direct PDF is skipped. The full report opens in browser print; check print preview for glyph support.'
      : 'If the bundled font lacks a character, direct PDF is skipped. Use the web report’s browser-print export to retain the full text.';
-@@ -40,6 +62,7 @@ String _pdfFontPreviewMessage() => kIsWeb
+@@ -40,6 +61,7 @@ String _pdfFontPreviewMessage() => kIsWeb
  class GuestWorkspacePage extends ConsumerStatefulWidget {
    const GuestWorkspacePage({
      required this.firebaseReady,
@@ -691,7 +690,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
      this.sharedIdentityActive = false,
      this.accountUser,
      this.membershipStatus,
-@@ -49,6 +72,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
+@@ -49,6 +71,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
    });
  
    final bool firebaseReady;
@@ -699,7 +698,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
    final bool sharedIdentityActive;
    final User? accountUser;
    final AccountMembershipStatus? membershipStatus;
-@@ -72,13 +96,46 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -72,13 +95,46 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
    int _savedRevision = 0;
    Future<bool>? _saveOperation;
    Timer? _autosaveTimer;
@@ -746,7 +745,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
    }
  
    @override
-@@ -127,9 +184,150 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -127,9 +183,150 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
      }
    }
  
@@ -899,7 +898,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
        _dataRevision++;
        _saveStatus = 'Saving locally…';
      });
-@@ -138,6 +336,181 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -138,6 +335,181 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
        const Duration(milliseconds: 250),
        _flushPendingSave,
      );
@@ -931,7 +930,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
 +        continue;
 +      }
 +      final key = '$kind:${data['id']}';
-+      final replacement = submittedByKey[key]?.data;
++      final replacement = submittedByKey[key];
 +      if (replacement == null) {
 +        _enqueuePersonalWrite(
 +          _PersonalWorkspaceWrite(
@@ -1081,7 +1080,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
    }
  
    Future<bool> _flushPendingSave() {
-@@ -200,23 +573,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -200,23 +572,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
  
    Future<void> _openSignIn({
      bool createAccount = false,
@@ -1105,7 +1104,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
          ),
        ),
      );
-@@ -279,8 +643,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -279,8 +642,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
        if (action == 'sign-in') {
          await _openSignIn();
        } else if (action == 'create-account') {
@@ -1115,7 +1114,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
        }
        return;
      }
-@@ -315,6 +678,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -315,6 +677,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
        if (!await _saveBeforeLeaving() || !mounted) return;
        try {
          await ref.read(firebaseAuthProvider).signOut();
@@ -1133,7 +1132,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
        } on Object {
          if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(
-@@ -377,7 +751,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -377,7 +750,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
        return;
      }
      if (!mounted) return;
@@ -1151,7 +1150,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
    }
  
    Future<void> _copyLocalBackup() async {
-@@ -432,6 +815,126 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -432,6 +814,126 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
      );
    }
  
@@ -1278,7 +1277,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
    Future<void> _importLocalBackup() async {
      final controller = TextEditingController(text: _pendingImportJson ?? '');
      try {
-@@ -553,7 +1056,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -553,7 +1055,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
  
    @override
    Widget build(BuildContext context) {
@@ -1288,7 +1287,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
      final groupIdentity = widget.firebaseReady
          ? ref.watch(authStateProvider).value ??
                ref.read(firebaseAuthProvider).currentUser
-@@ -591,6 +1095,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -591,6 +1094,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                  if (value == 'clear') _clearLocalCopy();
                  if (value == 'backup') _copyLocalBackup();
                  if (value == 'import') _importLocalBackup();
@@ -1296,7 +1295,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
                },
                itemBuilder: (context) => [
                  PopupMenuItem(
-@@ -601,6 +1106,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -601,6 +1105,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                    value: 'import',
                    child: Text('Import local JSON backup'),
                  ),
@@ -1308,7 +1307,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
                  PopupMenuDivider(),
                  PopupMenuItem(
                    value: 'clear',
-@@ -645,7 +1155,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -645,7 +1154,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
              : Column(
                  children: [
                    _GuestNotice(
@@ -1316,7 +1315,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
                      isRegistered: _hasSignedInNonGuestUser,
                      saveStatus: _saveStatus,
                    ),
-@@ -665,6 +1174,42 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -665,6 +1173,42 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                      const _AccountMembershipNotice(
                        text: 'Account status could not be verified. This workspace is local; organisation access is not assumed.',
                      ),
@@ -1359,7 +1358,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
                    if (widget.membershipStatus ==
                        AccountMembershipStatus.noMembership)
                      const _AccountMembershipNotice(
-@@ -1089,7 +1634,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -1089,7 +1633,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
          AccountMembershipStatus.inactive => 'Organisation membership inactive',
          AccountMembershipStatus.unavailable =>
            'Organisation membership unavailable',
@@ -1368,7 +1367,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
        };
        explanation = switch (widget.membershipStatus) {
          AccountMembershipStatus.noMembership =>
-@@ -1100,17 +1645,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -1100,17 +1644,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
            'Organisation access is inactive. Local work remains on this device.',
          AccountMembershipStatus.unavailable =>
            'Organisation access could not be verified. No organisation access is being assumed.',
@@ -1393,7 +1392,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
      }
  
      return PopupMenuButton<String>(
-@@ -1118,11 +1663,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -1118,11 +1662,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
        onSelected: (action) {
          if (action == 'sign-in') _openSignIn();
          else if (action == 'create-account') {
@@ -1405,7 +1404,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
            _openSignIn(createAccount: true);
          } else if (action == 'retry-account') {
            widget.onRetryAccount?.call();
-@@ -1154,21 +1694,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -1154,21 +1693,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
              value: 'sign-in',
              child: Text('Already have an account? Sign in'),
            ),
@@ -1431,7 +1430,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
          ],
          if (widget.onRetryAccount != null) ...[
              const PopupMenuDivider(),
-@@ -1202,30 +1731,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+@@ -1202,30 +1730,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
  
  class _GuestNotice extends StatelessWidget {
    const _GuestNotice({
@@ -1468,7 +1467,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
          : 'Guest workspace active in this browser profile. People using this '
              'profile can see its local work. Groups require a registered '
              'account with a verified email. Clearing browser data or losing '
-@@ -4158,7 +4680,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+@@ -4158,7 +4679,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                          builder: (_) => const SignInPage(),
                        ),
                      ),
@@ -1477,7 +1476,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
                    ),
                    if (!needsEmailVerification)
                      FilledButton(
-@@ -4166,7 +4688,6 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+@@ -4166,7 +4687,6 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                          MaterialPageRoute<void>(
                            builder: (_) => SignInPage(
                              createAccount: true,
@@ -1485,7 +1484,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
                            ),
                          ),
                        ),
-@@ -5008,6 +5529,7 @@ class _GuestImportPreview extends StatefulWidget {
+@@ -5008,6 +5528,7 @@ class _GuestImportPreview extends StatefulWidget {
      this.confirmLabel = 'Import selected locally',
      this.includeTemplates = true,
      this.shareWithGroup = false,
@@ -1493,7 +1492,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
      this.groupName,
    });
  
-@@ -5016,6 +5538,7 @@ class _GuestImportPreview extends StatefulWidget {
+@@ -5016,6 +5537,7 @@ class _GuestImportPreview extends StatefulWidget {
    final String confirmLabel;
    final bool includeTemplates;
    final bool shareWithGroup;
@@ -1501,7 +1500,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
    final String? groupName;
  
    @override
-@@ -5053,6 +5576,8 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
+@@ -5053,6 +5575,8 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
                      'from this identity was already shared to this group, '
                      'its existing group copy is reused without being '
                      'overwritten.'
@@ -1510,7 +1509,7 @@ index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..8a3510eaf3d4f6c5dcc03ed7ca55df37
                    : 'Selected items are added locally. Existing items with matching IDs are kept unchanged.',
              ),
            ),
-@@ -5097,9 +5622,13 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
+@@ -5097,9 +5621,13 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
      actions: [
        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
        FilledButton(
