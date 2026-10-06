@@ -245,10 +245,49 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('failed selected import does not stage imported data as pending work', () async {
+    final storage = MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'existing', 'title': 'Existing local item'},
+        ],
+      ),
+    );
+    final original = storage.read();
+    storage.failWrites = true;
+    final imported = GuestWorkspaceData.decodeBackup(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'new', 'title': 'Unimported item'},
+        ],
+      ).encodeBackup(),
+    );
+
+    await expectLater(
+      store.importSelected(
+        imported: imported,
+        knowledgeIds: {'new'},
+        sessionIds: {},
+        templateIds: {},
+      ),
+      throwsStateError,
+    );
+
+    expect(store.hasPendingChanges, isFalse);
+    expect(storage.read(), original);
+    expect(
+      (await store.load()).knowledge.single['title'],
+      'Existing local item',
+    );
+  });
 }
 
 class MemoryGuestStorage implements GuestStorage {
   String? value;
+  bool failWrites = false;
 
   @override
   void remove() => value = null;
@@ -257,5 +296,8 @@ class MemoryGuestStorage implements GuestStorage {
   String? read() => value;
 
   @override
-  void write(String value) => this.value = value;
+  void write(String value) {
+    if (failWrites) throw StateError('storage write failure');
+    this.value = value;
+  }
 }

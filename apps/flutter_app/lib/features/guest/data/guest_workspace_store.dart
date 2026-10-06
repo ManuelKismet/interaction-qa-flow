@@ -36,12 +36,17 @@ class GuestWorkspaceStore {
     return GuestWorkspaceData.fromJson(decoded);
   }
 
-  Future<void> save(GuestWorkspaceData data) async {
+  Future<void> save(GuestWorkspaceData data) => _write(data);
+
+  Future<void> _write(
+    GuestWorkspaceData data, {
+    bool retainOnFailure = true,
+  }) async {
     try {
       _storage.write(jsonEncode(data.toJson()));
       if (identical(_pendingData, data)) _pendingData = null;
     } on Object {
-      _pendingData ??= data;
+      if (retainOnFailure) _pendingData ??= data;
       rethrow;
     }
   }
@@ -75,7 +80,7 @@ class GuestWorkspaceStore {
         selectedIds: templateIds,
       ),
     );
-    await save(result);
+    await _write(result, retainOnFailure: false);
     return result;
   }
 }
