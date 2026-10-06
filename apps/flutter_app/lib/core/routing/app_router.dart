@@ -68,10 +68,13 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
           ),
           GoRoute(
             path: '/personal',
-            builder: (context, state) => const GuestWorkspacePage(
+            builder: (context, state) => GuestWorkspacePage(
               firebaseReady: true,
               personalWorkspaceEnabled: true,
               membershipStatus: AccountMembershipStatus.active,
+              initialKnowledgeItemId: state.extra is Map
+                  ? (state.extra as Map)['knowledgeItemId'] as String?
+                  : null,
             ),
           ),
         ],

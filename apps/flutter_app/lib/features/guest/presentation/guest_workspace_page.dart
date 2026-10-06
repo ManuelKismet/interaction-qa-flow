@@ -21,6 +21,7 @@ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
+import 'package:int_qa_flow/features/knowledge/application/knowledge_search_sources.dart';
 import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 import 'package:share_plus/share_plus.dart';
@@ -62,6 +63,7 @@ String _pdfFontPreviewMessage() => kIsWeb
 class GuestWorkspacePage extends ConsumerStatefulWidget {
   const GuestWorkspacePage({
     required this.firebaseReady,
+    this.initialKnowledgeItemId,
     this.personalWorkspaceEnabled = false,
     this.sharedIdentityActive = false,
     this.accountUser,
@@ -72,6 +74,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
   });
 
   final bool firebaseReady;
+  final String? initialKnowledgeItemId;
   final bool personalWorkspaceEnabled;
   final bool sharedIdentityActive;
   final User? accountUser;
@@ -1563,6 +1566,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       children: [
                         _GuestKnowledgeTab(
                           items: data.knowledge,
+                          initialKnowledgeItemId:
+                              widget.initialKnowledgeItemId,
                           searchIdentityKey: _verifiedPersonalUid == null
                               ? null
                               : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
@@ -2182,6 +2187,7 @@ class _UnifiedKnowledgeSearchHit {
 class _GuestKnowledgeTab extends StatefulWidget {
   const _GuestKnowledgeTab({
     required this.items,
+    this.initialKnowledgeItemId,
     required this.searchIdentityKey,
     required this.searchOrganization,
     required this.searchPersonal,
@@ -2195,6 +2201,7 @@ class _GuestKnowledgeTab extends StatefulWidget {
   });
 
   final List<Map<String, dynamic>> items;
+  final String? initialKnowledgeItemId;
   final String? searchIdentityKey;
   final Future<List<SemanticSearchResult>> Function(String)?
   searchOrganization;
@@ -2231,6 +2238,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
   bool _groupSearchPartial = false;
   bool _remoteSearchLoading = false;
   bool _showSavedQuestions = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedKnowledgeItemId = widget.initialKnowledgeItemId;
+    _showSavedQuestions = widget.initialKnowledgeItemId != null;
+  }
   String? _selectedKnowledgeItemId;
 
   @override
@@ -2303,69 +2317,31 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
 
   Future<void> _searchRemote(String query, int generation) async {
     final identityKey = widget.searchIdentityKey;
-    final searchOrganization = widget.searchOrganization;
-    final searchPersonal = widget.searchPersonal;
-    final searchGroups = widget.searchGroups;
-    var organizationFailed = false;
-    var organizationPartial = false;
-    var personalFailed = false;
-    var groupsFailed = false;
-    List<SemanticSearchResult> organizationResults = [];
-    List<Map<String, dynamic>> personalResults = [];
-    List<Map<String, dynamic>> groupResults = [];
-    var personalSearchPartial = false;
-    var groupSearchPartial = false;
-    await Future.wait<void>([
-      if (searchOrganization != null)
-        (() async {
-          try {
-            organizationResults = await searchOrganization(query);
-            organizationPartial = organizationResults.length >= 10;
-          } on Object {
-            organizationFailed = true;
-          }
-        })(),
-      if (searchPersonal != null)
-        (() async {
-          try {
-            final response = await searchPersonal(query);
-            personalResults =
-                (response['results'] as List<dynamic>? ?? const [])
-                    .whereType<Map<String, dynamic>>()
-                    .toList();
-            personalSearchPartial = response['partial'] == true;
-          } on Object {
-            personalFailed = true;
-          }
-        })(),
-      if (searchGroups != null)
-        (() async {
-          try {
-            final response = await searchGroups(query);
-            groupResults = (response['results'] as List<dynamic>? ?? const [])
-                .whereType<Map<String, dynamic>>()
-                .toList();
-            groupSearchPartial = response['partial'] == true;
-          } on Object {
-            groupsFailed = true;
-          }
-        })(),
-    ]);
+    final sources = await searchKnowledgeSources(
+      query,
+      searchOrganisation: widget.searchOrganization,
+      searchPrivateAccount: widget.searchPersonal,
+      searchGroups: widget.searchGroups,
+    );
     if (!mounted ||
         generation != _searchGeneration ||
         identityKey != widget.searchIdentityKey) {
       return;
     }
     setState(() {
-      _organizationResults = organizationResults;
-      _personalResults = personalResults;
-      _groupResults = groupResults;
-      _organizationSearchFailed = organizationFailed;
-      _organizationSearchPartial = organizationPartial;
-      _personalSearchFailed = personalFailed;
-      _groupSearchFailed = groupsFailed;
-      _personalSearchPartial = personalSearchPartial;
-      _groupSearchPartial = groupSearchPartial;
+      _organizationResults = sources.organisation;
+      _personalResults = sources.privateAccount;
+      _groupResults = sources.groups;
+      _organizationSearchFailed = sources.failedSources.contains(
+        'Organisation',
+      );
+      _organizationSearchPartial = sources.partialSources.contains(
+        'Organisation',
+      );
+      _personalSearchFailed = sources.failedSources.contains('Private');
+      _groupSearchFailed = sources.failedSources.contains('Groups');
+      _personalSearchPartial = sources.partialSources.contains('Private');
+      _groupSearchPartial = sources.partialSources.contains('Groups');
       _remoteSearchLoading = false;
     });
   }
@@ -2426,24 +2402,6 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     }
     final nonempty = candidates.whereType<String>().toList();
     return nonempty.isEmpty ? null : nonempty.first;
-  }
-
-  double _localRelevance(String query, Map<String, dynamic> item) {
-    final foldedQuery = query.toLowerCase().trim();
-    final title = (item['title'] as String? ?? '').toLowerCase();
-    if (title == foldedQuery) return 1.9;
-    if (title.startsWith(foldedQuery)) return 1.7;
-    if (title.contains(foldedQuery)) return 1.5;
-    final answerAndBody = [
-      _stringValue(item['answer']),
-      _stringValue(item['body']),
-    ].whereType<String>().join(' ').toLowerCase();
-    if (answerAndBody.contains(foldedQuery)) return 1.3;
-    final terms = foldedQuery
-        .split(RegExp(r'\s+'))
-        .where((term) => term.isNotEmpty);
-    if (terms.isNotEmpty && terms.every(answerAndBody.contains)) return 1.2;
-    return 0.9;
   }
 
   Widget _remoteSearchResults(
@@ -2515,7 +2473,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
             _stringValue(accountData['body']),
             _stringValue(accountData['answer']),
           ]);
-      final localRelevance = _localRelevance(query, item);
+      final localRelevance = localKnowledgeRelevance(query, item);
       final accountRelevance =
           (accountResult?['relevance_score'] as num?)?.toDouble() ?? 0;
       final personalMethod = accountResult?['match_method'] as String?;

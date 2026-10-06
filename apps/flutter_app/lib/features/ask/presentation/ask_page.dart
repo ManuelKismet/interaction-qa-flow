@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/ask/application/ask_suggestions_controller.dart';
-import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
 
 class AskPage extends ConsumerStatefulWidget {
@@ -60,7 +59,10 @@ class _AskPageState extends ConsumerState<AskPage> {
                   decoration: const InputDecoration(hintText: 'Ask a question'),
                   onChanged: (_) => _questionChanged(),
                 ),
-                _SuggestionList(suggestions: suggestions),
+                _SuggestionList(
+                  suggestions: suggestions,
+                  onRetry: _questionChanged,
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _detailController,
@@ -148,7 +150,7 @@ class _AskPageState extends ConsumerState<AskPage> {
                           )
                         : const Icon(Icons.arrow_forward),
                     label: Text(
-                      suggestions.value?.isNotEmpty == true
+                      suggestions.value?.hits.isNotEmpty == true
                           ? 'Ask as new question'
                           : 'Ask',
                     ),
@@ -191,39 +193,95 @@ class _AskPageState extends ConsumerState<AskPage> {
 }
 
 class _SuggestionList extends StatelessWidget {
-  const _SuggestionList({required this.suggestions});
+  const _SuggestionList({
+    required this.suggestions,
+    required this.onRetry,
+  });
 
-  final AsyncValue<List<SemanticSearchResult>> suggestions;
+  final AsyncValue<AskSuggestions> suggestions;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     return suggestions.when(
       data: (items) {
-        if (items.isEmpty) return const SizedBox.shrink();
+        if (items.hits.isEmpty &&
+            items.failedSources.isEmpty &&
+            items.partialSources.isEmpty &&
+            !items.hasSearched &&
+            items.notice == null) {
+          return const SizedBox.shrink();
+        }
         return Padding(
           padding: const EdgeInsets.only(top: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Related questions',
+                'Related questions and Knowledge',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
+              if (items.notice != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    items.notice!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               const SizedBox(height: 8),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFD5DAD8)),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Column(
-                  children: [
-                    for (var index = 0; index < items.length; index++) ...[
-                      _SuggestionRow(result: items[index]),
-                      if (index < items.length - 1) const Divider(height: 1),
+              if (items.hits.isNotEmpty)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFFD5DAD8)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    children: [
+                      for (
+                        var index = 0;
+                        index < items.hits.length;
+                        index++
+                      ) ...[
+                        _SuggestionRow(result: items.hits[index]),
+                        if (index < items.hits.length - 1)
+                          const Divider(height: 1),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
+              if (items.failedSources.isNotEmpty ||
+                  items.partialSources.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (items.failedSources.isNotEmpty)
+                        Text(
+                          'Some accessible Knowledge sources could not be '
+                          'searched: ${items.failedSources.join(', ')}.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      if (items.partialSources.isNotEmpty)
+                        Text(
+                          'Some sources reached their result limit: '
+                          '${items.partialSources.join(', ')}.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      TextButton(
+                        onPressed: onRetry,
+                        child: const Text('Retry search'),
+                      ),
+                    ],
+                  ),
+                ),
+              if (items.hits.isEmpty &&
+                  items.failedSources.isEmpty &&
+                  items.partialSources.isEmpty &&
+                  items.hasSearched &&
+                  items.notice == null)
+                const Text('No matching Knowledge found.'),
             ],
           ),
         );
@@ -243,18 +301,30 @@ class _SuggestionList extends StatelessWidget {
 class _SuggestionRow extends StatelessWidget {
   const _SuggestionRow({required this.result});
 
-  final SemanticSearchResult result;
+  final AskKnowledgeHit result;
 
   @override
   Widget build(BuildContext context) {
-    final highConfidence = result.confidence == 'high_confidence';
-    final matchLabel = result.matchMethod == 'keyword'
-        ? 'Keyword match'
-        : highConfidence
-            ? 'Likely match'
-            : 'Related';
+    final highRelevance = result.relevance >= 1.2;
     return InkWell(
-      onTap: () => context.go('/questions/${result.questionId}'),
+      onTap: () {
+        switch (result.destination) {
+          case 'organisation':
+            context.go('/questions/${result.id}');
+            break;
+          case 'group':
+            context.go(
+              '/guest/groups',
+              extra: {'groupId': result.groupId, 'entryId': result.id},
+            );
+            break;
+          default:
+            context.go(
+              '/personal',
+              extra: {'knowledgeItemId': result.id},
+            );
+        }
+      },
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -272,36 +342,45 @@ class _SuggestionRow extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      Chip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(result.source),
+                      ),
+                      for (final label in result.attribution)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(label),
+                        ),
                       Text(
-                        matchLabel,
+                        result.matchMethod,
                         style: TextStyle(
-                          color: highConfidence
+                          color: highRelevance
                               ? const Color(0xFF255C57)
                               : const Color(0xFF8A5A00),
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
+                  if (result.snippet != null && result.snippet!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        result.snippet!,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   const SizedBox(height: 6),
                   Text(
-                    result.acceptedAnswerBody ?? 'No answer yet.',
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    [
-                      if (result.department != null) result.department!.name,
-                      if (result.team != null) result.team!.name,
-                      if (result.answerStatus == 'verified')
-                        'Verified answer'
-                      else if (result.acceptedAnswerBody != null)
-                        'Existing answer'
-                      else
-                        'Open question',
-                    ].join(' · '),
+                    result.status,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
