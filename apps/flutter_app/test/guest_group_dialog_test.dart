@@ -304,13 +304,19 @@ class _MemberManagementRepository extends GuestGroupRepository {
   bool transferRequested;
   bool transferAccepted = false;
   bool archived = false;
+  bool deleted = false;
+  bool canRestore = true;
+  bool canDelete = true;
+  bool permanentDeleteFails = false;
+  bool archivedRefreshFails = false;
   var transferRequests = 0;
   var acceptTransferRequests = 0;
   var archiveRequests = 0;
   var restoreRequests = 0;
+  var permanentDeleteRequests = 0;
 
   @override
-  Future<List<Map<String, dynamic>>> listGroups() async => archived
+  Future<List<Map<String, dynamic>>> listGroups() async => archived || deleted
       ? []
       : [
           {
@@ -321,16 +327,20 @@ class _MemberManagementRepository extends GuestGroupRepository {
         ];
 
   @override
-  Future<List<Map<String, dynamic>>> listArchivedGroups() async => archived
-      ? [
-          {
-            'id': 'group-1',
-            'name': 'Research group',
-            'can_restore': true,
-            'restore_until': '2030-01-31T00:00:00+00:00',
-          },
-        ]
-      : const [];
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
+    if (archivedRefreshFails) throw StateError('private refresh detail');
+    return archived && !deleted
+        ? [
+            {
+              'id': 'group-1',
+              'name': 'Research group',
+              'can_restore': canRestore,
+              'can_delete': canDelete,
+              'restore_until': '2030-01-31T00:00:00+00:00',
+            },
+          ]
+        : const [];
+  }
 
   @override
   Future<Map<String, dynamic>> getGroup(String groupId) async => {
@@ -408,6 +418,13 @@ class _MemberManagementRepository extends GuestGroupRepository {
     restoreRequests++;
     archived = false;
     return {'id': groupId};
+  }
+
+  @override
+  Future<void> permanentlyDeleteGroup(String groupId) async {
+    permanentDeleteRequests++;
+    if (permanentDeleteFails) throw StateError('private backend detail');
+    deleted = true;
   }
 }
 
@@ -1275,6 +1292,157 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.restoreRequests, 1);
     expect(find.text('Research group · admin'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('archived group deletion requires confirmation and refreshes', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository()
+      ..archived = true
+      ..canRestore = false;
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Restore'), findsNothing);
+    expect(find.text('Delete permanently'), findsOneWidget);
+    await tester.ensureVisible(find.text('Delete permanently'));
+    await tester.tap(find.text('Delete permanently'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete "Research group" permanently?'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'permanently deletes the shared group, its content, and its memberships for everyone',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('cannot be restored'), findsOneWidget);
+    expect(find.textContaining('local copies are not affected'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(repository.permanentDeleteRequests, 0);
+    expect(find.text('Delete permanently'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Delete permanently'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
+    await tester.pumpAndSettle();
+    expect(repository.permanentDeleteRequests, 1);
+    expect(find.text('Archived groups'), findsNothing);
+    expect(find.textContaining('Research group'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('archived deletion action follows server can_delete permission', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository()
+      ..archived = true
+      ..canDelete = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Restore'), findsOneWidget);
+    expect(find.text('Delete permanently'), findsNothing);
+    expect(repository.permanentDeleteRequests, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed archived deletion refreshes without replaying request', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository()
+      ..archived = true
+      ..canRestore = false
+      ..permanentDeleteFails = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Delete permanently'));
+    await tester.tap(find.text('Delete permanently'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
+    await tester.pumpAndSettle();
+
+    expect(repository.permanentDeleteRequests, 1);
+    expect(find.text('Archived groups'), findsOneWidget);
+    expect(find.text('Delete permanently'), findsOneWidget);
+    expect(
+      find.textContaining('The shared-group request could not be verified.'),
+      findsWidgets,
+    );
+    expect(find.text('private backend detail'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('uncertain deletion keeps item and blocks retry until refresh', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository()
+      ..archived = true
+      ..canRestore = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Delete permanently'));
+    await tester.tap(find.text('Delete permanently'));
+    await tester.pumpAndSettle();
+    repository
+      ..permanentDeleteFails = true
+      ..archivedRefreshFails = true;
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
+    await tester.pumpAndSettle();
+
+    expect(repository.permanentDeleteRequests, 1);
+    expect(find.textContaining('Research group'), findsOneWidget);
+    expect(find.text('Delete permanently'), findsNothing);
+    expect(
+      find.textContaining('The item is retained; refresh status before retrying.'),
+      findsOneWidget,
+    );
+    expect(find.text('private refresh detail'), findsNothing);
+
+    repository
+      ..permanentDeleteFails = false
+      ..archivedRefreshFails = false;
+    await tester.tap(find.text('Refresh status'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete permanently'), findsOneWidget);
+    expect(repository.permanentDeleteRequests, 1);
     expect(tester.takeException(), isNull);
   });
 

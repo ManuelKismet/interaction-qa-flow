@@ -180,6 +180,10 @@ class GuestGroupRepository {
         return response.data!;
       });
 
+  Future<void> permanentlyDeleteGroup(String groupId) => _request(() async {
+    await _client.delete<void>('/api/v1/guest/groups/$groupId/permanent');
+  });
+
   Future<void> revokeInvitation({
     required String groupId,
     required String invitationId,

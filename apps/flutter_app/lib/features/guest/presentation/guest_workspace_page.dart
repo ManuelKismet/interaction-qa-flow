@@ -2818,6 +2818,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   String _joinDisplayNameDraft = '';
   final Map<String, Map<String, String>> _createKnowledgeDrafts = {};
   final Map<String, Map<String, String>> _entryEditDrafts = {};
+  final Set<String> _uncertainArchivedDeletionIds = {};
+  bool _archivedDeleteNeedsSafeRefresh = false;
 
   GuestGroupRepository get _repository => ref.read(guestGroupRepositoryProvider);
 
@@ -2862,6 +2864,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       setState(() {
         _groups = groups;
         _archivedGroups = archivedGroups;
+        _uncertainArchivedDeletionIds.clear();
+        _archivedDeleteNeedsSafeRefresh = false;
         _groupId = selected;
       });
       if (selected != null) {
@@ -2967,6 +2971,110 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       await _repository.restoreGroup(groupId);
       await _loadGroups();
     });
+  }
+
+  Future<void> _deleteArchivedGroup(Map<String, dynamic> archived) async {
+    if (_busy || archived['can_delete'] != true) return;
+    final groupId = archived['id'] as String;
+    final groupName = archived['name'] as String? ?? 'Shared group';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete "$groupName" permanently?'),
+        content: const Text(
+          'This permanently deletes the shared group, its content, and its '
+          'memberships for everyone. It cannot be restored. Existing exports '
+          'and local copies are not affected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete permanently'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final deleted = await _run(() => _repository.permanentlyDeleteGroup(groupId));
+    if (deleted) {
+      await _loadGroups();
+    } else {
+      await _refreshArchivedAfterUncertainDelete(archived);
+    }
+  }
+
+  Future<void> _refreshArchivedAfterUncertainDelete(
+    Map<String, dynamic> archived,
+  ) async {
+    if (!mounted) return;
+    final groupId = archived['id'] as String;
+    final failure = _error ?? 'The request could not be verified.';
+    setState(() {
+      _busy = true;
+      _archivedDeleteNeedsSafeRefresh = true;
+    });
+    try {
+      final groups = await _repository.listArchivedGroups();
+      if (!mounted) return;
+      setState(() {
+        _archivedGroups = groups;
+        _uncertainArchivedDeletionIds.remove(groupId);
+        _error = '$failure Archived-group status was refreshed. '
+            'Review it before retrying.';
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _uncertainArchivedDeletionIds.add(groupId);
+        if (!_archivedGroups.any((group) => group['id'] == groupId)) {
+          _archivedGroups = [..._archivedGroups, archived];
+        }
+        _error = 'The deletion outcome is uncertain and archived-group status '
+            'could not be refreshed. ${_safeGuestError(error)} '
+            'The item is retained; refresh status before retrying.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _refreshStatus() async {
+    if (_archivedDeleteNeedsSafeRefresh ||
+        _uncertainArchivedDeletionIds.isNotEmpty) {
+      await _refreshArchivedGroups();
+    } else {
+      await _loadGroups();
+    }
+  }
+
+  Future<void> _refreshArchivedGroups() async {
+    if (!mounted) return;
+    setState(() => _busy = true);
+    try {
+      final groups = await _repository.listArchivedGroups();
+      if (!mounted) return;
+      setState(() {
+        _archivedGroups = groups;
+        _uncertainArchivedDeletionIds.clear();
+        _archivedDeleteNeedsSafeRefresh = false;
+        _error = null;
+      });
+    } on Object catch (error) {
+      if (mounted) {
+        setState(
+          () => _error =
+              'Archived-group status could not be refreshed. '
+              '${_safeGuestError(error)} The item is retained; refresh status '
+              'before retrying.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _respondToAdminTransfer({
@@ -4053,7 +4161,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
             content: Text(_error!),
             actions: [
               TextButton(
-                onPressed: _busy ? null : _loadGroups,
+                onPressed: _busy ? null : _refreshStatus,
                 child: const Text('Refresh status'),
               ),
             ],
@@ -4068,23 +4176,61 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           ),
           for (final archived in _archivedGroups)
             Card(
-              child: ListTile(
-                title: Text(archived['name'] as String? ?? 'Shared group'),
-                subtitle: Text(
-                  archived['can_restore'] == true
-                      ? 'Only this same Firebase account can restore by ${archived['restore_until']}. Invitations stay revoked; removed and pending memberships are not reactivated.'
-                      : 'The 30-day restore window ended. Data is retained pending separately reviewed retention; this account cannot restore it.',
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      archived['name'] as String? ?? 'Shared group',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _uncertainArchivedDeletionIds.contains(archived['id'])
+                          ? 'Deletion status is uncertain; refresh status before retrying.'
+                          : archived['can_restore'] == true
+                              ? 'Only this same Firebase account can restore by ${archived['restore_until']}. Invitations stay revoked; removed and pending memberships are not reactivated.'
+                              : 'The 30-day restore window ended. This account cannot restore the group.',
+                    ),
+                    if (!_uncertainArchivedDeletionIds.contains(
+                          archived['id'],
+                        ) &&
+                        (archived['can_restore'] == true ||
+                            archived['can_delete'] == true)) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (!_uncertainArchivedDeletionIds.contains(
+                                archived['id'],
+                              ) &&
+                              archived['can_restore'] == true)
+                            OutlinedButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _restoreArchivedGroup(
+                                      archived['id'] as String,
+                                    ),
+                              child: const Text('Restore'),
+                            ),
+                          if (!_uncertainArchivedDeletionIds.contains(
+                                archived['id'],
+                              ) &&
+                              archived['can_delete'] == true)
+                            TextButton.icon(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _deleteArchivedGroup(archived),
+                              icon: const Icon(Icons.delete_forever_outlined),
+                              label: const Text('Delete permanently'),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
-                trailing: archived['can_restore'] == true
-                    ? OutlinedButton(
-                        onPressed: _busy
-                            ? null
-                            : () => _restoreArchivedGroup(
-                                archived['id'] as String,
-                              ),
-                        child: const Text('Restore'),
-                      )
-                    : null,
               ),
             ),
         ],

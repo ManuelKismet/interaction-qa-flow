@@ -92,14 +92,27 @@ created after archiving, does not inherit recovery rights. Restore reopens the
 group for 90 days of access and does not revive invitations or change membership
 statuses: pending and removed members do not regain access automatically.
 
-After 30 days the archived data remains stored; it is not silently purged.
-Archived groups are excluded from the existing expiry cleanup, including when
-their 90-day group expiry passes. Deletion after archive recovery expires is a
-separate retention decision and must not be implemented by the current cleanup.
-The Shared groups UI explains the member impact and same-UID recovery limit
-before archive and account departure. A sole-admin identity may leave only after
-another active member accepts a transfer or the group is archived. No group data
-is automatically migrated, imported, or deleted by account creation or sign-in.
+After 30 days, the archived data remains stored unless its recorded archiving
+administrator still has an active administrator membership and explicitly
+deletes the group. This permanent deletion is available before and after the
+restore window; the 30-day window limits restoration, not deletion. The operation
+removes group memberships, invitations, transfers, entries, and revisions in one
+transaction. It does not delete account identities, rate-limit records,
+organisation data, private Interact sessions, or copies already exported or
+saved locally by members. A failed transaction rolls back all group cleanup.
+Archived groups remain excluded from the existing expiry cleanup, including when
+their 90-day group expiry passes; no scheduled deletion is configured.
+The API locks the archived group row before rechecking the recorded archiver's
+active administrator membership, serializing permanent deletion against restore.
+Archived listings expose server-derived `can_delete` separately from the
+30-day-window `can_restore` value.
+
+The Shared groups UI explains the member impact, irreversibility, and retained
+local/exported copies before permanent deletion. It also explains the member
+impact and same-UID recovery limit before archive and account departure. A
+sole-admin identity may leave only after another active member accepts a transfer
+or the group is archived. No group data is automatically migrated, imported, or
+deleted by account creation or sign-in.
 
 ## Scheduler review
 

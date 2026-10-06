@@ -46,6 +46,7 @@ GUEST_RATE_LIMITS: dict[str, tuple[int, int]] = {
     "export": (10, 60 * 60),
     "write": (30, 60),
     "member_action": (30, 60),
+    "permanent_delete": (5, 60 * 60),
 }
 
 _WRITE_ROLES = {"admin", "editor", "contributor"}
@@ -204,6 +205,11 @@ class GuestService:
                 "can_restore": (
                     group.archived_by_uid == firebase_uid
                     and now <= _utc(group.archived_at) + GUEST_GROUP_ARCHIVE_RECOVERY
+                ),
+                "can_delete": (
+                    group.archived_by_uid == firebase_uid
+                    and member.status == "active"
+                    and member.role == "admin"
                 ),
             }
             for group, member in rows
@@ -619,6 +625,31 @@ class GuestService:
         group.expires_at = now + GUEST_GROUP_TTL
         await self.guest.commit()
         return self._group_dict(group, member)
+
+    async def permanently_delete_archived_group(
+        self, group_id: UUID, firebase_uid: str
+    ) -> None:
+        await self._rate_limit(firebase_uid, "permanent_delete")
+        group = await self.guest.group(group_id, lock=True)
+        if group is None or group.archived_at is None:
+            raise HTTPException(status_code=404, detail="Archived group not found")
+        member = await self.guest.member(
+            group_id, firebase_uid, status="active", lock=True
+        )
+        if (
+            firebase_uid != group.archived_by_uid
+            or member is None
+            or member.role != "admin"
+        ):
+            raise HTTPException(
+                status_code=403, detail="Recorded archiving administrator required"
+            )
+        try:
+            await self.guest.permanently_delete_group(group_id)
+            await self.guest.commit()
+        except Exception:
+            await self.guest.rollback()
+            raise
 
     async def search_entries(
         self,

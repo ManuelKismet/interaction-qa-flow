@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -168,6 +168,35 @@ class GuestRepository:
         )
         return list(result.all())
 
+    async def permanently_delete_group(self, group_id: UUID) -> None:
+        entry_ids = select(GuestGroupEntry.id).where(
+            GuestGroupEntry.group_id == group_id
+        )
+        await self.session.execute(
+            delete(GuestGroupEntryRevision).where(
+                GuestGroupEntryRevision.entry_id.in_(entry_ids)
+            )
+        )
+        await self.session.execute(
+            delete(GuestGroupAdminTransfer).where(
+                GuestGroupAdminTransfer.group_id == group_id
+            )
+        )
+        await self.session.execute(
+            delete(GuestGroupInvitation).where(
+                GuestGroupInvitation.group_id == group_id
+            )
+        )
+        await self.session.execute(
+            delete(GuestGroupEntry).where(GuestGroupEntry.group_id == group_id)
+        )
+        await self.session.execute(
+            delete(GuestGroupMembership).where(
+                GuestGroupMembership.group_id == group_id
+            )
+        )
+        await self.session.execute(delete(GuestGroup).where(GuestGroup.id == group_id))
+
     async def pending_admin_transfer(
         self, group_id: UUID, *, lock: bool = False
     ) -> GuestGroupAdminTransfer | None:
@@ -309,6 +338,9 @@ class GuestRepository:
 
     async def commit(self) -> None:
         await self.session.commit()
+
+    async def rollback(self) -> None:
+        await self.session.rollback()
 
     async def delete(self, entity) -> None:
         await self.session.delete(entity)

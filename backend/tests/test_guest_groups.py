@@ -9,12 +9,15 @@ from app.api.dependencies import enforce_tenant_scope, get_development_identity
 from app.main import app
 from app.maintenance import guest_retention
 from app.models.guest import (
+    GuestGroupAdminTransfer,
     GuestGroup,
     GuestGroupEntry,
+    GuestGroupEntryRevision,
     GuestGroupInvitation,
     GuestGroupMembership,
 )
 from app.models import FirebaseUidMapping, Organisation, User, UserRole
+from app.repositories.guest import GuestRepository
 from app.services import guest as guest_service
 
 PROJECT_ID = "intqaflow-dev"
@@ -795,6 +798,7 @@ async def test_archive_retains_group_data_and_restores_only_same_admin_uid(
     )
     assert archived_groups.status_code == 200
     assert archived_groups.json()[0]["can_restore"] is True
+    assert archived_groups.json()[0]["can_delete"] is True
     assert archived_groups.json()[0]["id"] == group_id
     preview = await client.post(
         "/api/v1/guest/invitations/preview",
@@ -909,6 +913,356 @@ async def test_archive_recovery_expiry_and_cleanup_exclusion(
         retained_group = await session.get(GuestGroup, UUID(group_id))
         assert retained_group is not None
         assert retained_group.archived_at is not None
+
+
+@pytest.mark.asyncio
+async def test_permanent_delete_requires_archiving_admin_and_removes_group_dependents(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    install_test_tokens(monkeypatch)
+    group = await make_group(client, "original-owner", "Shared group")
+    group_id = UUID(group["id"])
+    transfer_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("original-owner"),
+        json={"role": "viewer"},
+    )
+    archived_admin_join = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer("archived-admin"),
+        json={
+            "token": transfer_invitation.json()["token"],
+            "display_name": "Current admin",
+        },
+    )
+    assert archived_admin_join.status_code == 200
+    admin_approval = await client.post(
+        f"/api/v1/guest/groups/{group_id}/members/"
+        f"{archived_admin_join.json()['id']}/approve",
+        headers=bearer("original-owner"),
+    )
+    assert admin_approval.status_code == 200
+    transfer = await client.post(
+        f"/api/v1/guest/groups/{group_id}/transfer-administration",
+        headers=bearer("original-owner"),
+        params={"member_id": archived_admin_join.json()["id"]},
+    )
+    assert transfer.status_code == 200
+    accepted_transfer = await client.post(
+        f"/api/v1/guest/groups/{group_id}/admin-transfers/"
+        f"{transfer.json()['id']}/accept",
+        headers=bearer("archived-admin"),
+    )
+    assert accepted_transfer.status_code == 200
+
+    removed_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("archived-admin"),
+        json={"role": "viewer"},
+    )
+    removed_join = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer("removed-member"),
+        json={
+            "token": removed_invitation.json()["token"],
+            "display_name": "Removed member",
+        },
+    )
+    assert removed_join.status_code == 200
+    removed_approval = await client.post(
+        f"/api/v1/guest/groups/{group_id}/members/{removed_join.json()['id']}/approve",
+        headers=bearer("archived-admin"),
+    )
+    assert removed_approval.status_code == 200
+    removed = await client.delete(
+        f"/api/v1/guest/groups/{group_id}/members/{removed_join.json()['id']}",
+        headers=bearer("archived-admin"),
+    )
+    assert removed.status_code == 204
+    pending_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("archived-admin"),
+        json={"role": "viewer"},
+    )
+    pending_join = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer("pending-member"),
+        json={
+            "token": pending_invitation.json()["token"],
+            "display_name": "Pending member",
+        },
+    )
+    assert pending_join.status_code == 200
+    outstanding_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("archived-admin"),
+        json={"role": "viewer"},
+    )
+    assert outstanding_invitation.status_code == 200
+
+    async with session_factory() as session:
+        stored_group = await session.get(GuestGroup, group_id)
+        creator_membership = await session.scalar(
+            select(GuestGroupMembership).where(
+                GuestGroupMembership.group_id == group_id,
+                GuestGroupMembership.firebase_uid == "original-owner",
+            )
+        )
+        archived_admin = await session.scalar(
+            select(GuestGroupMembership).where(
+                GuestGroupMembership.group_id == group_id,
+                GuestGroupMembership.firebase_uid == "archived-admin",
+            )
+        )
+        pending_member = await session.scalar(
+            select(GuestGroupMembership).where(
+                GuestGroupMembership.group_id == group_id,
+                GuestGroupMembership.firebase_uid == "pending-member",
+            )
+        )
+        removed_member = await session.scalar(
+            select(GuestGroupMembership).where(
+                GuestGroupMembership.group_id == group_id,
+                GuestGroupMembership.firebase_uid == "removed-member",
+            )
+        )
+        assert creator_membership.role == "contributor"
+        assert archived_admin.role == "admin"
+        assert pending_member.status == "pending"
+        assert removed_member.status == "removed"
+        entry = GuestGroupEntry(
+            group_id=group_id,
+            kind="knowledge",
+            title="Retained content",
+            data={"answer": "shared"},
+            created_by_uid="original-owner",
+            updated_by_uid="original-owner",
+            revision=2,
+        )
+        session.add(entry)
+        await session.flush()
+        revision = GuestGroupEntryRevision(
+            entry_id=entry.id,
+            edited_by_uid="original-owner",
+            title="Previous content",
+            data={"answer": "old"},
+            revision=1,
+        )
+        session.add(revision)
+        await session.flush()
+        revision_id = revision.id
+        await session.commit()
+    archived = await client.post(
+        f"/api/v1/guest/groups/{group_id}/archive",
+        headers=bearer("archived-admin"),
+    )
+    assert archived.status_code == 200
+    async with session_factory() as session:
+        stored_group = await session.get(GuestGroup, group_id)
+        stored_group.archived_at = datetime.now(timezone.utc) - timedelta(days=31)
+        await session.commit()
+
+    path = f"/api/v1/guest/groups/{group_id}/permanent"
+    archived_listing = await client.get(
+        "/api/v1/guest/groups/archived", headers=bearer("archived-admin")
+    )
+    assert archived_listing.status_code == 200
+    assert archived_listing.json()[0]["can_restore"] is False
+    assert archived_listing.json()[0]["can_delete"] is True
+    assert (await client.delete(path)).status_code == 401
+    assert (
+        await client.delete(path, headers=bearer("original-owner"))
+    ).status_code == 403
+    assert (await client.delete(path, headers=bearer("outsider"))).status_code == 403
+
+    async with session_factory() as session:
+        current_admin = await session.get(GuestGroupMembership, archived_admin.id)
+        current_admin.role = "contributor"
+        replacement_admin = GuestGroupMembership(
+            group_id=group_id,
+            firebase_uid="replacement-admin",
+            display_name="Replacement admin",
+            role="admin",
+            status="active",
+            approved_by_uid="original-owner",
+        )
+        session.add(replacement_admin)
+        await session.commit()
+    assert (
+        await client.delete(path, headers=bearer("archived-admin"))
+    ).status_code == 403
+    assert (
+        await client.delete(path, headers=bearer("replacement-admin"))
+    ).status_code == 403
+    assert (
+        await client.delete(path, headers=bearer("pending-member"))
+    ).status_code == 403
+    assert (
+        await client.delete(path, headers=bearer("removed-member"))
+    ).status_code == 403
+    async with session_factory() as session:
+        former_admin = await session.get(GuestGroupMembership, archived_admin.id)
+        former_admin.role = "admin"
+        await session.commit()
+
+    active_group = await make_group(client, "active-owner", "Still active")
+    active_delete = await client.delete(
+        f"/api/v1/guest/groups/{active_group['id']}/permanent",
+        headers=bearer("active-owner"),
+    )
+    assert active_delete.status_code == 404
+    async with session_factory() as session:
+        assert await session.get(GuestGroup, UUID(active_group["id"])) is not None
+
+    deleted = await client.delete(path, headers=bearer("archived-admin"))
+    assert deleted.status_code == 204
+    assert (
+        await client.delete(path, headers=bearer("archived-admin"))
+    ).status_code == 404
+    async with session_factory() as session:
+        assert await session.get(GuestGroup, group_id) is None
+        for model in (
+            GuestGroupMembership,
+            GuestGroupInvitation,
+            GuestGroupAdminTransfer,
+            GuestGroupEntry,
+        ):
+            assert await session.scalar(
+                select(func.count()).select_from(model).where(
+                    model.group_id == group_id
+                )
+            ) == 0
+        assert await session.get(GuestGroupEntryRevision, revision_id) is None
+
+
+@pytest.mark.asyncio
+async def test_permanent_delete_rolls_back_all_dependents_on_commit_failure(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    install_test_tokens(monkeypatch)
+    group = await make_group(client, "rollback-owner", "Rollback group")
+    group_id = UUID(group["id"])
+    async with session_factory() as session:
+        stored_group = await session.get(GuestGroup, group_id)
+        stored_group.archived_at = datetime.now(timezone.utc)
+        stored_group.archived_by_uid = "rollback-owner"
+        entry = GuestGroupEntry(
+            group_id=group_id,
+            kind="knowledge",
+            title="Must survive rollback",
+            data={"answer": "still here"},
+            created_by_uid="rollback-owner",
+            updated_by_uid="rollback-owner",
+            revision=1,
+        )
+        session.add(entry)
+        await session.flush()
+        member = GuestGroupMembership(
+            group_id=group_id,
+            firebase_uid="rollback-member",
+            display_name="Rollback member",
+            role="viewer",
+            status="active",
+            approved_by_uid="rollback-owner",
+        )
+        session.add(member)
+        await session.flush()
+        invitation = GuestGroupInvitation(
+            group_id=group_id,
+            token_hash=group_id.hex * 2,
+            role="viewer",
+            created_by_uid="rollback-owner",
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+        transfer = GuestGroupAdminTransfer(
+            group_id=group_id,
+            requested_by_uid="rollback-owner",
+            target_membership_id=member.id,
+            status="declined",
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+        session.add_all([invitation, transfer])
+        session.add(
+            GuestGroupEntryRevision(
+                entry_id=entry.id,
+                edited_by_uid="rollback-owner",
+                title=entry.title,
+                data=entry.data,
+                revision=1,
+            )
+        )
+        await session.commit()
+
+    async def fail_commit(_repository) -> None:
+        raise RuntimeError("synthetic commit failure")
+
+    monkeypatch.setattr(GuestRepository, "commit", fail_commit)
+    async with session_factory() as session:
+        with pytest.raises(RuntimeError, match="synthetic commit failure"):
+            await guest_service.GuestService(session).permanently_delete_archived_group(
+                group_id, "rollback-owner"
+            )
+
+    async with session_factory() as session:
+        assert await session.get(GuestGroup, group_id) is not None
+        assert await session.scalar(
+            select(func.count(GuestGroupEntry.id)).where(
+                GuestGroupEntry.group_id == group_id
+            )
+        ) == 1
+        assert await session.scalar(
+            select(func.count(GuestGroupEntryRevision.id))
+            .join(
+                GuestGroupEntry,
+                GuestGroupEntry.id == GuestGroupEntryRevision.entry_id,
+            )
+            .where(GuestGroupEntry.group_id == group_id)
+        ) == 1
+        assert await session.scalar(
+            select(func.count(GuestGroupMembership.id)).where(
+                GuestGroupMembership.group_id == group_id
+            )
+        ) == 2
+        assert await session.scalar(
+            select(func.count(GuestGroupInvitation.id)).where(
+                GuestGroupInvitation.group_id == group_id
+            )
+        ) == 1
+        assert await session.scalar(
+            select(func.count(GuestGroupAdminTransfer.id)).where(
+                GuestGroupAdminTransfer.group_id == group_id
+            )
+        ) == 1
+
+
+@pytest.mark.asyncio
+async def test_permanent_delete_is_rate_limited(app_client, monkeypatch) -> None:
+    client, session_factory = app_client
+    install_test_tokens(monkeypatch)
+    first = await make_group(client, "limited-owner", "First archived group")
+    second = await make_group(client, "limited-owner", "Second archived group")
+    for group in (first, second):
+        archived = await client.post(
+            f"/api/v1/guest/groups/{group['id']}/archive",
+            headers=bearer("limited-owner"),
+        )
+        assert archived.status_code == 200
+    monkeypatch.setitem(guest_service.GUEST_RATE_LIMITS, "permanent_delete", (1, 3600))
+
+    first_delete = await client.delete(
+        f"/api/v1/guest/groups/{first['id']}/permanent",
+        headers=bearer("limited-owner"),
+    )
+    second_delete = await client.delete(
+        f"/api/v1/guest/groups/{second['id']}/permanent",
+        headers=bearer("limited-owner"),
+    )
+    assert first_delete.status_code == 204
+    assert second_delete.status_code == 429
+    async with session_factory() as session:
+        assert await session.get(GuestGroup, UUID(second["id"])) is not None
 
 
 @pytest.mark.asyncio

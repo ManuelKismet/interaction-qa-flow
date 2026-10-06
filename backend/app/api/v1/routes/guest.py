@@ -255,6 +255,21 @@ async def restore_group(
     return await GuestService(session).restore_group(group_id, identity.firebase_uid)
 
 
+@router.delete(
+    "/groups/{group_id}/permanent",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def permanently_delete_archived_group(
+    group_id: UUID,
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    await GuestService(session).permanently_delete_archived_group(
+        group_id, identity.firebase_uid
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_group(
     group_id: UUID,
