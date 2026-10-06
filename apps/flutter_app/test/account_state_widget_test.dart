@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/app.dart';
@@ -275,15 +276,21 @@ void main() {
     (tester) async {
       await pumpGuestWorkspace(tester);
 
+      expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
       expect(
-        find.textContaining('Guest workspace active in this browser profile.'),
-        findsOneWidget,
+        find.textContaining('People using this profile can see its local work.'),
+        findsNothing,
       );
+      await tester.tap(find.byTooltip('Workspace storage information'));
+      await tester.pumpAndSettle();
       expect(
         find.textContaining('People using this profile can see its local work.'),
         findsOneWidget,
       );
-      expect(find.textContaining('Shared groups are separate'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+
       await tester.tap(find.byTooltip('Account'));
       await tester.pumpAndSettle();
       expect(find.text('Local guest workspace'), findsOneWidget);
@@ -372,14 +379,26 @@ void main() {
     );
 
     expect(
-      find.textContaining('A guest sign-in is active in this browser profile.'),
+      find.text('Guest sign-in active · Saved on this device'),
       findsOneWidget,
     );
     expect(
-      find.textContaining('People using this profile share that sign-in and its local drafts.'),
+      find.textContaining(
+        'People using this profile share that sign-in and its local drafts.',
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(
+        'People using this profile share that sign-in and its local drafts.',
+      ),
       findsOneWidget,
     );
     expect(find.textContaining('Shared groups are separate'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
     expect(find.text('Shared groups identity'), findsOneWidget);
@@ -689,6 +708,9 @@ void main() {
     expect(find.byTooltip('Workspace options'), findsOneWidget);
     expect(find.byTooltip('Guest workspace options'), findsNothing);
     expect(find.textContaining('guest'), findsNothing);
+    expect(find.text('Registered workspace · Saved on this device'), findsOneWidget);
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
     expect(
       find.textContaining(
         'Local drafts stay in this browser profile and may be visible to people using it.',
@@ -699,6 +721,8 @@ void main() {
       find.textContaining('Shared groups and organisation access are separate'),
       findsOneWidget,
     );
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('no organisation membership'), findsOneWidget);
     expect(find.text('Checking account'), findsNothing);
   });

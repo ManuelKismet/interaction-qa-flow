@@ -1078,18 +1078,64 @@ class _GuestNotice extends StatelessWidget {
   final String saveStatus;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-    child: Text(
-      sharedIdentityActive
-          ? 'A guest sign-in is active in this browser profile. People using this profile share that sign-in and its local drafts. Shared groups are separate; only work deliberately shared with a group is online. $saveStatus'
-          : isRegistered
-          ? 'Registered workspace. Local drafts stay in this browser profile and may be visible to people using it. Shared groups and organisation access are separate. $saveStatus'
-          : 'Guest workspace active in this browser profile. People using this profile can see its local work. Shared groups are separate; only work deliberately shared with a group is online. Clearing browser data or losing this device can erase local work. $saveStatus',
-    ),
-  );
+  Widget build(BuildContext context) {
+    final status = sharedIdentityActive
+        ? 'Guest sign-in active · $saveStatus'
+        : isRegistered
+        ? 'Registered workspace · $saveStatus'
+        : 'Guest workspace · $saveStatus';
+    final explanation = sharedIdentityActive
+        ? 'A guest sign-in is active in this browser profile. People using this profile share that sign-in and its local drafts. Shared groups are separate; only work deliberately shared with a group is online.'
+        : isRegistered
+        ? 'Registered workspace. Local drafts stay in this browser profile and may be visible to people using it. Shared groups and organisation access are separate.'
+        : 'Guest workspace active in this browser profile. People using this profile can see its local work. Shared groups are separate; only work deliberately shared with a group is online. Clearing browser data or losing this device can erase local work.';
+    return Container(
+      width: double.infinity,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(status)),
+          _GuestInfoButton(
+            tooltip: 'Workspace storage information',
+            title: 'About this workspace',
+            content: explanation,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuestInfoButton extends StatelessWidget {
+  const _GuestInfoButton({
+    required this.tooltip,
+    required this.title,
+    required this.content,
+  });
+
+  final String tooltip;
+  final String title;
+  final String content;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        tooltip: tooltip,
+        onPressed: () => showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(title),
+            content: Text(content),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ),
+        icon: const Icon(Icons.info_outline),
+      );
 }
 
 class _AccountMembershipNotice extends StatelessWidget {
@@ -1174,12 +1220,15 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
         .toList();
     final searchField = TextField(
       controller: _query,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: 'Search local Knowledge',
-        helperText:
-            'Keyword and prefix search on this device; no semantic search.',
-        helperMaxLines: 3,
-        prefixIcon: Icon(Icons.search),
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: const _GuestInfoButton(
+          tooltip: 'Search help',
+          title: 'About local Knowledge search',
+          content:
+              'Keyword and prefix search on this device; no semantic search.',
+        ),
       ),
       onChanged: (_) => setState(() {}),
     );
@@ -1530,9 +1579,21 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                'Interact sessions stay private on this device until you explicitly select one for a shared group.',
-                style: Theme.of(context).textTheme.bodyMedium,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Interact sessions stay private on this device.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  const _GuestInfoButton(
+                    tooltip: 'Interact privacy information',
+                    title: 'About local Interact sessions',
+                    content:
+                        'Interact sessions stay private on this device until you explicitly select one for a shared group.',
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               if (widget.data.templates.isNotEmpty)
@@ -1866,8 +1927,12 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'Active participant',
-                helperText: 'Answers and individual questions are shown for this participant.',
-                helperMaxLines: 3,
+                suffixIcon: _GuestInfoButton(
+                  tooltip: 'Active participant help',
+                  title: 'About the active participant',
+                  content:
+                      'Answers and individual questions are shown for this participant.',
+                ),
               ),
               items: [
                 for (final participant in participants)
@@ -1918,8 +1983,12 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               controller: _question,
               decoration: const InputDecoration(
                 labelText: 'Prepared question',
-                helperText: 'Shared questions get separate answers from each participant.',
-                helperMaxLines: 3,
+                suffixIcon: _GuestInfoButton(
+                  tooltip: 'Prepared question help',
+                  title: 'About shared questions',
+                  content:
+                      'Shared questions get separate answers from each participant.',
+                ),
               ),
             ),
             const SizedBox(height: 8),
