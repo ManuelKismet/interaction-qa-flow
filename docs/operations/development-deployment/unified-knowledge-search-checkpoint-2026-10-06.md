@@ -186,3 +186,6 @@ Release compilation completed: `flutter build web --release` passed, exit0,
 99.3s compilation on exact `047d413`. This was an independent generic
 release compile, not the configured Firebase deployment bundle. Deployment
 remains gated on the one full-suite assertion failure above.
+
+Final logs and exit files copied to retained validation directory. GitHub UI
+confirmed Codespace bookish happiness stopped after build completion.
