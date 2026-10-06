@@ -1172,6 +1172,17 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     final matches = widget.items
         .where((item) => matchesGuestKeywordOrPrefix(query, item))
         .toList();
+    final searchField = TextField(
+      controller: _query,
+      decoration: const InputDecoration(
+        labelText: 'Search local Knowledge',
+        helperText:
+            'Keyword and prefix search on this device; no semantic search.',
+        helperMaxLines: 3,
+        prefixIcon: Icon(Icons.search),
+      ),
+      onChanged: (_) => setState(() {}),
+    );
     if (_showSavedQuestions) {
       return Align(
         alignment: Alignment.topCenter,
@@ -1180,6 +1191,8 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              searchField,
+              const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
@@ -1190,18 +1203,6 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
               ),
               Text('Saved Q&A', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
-              TextField(
-                controller: _query,
-                decoration: const InputDecoration(
-                  labelText: 'Search saved Q&A',
-                  helperText:
-                      'Keyword and prefix search on this device; no semantic search.',
-                  helperMaxLines: 3,
-                  prefixIcon: Icon(Icons.search),
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 16),
               if (matches.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(24),
@@ -1252,6 +1253,8 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            searchField,
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
