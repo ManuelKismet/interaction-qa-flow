@@ -783,8 +783,10 @@ void main() {
       await tester.tap(find.text('Copy backup'));
       await tester.pumpAndSettle();
       expect(
-        GuestWorkspaceData.decodeBackup(copiedText!).knowledge.single['title'],
-        'Latest rescue work',
+        GuestWorkspaceData.decodeBackup(
+          copiedText!,
+        ).knowledge.map((item) => item['title']).toList(),
+        ['Latest rescue work', 'Rescue this work'],
       );
       expect(
         find.textContaining(
