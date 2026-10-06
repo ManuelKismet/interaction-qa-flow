@@ -42,18 +42,30 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final localSearch = _field('Search local Knowledge');
+      expect(localSearch, findsOneWidget);
+      expect(
+        tester.widget<TextField>(localSearch).decoration!.helperText,
+        'Keyword and prefix search on this device; no semantic search.',
+      );
+      expect(
+        tester.getTopLeft(localSearch).dy,
+        lessThan(tester.getTopLeft(find.text('Add a local question')).dy),
+      );
       expect(find.text('Add a local question'), findsOneWidget);
       expect(find.text('Password rotation'), findsNothing);
+      await tester.enterText(localSearch, 'passw');
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Saved Q&A'));
       await tester.pumpAndSettle();
-      expect(find.text('Search saved Q&A'), findsOneWidget);
-      expect(find.text('Password rotation'), findsOneWidget);
-      expect(find.text('Incident response'), findsOneWidget);
-
-      await tester.enterText(find.byType(TextField).first, 'passw');
-      await tester.pumpAndSettle();
+      expect(localSearch, findsOneWidget);
       expect(find.text('Password rotation'), findsOneWidget);
       expect(find.text('Incident response'), findsNothing);
+
+      await tester.enterText(localSearch, '');
+      await tester.pumpAndSettle();
+      expect(find.text('Password rotation'), findsOneWidget);
+      expect(find.text('Incident response'), findsOneWidget);
       await tester.tap(find.byTooltip('Edit local Knowledge'));
       await tester.pumpAndSettle();
       final dialogFields = find.descendant(
@@ -75,7 +87,7 @@ void main() {
       expect(edited['body'], 'Updated rotation details.');
       expect(edited['answer'], 'Updated vault answer.');
 
-      await tester.enterText(find.byType(TextField).first, '');
+      await tester.enterText(localSearch, '');
       await tester.pumpAndSettle();
       final incidentCard = find.ancestor(
         of: find.text('Incident response'),
@@ -104,9 +116,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Add a local question'), findsOneWidget);
       expect(find.text('Saved Q&A'), findsOneWidget);
-      await tester.enterText(find.byType(TextField).first, 'New local question');
-      await tester.enterText(find.byType(TextField).at(1), 'Details');
-      await tester.enterText(find.byType(TextField).at(2), 'Answer');
+      expect(localSearch, findsOneWidget);
+      await tester.enterText(_field('Question'), 'New local question');
+      await tester.enterText(_field('Details'), 'Details');
+      await tester.enterText(_field('Answer'), 'Answer');
       await tester.drag(find.byType(SnackBar), const Offset(0, 100));
       await tester.pumpAndSettle();
       final saveLocalQuestion = find.widgetWithText(
@@ -289,10 +302,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(_field('Search local Knowledge'), findsOneWidget);
     await tester.tap(find.text('Saved Q&A'));
     await tester.pumpAndSettle();
     expect(
-      tester.getSize(_field('Search saved Q&A')).width,
+      tester.getSize(_field('Search local Knowledge')).width,
       lessThanOrEqualTo(840),
     );
     await tester.tap(find.text('Back to add a local question'));
