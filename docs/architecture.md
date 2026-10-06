@@ -152,12 +152,24 @@ infer the user's formal department.
 
 ## Semantic search
 
-- Canonical embedding input is the trimmed question title followed by the body,
-  when present. Author, tenant, timestamps, reactions, and answers are excluded.
+- Canonical embedding input is the trimmed question title and body, followed by
+  the best eligible verified or accepted answer when present. Author, tenant,
+  timestamps, and reactions are excluded.
 - `question_embeddings` stores vectors separately from questions. A source hash
   avoids provider calls when text and model are unchanged.
 - Question creation and title/body updates commit before best-effort embedding
   synchronization, so provider outages do not make core Q&A writes unusable.
+- Verification, unverification, accepted challenge replacements, canonical
+  merge/unmerge, and question restoration also synchronize affected vectors.
+  Changed vectors are removed before re-embedding, so provider failures leave
+  keyword search available rather than exposing stale semantic results.
+- Personal-account and Group Knowledge vectors live on their own source rows,
+  not in `question_embeddings`. Personal queries filter by Firebase UID and
+  Group queries filter by active membership, group archive state, and expiry
+  before ranking; stored source hashes are checked before a vector can match.
+  Writes synchronize new and changed records. Existing records can be indexed
+  with `cd backend && python scripts/backfill_private_knowledge_embeddings.py`;
+  this is an explicit operator action and is not part of migrations.
 - The default provider uses an OpenAI-compatible embeddings API. A deterministic
   fake implements the same interface for tests and local development.
 - Candidate retrieval uses pgvector cosine distance. The search service owns

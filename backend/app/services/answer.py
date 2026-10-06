@@ -1,8 +1,12 @@
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.embedding_provider import EmbeddingProviderError, get_embedding_provider
+from app.ai.embedding_service import EmbeddingService
 from app.core.config import get_settings
 from app.core.exceptions import (
     ConflictError,
@@ -31,6 +35,8 @@ from app.schemas.user import UserSummary
 from app.services.freshness import answer_freshness
 from app.services.permissions import PermissionService
 
+logger = logging.getLogger(__name__)
+
 
 class AnswerService:
     def __init__(self, session: AsyncSession) -> None:
@@ -42,6 +48,9 @@ class AnswerService:
         self.governance = GovernanceRepository(session)
         self.permissions = PermissionService(self.users)
         self.settings = get_settings()
+        self.embedding_service = EmbeddingService(
+            session, get_embedding_provider(self.settings)
+        )
 
     async def create(
         self,
@@ -70,6 +79,7 @@ class AnswerService:
         if commit:
             await self.session.commit()
             await self.session.refresh(answer)
+            await self._sync_question_embedding(question)
         else:
             await self.session.flush()
         return await self._detail(answer)
@@ -142,6 +152,7 @@ class AnswerService:
         answer.body = data.body
         await self.session.commit()
         await self.session.refresh(answer)
+        await self._sync_question_embedding(question)
         return await self._detail(answer)
 
     async def delete(
@@ -186,10 +197,12 @@ class AnswerService:
                 {"reason": archive_reason},
             )
             await self.session.commit()
+            await self._sync_question_embedding(question)
             return
         self.permissions.require_owner(actor, answer.author_id)
         await self.answers.delete(answer)
         await self.session.commit()
+        await self._sync_question_embedding(question)
 
     async def restore(
         self,
@@ -220,6 +233,7 @@ class AnswerService:
         )
         await self.session.commit()
         await self.session.refresh(answer)
+        await self._sync_question_embedding(question)
         return await self._detail(answer)
 
     async def react(self, answer_id: UUID, data: ReactionCreate) -> ReactionResponse:
@@ -334,6 +348,22 @@ class AnswerService:
         actor = await self.permissions.actor(user_id, organisation_id)
         self.permissions.require_question_visibility(actor, question)
         return question, actor
+
+    async def _sync_question_embedding(self, question: Question) -> None:
+        try:
+            await self.embedding_service.sync_question(question)
+        except (EmbeddingProviderError, ValueError):
+            logger.exception(
+                "Failed to regenerate search embedding for question %s",
+                question.id,
+            )
+        except SQLAlchemyError:
+            await self.session.rollback()
+            await self.session.refresh(question)
+            logger.exception(
+                "Failed to persist search embedding for question %s",
+                question.id,
+            )
 
     async def _detail(self, answer: Answer) -> AnswerDetailResponse:
         question = await self.questions.get_for_organisation(

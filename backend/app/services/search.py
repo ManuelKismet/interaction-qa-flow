@@ -4,11 +4,13 @@ from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.ai.embedding_provider import EmbeddingProvider, EmbeddingProviderError
 from app.core.config import Settings
 from app.models.answer import AnswerStatus
 from app.models.question import QuestionStatus
+from app.models.organisation import Organisation
 from app.repositories.search import SearchRepository
 from app.repositories.user import UserRepository
 from app.schemas.department import DepartmentSummary
@@ -34,6 +36,7 @@ class SearchService:
     ) -> None:
         self.provider = provider
         self.settings = settings
+        self.session = session
         self.search_repository = SearchRepository(session)
         self.permissions = PermissionService(UserRepository(session))
         self.clock = clock or (lambda: datetime.now(UTC))
@@ -48,6 +51,11 @@ class SearchService:
         include_unanswered: bool = False,
     ) -> list[SemanticSearchResult]:
         actor = await self.permissions.actor(user_id, organisation_id)
+        organisation_name = await self.session.scalar(
+            select(Organisation.name).where(Organisation.id == organisation_id)
+        )
+        if not isinstance(organisation_name, str):
+            organisation_name = None
         lexical_candidates = await self.search_repository.lexical_candidates(
             organisation_id=organisation_id,
             actor=actor,
@@ -121,6 +129,12 @@ class SearchService:
                 challenge_count,
             ) = candidate
             semantic_similarity = semantic_entry[0][5] if semantic_entry else 0.0
+            lexical_score = lexical_entry[0][5] if lexical_entry else 0.0
+            lexical_relevance = (
+                1.0 + max(0.0, lexical_score) / (1.0 + max(0.0, lexical_score))
+                if lexical_entry
+                else 0.0
+            )
             matched_ids = set()
             if lexical_entry:
                 matched_ids.update(lexical_entry[1])
@@ -178,6 +192,8 @@ class SearchService:
                 resolved_at=canonical_question.resolved_at,
                 visibility=canonical_question.visibility,
                 answer_id=answer.id if answer else None,
+                organisation_name=organisation_name or "Organisation",
+                relevance_score=max(lexical_relevance, semantic_similarity),
                 challenge_count=challenge_count,
                 has_open_challenge=challenge_count > 0,
             )

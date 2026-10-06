@@ -186,7 +186,7 @@ async def test_semantic_candidate_limit_partitions_by_canonical_question() -> No
         actor=actor,
         query_text="password",
         query_embedding=[0.0] * 1536,
-        embedding_model="deterministic-fake-v1",
+        embedding_model="test-semantic-model",
         minimum_similarity=0.68,
         limit=5,
     )
@@ -197,6 +197,30 @@ async def test_semantic_candidate_limit_partitions_by_canonical_question() -> No
     assert "canonical_rank" in sql
     assert "question_embeddings.embedding <=>" in sql
     assert "LIMIT" in sql
+
+
+@pytest.mark.asyncio
+async def test_deterministic_fake_embeddings_are_not_semantic_candidates() -> None:
+    session = AsyncMock()
+    repository = SearchRepository(session)
+
+    candidates = await repository.semantic_candidates(
+        organisation_id=uuid4(),
+        actor=User(
+            id=uuid4(),
+            organisation_id=uuid4(),
+            email="fake-embedding@example.test",
+            display_name="Fake Embedding Tester",
+        ),
+        query_text="meaningful concept",
+        query_embedding=[0.0] * 1536,
+        embedding_model="deterministic-fake-v1",
+        minimum_similarity=0.68,
+        limit=5,
+    )
+
+    assert candidates == []
+    session.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio

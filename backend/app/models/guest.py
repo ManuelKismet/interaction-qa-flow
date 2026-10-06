@@ -15,6 +15,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
+from pgvector.sqlalchemy import Vector
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
@@ -148,6 +149,9 @@ class GuestGroupEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     updated_by_uid: Mapped[str] = mapped_column(String(128), nullable=False)
     client_import_key: Mapped[str | None] = mapped_column(String(64))
     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    knowledge_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    embedding_model: Mapped[str | None] = mapped_column(String(255))
+    embedding_source_hash: Mapped[str | None] = mapped_column(String(64))
 
 
 class GuestGroupEntryRevision(UUIDPrimaryKeyMixin, Base):

@@ -354,6 +354,7 @@ class QuestionService:
         answer.protected_at = answer.protected_at or question.resolved_at
         await self.session.commit()
         await self.session.refresh(question)
+        await self._sync_embedding_safely(question)
         return question
 
     async def reopen(self, question_id: UUID, data: QuestionAction) -> Question:
@@ -371,6 +372,7 @@ class QuestionService:
         question.resolved_at = None
         await self.session.commit()
         await self.session.refresh(question)
+        await self._sync_embedding_safely(question)
         return question
 
     async def archive(
@@ -455,6 +457,7 @@ class QuestionService:
         )
         await self.session.commit()
         await self.session.refresh(question)
+        await self._sync_embedding_safely(question)
         return question
 
     async def request_change(

@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy import String, case, cast, delete, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -297,6 +297,58 @@ class GuestRepository:
         if limit is not None:
             statement = statement.limit(limit)
         return list(await self.session.scalars(statement))
+
+    async def knowledge_entries_for_member(
+        self,
+        firebase_uid: str,
+        query_tokens: list[str],
+        now: datetime,
+        *,
+        limit: int | None,
+    ) -> list[tuple[GuestGroupEntry, str]]:
+        searchable_data = cast(GuestGroupEntry.data, String)
+        statement = (
+            select(GuestGroupEntry, GuestGroup.name)
+            .join(GuestGroup, GuestGroup.id == GuestGroupEntry.group_id)
+            .join(
+                GuestGroupMembership,
+                GuestGroupMembership.group_id == GuestGroup.id,
+            )
+            .where(
+                GuestGroupMembership.firebase_uid == firebase_uid,
+                GuestGroupMembership.status == "active",
+                GuestGroup.archived_at.is_(None),
+                GuestGroup.expires_at > now,
+                GuestGroupEntry.kind == "knowledge",
+            )
+        )
+        if query_tokens:
+            token_matches = []
+            for token in query_tokens:
+                pattern = f"%{token}%"
+                matches = [
+                    GuestGroupEntry.title.ilike(pattern),
+                    searchable_data.ilike(pattern),
+                ]
+                if (
+                    len(token) >= 4
+                    and self.session.get_bind().dialect.name == "postgresql"
+                ):
+                    matches.append(
+                        or_(
+                            literal(token).op("<%")(GuestGroupEntry.title),
+                            literal(token).op("<%")(searchable_data),
+                        )
+                    )
+                token_matches.append(
+                    or_(*matches)
+                )
+            statement = statement.where(*token_matches)
+        statement = statement.order_by(GuestGroupEntry.updated_at.desc())
+        if limit is not None:
+            statement = statement.limit(limit)
+        result = await self.session.execute(statement)
+        return list(result.all())
 
     async def entry_for_import(
         self, group_id: UUID, firebase_uid: str, import_key: str

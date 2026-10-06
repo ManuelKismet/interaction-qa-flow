@@ -4,6 +4,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import func, select
 
+from app.ai.embedding_provider import DeterministicFakeEmbeddingProvider
 from app.api import dependencies
 from app.api.dependencies import enforce_tenant_scope, get_development_identity
 from app.main import app
@@ -160,6 +161,7 @@ async def test_all_group_routes_require_verified_registered_identity(
         ("DELETE", f"/api/v1/guest/groups/{group_id}/permanent", None, None),
         ("DELETE", f"/api/v1/guest/groups/{group_id}", None, None),
         ("GET", f"/api/v1/guest/groups/{group_id}/entries", None, None),
+        ("GET", "/api/v1/guest/groups/search-knowledge?query=policy", None, None),
         (
             "POST",
             f"/api/v1/guest/groups/{group_id}/entries",
@@ -243,6 +245,82 @@ async def test_all_group_routes_require_verified_registered_identity(
     )
     assert account_state.status_code == 200
     assert account_state.json() == {"status": "shared_guest"}
+
+
+@pytest.mark.asyncio
+async def test_unified_group_search_only_returns_active_member_knowledge(
+    app_client, monkeypatch
+) -> None:
+    client, _ = app_client
+    install_test_tokens(monkeypatch)
+    monkeypatch.setattr(
+        guest_service,
+        "get_embedding_provider",
+        lambda: DeterministicFakeEmbeddingProvider(),
+    )
+    group = await make_group(client, "search-owner", "Travel policies")
+    headers = bearer("search-owner")
+    knowledge = await client.post(
+        f"/api/v1/guest/groups/{group['id']}/entries",
+        headers=headers,
+        json={
+            "kind": "knowledge",
+            "title": "Mileage reimbursement",
+            "data": {"body": "Submit a travel claim."},
+        },
+    )
+    assert knowledge.status_code == 201, knowledge.text
+    shared_session = await client.post(
+        f"/api/v1/guest/groups/{group['id']}/entries",
+        headers=headers,
+        json={
+            "kind": "interact_session",
+            "title": "Mileage follow-up",
+            "data": {"title": "Mileage reimbursement"},
+            "share_with_group": True,
+        },
+    )
+    assert shared_session.status_code == 201, shared_session.text
+
+    owner_results = await client.get(
+        "/api/v1/guest/groups/search-knowledge?query=mileage",
+        headers=headers,
+    )
+    assert owner_results.status_code == 200, owner_results.text
+    assert [item["id"] for item in owner_results.json()["results"]] == [
+        knowledge.json()["id"]
+    ]
+    assert owner_results.json()["results"][0]["group_name"] == "Travel policies"
+    assert owner_results.json()["results"][0]["match_method"] == "keyword"
+
+    short_query_results = await client.get(
+        "/api/v1/guest/groups/search-knowledge?query=mi",
+        headers=headers,
+    )
+    assert short_query_results.status_code == 200, short_query_results.text
+    assert [
+        item["id"] for item in short_query_results.json()["results"]
+    ] == [knowledge.json()["id"]]
+
+    other_results = await client.get(
+        "/api/v1/guest/groups/search-knowledge?query=mileage",
+        headers=bearer("not-a-member"),
+    )
+    assert other_results.status_code == 200, other_results.text
+    assert other_results.json() == {"results": [], "partial": False}
+
+
+def test_group_knowledge_search_accepts_one_bounded_typo() -> None:
+    assert guest_service._matches_query(
+        ["interactoin"],
+        "Interaction process",
+        {},
+    )
+    assert not guest_service._matches_query(
+        ["intrxctoin"],
+        "Interaction process",
+        {},
+    )
 
 
 @pytest.mark.asyncio

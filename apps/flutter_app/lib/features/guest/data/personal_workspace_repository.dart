@@ -26,6 +26,24 @@ class PersonalWorkspaceRepository {
     ];
   }
 
+  Future<Map<String, dynamic>> searchKnowledge(
+    String query, {
+    required String expectedUid,
+  }) async {
+    final response = await _client.get<Map<String, dynamic>>(
+      '/api/v1/personal/items/search',
+      queryParameters: {'query': query, 'limit': 25},
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+    );
+    final data = response.data ?? const <String, dynamic>{};
+    return {
+      'results': (data['results'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList(),
+      'partial': data['partial'] == true,
+    };
+  }
+
   Future<List<Map<String, dynamic>>> importItems(
     List<Map<String, dynamic>> items, {
     required String expectedUid,

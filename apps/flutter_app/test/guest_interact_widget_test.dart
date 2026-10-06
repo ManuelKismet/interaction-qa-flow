@@ -10,6 +10,17 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 
 void main() {
+  test('local Knowledge search supports prefixes and one bounded typo', () {
+    const item = {
+      'title': 'Interaction handover',
+      'body': 'Steps for a shift change.',
+      'answer': 'Use the approved checklist.',
+    };
+    expect(matchesGuestKeywordOrPrefix('interact', item), isTrue);
+    expect(matchesGuestKeywordOrPrefix('interactoin', item), isTrue);
+    expect(matchesGuestKeywordOrPrefix('intrxctoin', item), isFalse);
+  });
+
   testWidgets(
     'Saved Q&A search edits and removes local entries and returns to the form',
     (tester) async {
@@ -59,8 +70,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          'Keyword and prefix search of loaded local and personal-account '
-          'Knowledge on this device; no semantic search.',
+          'Search local Knowledge on this device and all personal-account '
+          'Knowledge in your account, plus authorised organisation and Group '
+          'Knowledge when available. Only your query is sent to those services; '
+          'local content is never uploaded by search.',
         ),
         findsOneWidget,
       );
@@ -70,10 +83,16 @@ void main() {
 
       await tester.enterText(localSearch, 'passw');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Saved Q&A'));
+      expect(find.text('Password rotation'), findsOneWidget);
+      expect(find.textContaining('On this device'), findsOneWidget);
+      expect(find.textContaining('Local on this device'), findsOneWidget);
+      await tester.tap(find.text('Password rotation'));
       await tester.pumpAndSettle();
       expect(localSearch, findsOneWidget);
       expect(find.text('Password rotation'), findsOneWidget);
+      expect(find.text('Incident response'), findsNothing);
+      await tester.tap(find.text('Back to all Saved Q&A'));
+      await tester.pumpAndSettle();
       expect(find.text('Incident response'), findsNothing);
 
       await tester.enterText(localSearch, '');

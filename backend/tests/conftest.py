@@ -6,6 +6,10 @@ from fastapi import Request
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.ai.embedding_provider import (
+    DeterministicFakeEmbeddingProvider,
+    EmbeddingProviderError,
+)
 from app.core.database import get_session
 from app.api.dependencies import (
     AuthenticatedIdentity,
@@ -16,10 +20,47 @@ from app.main import app
 from app.models import Base
 
 
+class _UnavailableEmbeddingProvider:
+    model_name = "test-provider-unavailable"
+    dimensions = 1536
+
+    async def embed_text(self, _text: str) -> list[float]:
+        raise EmbeddingProviderError("Embedding calls are disabled in tests.")
+
+
 @pytest_asyncio.fixture
-async def app_client() -> AsyncIterator[
+async def app_client(monkeypatch) -> AsyncIterator[
     tuple[AsyncClient, async_sessionmaker[AsyncSession]]
 ]:
+    from app.services import guest as guest_service
+    from app.services import personal_workspace as personal_workspace_service
+    from app.services import answer as answer_service
+    from app.services import canonical as canonical_service
+    from app.services import governance as governance_service
+    from app.services import question as question_service
+    from app.api.v1.routes import questions as questions_route
+
+    def fake_provider(settings=None):
+        return _UnavailableEmbeddingProvider()
+
+    monkeypatch.setattr(
+        guest_service,
+        "get_embedding_provider",
+        fake_provider,
+    )
+    monkeypatch.setattr(
+        personal_workspace_service,
+        "get_embedding_provider",
+        fake_provider,
+    )
+    for service in (
+        answer_service,
+        canonical_service,
+        governance_service,
+        question_service,
+    ):
+        monkeypatch.setattr(service, "get_embedding_provider", fake_provider)
+    monkeypatch.setattr(questions_route, "get_embedding_provider", fake_provider)
     test_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
 

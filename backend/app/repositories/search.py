@@ -1,7 +1,7 @@
 import re
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, literal_column, or_, select
+from sqlalchemy import and_, case, func, literal, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -19,7 +19,7 @@ class SearchRepository:
         self.session = session
 
     @staticmethod
-    def _weighted_search_document(title, body):
+    def _weighted_search_document(title, body, answer):
         title_vector = func.setweight(
             func.to_tsvector("simple", func.coalesce(title, "")),
             literal_column("'A'"),
@@ -28,7 +28,11 @@ class SearchRepository:
             func.to_tsvector("simple", func.coalesce(body, "")),
             literal_column("'B'"),
         )
-        return title_vector.op("||")(body_vector)
+        answer_vector = func.setweight(
+            func.to_tsvector("simple", func.coalesce(answer, "")),
+            literal_column("'C'"),
+        )
+        return title_vector.op("||")(body_vector).op("||")(answer_vector)
 
     def _candidate_statement(
         self,
@@ -174,7 +178,7 @@ class SearchRepository:
                 canonical_visibility,
             )
         )
-        return statement, canonical_question
+        return statement, canonical_question, candidate_answer
 
     @staticmethod
     def _limit_distinct_candidates(
@@ -245,7 +249,9 @@ class SearchRepository:
     ) -> list[
         tuple[Question, Question, Answer | None, Department | None, Team | None, float, int]
     ]:
-        statement, canonical_question = self._candidate_statement(
+        if embedding_model.startswith("deterministic-fake-"):
+            return []
+        statement, canonical_question, _ = self._candidate_statement(
             organisation_id=organisation_id,
             actor=actor,
             include_unanswered=include_unanswered,
@@ -291,22 +297,26 @@ class SearchRepository:
         if not tokens and not query_text.strip():
             return []
 
-        statement, canonical_question = self._candidate_statement(
+        statement, canonical_question, candidate_answer = self._candidate_statement(
             organisation_id=organisation_id,
             actor=actor,
             include_unanswered=include_unanswered,
         )
         exact_title = func.lower(func.trim(Question.title)) == query_text.strip().lower()
+        fuzzy_matches = []
         if self.session.get_bind().dialect.name == "postgresql" and tokens:
             document = self._weighted_search_document(
                 Question.title,
                 Question.body,
+                candidate_answer.body,
             )
             search_document = func.to_tsvector(
                 "simple",
                 func.coalesce(Question.title, "")
                 + " "
                 + func.coalesce(Question.body, ""),
+            ).op("||")(
+                func.to_tsvector("simple", func.coalesce(candidate_answer.body, ""))
             )
             lexical_query = func.to_tsquery(
                 "simple", " | ".join(f"{token}:*" for token in tokens)
@@ -323,8 +333,22 @@ class SearchRepository:
             identifier_matches = [
                 Question.title.ilike(f"%{token}%", escape="\\")
                 | Question.body.ilike(f"%{token}%", escape="\\")
+                | candidate_answer.body.ilike(f"%{token}%", escape="\\")
                 for token in tokens
             ]
+            fuzzy_matches = [
+                or_(
+                    literal(token).op("<%")(Question.title),
+                    literal(token).op("<%")(Question.body),
+                    literal(token).op("<%")(candidate_answer.body),
+                )
+                for token in tokens
+                if len(token) >= 4
+            ]
+            score += sum(
+                case((match, 0.5), else_=0.0) for match in fuzzy_matches
+            )
+            text_match = or_(text_match, *fuzzy_matches)
         else:
             title_matches = [
                 func.lower(Question.title).contains(token) for token in tokens
@@ -333,20 +357,27 @@ class SearchRepository:
                 func.lower(func.coalesce(Question.body, "")).contains(token)
                 for token in tokens
             ]
+            answer_matches = [
+                func.lower(func.coalesce(candidate_answer.body, "")).contains(token)
+                for token in tokens
+            ]
             text_match = (
-                or_(*title_matches, *body_matches) if tokens else exact_title
+                or_(*title_matches, *body_matches, *answer_matches)
+                if tokens
+                else exact_title
             )
             score = case((exact_title, 100.0), else_=0.0)
             score += sum(
                 case((match, 10.0), else_=0.0) for match in title_matches
             )
             score += sum(case((match, 1.0), else_=0.0) for match in body_matches)
+            score += sum(case((match, 1.0), else_=0.0) for match in answer_matches)
             all_terms_match = (
                 and_(
                     *(
-                        or_(title_match, body_match)
-                        for title_match, body_match in zip(
-                            title_matches, body_matches
+                        or_(title_match, body_match, answer_match)
+                        for title_match, body_match, answer_match in zip(
+                            title_matches, body_matches, answer_matches
                         )
                     )
                 )
@@ -357,7 +388,7 @@ class SearchRepository:
             identifier_matches = []
 
         statement = statement.add_columns(score.label("similarity")).where(
-            or_(exact_title, text_match, *identifier_matches)
+            or_(exact_title, text_match, *identifier_matches, *fuzzy_matches)
         )
         statement = self._limit_distinct_candidates(
             statement,

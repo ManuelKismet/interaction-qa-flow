@@ -1387,6 +1387,38 @@ void main() {
     },
   );
 
+  testWidgets('a search deep link opens its authorized Group entry', (
+    tester,
+  ) async {
+    final auth = _TestFirebaseAuth();
+    final repository = _PendingEntryRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(
+          home: SharedGuestGroupsPage(
+            initialGroupId: 'group-1',
+            initialEntryId: 'entry-1',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(
+      find.descendant(of: dialog, matching: find.text('Shared entry')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.text('Shared answer')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('removing a member keeps the groups page mounted', (
     tester,
   ) async {

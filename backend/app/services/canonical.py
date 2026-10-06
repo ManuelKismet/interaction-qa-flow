@@ -1,10 +1,16 @@
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.embedding_provider import EmbeddingProvider
+from app.ai.embedding_provider import (
+    EmbeddingProvider,
+    EmbeddingProviderError,
+    get_embedding_provider,
+)
+from app.ai.embedding_service import EmbeddingService
 from app.core.config import Settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.answer import Answer, AnswerStatus
@@ -30,6 +36,8 @@ from app.schemas.canonical import (
 from app.schemas.search import SemanticSearchResult
 from app.services.permissions import PermissionService
 from app.services.search import SearchService
+
+logger = logging.getLogger(__name__)
 
 
 class CanonicalQuestionService:
@@ -57,6 +65,8 @@ class CanonicalQuestionService:
         actor = await self.permissions.actor(user_id, organisation_id)
         response = await self._merge(canonical_question_id, organisation_id, actor, data)
         await self.session.commit()
+        question = await self.canonical.question(canonical_question_id, organisation_id)
+        await self._sync_embedding_for_question(question)
         return response
 
     async def unmerge(
@@ -87,7 +97,26 @@ class CanonicalQuestionService:
         )
         await self.session.commit()
         await self.session.refresh(question)
+        await self._sync_embedding_for_question(question)
+        await self._sync_embedding_for_question(
+            await self.canonical.question(previous_root_id, organisation_id)
+        )
         return question
+
+    async def _sync_embedding_for_question(self, question: Question | None) -> None:
+        if question is None:
+            return
+        try:
+            provider = self.embedding_provider or get_embedding_provider(self.settings)
+            await EmbeddingService(self.session, provider).sync_question(question)
+        except EmbeddingProviderError:
+            logger.exception(
+                "Failed to regenerate search embedding for question %s", question.id
+            )
+        except Exception:
+            logger.exception(
+                "Failed to persist search embedding for question %s", question.id
+            )
 
     async def candidates(
         self,
@@ -219,6 +248,8 @@ class CanonicalQuestionService:
             await self._audit(actor, action, "duplicate_suggestion", suggestion.id)
         await self.session.commit()
         await self.session.refresh(suggestion)
+        if accept:
+            await self._sync_embedding_for_question(target)
         return self._suggestion_response(suggestion, question, target)
 
     async def _merge(

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/routing/session_deep_link.dart';
 import 'package:int_qa_flow/features/admin/presentation/admin_page.dart';
 import 'package:int_qa_flow/features/ask/presentation/ask_page.dart';
@@ -56,13 +57,21 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
           ),
           GoRoute(
             path: '/guest/groups',
-            builder: (context, state) => const SharedGuestGroupsPage(),
+            builder: (context, state) {
+              final extra = state.extra;
+              final entry = extra is Map ? extra : const {};
+              return SharedGuestGroupsPage(
+                initialGroupId: entry['groupId'] as String?,
+                initialEntryId: entry['entryId'] as String?,
+              );
+            },
           ),
           GoRoute(
             path: '/personal',
             builder: (context, state) => const GuestWorkspacePage(
               firebaseReady: true,
               personalWorkspaceEnabled: true,
+              membershipStatus: AccountMembershipStatus.active,
             ),
           ),
         ],

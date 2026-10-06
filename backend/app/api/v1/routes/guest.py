@@ -67,6 +67,20 @@ async def list_groups(
     return await GuestService(session).list_groups(identity.firebase_uid)
 
 
+@router.get("/groups/search-knowledge")
+async def search_member_knowledge(
+    query: str = Query(min_length=1, max_length=100),
+    limit: int = Query(default=25, ge=1, le=50),
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await GuestService(session).search_member_knowledge(
+        identity.firebase_uid,
+        query,
+        limit=limit,
+    )
+
+
 @router.get("/groups/archived")
 async def list_archived_groups(
     identity: GuestIdentity = Depends(get_guest_identity),

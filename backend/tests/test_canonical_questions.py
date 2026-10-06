@@ -116,6 +116,46 @@ async def test_owner_merges_multiple_questions_and_preserves_history(app_client)
 
 
 @pytest.mark.asyncio
+async def test_merge_and_unmerge_refresh_canonical_search_embeddings(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    alias_id, _ = await add_question(
+        session_factory, ids, "Where do I find the travel policy?"
+    )
+    synced_questions = []
+
+    async def record_sync(_service, question):
+        synced_questions.append(question.id)
+        return True
+
+    monkeypatch.setattr(
+        canonical_module.EmbeddingService, "sync_question", record_sync
+    )
+    merged = await client.post(
+        f"/api/v1/questions/{ids['finance_question']}/merge",
+        headers=headers(ids, "finance_owner"),
+        json={
+            "duplicate_question_ids": [str(alias_id)],
+            "reason": "Same travel process",
+        },
+    )
+    assert merged.status_code == 200, merged.text
+    unmerged = await client.post(
+        f"/api/v1/questions/{alias_id}/unmerge",
+        headers=headers(ids, "finance_owner"),
+        json={"reason": "Search content should stand alone"},
+    )
+    assert unmerged.status_code == 200, unmerged.text
+    assert synced_questions == [
+        ids["finance_question"],
+        alias_id,
+        ids["finance_question"],
+    ]
+
+
+@pytest.mark.asyncio
 async def test_answer_conflict_requires_selection_and_copies_without_moving(app_client) -> None:
     client, session_factory = app_client
     ids = await seed_governance(session_factory)
@@ -232,9 +272,20 @@ async def test_unmerge_restores_independent_question(app_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(app_client) -> None:
+async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(
+    app_client, monkeypatch
+) -> None:
     client, session_factory = app_client
     ids = await seed_governance(session_factory)
+    synced_questions = []
+
+    async def record_sync(_service, question):
+        synced_questions.append(question.id)
+        return True
+
+    monkeypatch.setattr(
+        canonical_module.EmbeddingService, "sync_question", record_sync
+    )
     duplicate_id, _ = await add_question(session_factory, ids, "Possible duplicate")
     suggestion = await client.post(
         f"/api/v1/questions/{duplicate_id}/duplicate-suggestions",
@@ -277,6 +328,7 @@ async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(app_clie
     )
     assert accepted.status_code == 200
     assert accepted.json()["status"] == "accepted"
+    assert synced_questions == [ids["finance_question"]]
 
     async with session_factory() as session:
         duplicate = await session.get(Question, duplicate_id)

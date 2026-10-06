@@ -1,8 +1,14 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.embedding_provider import (
+    EmbeddingProviderError,
+    get_embedding_provider,
+)
+from app.ai.embedding_service import EmbeddingService
 from app.core.config import Settings
 from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
 from app.models.answer import Answer, AnswerStatus
@@ -34,6 +40,8 @@ from app.schemas.governance import (
 )
 from app.schemas.user import UserSummary
 from app.services.permissions import PermissionService
+
+logger = logging.getLogger(__name__)
 
 
 class GovernanceService:
@@ -80,6 +88,7 @@ class GovernanceService:
         await self._audit(actor, AuditAction.ANSWER_VERIFIED, "answer", answer.id)
         await self.session.commit()
         await self.session.refresh(answer)
+        await self._sync_question_embedding(question)
         return answer
 
     async def unverify(
@@ -88,7 +97,9 @@ class GovernanceService:
         organisation_id: UUID,
         user_id: UUID,
     ) -> Answer:
-        answer, _, actor = await self._managed_answer(answer_id, organisation_id, user_id)
+        answer, question, actor = await self._managed_answer(
+            answer_id, organisation_id, user_id
+        )
         if answer.status != AnswerStatus.VERIFIED:
             raise ConflictError("Only a verified answer can be unverified")
         answer.status = AnswerStatus.COMMUNITY
@@ -100,6 +111,7 @@ class GovernanceService:
         await self._audit(actor, AuditAction.ANSWER_UNVERIFIED, "answer", answer.id)
         await self.session.commit()
         await self.session.refresh(answer)
+        await self._sync_question_embedding(question)
         return answer
 
     async def review(
@@ -150,6 +162,20 @@ class GovernanceService:
         await self.session.commit()
         await self.session.refresh(challenge)
         return AnswerChallengeResponse.model_validate(challenge)
+
+    async def _sync_question_embedding(self, question: Question | None) -> None:
+        if question is None:
+            return
+        try:
+            await EmbeddingService(
+                self.session, get_embedding_provider(self.settings)
+            ).sync_question(question)
+        except EmbeddingProviderError:
+            logger.exception(
+                "Failed to regenerate search embedding for question %s", question.id
+            )
+        except Exception:
+            logger.exception("Failed to persist search embedding for question %s", question.id)
 
     async def list_challenges(
         self,
@@ -215,6 +241,8 @@ class GovernanceService:
         await self._audit(actor, action, "answer_challenge", challenge.id)
         await self.session.commit()
         await self.session.refresh(challenge)
+        if accept:
+            await self._sync_question_embedding(question)
         return AnswerChallengeResponse.model_validate(challenge)
 
     async def versions(

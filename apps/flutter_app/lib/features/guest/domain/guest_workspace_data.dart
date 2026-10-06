@@ -242,8 +242,46 @@ bool matchesGuestKeywordOrPrefix(
   final words = searchable.split(RegExp(r'[^a-z0-9_-]+'));
   return tokens.every(
     (token) =>
-        searchable.contains(token) || words.any((word) => word.startsWith(token)),
+        searchable.contains(token) ||
+        words.any(
+          (word) =>
+              word.startsWith(token) ||
+              (token.length >= 4 &&
+                  (word.length - token.length).abs() <= 1 &&
+                  _guestWordsOneEditApart(word, token)),
+        ),
   );
+}
+
+bool _guestWordsOneEditApart(String left, String right) {
+  if ((left.length - right.length).abs() > 1) return false;
+  if (left.length == right.length) {
+    final mismatches = <int>[
+      for (var index = 0; index < left.length; index++)
+        if (left.codeUnitAt(index) != right.codeUnitAt(index)) index,
+    ];
+    if (mismatches.length == 2 &&
+        mismatches[1] == mismatches[0] + 1 &&
+        left.codeUnitAt(mismatches[0]) == right.codeUnitAt(mismatches[1]) &&
+        left.codeUnitAt(mismatches[1]) == right.codeUnitAt(mismatches[0])) {
+      return true;
+    }
+  }
+  var previous = List<int>.generate(right.length + 1, (index) => index);
+  for (var row = 1; row <= left.length; row++) {
+    final current = <int>[row];
+    for (var column = 1; column <= right.length; column++) {
+      current.add([
+        current.last + 1,
+        previous[column] + 1,
+        previous[column - 1] +
+            (left.codeUnitAt(row - 1) == right.codeUnitAt(column - 1) ? 0 : 1),
+      ].reduce((a, b) => a < b ? a : b));
+    }
+    if (current.reduce((a, b) => a < b ? a : b) > 1) return false;
+    previous = current;
+  }
+  return previous.last <= 1;
 }
 
 List<Map<String, dynamic>> mergeSelectedGuestItems({

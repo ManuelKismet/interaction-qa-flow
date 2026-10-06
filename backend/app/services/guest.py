@@ -1,13 +1,25 @@
 import hashlib
 import json
+import logging
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.embedding_provider import EmbeddingProvider, get_embedding_provider
+from app.ai.embedding_provider import EmbeddingProviderError
+from app.ai.embedding_service import embedding_source_hash
+from app.ai.private_knowledge_embedding import (
+    knowledge_match,
+    private_knowledge_text,
+    sync_private_knowledge_embedding,
+)
+from app.core.config import get_settings
 from app.models.guest import (
     GuestGroup,
     GuestGroupAdminTransfer,
@@ -24,6 +36,8 @@ from app.schemas.guest import (
     GuestInvitationCreate,
     GuestMemberRoleUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 GUEST_GROUP_TTL = timedelta(days=90)
 MAX_GUEST_GROUPS_PER_IDENTITY = 3
@@ -94,8 +108,17 @@ def _require_explicit_session_sharing(payload: GuestGroupEntryCreate) -> None:
 
 
 class GuestService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self, session: AsyncSession, provider: EmbeddingProvider | None = None
+    ) -> None:
+        self.session = session
         self.guest = GuestRepository(session)
+        self._provider_explicit = provider is not None
+        try:
+            self.provider = provider or get_embedding_provider()
+        except EmbeddingProviderError:
+            logger.exception("Group Knowledge embeddings are unavailable")
+            self.provider = None
 
     # Acquire rate-limit rows before group rows to keep a consistent lock order.
     async def _rate_limit(self, firebase_uid: str, action: str) -> None:
@@ -679,6 +702,159 @@ class GuestService:
         await self.guest.commit()
         return result
 
+    async def search_member_knowledge(
+        self,
+        firebase_uid: str,
+        query: str,
+        *,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        await self._rate_limit(firebase_uid, "search")
+        if len(query) > 100:
+            raise HTTPException(status_code=422, detail="Search query is too long")
+        words = re.findall(r"[a-z0-9]+", query.casefold())[:12]
+        if not words:
+            await self.guest.commit()
+            return {"results": [], "partial": False}
+        rows = await self.guest.knowledge_entries_for_member(
+            firebase_uid,
+            [],
+            datetime.now(timezone.utc),
+            limit=None,
+        )
+        provider = self.provider
+        fake_embeddings = (
+            provider is None
+            or provider.model_name.startswith("deterministic-fake-")
+        )
+        semantic_available = self._provider_explicit or bool(
+            get_settings().embedding_api_key
+        )
+        matches: dict[str, dict[str, Any]] = {}
+        semantic_truncated = False
+        fresh_ids = set()
+        for entry, group_name in rows:
+            if (
+                provider is not None
+                and entry.embedding_model == provider.model_name
+                and entry.knowledge_embedding is not None
+                and entry.embedding_source_hash
+                == embedding_source_hash(
+                    private_knowledge_text(entry.title, entry.data),
+                    provider.model_name,
+                )
+            ):
+                fresh_ids.add(entry.id)
+            lexical_score, matched_in, snippet = knowledge_match(
+                query, entry.title, entry.data
+            )
+            if not lexical_score and _matches_query(
+                words,
+                entry.title,
+                entry.data,
+            ):
+                lexical_score, matched_in, snippet = (
+                    0.5,
+                    "content",
+                    entry.title[:240],
+                )
+            if lexical_score:
+                matches[str(entry.id)] = {
+                    "id": str(entry.id),
+                    "kind": "knowledge",
+                    "title": entry.title,
+                    "data": {
+                        key: entry.data[key]
+                        for key in ("body", "answer")
+                        if isinstance(entry.data.get(key), str)
+                    },
+                    "group_id": str(entry.group_id),
+                    "group_name": group_name,
+                    "match_method": "keyword",
+                    "similarity": 0.0,
+                    "relevance_score": lexical_score,
+                    "matched_in": matched_in,
+                    "snippet": snippet,
+                }
+        if not fake_embeddings and semantic_available and fresh_ids:
+            assert provider is not None
+            try:
+                query_embedding = await provider.embed_text(query.strip())
+                if len(query_embedding) != provider.dimensions:
+                    raise ValueError("Embedding dimensions do not match provider")
+                distance = GuestGroupEntry.knowledge_embedding.cosine_distance(
+                    query_embedding
+                )
+                semantic_rows = list(await self.session.execute(
+                    select(
+                        GuestGroupEntry,
+                        GuestGroup.name,
+                        (1 - distance).label("similarity"),
+                    )
+                    .join(
+                        GuestGroup,
+                        GuestGroup.id == GuestGroupEntry.group_id,
+                    )
+                    .join(
+                        GuestGroupMembership,
+                        GuestGroupMembership.group_id == GuestGroup.id,
+                    )
+                    .where(
+                        GuestGroupMembership.firebase_uid == firebase_uid,
+                        GuestGroupMembership.status == "active",
+                        GuestGroup.archived_at.is_(None),
+                        GuestGroup.expires_at > datetime.now(timezone.utc),
+                        GuestGroupEntry.kind == "knowledge",
+                        GuestGroupEntry.id.in_(fresh_ids),
+                        GuestGroupEntry.embedding_model == provider.model_name,
+                        GuestGroupEntry.knowledge_embedding.is_not(None),
+                    )
+                    .order_by(distance)
+                    .limit(limit + 1)
+                ))
+                semantic_truncated = len(semantic_rows) > limit
+                for entry, group_name, similarity in semantic_rows[:limit]:
+                    similarity = float(similarity)
+                    if similarity < get_settings().related_match_threshold:
+                        continue
+                    current = matches.get(str(entry.id))
+                    data = {
+                        key: entry.data[key]
+                        for key in ("body", "answer")
+                        if isinstance(entry.data.get(key), str)
+                    }
+                    matches[str(entry.id)] = {
+                        "id": str(entry.id),
+                        "kind": "knowledge",
+                        "title": entry.title,
+                        "data": data,
+                        "group_id": str(entry.group_id),
+                        "group_name": group_name,
+                        "match_method": "hybrid" if current else "semantic",
+                        "similarity": similarity,
+                        "relevance_score": max(
+                            current["relevance_score"] if current else 0.0,
+                            similarity,
+                        ),
+                        "matched_in": current["matched_in"] if current else None,
+                        "snippet": current["snippet"] if current else None,
+                    }
+            except Exception:
+                logger.exception(
+                    "Guest Knowledge semantic search failed for authorized groups"
+                )
+                semantic_truncated = False
+        ranked = sorted(
+            matches.values(),
+            key=lambda result: result["relevance_score"],
+            reverse=True,
+        )
+        await self.guest.commit()
+        return {
+            "results": ranked[:limit],
+            "partial": len(matches) > limit or semantic_truncated,
+        }
+
     async def create_entry(
         self,
         group_id: UUID,
@@ -716,6 +892,11 @@ class GuestService:
         self.guest.add(entry)
         group.expires_at = datetime.now(timezone.utc) + GUEST_GROUP_TTL
         await self.guest.commit()
+        if entry.kind == "knowledge":
+            await sync_private_knowledge_embedding(
+                self.session, entry, provider=self.provider
+            )
+            await self.session.refresh(entry)
         return _entry_dict(entry)
 
     async def import_entries(
@@ -727,6 +908,7 @@ class GuestService:
         await self._rate_limit(firebase_uid, "write")
         group, _ = await self._member_can_write(group_id, firebase_uid)
         results = []
+        created_entries: list[GuestGroupEntry] = []
         for payload in entries:
             if not payload.client_import_key:
                 raise HTTPException(
@@ -760,9 +942,15 @@ class GuestService:
             )
             self.guest.add(entry)
             await self.guest.flush()
+            created_entries.append(entry)
             results.append(_entry_dict(entry))
         group.expires_at = datetime.now(timezone.utc) + GUEST_GROUP_TTL
         await self.guest.commit()
+        for entry in created_entries:
+            if entry.kind == "knowledge":
+                await sync_private_knowledge_embedding(
+                    self.session, entry, provider=self.provider
+                )
         return results
 
     async def _check_group_storage(self, group_id: UUID, new_size: int) -> None:
@@ -831,6 +1019,11 @@ class GuestService:
         entry.revision += 1
         group.expires_at = datetime.now(timezone.utc) + GUEST_GROUP_TTL
         await self.guest.commit()
+        if entry.kind == "knowledge":
+            await sync_private_knowledge_embedding(
+                self.session, entry, provider=self.provider
+            )
+            await self.session.refresh(entry)
         return _entry_dict(entry)
 
     async def delete_entry(
@@ -896,11 +1089,53 @@ class GuestService:
 
 def _matches_query(words: list[str], title: str, data: dict[str, Any]) -> bool:
     text = " ".join([title, *_strings(data)]).casefold()
-    candidates = text.replace("/", " ").replace("-", " ").split()
+    candidates = re.findall(r"[a-z0-9]+", text)
     return all(
-        token in text or any(candidate.startswith(token) for candidate in candidates)
+        token in text
+        or any(
+            candidate.startswith(token)
+            or (
+                len(token) >= 4
+                and abs(len(candidate) - len(token)) <= 1
+                and _one_edit_apart(candidate, token)
+            )
+            for candidate in candidates
+        )
         for token in words
     )
+
+
+def _one_edit_apart(left: str, right: str) -> bool:
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) == len(right):
+        mismatches = [
+            index
+            for index, (left_char, right_char) in enumerate(zip(left, right))
+            if left_char != right_char
+        ]
+        if (
+            len(mismatches) == 2
+            and mismatches[1] == mismatches[0] + 1
+            and left[mismatches[0]] == right[mismatches[1]]
+            and left[mismatches[1]] == right[mismatches[0]]
+        ):
+            return True
+    previous = list(range(len(right) + 1))
+    for index, left_char in enumerate(left, start=1):
+        current = [index]
+        for column, right_char in enumerate(right, start=1):
+            current.append(
+                min(
+                    current[-1] + 1,
+                    previous[column] + 1,
+                    previous[column - 1] + (left_char != right_char),
+                )
+            )
+        if min(current) > 1:
+            return False
+        previous = current
+    return previous[-1] <= 1
 
 
 def _strings(value: Any) -> list[str]:

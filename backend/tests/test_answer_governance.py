@@ -14,6 +14,7 @@ from app.models.question import Question, QuestionStatus
 from app.models.user import User, UserRole
 from app.schemas.governance import FreshnessStatus
 from app.services.freshness import answer_freshness
+from app.services import governance as governance_module
 
 
 async def seed_governance(session_factory):
@@ -180,6 +181,48 @@ async def test_verification_permissions_metadata_and_audit(app_client) -> None:
         actions = set(await session.scalars(select(AuditEvent.action)))
         assert AuditAction.ANSWER_VERIFIED.value in actions
         assert AuditAction.ANSWER_VERSION_CREATED.value in actions
+
+
+@pytest.mark.asyncio
+async def test_verification_and_accepted_challenges_refresh_answer_embeddings(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    synced_questions = []
+
+    async def record_sync(_service, question):
+        synced_questions.append(question.id)
+        return True
+
+    monkeypatch.setattr(
+        governance_module.EmbeddingService, "sync_question", record_sync
+    )
+    answer_id = ids["finance_answer"]
+    for path in ("verify", "unverify", "verify"):
+        response = await client.post(
+            f"/api/v1/answers/{answer_id}/{path}",
+            headers=headers(ids, "finance_owner"),
+            json={},
+        )
+        assert response.status_code == 200, response.text
+    challenge = await client.post(
+        f"/api/v1/answers/{answer_id}/challenges",
+        headers=headers(ids, "employee"),
+        json={
+            "type": "outdated",
+            "reason": "The process changed.",
+            "suggested_answer": "Use the new mileage portal.",
+        },
+    )
+    assert challenge.status_code == 201, challenge.text
+    accepted = await client.post(
+        f"/api/v1/challenges/{challenge.json()['id']}/accept",
+        headers=headers(ids, "finance_owner"),
+        json={},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert synced_questions == [ids["finance_question"]] * 4
 
 
 @pytest.mark.asyncio

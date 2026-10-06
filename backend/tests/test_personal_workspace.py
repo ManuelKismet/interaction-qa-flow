@@ -4,6 +4,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import func, select
 
+from app.ai.embedding_provider import DeterministicFakeEmbeddingProvider
 from app.api import dependencies
 from app.main import app
 from app.models.personal_workspace import PersonalWorkspaceItem
@@ -51,6 +52,10 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
 ) -> None:
     client, session_factory = app_client
     install_test_tokens(monkeypatch)
+    monkeypatch.setattr(
+        "app.services.personal_workspace.get_embedding_provider",
+        lambda: DeterministicFakeEmbeddingProvider(),
+    )
     nested_session = {
         "kind": "interact_session",
         "source_key": "session:local-session",
@@ -132,6 +137,24 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
         "interact_session",
         "template",
     }
+    private_search = await client.get(
+        "/api/v1/personal/items/search",
+        headers=headers,
+        params={"query": "sentinel"},
+    )
+    assert private_search.status_code == 200, private_search.text
+    assert [item["id"] for item in private_search.json()["results"]] == [
+        result["items"][0]["id"]
+    ]
+    assert private_search.json()["results"][0]["match_method"] == "keyword"
+    assert private_search.json()["results"][0]["source_id"] == "local-id"
+    other_private_search = await client.get(
+        "/api/v1/personal/items/search",
+        headers=bearer("other"),
+        params={"query": "sentinel"},
+    )
+    assert other_private_search.status_code == 200
+    assert other_private_search.json() == {"results": [], "partial": False}
     item_id = UUID(result["items"][0]["id"])
     assert (await client.get("/api/v1/personal/items", headers=bearer("other"))).json() == []
     denied_update = await client.put(
@@ -524,3 +547,51 @@ async def test_personal_import_concurrent_replay_and_invalid_batch_are_atomic(
             select(func.count()).select_from(PersonalWorkspaceItem)
         )
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_personal_search_covers_all_owner_items_beyond_first_page(
+    app_client, monkeypatch
+) -> None:
+    client, _ = app_client
+    install_test_tokens(monkeypatch)
+    monkeypatch.setattr(
+        "app.services.personal_workspace.get_embedding_provider",
+        lambda: DeterministicFakeEmbeddingProvider(),
+    )
+    items = []
+    for index in range(35):
+        source_id = f"item-{index}"
+        data = {
+            "id": source_id,
+            "title": f"Personal item {index}",
+            "body": "rare full scope marker" if index == 34 else "ordinary entry",
+        }
+        items.append(
+            {
+                "kind": "knowledge",
+                "source_key": f"knowledge:{source_id}",
+                "title": data["title"],
+                "data": data,
+            }
+        )
+    headers = bearer("complete-account-scope")
+    imported = await client.post(
+        "/api/v1/personal/items/import",
+        headers=headers,
+        json={"items": items},
+    )
+    assert imported.status_code == 201, imported.text
+
+    listed = await client.get("/api/v1/personal/items", headers=headers)
+    assert len(listed.json()) == len(items)
+    search = await client.get(
+        "/api/v1/personal/items/search",
+        headers=headers,
+        params={"query": "full scope marker", "limit": 1},
+    )
+    assert search.status_code == 200, search.text
+    assert [result["source_id"] for result in search.json()["results"]] == [
+        "item-34"
+    ]
+    assert search.json()["partial"] is False

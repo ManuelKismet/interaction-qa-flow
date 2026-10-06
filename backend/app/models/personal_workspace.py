@@ -1,3 +1,4 @@
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import CheckConstraint, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,3 +27,6 @@ class PersonalWorkspaceItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     data: Mapped[dict] = mapped_column(JSON, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    knowledge_embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    embedding_model: Mapped[str | None] = mapped_column(String(255))
+    embedding_source_hash: Mapped[str | None] = mapped_column(String(64))

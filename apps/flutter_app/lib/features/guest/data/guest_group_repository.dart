@@ -223,6 +223,21 @@ class GuestGroupRepository {
         .toList();
   });
 
+  Future<Map<String, dynamic>> searchKnowledge(String query) =>
+      _request(() async {
+        final response = await _client.get<Map<String, dynamic>>(
+          '/api/v1/guest/groups/search-knowledge',
+          queryParameters: {'query': query, 'limit': 25},
+        );
+        final data = response.data ?? const <String, dynamic>{};
+        return {
+          'results': (data['results'] as List<dynamic>? ?? const [])
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList(),
+          'partial': data['partial'] == true,
+        };
+      });
+
   Future<Map<String, dynamic>> createKnowledge({
     required String groupId,
     required String title,

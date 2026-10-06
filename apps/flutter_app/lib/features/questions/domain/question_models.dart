@@ -82,6 +82,8 @@ class SemanticSearchResult {
     this.resolvedAt,
     this.department,
     this.team,
+    this.organisationName = 'Organisation',
+    this.relevanceScore = 0,
   });
 
   factory SemanticSearchResult.fromJson(Map<String, dynamic> json) =>
@@ -118,6 +120,11 @@ class SemanticSearchResult {
         team: json['team'] == null
             ? null
             : TeamSummary.fromJson(json['team'] as Map<String, dynamic>),
+        organisationName:
+            json['organisation_name'] as String? ?? 'Organisation',
+        relevanceScore:
+            (json['relevance_score'] as num?)?.toDouble() ??
+            (json['similarity'] as num).toDouble(),
       );
 
   final String questionId;
@@ -143,6 +150,8 @@ class SemanticSearchResult {
   final String? answerFreshnessStatus;
   final DepartmentSummary? department;
   final TeamSummary? team;
+  final String organisationName;
+  final double relevanceScore;
 }
 
 class QuestionSummary {

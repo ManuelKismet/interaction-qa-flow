@@ -59,6 +59,18 @@ async def list_items(
     return await PersonalWorkspaceService(session).list_items(identity.firebase_uid)
 
 
+@router.get("/items/search")
+async def search_knowledge(
+    query: str = Query(min_length=1, max_length=200),
+    limit: int = Query(default=25, ge=1, le=50),
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await PersonalWorkspaceService(session).search_knowledge(
+        identity.firebase_uid, query, limit=limit
+    )
+
+
 @router.post(
     "/items/import",
     response_model=PersonalWorkspaceImportResult,
