@@ -55,3 +55,37 @@ The earlier live authenticated personal import/edit/multi-device acceptance gap
 remains outstanding. Do not close it or F04/F08/F09 just because search tests or
 deployment succeed. See [previous rollout checkpoint](README.md) and
 [workflow lessons](personal-workspace-workflow-lessons-2026-10-06.md).
+
+## Independent first-patch review — 2026-10-06
+
+Published artifact `9bc571daa9c3348acfc322e57f84d9566acd930d` contains
+`unified-knowledge-search-20261006.patch`, authored commit
+`04b09c259e8d5bed408b8ebf07268af3e5b218ef`, declaring the correct
+`aafc112` base. It has NOT been applied or deployed. This review was static;
+no runtime test pass is claimed.
+
+Blockers were consolidated into
+[Copilot correction request](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6024434062):
+
+- Duplicate Alembic revision 0013/down_revision0012 conflicts with the existing
+  personal-workspace schema. Correct to a unique next revision based on 0013.
+- Backend personal/group semantic retrieval missing; preserve private scoped
+  indexes, local content privacy and lexical fallback.
+- Results grouped by origin without common relevance ranking; source badges,
+  organisation/department/team names and useful local/account answer previews missing.
+- Local/group result navigation incomplete; query/account freshness and full
+  personal item coverage need validation.
+- Remote UI, scoped semantic permission, PostgreSQL typo and failure/isolation
+  regressions insufficiently covered.
+- New answer embedding input requires lifecycle invalidation across governance
+  and other accepted/verified answer transitions.
+
+Because this patch is unapplied, requested one corrected consolidated patch
+against the exact original complete baseline. Resume by verifying the new
+authored/artifact commits and reviewing those blockers before running full
+independent checks or changing development.
+
+Founder explicitly instructed search only, then dev rollout after confirmation
+it works. [Organisation improvements](organisation-improvements-deferred-2026-10-06.md)
+are recorded but must not be implemented or assigned to Copilot until the
+founder gives the later start instruction.
