@@ -29,6 +29,7 @@ class AuthenticatedIdentity:
 class GuestIdentity:
     firebase_uid: str
     sign_in_provider: str
+    email_verified: bool
 
 
 DevelopmentIdentity = AuthenticatedIdentity
@@ -139,6 +140,7 @@ async def get_guest_identity(
     return GuestIdentity(
         firebase_uid=claims["sub"],
         sign_in_provider=sign_in_provider,
+        email_verified=claims.get("email_verified") is True,
     )
 
 

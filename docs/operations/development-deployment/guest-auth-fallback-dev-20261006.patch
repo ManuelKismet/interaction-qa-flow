@@ -1,0 +1,98 @@
+From 8ad77f851fef42195a64f191d43df5972c18a90a Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 10:38:48 +0000
+Subject: [PATCH] Handle unexpected sign-in failures safely
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../lib/core/auth/sign_in_page.dart           |  5 ++
+ .../test/account_state_widget_test.dart       | 50 +++++++++++++++++++
+ 2 files changed, 55 insertions(+)
+
+diff --git a/apps/flutter_app/lib/core/auth/sign_in_page.dart b/apps/flutter_app/lib/core/auth/sign_in_page.dart
+index 2e67ab3..308cd03 100644
+--- a/apps/flutter_app/lib/core/auth/sign_in_page.dart
++++ b/apps/flutter_app/lib/core/auth/sign_in_page.dart
+@@ -236,6 +236,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+       setState(() {
+         _error = message + (diagnostics ? ' [auth/$code]' : '');
+       });
++    } on Object {
++      if (!mounted) return;
++      setState(() {
++        _error = 'Unable to complete this account request. Please try again.';
++      });
+     } finally {
+       if (mounted) setState(() => _busy = false);
+     }
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 776ca0a..0d4ac1a 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -124,6 +124,19 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
+   }
+ }
+ 
++class _UnexpectedSignInAuth extends _TestFirebaseAuth {
++  _UnexpectedSignInAuth() : super(null);
++
++  @override
++  Future<UserCredential> signInWithEmailAndPassword({
++    required String email,
++    required String password,
++  }) async {
++    signInAttempts++;
++    throw StateError('private transport detail');
++  }
++}
++
+ class _MemoryGuestStorage implements GuestStorage {
+   String? value;
+ 
+@@ -489,6 +502,43 @@ void main() {
+     );
+   });
+ 
++  testWidgets('unexpected sign-in errors show a safe recovery message', (
++    tester,
++  ) async {
++    final auth = _UnexpectedSignInAuth();
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
++        child: const MaterialApp(home: SignInPage()),
++      ),
++    );
++    await tester.enterText(find.byType(TextField).first, 'account@example.test');
++    await tester.enterText(find.byType(TextField).last, 'secret-password');
++    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
++    await tester.pumpAndSettle();
++
++    expect(auth.signInAttempts, 1);
++    expect(
++      find.text('Unable to complete this account request. Please try again.'),
++      findsOneWidget,
++    );
++    final renderedText = tester.widgetList<Text>(
++      find.descendant(
++        of: find.byType(SignInPage),
++        matching: find.byType(Text),
++      ),
++    ).map((widget) => widget.data ?? '');
++    expect(
++      renderedText.any((text) => text.contains('private transport')),
++      isFalse,
++    );
++    expect(
++      renderedText.any((text) => text.contains('secret-password')),
++      isFalse,
++    );
++    expect(find.text('Please wait…'), findsNothing);
++  });
++
+   testWidgets('registered account without membership is not shown as signed out', (
+     tester,
+   ) async {
+-- 
+2.55.0
+

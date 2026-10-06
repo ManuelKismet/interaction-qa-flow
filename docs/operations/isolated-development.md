@@ -22,9 +22,8 @@ remain pending.
 Knowledge and Interact stay in one platform. This runbook's previous development
 identity commands are superseded by Firebase Auth and App Check. Use
 [cloud-development.md](cloud-development.md) for current non-secret web
-configuration, private synthetic membership seeding, and acceptance steps. Only
-synthetic content belongs in this environment. Do not publish the server-backed
-platform without the private deployment review.
+configuration and fresh-account acceptance steps. Do not use a synthetic
+membership seed or publish the server-backed platform without private review.
 The existing root index.html compatibility app is a separate static experience;
 its hosting success does not verify the platform.
 
@@ -38,7 +37,7 @@ workaround and report the result as clean-source acceptance.
 | Resource | Isolated development |
 | --- | --- |
 | Compose project | intqaflow-isolated-dev |
-| Database | intqaflow_dev, fresh synthetic data only |
+| Database | intqaflow_dev, isolated disposable development data only |
 | Database binding | 127.0.0.1:55432 |
 | Persistent volume | Project-scoped isolated_postgres; separate from default smart_qa volume |
 | API binding | 127.0.0.1:8000 |
@@ -69,7 +68,7 @@ docker compose -f compose.isolated-dev.yaml up -d --wait postgres
 cd backend
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock
 set -a
 . ./.env.isolated-dev.example
 set +a
@@ -93,11 +92,13 @@ Do not substitute the original compose.yaml: it uses the default smart_qa
 database and an unrestricted host port binding. Always use this standalone
 file with -f, without combining the two Compose files.
 
-## Flutter and synthetic membership
+## Flutter and account acceptance
 
-The previous caller-selected development identity flow is disabled. Use the
-reviewed seed procedure in `cloud-development.md` to map a synthetic Firebase
-UID to an active database membership.
+The previous caller-selected development identity flow is disabled. For live
+manual acceptance, create and verify a fresh account through the app, sign out,
+and sign in normally. Account creation alone gives no organisation access.
+Follow `cloud-development.md` for authorized membership provisioning. Unit and
+widget tests use isolated fakes; they are not evidence of live authentication.
 
 In a separate shell, from apps/flutter_app:
 
@@ -120,12 +121,13 @@ Codespace provisioning and forwarding verification are outstanding.
 
 - Validate the standalone Compose model with Docker Compose, inspect the actual
   loopback port binding and verify its project-scoped volume.
-- Confirm a fresh synthetic database and the exact environment settings, without
+- Confirm an isolated database and the exact environment settings, without
   printing unrelated credentials. Verify migrations on PostgreSQL/pgvector.
 - Run clean backend import/tests with fake embeddings. Preserve failures as
   failures; audit issues remain separate.
 - Run Flutter analyze/tests and exercise Knowledge, Interact, Review and legacy
-  migration using synthetic tenants. The full manual parity matrix remains pending.
+  migration using a freshly registered account with explicitly provisioned
+  membership. The full manual parity matrix remains pending.
 - Confirm no external embedding requests, other-application credentials or
   production database connections are used during the exercised paths.
 - Test access from outside the private development boundary; require rejection.
@@ -140,8 +142,8 @@ Codex owns environment/configuration setup and independent technical checks.
 Copilot owns scoped application fixes and their tests in the IntQAFlow workspace.
 Founder + Codex review together; the founder owns product acceptance and release
 approval. This PR does not authorize implementation of audit remediation.
-The next application handoff is IQ-01 clean startup, followed by repeatable
-synthetic seed setup and the remaining runtime acceptance steps. Monitoring
+The next application handoff is IQ-01 clean startup, followed by fresh-account
+acceptance and the remaining runtime checks. Monitoring
 agents remain deferred.
 
 ## Stop and resume
@@ -153,7 +155,7 @@ docker compose -f compose.isolated-dev.yaml down
 ```
 
 This retains the isolated volume. Resume with the same standalone file and
-development settings. Removing volumes deletes synthetic development data and
+development settings. Removing volumes deletes isolated development data and
 requires a deliberate reset; do not include -v in routine shutdown commands.
 Stop any future Codespace when unused.
 
@@ -181,9 +183,8 @@ parity matrix; prior test counts do not supersede the later audit's clean-import
 failure.
 
 Known setup boundary: configuration prepared and statically checked; complete
-chat recovery, a development Codespace, synthetic seeding and live acceptance
-are not complete. Do not treat the isolation branch or this runbook as a
-working environment.
+chat recovery, a development Codespace and live acceptance are not complete.
+Do not treat the isolation branch or this runbook as a working environment.
 
 ## Development container candidate and fresh baseline check
 
@@ -196,9 +197,11 @@ example inside the devcontainer, because it would replace the sidecar URL.
 The bootstrap installs backend tooling and the Flutter source revision recorded
 in apps/flutter_app/.metadata (ff37bef603469fb030f2b72995ab929ccfc227f0).
 It prepares Flutter web dependencies; it does not migrate, seed, start servers,
-or patch application code. Container images and backend dependency ranges are
-not digest/version locked, so a successful reproducible rebuild remains an
-acceptance requirement.
+or patch application code. Backend ranges remain in requirements.txt, while
+requirements.lock pins the resolved Python 3.12 runtime, test dependencies, and
+Ruff analyzer. The backend validation workflow installs that lock, runs pip
+check, Ruff syntax/undefined-name checks, compileall, and the full pytest suite.
+Container images and Flutter tooling are still not digest/version locked.
 
 No ports are explicitly forwarded, and automatic forwarding is disabled.
 Before adding a private web/API tunnel, inspect actual Codespace port

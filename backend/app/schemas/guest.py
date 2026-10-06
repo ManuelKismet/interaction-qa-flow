@@ -39,6 +39,7 @@ class GuestGroupEntryCreate(GuestSchema):
 
 
 class GuestGroupEntryUpdate(GuestSchema):
+    expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=1, max_length=500)
     data: dict | None = None
 

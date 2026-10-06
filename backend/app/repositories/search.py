@@ -1,7 +1,7 @@
 import re
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -17,6 +17,18 @@ from app.models.user import User
 class SearchRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    @staticmethod
+    def _weighted_search_document(title, body):
+        title_vector = func.setweight(
+            func.to_tsvector("simple", func.coalesce(title, "")),
+            literal_column("'A'"),
+        )
+        body_vector = func.setweight(
+            func.to_tsvector("simple", func.coalesce(body, "")),
+            literal_column("'B'"),
+        )
+        return title_vector.op("||")(body_vector)
 
     def _candidate_statement(
         self,
@@ -286,13 +298,10 @@ class SearchRepository:
         )
         exact_title = func.lower(func.trim(Question.title)) == query_text.strip().lower()
         if self.session.get_bind().dialect.name == "postgresql" and tokens:
-            title_vector = func.setweight(
-                func.to_tsvector("simple", func.coalesce(Question.title, "")), "A"
+            document = self._weighted_search_document(
+                Question.title,
+                Question.body,
             )
-            body_vector = func.setweight(
-                func.to_tsvector("simple", func.coalesce(Question.body, "")), "B"
-            )
-            document = title_vector.op("||")(body_vector)
             search_document = func.to_tsvector(
                 "simple",
                 func.coalesce(Question.title, "")

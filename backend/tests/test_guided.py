@@ -3,9 +3,13 @@ from uuid import UUID
 import pytest
 from sqlalchemy import func, select
 
+from app.ai.embedding_provider import DeterministicFakeEmbeddingProvider
+from app.models.answer import Answer
+from app.models.audit_event import AuditAction, AuditEvent
 from app.models.guided import GuidedQuestion, GuidedSession, KnowledgeProposal
 from app.models.question import Question
 from app.models.question_embedding import QuestionEmbedding
+from app.services import guided_knowledge
 from tests.test_answer_governance import headers, seed_governance
 
 
@@ -185,6 +189,73 @@ async def test_template_versions_are_snapshotted_and_answers_start_empty(app_cli
 
 
 @pytest.mark.asyncio
+async def test_archived_template_can_be_restored_without_losing_versions(app_client) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    created = await client.post(
+        "/api/v1/guided/templates",
+        headers=headers(ids, "employee"),
+        json={
+            "name": "Recoverable template",
+            "questions": [{"text": "Original question", "scope": "shared", "order_index": 0}],
+        },
+    )
+    assert created.status_code == 201
+    template = created.json()
+    archived = await client.post(
+        f"/api/v1/guided/templates/{template['id']}/archive",
+        headers=headers(ids, "employee"),
+    )
+    assert archived.status_code == 200
+    assert archived.json()["status"] == "archived"
+
+    denied = await client.post(
+        f"/api/v1/guided/templates/{template['id']}/restore",
+        headers=headers(ids, "finance_owner"),
+    )
+    assert denied.status_code == 403
+    archived_session = await client.post(
+        "/api/v1/guided/sessions",
+        headers=headers(ids, "employee"),
+        json={"title": "Archived template session", "template_id": template["id"]},
+    )
+    assert archived_session.status_code == 404
+
+    restored = await client.post(
+        f"/api/v1/guided/templates/{template['id']}/restore",
+        headers=headers(ids, "employee"),
+    )
+    assert restored.status_code == 200
+    assert restored.json()["status"] == "active"
+    assert restored.json()["current_version"] == template["current_version"]
+    assert [
+        question["text"]
+        for question in restored.json()["version"]["questions"]
+    ] == ["Original question"]
+    restored_session = await client.post(
+        "/api/v1/guided/sessions",
+        headers=headers(ids, "employee"),
+        json={"title": "Restored template session", "template_id": template["id"]},
+    )
+    assert restored_session.status_code == 201
+    assert [
+        question["text"]
+        for question in restored_session.json()["questions"]
+    ] == ["Original question"]
+
+    async with session_factory() as session:
+        audit_actions = list(
+            await session.scalars(
+                select(AuditEvent.action)
+                .where(AuditEvent.entity_id == UUID(template["id"]))
+                .order_by(AuditEvent.created_at)
+            )
+        )
+    assert AuditAction.GUIDED_TEMPLATE_ARCHIVED.value in audit_actions
+    assert AuditAction.GUIDED_TEMPLATE_RESTORED.value in audit_actions
+
+
+@pytest.mark.asyncio
 async def test_default_template_and_portable_template_round_trip(app_client) -> None:
     client, session_factory = app_client
     ids = await seed_governance(session_factory)
@@ -351,6 +422,124 @@ async def test_knowledge_proposal_rejects_or_creates_primary_knowledge_with_sour
         )
         assert created_question is not None
         assert await session.scalar(select(func.count()).select_from(Question)) == 3
+
+
+@pytest.mark.asyncio
+async def test_knowledge_proposal_acceptance_rolls_back_and_retries_atomically(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    monkeypatch.setattr(
+        guided_knowledge,
+        "get_embedding_provider",
+        lambda settings: DeterministicFakeEmbeddingProvider(
+            settings.embedding_dimensions
+        ),
+    )
+    ids = await seed_governance(session_factory)
+    guided = await create_session(client, ids)
+    participant = await add_participant(client, ids, guided["id"], "Alice")
+    question = await add_question(client, ids, guided["id"], "How do I claim mileage?")
+    guided_answer = await answer(
+        client, ids, question["id"], participant["id"], "Use the Expenses portal."
+    )
+    proposed = await client.post(
+        "/api/v1/guided/knowledge-proposals",
+        headers=headers(ids, "employee"),
+        json={
+            "guided_question_id": question["id"],
+            "guided_answer_id": guided_answer["id"],
+        },
+    )
+    proposal_id = UUID(proposed.json()["id"])
+
+    async with session_factory() as session:
+        initial_question_count = await session.scalar(
+            select(func.count()).select_from(Question)
+        )
+        initial_answer_count = await session.scalar(
+            select(func.count()).select_from(Answer)
+        )
+        initial_embedding_count = await session.scalar(
+            select(func.count()).select_from(QuestionEmbedding)
+        )
+
+    async def fail_after_question(self, question_id, data, *, commit=True):
+        raise RuntimeError("injected answer creation failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(guided_knowledge.AnswerService, "create", fail_after_question)
+        with pytest.raises(RuntimeError, match="injected answer creation failure"):
+            await client.post(
+                f"/api/v1/guided/knowledge-proposals/{proposal_id}",
+                headers=headers(ids),
+                json={"action": "accept"},
+            )
+
+    async with session_factory() as session:
+        stored_proposal = await session.get(KnowledgeProposal, proposal_id)
+        assert stored_proposal.status == "pending"
+        assert stored_proposal.created_question_id is None
+        assert await session.scalar(select(func.count()).select_from(Question)) == (
+            initial_question_count
+        )
+        assert await session.scalar(select(func.count()).select_from(Answer)) == (
+            initial_answer_count
+        )
+        assert await session.scalar(
+            select(func.count()).select_from(QuestionEmbedding)
+        ) == initial_embedding_count
+        assert await session.scalar(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(
+                AuditEvent.entity_id == proposal_id,
+                AuditEvent.action == AuditAction.KNOWLEDGE_PROPOSAL_ACCEPTED.value,
+            )
+        ) == 0
+
+    retried = await client.post(
+        f"/api/v1/guided/knowledge-proposals/{proposal_id}",
+        headers=headers(ids),
+        json={"action": "accept"},
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "accepted"
+    async with session_factory() as session:
+        stored_proposal = await session.get(KnowledgeProposal, proposal_id)
+        assert stored_proposal.created_question_id == UUID(
+            retried.json()["created_question_id"]
+        )
+        assert await session.scalar(select(func.count()).select_from(Question)) == (
+            initial_question_count + 1
+        )
+        assert await session.scalar(select(func.count()).select_from(Answer)) == (
+            initial_answer_count + 1
+        )
+        assert await session.scalar(
+            select(func.count()).select_from(QuestionEmbedding)
+        ) == initial_embedding_count + 1
+        created_question = await session.get(
+            Question, stored_proposal.created_question_id
+        )
+        assert created_question is not None
+        assert created_question.title == "How do I claim mileage?"
+        assert await session.scalar(
+            select(func.count())
+            .select_from(Answer)
+            .where(
+                Answer.question_id == created_question.id,
+                Answer.body == "Use the Expenses portal.",
+            )
+        ) == 1
+        assert await session.scalar(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(
+                AuditEvent.entity_id == proposal_id,
+                AuditEvent.action == AuditAction.KNOWLEDGE_PROPOSAL_ACCEPTED.value,
+            )
+        ) == 1
 
 
 @pytest.mark.asyncio

@@ -33,6 +33,16 @@ class GuestGroupRepository {
         .toList();
   });
 
+  Future<List<Map<String, dynamic>>> listArchivedGroups() =>
+      _request(() async {
+        final response = await _client.get<List<dynamic>>(
+          '/api/v1/guest/groups/archived',
+        );
+        return (response.data ?? const [])
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+      });
+
   Future<Map<String, dynamic>> createGroup({
     required String name,
     required String displayName,
@@ -124,6 +134,52 @@ class GuestGroupRepository {
     return response.data!;
   });
 
+  Future<Map<String, dynamic>> acceptAdminTransfer({
+    required String groupId,
+    required String transferId,
+  }) => _request(() async {
+    final response = await _client.post<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId/admin-transfers/$transferId/accept',
+    );
+    return response.data!;
+  });
+
+  Future<Map<String, dynamic>> declineAdminTransfer({
+    required String groupId,
+    required String transferId,
+  }) => _request(() async {
+    final response = await _client.post<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId/admin-transfers/$transferId/decline',
+    );
+    return response.data!;
+  });
+
+  Future<Map<String, dynamic>> cancelAdminTransfer({
+    required String groupId,
+    required String transferId,
+  }) => _request(() async {
+    final response = await _client.delete<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId/admin-transfers/$transferId',
+    );
+    return response.data!;
+  });
+
+  Future<Map<String, dynamic>> archiveGroup(String groupId) =>
+      _request(() async {
+        final response = await _client.post<Map<String, dynamic>>(
+          '/api/v1/guest/groups/$groupId/archive',
+        );
+        return response.data!;
+      });
+
+  Future<Map<String, dynamic>> restoreGroup(String groupId) =>
+      _request(() async {
+        final response = await _client.post<Map<String, dynamic>>(
+          '/api/v1/guest/groups/$groupId/restore',
+        );
+        return response.data!;
+      });
+
   Future<void> revokeInvitation({
     required String groupId,
     required String invitationId,
@@ -193,15 +249,30 @@ class GuestGroupRepository {
   Future<Map<String, dynamic>> updateEntry({
     required String groupId,
     required String entryId,
+    required int expectedRevision,
     required String title,
     required Map<String, dynamic> data,
-  }) => _request(() async {
-    final response = await _client.patch<Map<String, dynamic>>(
-      '/api/v1/guest/groups/$groupId/entries/$entryId',
-      data: {'title': title, 'data': data},
-    );
-    return response.data!;
-  });
+  }) async {
+    try {
+      final response = await _client.patch<Map<String, dynamic>>(
+        '/api/v1/guest/groups/$groupId/entries/$entryId',
+        data: {
+          'expected_revision': expectedRevision,
+          'title': title,
+          'data': data,
+        },
+      );
+      return response.data!;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 409) {
+        throw const ApiException(
+          'This content changed since you opened it. '
+          'Refresh and review the latest version before saving.',
+        );
+      }
+      throw ApiException.fromDio(error);
+    }
+  }
 
   Future<void> deleteEntry({
     required String groupId,

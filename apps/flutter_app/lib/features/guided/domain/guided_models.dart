@@ -108,6 +108,7 @@ class GuidedSessionSummary {
     required this.visibility,
     required this.revision,
     required this.updatedAt,
+    this.createdById,
     this.ownerText,
     this.contextReference,
     this.departmentId,
@@ -124,6 +125,7 @@ class GuidedSessionSummary {
       visibility: json['visibility'] as String,
       revision: json['revision'] as int? ?? 1,
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      createdById: json['created_by'] as String?,
       ownerText: json['owner_text'] as String?,
       contextReference: json['context_reference'] as String?,
       departmentId: json['department_id'] as String?,
@@ -139,6 +141,7 @@ class GuidedSessionSummary {
   final String visibility;
   final int revision;
   final DateTime updatedAt;
+  final String? createdById;
   final String? ownerText;
   final String? contextReference;
   final String? departmentId;
@@ -159,6 +162,7 @@ class GuidedSessionDetail extends GuidedSessionSummary {
     required this.questions,
     required this.preparedQuestionCount,
     required this.followUpCount,
+    super.createdById,
     super.ownerText,
     super.contextReference,
     super.departmentId,
@@ -176,6 +180,7 @@ class GuidedSessionDetail extends GuidedSessionSummary {
       visibility: summary.visibility,
       revision: summary.revision,
       updatedAt: summary.updatedAt,
+      createdById: summary.createdById,
       ownerText: summary.ownerText,
       contextReference: summary.contextReference,
       departmentId: summary.departmentId,
@@ -236,6 +241,7 @@ class GuidedTemplate {
     required this.currentVersion,
     required this.questions,
     this.description,
+    this.createdById,
   });
 
   factory GuidedTemplate.fromJson(Map<String, dynamic> json) {
@@ -246,6 +252,7 @@ class GuidedTemplate {
       description: json['description'] as String?,
       status: json['status'] as String,
       currentVersion: json['current_version'] as int,
+      createdById: json['created_by'] as String?,
       questions: (version?['questions'] as List<dynamic>? ?? const [])
           .map((item) => GuidedTemplateQuestion.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -258,6 +265,7 @@ class GuidedTemplate {
   final String status;
   final int currentVersion;
   final List<GuidedTemplateQuestion> questions;
+  final String? createdById;
 }
 
 enum GuidedViewMode {

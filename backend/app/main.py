@@ -1,8 +1,12 @@
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.router import api_router
+from app.api.v1.routes.account_state import router as account_state_router
 from app.api.v1.routes.guest import router as guest_router
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -11,6 +15,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
     ServiceUnavailableError,
 )
+from app.core.database import get_session
 
 settings = get_settings()
 app = FastAPI(title="IntQAFlow API", debug=settings.debug)
@@ -81,5 +86,20 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "environment": settings.app_env}
 
 
+@app.get("/ready", tags=["health"])
+async def readiness(
+    session: AsyncSession = Depends(get_session),
+) -> JSONResponse:
+    try:
+        await session.execute(text("SELECT id FROM organisations LIMIT 0"))
+    except SQLAlchemyError:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not_ready"},
+        )
+    return JSONResponse(content={"status": "ready"})
+
+
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(account_state_router, prefix="/api/v1")
 app.include_router(guest_router, prefix="/api/v1")

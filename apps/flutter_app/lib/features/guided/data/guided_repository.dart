@@ -239,6 +239,12 @@ class GuidedRepository {
     });
   }
 
+  Future<void> restoreTemplate(String id) {
+    return _request(() async {
+      await _client.post<void>('/api/v1/guided/templates/$id/restore', options: _options);
+    });
+  }
+
   Future<void> duplicateTemplate(String id) {
     return _request(() async {
       await _client.post<void>('/api/v1/guided/templates/$id/duplicate', options: _options);

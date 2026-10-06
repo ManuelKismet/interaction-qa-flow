@@ -127,6 +127,15 @@ async def archive_template(
     return await GuidedService(session).archive_template(template_id, identity.organisation_id, identity.user_id)
 
 
+@router.post("/templates/{template_id}/restore", response_model=GuidedTemplateResponse)
+async def restore_template(
+    template_id: UUID,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> GuidedTemplateResponse:
+    return await GuidedService(session).restore_template(template_id, identity.organisation_id, identity.user_id)
+
+
 @router.get("/sessions", response_model=list[GuidedSessionSummary])
 async def list_sessions(
     status_filter: GuidedSessionStatus | None = Query(default=None, alias="status"),

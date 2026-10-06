@@ -61,7 +61,7 @@ From the repository root:
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock
 cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
@@ -89,10 +89,16 @@ cd backend
 The command is idempotent: unchanged question text and model combinations are
 skipped using a source hash, while failures can be retried by rerunning it.
 
-The API is available at `http://localhost:8000`, health at `/health`, and
-interactive documentation at `/docs`.
+The API is available at `http://localhost:8000`; `/health` is a liveness check,
+and `/ready` checks database connectivity and the required `organisations` table.
+Interactive documentation is available at `/docs`.
 
-Run backend tests with:
+`requirements.txt` contains supported dependency ranges;
+`backend/requirements.lock` pins the resolved runtime and test dependencies for
+reproducible Python 3.12 installs. Backend CI installs the lock, runs
+`pip check`, Ruff syntax/undefined-name checks, compiles application/test
+modules, and runs the full test suite.
+Run backend tests locally with:
 
 ```sh
 cd backend

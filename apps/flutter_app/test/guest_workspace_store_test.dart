@@ -1,9 +1,158 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 
 void main() {
+  test('guest item IDs stay unique across rapid same-clock generation', () {
+    final ids = List.generate(256, (_) => newGuestItemId());
+
+    expect(ids.toSet(), hasLength(ids.length));
+    expect(ids.every((id) => id.startsWith('guest-v2-')), isTrue);
+  });
+
+  test(
+    'malformed nested local and backup data are rejected unchanged',
+    () async {
+      final malformed = jsonEncode({
+        'schema_version': 1,
+        'knowledge': [],
+        'sessions': [
+          {
+            'id': 'session',
+            'participants': 'not a list',
+            'questions': [],
+          },
+        ],
+        'templates': [],
+      });
+      final storage = MemoryGuestStorage()..write(malformed);
+      final store = GuestWorkspaceStore(storage);
+
+      await expectLater(store.load(), throwsFormatException);
+      expect(storage.read(), malformed);
+      expect(
+        () => GuestWorkspaceData.decodeBackup(malformed),
+        throwsFormatException,
+      );
+
+      for (final invalid in [
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {'id': 'missing-participants'},
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {
+              'id': 'missing-questions',
+              'participants': [
+                {'id': 'p1'},
+              ],
+            },
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {
+              'id': 'session',
+              'participants': [
+                {'id': 'participant', 'name': 'Alice'},
+              ],
+              'questions': [
+                {
+                  'id': 'question',
+                  'text': 'Prompt',
+                  'answers': [
+                    {
+                      'participant_id': 'participant',
+                      'follow_ups': [
+                        {
+                          'id': 'follow-up',
+                          'text': 'Follow-up',
+                          'answers': 'not a list',
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {
+              'id': 'session',
+              'participants': [
+                {'id': 'p1'},
+                {'name': 'Missing ID'},
+              ],
+              'questions': [],
+            },
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {
+              'id': 'session',
+              'participants': [
+                {'id': 'p1'},
+              ],
+              'questions': [
+                {
+                  'id': 'question',
+                  'text': 'Question',
+                  'answers': [
+                    {
+                      'participant_id': 'p1',
+                      'branches_collapsed': 'yes',
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [],
+          'templates': [
+            {
+              'id': 'template',
+              'participant_slots': [
+                {'id': 7},
+              ],
+            },
+          ],
+        },
+      ]) {
+        expect(
+          () => GuestWorkspaceData.decodeBackup(jsonEncode(invalid)),
+          throwsFormatException,
+        );
+      }
+    },
+  );
+
   test('local guest workspace persists Knowledge, templates and answer branches', () async {
     final storage = MemoryGuestStorage();
     final store = GuestWorkspaceStore(storage);
@@ -76,6 +225,40 @@ void main() {
     expect((followUps.single as Map<String, dynamic>)['text'], 'Which service?');
   });
 
+  test('loading a session with colliding participant IDs does not rewrite it', () async {
+    final storage = MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    final session = <String, dynamic>{
+      'id': 'legacy-collision',
+      'participants': [
+        {'id': 'duplicate-id', 'name': 'Alice'},
+        {'id': 'duplicate-id', 'name': 'Bob'},
+      ],
+      'questions': [
+        {
+          'id': 'shared-question',
+          'text': 'What happened?',
+          'scope': 'shared',
+          'answers': [
+            {
+              'participant_id': 'duplicate-id',
+              'body': 'Existing answer',
+              'follow_ups': [],
+            },
+          ],
+        },
+      ],
+    };
+    final original = GuestWorkspaceData(sessions: [session]);
+    await store.save(original);
+    final savedValue = storage.read();
+
+    final restored = await store.load();
+
+    expect(restored.sessions.single, session);
+    expect(storage.read(), savedValue);
+  });
+
   test('guest Knowledge search is keyword and prefix only', () {
     const entry = {'title': 'Password rotation', 'body': 'Change service keys.'};
 
@@ -103,14 +286,18 @@ void main() {
         sessions: [
           {
             'id': 'branch-session',
+            'participants': [
+              {'id': 'p', 'name': 'Participant'},
+            ],
             'questions': [
               {
                 'id': 'q',
+                'text': 'Root prompt',
                 'answers': [
                   {
                     'participant_id': 'p',
                     'follow_ups': [
-                      {'id': 'nested'},
+                      {'id': 'nested', 'text': 'Nested prompt'},
                     ],
                   },
                 ],

@@ -1,0 +1,671 @@
+From 1842442603414aa29d68fd1e6d5beaaf6bf643e2 Mon Sep 17 00:00:00 2001
+From: Copilot <copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 16:39:18 +0000
+Subject: [PATCH] Clarify personal workspace storage origins
+
+---
+ .../presentation/guest_workspace_page.dart    | 143 +++++++++++++++---
+ .../test/account_state_widget_test.dart       | 128 +++++++++++++++-
+ .../test/guest_group_dialog_test.dart         |  10 +-
+ .../test_personal_workspace_postgresql.py     |   6 +-
+ 4 files changed, 258 insertions(+), 29 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 0eb256b..1eec1bc 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -270,6 +270,32 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     );
+   }
+ 
++  String _storageStatus(String kind, Map<String, dynamic> item) {
++    final id = item['id'];
++    if (id is! String) return 'Local on this device';
++    final write = _pendingPersonalWrites['$kind:$id'];
++    if (write?.action == 'delete') {
++      return _personalError == null
++          ? 'Local copy · account removal pending'
++          : 'Local copy · account removal not confirmed';
++    }
++    final isPersonal = [
++      ..._personalItems,
++      ..._pendingPersonalItems,
++    ].any(
++      (record) =>
++          record['kind'] == kind &&
++          (record['data'] as Map?)?['id'] == id,
++    );
++    if (!isPersonal) return 'Local on this device';
++    if (write?.action == 'update') {
++      return _personalError == null
++          ? 'Personal account · saving changes'
++          : 'Personal account · save not confirmed';
++    }
++    return 'Personal account · saved';
++  }
++
+   void _save(GuestWorkspaceData submitted) {
+     final previousLocal = _data ?? const GuestWorkspaceData();
+     final uid = _verifiedPersonalUid;
+@@ -1535,6 +1561,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                       children: [
+                         _GuestKnowledgeTab(
+                           items: data.knowledge,
++                          storageStatus: (item) =>
++                              _storageStatus('knowledge', item),
++                          isPersonalAccount: (item) =>
++                              _storageStatus('knowledge', item).startsWith(
++                                'Personal account',
++                              ),
+                           onCreate: (item) => _save(
+                             data.copyWith(knowledge: [item, ...data.knowledge]),
+                           ),
+@@ -1550,6 +1582,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                         ),
+                         _GuestInteractTab(
+                           data: data,
++                          storageStatus: _storageStatus,
+                           onChange: _save,
+                           onSaveTemplate: (template) => _save(
+                             data.copyWith(
+@@ -1570,6 +1603,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   Future<void> _deleteKnowledge(GuestWorkspaceData data, String id) async {
+     final removed = data.knowledge.where((item) => item['id'] == id).firstOrNull;
+     if (removed == null) return;
++    final isPersonal = _storageStatus('knowledge', removed).startsWith(
++      'Personal account',
++    );
+     _save(
+       data.copyWith(
+         knowledge: data.knowledge.where((item) => item['id'] != id).toList(),
+@@ -1577,7 +1613,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     );
+     ScaffoldMessenger.of(context).showSnackBar(
+       SnackBar(
+-        content: const Text('Local Knowledge item removed.'),
++        content: Text(
++          isPersonal
++              ? 'Personal account copy removal queued. Any local copy remains '
++                  'on this device.'
++              : 'Local Knowledge item removed.',
++        ),
+         action: SnackBarAction(
+           label: 'Undo',
+           onPressed: () {
+@@ -1613,12 +1654,19 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         (hasDuplicateParticipantIds
+             ? 'Unavailable (duplicate participant IDs)'
+             : 'Not selected');
++    final storageDescription =
++        _storageStatus('interact_session', session).startsWith(
++          'Personal account',
++        )
++        ? 'Stored in your personal account'
++        : 'Stored locally on this device';
+     final allParticipants = await showDialog<bool>(
+       context: context,
+       builder: (context) => AlertDialog(
+         title: const Text('Export session PDF'),
+         content: Text(
+-          'Stored locally on this device. Choose the participant scope to preview before exporting. Current participant: $selectedParticipantName.',
++          '$storageDescription. Choose the participant scope to preview '
++          'before exporting. Current participant: $selectedParticipantName.',
+         ),
+         actions: [
+           TextButton(
+@@ -2005,7 +2053,7 @@ class _GuestNotice extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) {
+     final status = isRegistered
+-        ? 'Registered personal account · $saveStatus'
++        ? 'Registered personal account · Local copy · $saveStatus'
+         : 'Guest workspace · $saveStatus';
+     final explanation = isRegistered
+         ? 'Registered workspace. Local drafts stay in this browser profile '
+@@ -2082,12 +2130,16 @@ class _AccountMembershipNotice extends StatelessWidget {
+ class _GuestKnowledgeTab extends StatefulWidget {
+   const _GuestKnowledgeTab({
+     required this.items,
++    required this.storageStatus,
++    required this.isPersonalAccount,
+     required this.onCreate,
+     required this.onUpdate,
+     required this.onDelete,
+   });
+ 
+   final List<Map<String, dynamic>> items;
++  final String Function(Map<String, dynamic>) storageStatus;
++  final bool Function(Map<String, dynamic>) isPersonalAccount;
+   final ValueChanged<Map<String, dynamic>> onCreate;
+   final ValueChanged<Map<String, dynamic>> onUpdate;
+   final ValueChanged<String> onDelete;
+@@ -2136,7 +2188,10 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+   Future<void> _edit(Map<String, dynamic> item) async {
+     final updated = await showDialog<Map<String, dynamic>>(
+       context: context,
+-      builder: (context) => _EditGuestKnowledgeDialog(item: item),
++      builder: (context) => _EditGuestKnowledgeDialog(
++        item: item,
++        isPersonalAccount: widget.isPersonalAccount(item),
++      ),
+     );
+     if (updated != null &&
+         updated['title'].toString().isNotEmpty &&
+@@ -2202,6 +2257,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+                       [
+                         item['body'],
+                         item['answer'],
++                        widget.storageStatus(item),
+                       ].whereType<String>().where((text) => text.isNotEmpty).join(
+                         '\n\n',
+                       ),
+@@ -2210,12 +2266,16 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+                     trailing: Wrap(
+                       children: [
+                         IconButton(
+-                          tooltip: 'Edit local Knowledge',
++                          tooltip: widget.isPersonalAccount(item)
++                              ? 'Edit personal-account Knowledge'
++                              : 'Edit local Knowledge',
+                           onPressed: () => _edit(item),
+                           icon: const Icon(Icons.edit_outlined),
+                         ),
+                         IconButton(
+-                          tooltip: 'Remove local Knowledge',
++                          tooltip: widget.isPersonalAccount(item)
++                              ? 'Remove personal-account Knowledge'
++                              : 'Remove local Knowledge',
+                           onPressed: () => widget.onDelete(item['id'] as String),
+                           icon: const Icon(Icons.delete_outline),
+                         ),
+@@ -2300,9 +2360,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+ }
+ 
+ class _EditGuestKnowledgeDialog extends StatefulWidget {
+-  const _EditGuestKnowledgeDialog({required this.item});
++  const _EditGuestKnowledgeDialog({
++    required this.item,
++    required this.isPersonalAccount,
++  });
+ 
+   final Map<String, dynamic> item;
++  final bool isPersonalAccount;
+ 
+   @override
+   State<_EditGuestKnowledgeDialog> createState() =>
+@@ -2338,7 +2402,11 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
+ 
+   @override
+   Widget build(BuildContext context) => AlertDialog(
+-    title: const Text('Edit local Knowledge'),
++    title: Text(
++      widget.isPersonalAccount
++          ? 'Edit personal-account Knowledge'
++          : 'Edit local Knowledge',
++    ),
+     content: Form(
+       key: _formKey,
+       child: SizedBox(
+@@ -2390,7 +2458,9 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
+             'answer': _answer.text.trim(),
+           });
+         },
+-        child: const Text('Save locally'),
++        child: Text(
++          widget.isPersonalAccount ? 'Save account changes' : 'Save locally',
++        ),
+       ),
+     ],
+   );
+@@ -2399,12 +2469,14 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
+ class _GuestInteractTab extends StatefulWidget {
+   const _GuestInteractTab({
+     required this.data,
++    required this.storageStatus,
+     required this.onChange,
+     required this.onSaveTemplate,
+     required this.onPrint,
+   });
+ 
+   final GuestWorkspaceData data;
++  final String Function(String, Map<String, dynamic>) storageStatus;
+   final ValueChanged<GuestWorkspaceData> onChange;
+   final ValueChanged<Map<String, dynamic>> onSaveTemplate;
+   final void Function(Map<String, dynamic>, String?) onPrint;
+@@ -2502,7 +2574,12 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+     );
+     ScaffoldMessenger.of(context).showSnackBar(
+       SnackBar(
+-        content: const Text('Local session removed.'),
++        content: Text(
++          widget.storageStatus.startsWith('Personal account')
++              ? 'Personal account session removal queued. Any local copy '
++                  'remains on this device.'
++              : 'Local session removed.',
++        ),
+         action: SnackBarAction(
+           label: 'Undo',
+           onPressed: () => widget.onChange(
+@@ -2549,15 +2626,18 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+                 children: [
+                   Expanded(
+                     child: Text(
+-                      'Interact sessions stay private on this device.',
++                      'New Interact sessions stay local. '
++                      'Imported sessions stay in your personal account.',
+                       style: Theme.of(context).textTheme.bodyMedium,
+                     ),
+                   ),
+                   const _GuestInfoButton(
+                     tooltip: 'Interact privacy information',
+-                    title: 'About local Interact sessions',
++                    title: 'About Interact storage',
+                     content:
+-                        'Interact sessions stay private on this device until you explicitly select one for a group.',
++                        'New sessions stay on this device unless you explicitly '
++                        'import them. Imported sessions and their edits stay in '
++                        'your personal account; group sharing is separate.',
+                   ),
+                 ],
+               ),
+@@ -2567,7 +2647,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+                   initialValue: _selectedTemplateId,
+                   isExpanded: true,
+                   decoration: const InputDecoration(
+-                    labelText: 'Optional local template',
++                    labelText: 'Optional template',
+                   ),
+                   items: [
+                     const DropdownMenuItem<String>(
+@@ -2578,7 +2658,8 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+                       DropdownMenuItem(
+                         value: template['id'] as String,
+                         child: Text(
+-                          template['name'] as String? ?? 'Local template',
++                          '${template['name'] as String? ?? 'Template'} · '
++                          '${widget.storageStatus('template', template)}',
+                         ),
+                       ),
+                   ],
+@@ -2649,6 +2730,10 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+                 _GuestSessionEditor(
+                   key: ValueKey(session['id']),
+                   session: session,
++                  storageStatus: widget.storageStatus(
++                    'interact_session',
++                    session,
++                  ),
+                   onChange: _updateSession,
+                   onDelete: () => _deleteSession(session),
+                   onSaveTemplate: () => _saveTemplate(session),
+@@ -2659,7 +2744,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+               if (widget.data.templates.isNotEmpty) ...[
+                 const Divider(height: 28),
+                 Text(
+-                  'Local templates',
++                  'Templates',
+                   style: Theme.of(context).textTheme.titleMedium,
+                 ),
+                 for (final template in widget.data.templates)
+@@ -2667,7 +2752,9 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+                     leading: const Icon(Icons.description_outlined),
+                     title: Text(template['name'] as String? ?? 'Template'),
+                     subtitle: Text(
+-                      '${(template['questions'] as List? ?? const []).length} prepared questions',
++                      '${widget.storageStatus('template', template)} · '
++                      '${(template['questions'] as List? ?? const []).length} '
++                      'prepared questions',
+                     ),
+                   ),
+               ],
+@@ -2680,6 +2767,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+ class _GuestSessionEditor extends StatefulWidget {
+   const _GuestSessionEditor({
+     required this.session,
++    required this.storageStatus,
+     required this.onChange,
+     required this.onDelete,
+     required this.onSaveTemplate,
+@@ -2689,6 +2777,7 @@ class _GuestSessionEditor extends StatefulWidget {
+   });
+ 
+   final Map<String, dynamic> session;
++  final String storageStatus;
+   final ValueChanged<Map<String, dynamic>> onChange;
+   final VoidCallback onDelete;
+   final VoidCallback onSaveTemplate;
+@@ -2775,7 +2864,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
+       context: context,
+       builder: (context) => _GuestRequiredTextDialog(
+         title: 'Rename participant',
+-        submitLabel: 'Save name locally',
++        submitLabel: widget.storageStatus.startsWith('Personal account')
++            ? 'Save account changes'
++            : 'Save name locally',
+         fields: [
+           _GuestRequiredTextField(
+             label: 'Participant name',
+@@ -2853,7 +2944,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
+           overflow: TextOverflow.ellipsis,
+         ),
+         subtitle: Text(
+-          '${participants.length} participants · Private on this device',
++          '${participants.length} participants · ${widget.storageStatus}',
+           maxLines: 2,
+           overflow: TextOverflow.ellipsis,
+         ),
+@@ -3033,6 +3124,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
+               _GuestQuestionEditor(
+                 key: ValueKey(question['id']),
+                 question: question,
++                isPersonalAccount:
++                    widget.storageStatus.startsWith('Personal account'),
+                 participants: activeParticipant == null
+                     ? const []
+                     : [activeParticipant],
+@@ -3080,6 +3173,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
+ class _GuestQuestionEditor extends StatefulWidget {
+   const _GuestQuestionEditor({
+     required this.question,
++    required this.isPersonalAccount,
+     required this.participants,
+     required this.onUpdate,
+     required this.onRemove,
+@@ -3089,6 +3183,7 @@ class _GuestQuestionEditor extends StatefulWidget {
+   });
+ 
+   final Map<String, dynamic> question;
++  final bool isPersonalAccount;
+   final List<Map<String, dynamic>> participants;
+   final ValueChanged<Map<String, dynamic>> onUpdate;
+   final VoidCallback onRemove;
+@@ -3201,6 +3296,7 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
+                   _GuestAnswerEditor(
+                     key: ValueKey('${id}_${participant['id']}'),
+                     participant: participant,
++                    isPersonalAccount: widget.isPersonalAccount,
+                     answer: _answers
+                         .where(
+                           (answer) =>
+@@ -3259,6 +3355,7 @@ Map<String, dynamic>? _answerForParticipant(
+ class _GuestAnswerEditor extends StatefulWidget {
+   const _GuestAnswerEditor({
+     required this.participant,
++    required this.isPersonalAccount,
+     required this.answer,
+     required this.onAnswerChanged,
+     required this.onAddFollowUp,
+@@ -3268,6 +3365,7 @@ class _GuestAnswerEditor extends StatefulWidget {
+   });
+ 
+   final Map<String, dynamic> participant;
++  final bool isPersonalAccount;
+   final Map<String, dynamic>? answer;
+   final ValueChanged<String> onAnswerChanged;
+   final ValueChanged<String> onAddFollowUp;
+@@ -3358,8 +3456,10 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
+             focusNode: _answerFocus,
+             minLines: 2,
+             maxLines: 6,
+-            decoration: const InputDecoration(
+-              labelText: 'Local answer',
++            decoration: InputDecoration(
++              labelText: widget.isPersonalAccount
++                  ? 'Personal-account answer'
++                  : 'Local answer',
+               alignLabelWithHint: true,
+             ),
+             onChanged: widget.onAnswerChanged,
+@@ -3450,6 +3550,7 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
+                       _GuestQuestionEditor(
+                         key: ValueKey((branch as Map<String, dynamic>)['id']),
+                         question: branch,
++                        isPersonalAccount: widget.isPersonalAccount,
+                         participants: [widget.participant],
+                         nested: true,
+                         onRemove: () => _removeNestedBranch(branch),
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index b884995..1b3af07 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -523,7 +523,7 @@ void main() {
+     await tester.pumpAndSettle();
+     expect(
+       find.textContaining(
+-        'This is a local workspace.',
++        'Guest workspace active in this browser profile.',
+       ),
+       findsOneWidget,
+     );
+@@ -625,14 +625,20 @@ void main() {
+       page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'a')),
+     );
+     await tester.pumpAndSettle();
++    await tester.tap(find.text('Saved Q&A'));
++    await tester.pumpAndSettle();
+     expect(find.text('Account A private item'), findsOneWidget);
+     expect((await storage.load()).knowledge, isEmpty);
++    await tester.tap(find.text('Back to add a local question'));
++    await tester.pumpAndSettle();
+ 
+     repository.items = [personalItem('b', 'Account B private item')];
+     await tester.pumpWidget(
+       page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'b')),
+     );
+     await tester.pumpAndSettle();
++    await tester.tap(find.text('Saved Q&A'));
++    await tester.pumpAndSettle();
+ 
+     expect(find.text('Account A private item'), findsNothing);
+     expect(find.text('Account B private item'), findsOneWidget);
+@@ -755,6 +761,8 @@ void main() {
+       repository.imports[1].single['source_key'],
+     );
+     expect((await store.load()).knowledge, hasLength(2));
++    await tester.tap(find.text('Saved Q&A'));
++    await tester.pumpAndSettle();
+     expect(find.text('Import this item'), findsOneWidget);
+     expect(find.text('Keep this item local'), findsOneWidget);
+   });
+@@ -858,7 +866,9 @@ void main() {
+       ),
+     );
+     await tester.pumpAndSettle();
+-    await tester.tap(find.byTooltip('Edit local Knowledge'));
++    await tester.tap(find.text('Saved Q&A'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
+     await tester.pumpAndSettle();
+     await tester.enterText(
+       find.descendant(
+@@ -870,7 +880,7 @@ void main() {
+     await tester.tap(
+       find.descendant(
+         of: find.byType(AlertDialog),
+-        matching: find.text('Save locally'),
++        matching: find.text('Save account changes'),
+       ),
+     );
+     await tester.pumpAndSettle();
+@@ -895,6 +905,107 @@ void main() {
+     expect(find.text('Latest account title'), findsNothing);
+   });
+ 
++  testWidgets('editing an imported nested session updates the account copy', (
++    tester,
++  ) async {
++    final session = <String, dynamic>{
++      'id': 'session-id',
++      'title': 'Imported nested session',
++      'participants': [
++        {'id': 'alice', 'name': 'Alice'},
++      ],
++      'questions': [
++        {
++          'id': 'root-question',
++          'text': 'Root question',
++          'scope': 'shared',
++          'answers': [
++            {
++              'participant_id': 'alice',
++              'body': 'Original answer',
++              'branches_collapsed': false,
++              'follow_ups': [
++                {
++                  'id': 'nested-question',
++                  'text': 'Existing nested follow-up',
++                  'scope': 'participant',
++                  'target_participant_id': 'alice',
++                  'answers': [
++                    {
++                      'participant_id': 'alice',
++                      'body': 'Nested answer',
++                      'branches_collapsed': false,
++                      'follow_ups': <Map<String, dynamic>>[],
++                    },
++                  ],
++                },
++              ],
++            },
++          ],
++        },
++      ],
++    };
++    final repository = _TestPersonalWorkspaceRepository([
++      {
++        'id': 'remote-session',
++        'kind': 'interact_session',
++        'source_key': 'interact_session:session-id',
++        'title': 'Imported nested session',
++        'data': session,
++        'revision': 1,
++        'created_at': '2026-10-06T00:00:00+00:00',
++        'updated_at': '2026-10-06T00:00:00+00:00',
++      },
++    ]);
++    final store = GuestWorkspaceStore(_MemoryGuestStorage());
++    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          guestWorkspaceStoreProvider.overrideWithValue(store),
++          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: MaterialApp(
++          home: GuestWorkspacePage(
++            firebaseReady: true,
++            personalWorkspaceEnabled: true,
++            accountUser: user,
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Interact'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Imported nested session'));
++    await tester.pumpAndSettle();
++
++    expect(find.text('Existing nested follow-up'), findsOneWidget);
++    final answer = find
++        .byWidgetPredicate(
++          (widget) =>
++              widget is TextField &&
++              widget.decoration?.labelText == 'Personal-account answer',
++        )
++        .first;
++    await tester.ensureVisible(answer);
++    await tester.enterText(answer, 'Updated account answer');
++    await tester.pumpAndSettle();
++
++    expect(repository.updateRevisions, [1]);
++    final savedSession = repository.items.single['data'] as Map;
++    final rootQuestion = (savedSession['questions'] as List).single as Map;
++    final rootAnswer = (rootQuestion['answers'] as List).single as Map;
++    expect(rootAnswer['body'], 'Updated account answer');
++    expect(
++      ((rootAnswer['follow_ups'] as List).single as Map)['text'],
++      'Existing nested follow-up',
++    );
++    expect((await store.load()).sessions, isEmpty);
++    expect(find.textContaining('Personal account · saved'), findsOneWidget);
++  });
++
+   testWidgets('new local work is not uploaded before explicit import', (
+     tester,
+   ) async {
+@@ -923,7 +1034,9 @@ void main() {
+       find.byType(TextFormField).first,
+       'Keep this Knowledge item local',
+     );
+-    await tester.tap(find.text('Save locally'));
++    final saveLocally = find.text('Save locally');
++    await tester.ensureVisible(saveLocally);
++    await tester.tap(saveLocally);
+     await tester.pumpAndSettle();
+ 
+     expect(repository.imports, isEmpty);
+@@ -1274,7 +1387,12 @@ void main() {
+     expect(find.byTooltip('Workspace options'), findsOneWidget);
+     expect(find.byTooltip('Guest workspace options'), findsNothing);
+     expect(find.textContaining('guest'), findsNothing);
+-    expect(find.text('Registered workspace · Saved on this device'), findsOneWidget);
++    expect(
++      find.text(
++        'Registered personal account · Local copy · Saved on this device',
++      ),
++      findsOneWidget,
++    );
+     await tester.tap(find.byTooltip('Workspace storage information'));
+     await tester.pumpAndSettle();
+     expect(
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index 280e48e..9e5cc04 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -627,7 +627,10 @@ void main() {
+               find.textContaining('Check your email for the verification link'),
+               findsOneWidget,
+             );
+-            expect(find.text('Sign in'), findsOneWidget);
++            expect(
++              find.text('Already have an account? Sign in'),
++              findsOneWidget,
++            );
+             expect(find.text('Create account'), findsNothing);
+           }
+         }
+@@ -1370,7 +1373,10 @@ void main() {
+               find.textContaining('Check your email for the verification link'),
+               findsOneWidget,
+             );
+-            expect(find.text('Sign in'), findsOneWidget);
++            expect(
++              find.text('Already have an account? Sign in'),
++              findsOneWidget,
++            );
+             expect(find.text('Create account'), findsNothing);
+           }
+         }
+diff --git a/backend/tests/test_personal_workspace_postgresql.py b/backend/tests/test_personal_workspace_postgresql.py
+index e59b993..f87f20e 100644
+--- a/backend/tests/test_personal_workspace_postgresql.py
++++ b/backend/tests/test_personal_workspace_postgresql.py
+@@ -41,7 +41,11 @@ async def test_overlapping_reverse_order_personal_imports_do_not_deadlock() -> N
+                 kind="knowledge",
+                 source_key=f"knowledge:{item_id}",
+                 title=f"Item {item_id}",
+-                data={"id": item_id, "answer": item_id},
++                data={
++                    "id": item_id,
++                    "title": f"Item {item_id}",
++                    "answer": item_id,
++                },
+             )
+             for item_id in ("a", "b")
+         ]
+base-commit: 3369e9e
+-- 
+2.55.0
+

@@ -4,10 +4,38 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
+import 'package:int_qa_flow/core/api/api_exception.dart';
 
 const _authorizationScheme = 'Bearer';
 
 void main() {
+  test('maps shared API failures to safe actionable messages', () {
+    const expected = {
+      403: 'You do not have permission to do that.',
+      404: 'That item could not be found.',
+      408: 'The request timed out. Refresh status before trying again.',
+      409:
+          'This content changed or is unavailable. Refresh and review it before trying again.',
+      429: 'Request limit reached. Wait before trying again.',
+      503:
+          'IntQAFlow is temporarily unavailable. Refresh status before trying again.',
+    };
+    for (final entry in expected.entries) {
+      final request = RequestOptions(path: '/api/v1/guest/groups');
+      final error = DioException(
+        requestOptions: request,
+        response: Response(
+          requestOptions: request,
+          statusCode: entry.key,
+          data: {'detail': 'secret-password raw server details'},
+        ),
+      );
+      final message = ApiException.fromDio(error).message;
+      expect(message, entry.value);
+      expect(message, isNot(contains('secret-password')));
+    }
+  });
+
   test('attaches current Firebase and App Check tokens to protected calls', () async {
     final tokens = _FakeTokenSource();
     final adapter = _RecordingAdapter((_) => _ok());
@@ -15,6 +43,25 @@ void main() {
 
     await client.get<void>('/api/v1/questions');
 
+    expect(
+      adapter.requests.single.headers['Authorization'],
+      '$_authorizationScheme current-id-token',
+    );
+    expect(
+      adapter.requests.single.headers['X-Firebase-AppCheck'],
+      'current-app-check-token',
+    );
+    client.close();
+  });
+
+  test('shared guest-group listing uses Firebase and App Check tokens', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _okList());
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await client.get<List<dynamic>>('/api/v1/guest/groups');
+
+    expect(adapter.requests.single.path, '/api/v1/guest/groups');
     expect(
       adapter.requests.single.headers['Authorization'],
       '$_authorizationScheme current-id-token',
@@ -53,6 +100,22 @@ void main() {
 
     await expectLater(
       client.get<void>('/api/v1/auth/me'),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(tokens.forceRefreshCount, 1);
+    expect(tokens.signedOut, isFalse);
+    expect(adapter.requests.length, 2);
+    client.close();
+  });
+
+  test('keeps signed-in identity when account-state lookup cannot be verified', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _unauthorized());
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await expectLater(
+      client.get<void>('/api/v1/account/state'),
       throwsA(isA<DioException>()),
     );
 
@@ -106,6 +169,14 @@ class _RecordingAdapter implements HttpClientAdapter {
 
 ResponseBody _ok() => ResponseBody.fromString(
       '{}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+
+ResponseBody _okList() => ResponseBody.fromString(
+      '[]',
       200,
       headers: {
         Headers.contentTypeHeader: ['application/json'],

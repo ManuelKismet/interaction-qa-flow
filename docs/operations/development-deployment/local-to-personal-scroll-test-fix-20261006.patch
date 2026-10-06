@@ -1,0 +1,62 @@
+From 45a55dad4f5d6f859b4e52c6b4aef4955cb52f4a Mon Sep 17 00:00:00 2001
+From: Copilot <copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 16:59:19 +0000
+Subject: [PATCH] Use correct scrollables in guest workspace tests
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../test/account_state_widget_test.dart       | 24 +++++++++++++++++--
+ 1 file changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index a325a71..2700783 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -765,10 +765,20 @@ void main() {
+     expect((await store.load()).knowledge, hasLength(2));
+     await tester.tap(find.text('Saved Q&A'));
+     await tester.pumpAndSettle();
++    final savedListScrollable = find
++        .ancestor(
++          of: find.text('Back to add a local question'),
++          matching: find.byType(Scrollable),
++        )
++        .first;
++    expect(
++      tester.widget<Scrollable>(savedListScrollable).axisDirection,
++      AxisDirection.down,
++    );
+     await tester.scrollUntilVisible(
+       find.text('Keep this item local'),
+       250,
+-      scrollable: find.byType(Scrollable).first,
++      scrollable: savedListScrollable,
+     );
+     expect(find.text('Import this item'), findsOneWidget);
+     expect(find.text('Keep this item local'), findsOneWidget);
+@@ -1042,10 +1052,20 @@ void main() {
+       'Keep this Knowledge item local',
+     );
+     final saveLocally = find.text('Save locally');
++    final addQuestionScrollable = find
++        .ancestor(
++          of: find.text('Add a local question'),
++          matching: find.byType(Scrollable),
++        )
++        .first;
++    expect(
++      tester.widget<Scrollable>(addQuestionScrollable).axisDirection,
++      AxisDirection.down,
++    );
+     await tester.scrollUntilVisible(
+       saveLocally,
+       250,
+-      scrollable: find.byType(Scrollable).first,
++      scrollable: addQuestionScrollable,
+     );
+     await tester.tap(saveLocally);
+     await tester.pumpAndSettle();
+base-commit: 2978fb892bc9de90cf96f8bdba598f6239a781a5
+-- 
+2.55.0
+

@@ -103,11 +103,17 @@ async def test_answer_resolve_detail_and_reopen(app_client) -> None:
     assert detail.json()["accepted_answer"]["is_accepted"] is True
     assert len(detail.json()["answers"]) == 1
 
+    missing_reopen_body = await client.post(
+        f"/api/v1/questions/{question['id']}/reopen",
+    )
+    assert missing_reopen_body.status_code == 422
+
     reopened = await client.post(
         f"/api/v1/questions/{question['id']}/reopen",
-        json={
-            "organisation_id": str(identities["organisation_id"]),
-            "user_id": str(identities["admin_id"]),
+        json={},
+        headers={
+            "X-Organisation-ID": str(identities["organisation_id"]),
+            "X-User-ID": str(identities["admin_id"]),
         },
     )
     assert reopened.status_code == 200

@@ -1,0 +1,52 @@
+From 7f926a375710e5c872549a92a1135dfb7565bffd Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 11:14:51 +0000
+Subject: [PATCH] Hide sign out for guest accounts
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../features/guest/presentation/guest_workspace_page.dart  | 2 +-
+ apps/flutter_app/test/account_state_widget_test.dart       | 7 ++++++-
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index ce2548a..af613b3 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -1256,7 +1256,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               child: Text('Retry account check'),
+             ),
+         ],
+-        if (user != null) ...[
++        if (registered) ...[
+           const PopupMenuDivider(),
+           const PopupMenuItem(
+             value: 'sign-out',
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 0eb16f2..72669c8 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -407,7 +407,7 @@ void main() {
+     expect(find.text('Shared groups identity'), findsOneWidget);
+     expect(find.text('Create account from this guest'), findsOneWidget);
+     expect(find.text('Start fresh with a separate account'), findsOneWidget);
+-    expect(find.text('Sign out'), findsOneWidget);
++    expect(find.text('Sign out'), findsNothing);
+     expect(find.text('Organisation admin'), findsNothing);
+   });
+ 
+@@ -715,6 +715,11 @@ void main() {
+     await tester.pumpAndSettle();
+     expect(find.textContaining('no organisation membership'), findsOneWidget);
+     expect(find.text('Checking account'), findsNothing);
++    await tester.tap(find.text('Account'));
++    await tester.pumpAndSettle();
++    expect(find.text('No organisation membership'), findsOneWidget);
++    expect(find.text('Sign out'), findsOneWidget);
++    expect(find.text('Sign in'), findsNothing);
+   });
+ 
+   testWidgets('auth loading is not presented as a signed-out guest', (
+-- 
+2.55.0
+

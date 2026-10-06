@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from app.api import dependencies
 from app.api.dependencies import enforce_tenant_scope, get_development_identity
 from app.main import app
+from app.maintenance import guest_retention
 from app.models.guest import (
     GuestGroup,
     GuestGroupEntry,
@@ -19,19 +20,29 @@ from app.services import guest as guest_service
 PROJECT_ID = "intqaflow-dev"
 
 
-def bearer(uid: str, provider: str = "anonymous") -> dict[str, str]:
-    token = "-".join(("test", provider, uid))
+def bearer(
+    uid: str,
+    provider: str = "anonymous",
+    *,
+    email_verified: bool | None = None,
+) -> dict[str, str]:
+    verified = (
+        provider != "anonymous" if email_verified is None else email_verified
+    )
+    token = f"test-{provider}-{uid}~{int(verified)}"
     return {"Authorization": "".join(("Bear", "er ", token))}
 
 
 def install_test_tokens(monkeypatch) -> None:
     def verify(token: str, _settings) -> dict[str, object]:
+        token, verified = token.rsplit("~", 1)
         _, provider, uid = token.split("-", 2)
         return {
             "aud": PROJECT_ID,
             "iss": f"https://securetoken.google.com/{PROJECT_ID}",
             "sub": uid,
             "firebase": {"sign_in_provider": provider},
+            "email_verified": verified == "1",
         }
 
     monkeypatch.setattr(dependencies, "verify_id_token", verify)
@@ -53,6 +64,34 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
     install_test_tokens(monkeypatch)
     owner = await make_group(client, "guest-owner", "Field research")
     group_id = owner["id"]
+    linked_owner = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("guest-owner", "password"),
+    )
+    assert linked_owner.status_code == 200
+    assert linked_owner.json()["role"] == "admin"
+    linked_owner_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("guest-owner", "password"),
+        json={"role": "viewer", "expires_in_hours": 12},
+    )
+    assert linked_owner_invitation.status_code == 200
+    assert (
+        await client.delete(
+            f"/api/v1/guest/groups/{group_id}/invitations/"
+            f"{linked_owner_invitation.json()['id']}",
+            headers=bearer("guest-owner", "password"),
+        )
+    ).status_code == 204
+    identity_override = app.dependency_overrides.pop(get_development_identity)
+    try:
+        unmapped_identity = await client.get(
+            "/api/v1/auth/me",
+            headers=bearer("guest-owner", "password"),
+        )
+    finally:
+        app.dependency_overrides[get_development_identity] = identity_override
+    assert unmapped_identity.status_code == 401
     async with session_factory() as db:
         group_row = await db.scalar(
             select(GuestGroup).where(GuestGroup.id == UUID(group_id))
@@ -195,26 +234,48 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
     changed = await client.patch(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
         headers=bearer("guest-editor"),
-        json={"title": "Updated password policy"},
+        json={"expected_revision": 1, "title": "Updated password policy"},
     )
     assert changed.status_code == 403
     admin_edit = await client.patch(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
         headers=bearer("guest-owner"),
-        json={"title": "Admin-reviewed password policy"},
+        json={"expected_revision": 1, "title": "Admin-reviewed password policy"},
     )
     assert admin_edit.status_code == 200
     changed_by_author = await client.patch(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
         headers=bearer("guest-joiner"),
-        json={"title": "Updated password policy"},
+        json={"expected_revision": 2, "title": "Updated password policy"},
     )
     assert changed_by_author.status_code == 200
+
+    first_edit = await client.patch(
+        f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
+        headers=bearer("guest-joiner"),
+        json={"expected_revision": 3, "title": "First concurrent edit"},
+    )
+    assert first_edit.status_code == 200
+    assert first_edit.json()["revision"] == 4
+    stale_edit = await client.patch(
+        f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
+        headers=bearer("guest-owner"),
+        json={"expected_revision": 3, "title": "Stale concurrent edit"},
+    )
+    assert stale_edit.status_code == 409
+    latest = await client.get(
+        f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}",
+        headers=bearer("guest-owner"),
+    )
+    assert latest.status_code == 200
+    assert latest.json()["title"] == "First concurrent edit"
+    assert latest.json()["revision"] == 4
+
     history = await client.get(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}/history",
         headers=bearer("guest-owner"),
     )
-    assert [item["revision"] for item in history.json()] == [1, 2, 3]
+    assert [item["revision"] for item in history.json()] == [1, 2, 3, 4]
     exported = await client.get(
         f"/api/v1/guest/groups/{group_id}/entries/{knowledge.json()['id']}/export",
         headers=bearer("guest-owner"),
@@ -312,7 +373,26 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
         params={"member_id": joined.json()["id"]},
     )
     assert transfer.status_code == 200, transfer.text
-    assert transfer.json()["role"] == "admin"
+    assert transfer.json()["status"] == "pending"
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}",
+            headers=bearer("transfer-host"),
+        )
+    ).json()["role"] == "admin"
+    recipient_detail = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("transfer-viewer"),
+    )
+    pending_transfer = recipient_detail.json()["pending_admin_transfer"]
+    assert pending_transfer["is_target"] is True
+    accepted_transfer = await client.post(
+        f"/api/v1/guest/groups/{group_id}/admin-transfers/"
+        f"{transfer.json()['id']}/accept",
+        headers=bearer("transfer-viewer"),
+    )
+    assert accepted_transfer.status_code == 200, accepted_transfer.text
+    assert accepted_transfer.json()["status"] == "accepted"
     old_admin = await client.get(
         f"/api/v1/guest/groups/{group_id}", headers=bearer("transfer-host")
     )
@@ -398,9 +478,110 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
     registered_create = await client.post(
         "/api/v1/guest/groups",
         headers=bearer("registered-org-user", "password"),
-        json={"name": "Not anonymous", "display_name": "Org user"},
+        json={"name": "Registered group", "display_name": "Org user"},
     )
-    assert registered_create.status_code == 403
+    assert registered_create.status_code == 201
+    assert registered_create.json()["role"] == "admin"
+
+    unverified_create = await client.post(
+        "/api/v1/guest/groups",
+        headers=bearer(
+            "unverified-registered", "password", email_verified=False
+        ),
+        json={"name": "Unverified group", "display_name": "Unverified user"},
+    )
+    assert unverified_create.status_code == 403
+
+    registered_group = registered_create.json()
+    registered_invitation = await client.post(
+        f"/api/v1/guest/groups/{registered_group['id']}/invitations",
+        headers=bearer("registered-org-user", "password"),
+        json={"role": "contributor", "expires_in_hours": 12},
+    )
+    assert registered_invitation.status_code == 200
+    registered_join_payload = {
+        "token": registered_invitation.json()["token"],
+        "display_name": "Verified joiner",
+    }
+    rejected_identity_header = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers={
+            **bearer(
+                "verified-registered-joiner", "google.com", email_verified=True
+            ),
+            "X-User-ID": "caller-selected-user",
+        },
+        json=registered_join_payload,
+    )
+    assert rejected_identity_header.status_code == 400
+    assert rejected_identity_header.json() == {
+        "detail": "Caller-selected identity and organisation headers are not accepted"
+    }
+    pending_registered = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer(
+            "verified-registered-joiner", "google.com", email_verified=True
+        ),
+        json=registered_join_payload,
+    )
+    assert pending_registered.status_code == 200
+    assert pending_registered.json()["status"] == "pending"
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{registered_group['id']}",
+            headers=bearer("verified-registered-joiner", "google.com"),
+        )
+    ).status_code == 404
+    unverified_join = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer(
+            "unverified-joiner", "password", email_verified=False
+        ),
+        json={
+            "token": registered_invitation.json()["token"],
+            "display_name": "Unverified joiner",
+        },
+    )
+    assert unverified_join.status_code == 403
+    approve_registered = await client.post(
+        f"/api/v1/guest/groups/{registered_group['id']}/members/"
+        f"{pending_registered.json()['id']}/approve",
+        headers=bearer("registered-org-user", "password"),
+    )
+    assert approve_registered.status_code == 200
+    assert approve_registered.json()["status"] == "active"
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{registered_group['id']}",
+            headers=bearer("verified-registered-joiner", "google.com"),
+        )
+    ).status_code == 200
+    assert (
+        await client.get(
+            "/api/v1/auth/me",
+            headers=bearer("verified-registered-joiner", "google.com"),
+        )
+    ).status_code == 401
+    async with session_factory() as db:
+        registered_user = await db.scalar(
+            select(User).where(
+                User.id == UUID("00000000-0000-0000-0000-000000000002")
+            )
+        )
+        assert registered_user is not None
+        registered_user.role = UserRole.ADMIN
+        await db.commit()
+    org_admin_has_no_implicit_group_access = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("registered-org-user", "password"),
+    )
+    assert org_admin_has_no_implicit_group_access.status_code == 404
+    linked_group_admin = await client.get(
+        f"/api/v1/guest/groups/{registered_group['id']}",
+        headers=bearer("registered-org-user", "password"),
+    )
+    assert linked_group_admin.status_code == 200
+    assert linked_group_admin.json()["role"] == "admin"
 
     async with session_factory() as db:
         memberships = list(
@@ -413,7 +594,7 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
         assert {member.role for member in memberships} == {"admin", "contributor"}
         registered = await db.scalar(select(User))
         assert registered is not None
-        assert registered.role == UserRole.EMPLOYEE
+        assert registered.role == UserRole.ADMIN
 
 
 @pytest.mark.asyncio
@@ -533,3 +714,337 @@ async def test_invite_expiry_revocation_replay_limits_and_import_idempotency(
         params={"query": "Imported"},
     )
     assert limited_search.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_archive_retains_group_data_and_restores_only_same_admin_uid(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    install_test_tokens(monkeypatch)
+    group = await make_group(client, "archive-owner", "Recoverable group")
+    group_id = group["id"]
+    invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("archive-owner"),
+        json={"role": "viewer"},
+    )
+    unused_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("archive-owner"),
+        json={"role": "contributor"},
+    )
+    removed_invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("archive-owner"),
+        json={"role": "viewer"},
+    )
+    pending_member = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer("pending-member"),
+        json={
+            "token": invitation.json()["token"],
+            "display_name": "Pending member",
+        },
+    )
+    removed_member = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer("removed-member"),
+        json={
+            "token": removed_invitation.json()["token"],
+            "display_name": "Removed member",
+        },
+    )
+    assert removed_member.status_code == 200
+    approved_removed_member = await client.post(
+        f"/api/v1/guest/groups/{group_id}/members/"
+        f"{removed_member.json()['id']}/approve",
+        headers=bearer("archive-owner"),
+    )
+    assert approved_removed_member.status_code == 200
+    removed = await client.delete(
+        f"/api/v1/guest/groups/{group_id}/members/{removed_member.json()['id']}",
+        headers=bearer("archive-owner"),
+    )
+    assert removed.status_code == 204
+    content = await client.post(
+        f"/api/v1/guest/groups/{group_id}/entries",
+        headers=bearer("archive-owner"),
+        json={
+            "kind": "knowledge",
+            "title": "Retained entry",
+            "data": {"answer": "Still retained"},
+        },
+    )
+    assert pending_member.status_code == 200
+    assert content.status_code == 201
+
+    archived = await client.post(
+        f"/api/v1/guest/groups/{group_id}/archive",
+        headers=bearer("archive-owner"),
+    )
+    assert archived.status_code == 200, archived.text
+    archived_at = datetime.fromisoformat(archived.json()["archived_at"])
+    restore_until = datetime.fromisoformat(archived.json()["restore_until"])
+    assert restore_until - archived_at == timedelta(days=30)
+    assert (
+        await client.get("/api/v1/guest/groups", headers=bearer("archive-owner"))
+    ).json() == []
+    archived_groups = await client.get(
+        "/api/v1/guest/groups/archived", headers=bearer("archive-owner")
+    )
+    assert archived_groups.status_code == 200
+    assert archived_groups.json()[0]["can_restore"] is True
+    assert archived_groups.json()[0]["id"] == group_id
+    preview = await client.post(
+        "/api/v1/guest/invitations/preview",
+        headers=bearer("invitee"),
+        json={"token": unused_invitation.json()["token"]},
+    )
+    assert preview.json() == {"valid": False}
+    archived_join = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer("archived-invitee"),
+        json={
+            "token": unused_invitation.json()["token"],
+            "display_name": "Archived invitee",
+        },
+    )
+    assert archived_join.status_code == 404
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}",
+            headers=bearer("archive-owner"),
+        )
+    ).status_code == 404
+
+    restore_as_other_uid = await client.post(
+        f"/api/v1/guest/groups/{group_id}/restore",
+        headers=bearer("other-account", "password"),
+    )
+    assert restore_as_other_uid.status_code == 403
+    restored = await client.post(
+        f"/api/v1/guest/groups/{group_id}/restore",
+        headers=bearer("archive-owner", "password"),
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["role"] == "admin"
+    group_detail = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("archive-owner"),
+    )
+    restored_pending = next(
+        item
+        for item in group_detail.json()["members"]
+        if item["id"] == pending_member.json()["id"]
+    )
+    assert restored_pending["status"] == "pending"
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}/entries",
+            headers=bearer("archive-owner"),
+        )
+    ).json()[0]["title"] == "Retained entry"
+    assert (
+        await client.get(
+            f"/api/v1/guest/groups/{group_id}/invitations",
+            headers=bearer("archive-owner"),
+        )
+    ).json() == []
+    async with session_factory() as db:
+        stored_group = await db.get(GuestGroup, UUID(group_id))
+        assert stored_group is not None
+        assert stored_group.archived_at is None
+        assert stored_group.archived_by_uid is None
+        restored_removed = await db.get(
+            GuestGroupMembership, UUID(removed_member.json()["id"])
+        )
+        assert restored_removed is not None
+        assert restored_removed.status == "removed"
+        assert (
+            await db.scalar(
+                select(func.count(GuestGroupEntry.id)).where(
+                    GuestGroupEntry.group_id == UUID(group_id)
+                )
+            )
+            == 1
+        )
+        stored_invitation = await db.get(
+            GuestGroupInvitation, UUID(unused_invitation.json()["id"])
+        )
+        assert stored_invitation is not None
+        assert stored_invitation.revoked_at is not None
+
+
+@pytest.mark.asyncio
+async def test_archive_recovery_expiry_and_cleanup_exclusion(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    install_test_tokens(monkeypatch)
+    group = await make_group(client, "archive-expiry", "Archived expiry")
+    group_id = group["id"]
+    archived = await client.post(
+        f"/api/v1/guest/groups/{group_id}/archive",
+        headers=bearer("archive-expiry"),
+    )
+    assert archived.status_code == 200
+    async with session_factory() as session:
+        stored_group = await session.get(GuestGroup, UUID(group_id))
+        stored_group.archived_at = datetime.now(timezone.utc) - timedelta(days=31)
+        stored_group.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+        await session.commit()
+    expired_restore = await client.post(
+        f"/api/v1/guest/groups/{group_id}/restore",
+        headers=bearer("archive-expiry", "password"),
+    )
+    assert expired_restore.status_code == 410
+    result = await guest_retention.cleanup_expired_guest_groups(
+        session_factory,
+        cutoff=datetime.now(timezone.utc),
+        apply=True,
+    )
+    assert result["candidate_groups"] == 0
+    async with session_factory() as session:
+        retained_group = await session.get(GuestGroup, UUID(group_id))
+        assert retained_group is not None
+        assert retained_group.archived_at is not None
+
+
+@pytest.mark.asyncio
+async def test_expired_admin_transfer_does_not_change_roles(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    install_test_tokens(monkeypatch)
+    group = await make_group(client, "transfer-expiry-owner", "Transfer expiry")
+    group_id = group["id"]
+    invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("transfer-expiry-owner"),
+        json={"role": "viewer"},
+    )
+    joined = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer("transfer-expiry-target"),
+        json={
+            "token": invitation.json()["token"],
+            "display_name": "Target",
+        },
+    )
+    approved = await client.post(
+        f"/api/v1/guest/groups/{group_id}/members/{joined.json()['id']}/approve",
+        headers=bearer("transfer-expiry-owner"),
+    )
+    assert approved.status_code == 200
+    proposal = await client.post(
+        f"/api/v1/guest/groups/{group_id}/transfer-administration",
+        headers=bearer("transfer-expiry-owner"),
+        params={"member_id": joined.json()["id"]},
+    )
+    assert proposal.status_code == 200
+    async with session_factory() as session:
+        transfer = await session.get(
+            guest_service.GuestGroupAdminTransfer, UUID(proposal.json()["id"])
+        )
+        transfer.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await session.commit()
+
+    expired = await client.post(
+        f"/api/v1/guest/groups/{group_id}/admin-transfers/"
+        f"{proposal.json()['id']}/accept",
+        headers=bearer("transfer-expiry-target"),
+    )
+    assert expired.status_code == 409
+    owner = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("transfer-expiry-owner"),
+    )
+    target = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("transfer-expiry-target"),
+    )
+    assert owner.json()["role"] == "admin"
+    assert target.json()["role"] == "viewer"
+    async with session_factory() as session:
+        transfer = await session.get(
+            guest_service.GuestGroupAdminTransfer, UUID(proposal.json()["id"])
+        )
+        assert transfer.status == "expired"
+
+
+@pytest.mark.asyncio
+async def test_transfer_decline_cancel_and_removed_recipient_preserve_admin(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    install_test_tokens(monkeypatch)
+    group = await make_group(client, "transfer-lifecycle-owner", "Transfer lifecycle")
+    group_id = group["id"]
+    invitation = await client.post(
+        f"/api/v1/guest/groups/{group_id}/invitations",
+        headers=bearer("transfer-lifecycle-owner"),
+        json={"role": "viewer"},
+    )
+    joined = await client.post(
+        "/api/v1/guest/invitations/join",
+        headers=bearer("transfer-lifecycle-target"),
+        json={
+            "token": invitation.json()["token"],
+            "display_name": "Transfer target",
+        },
+    )
+    approved = await client.post(
+        f"/api/v1/guest/groups/{group_id}/members/{joined.json()['id']}/approve",
+        headers=bearer("transfer-lifecycle-owner"),
+    )
+    assert approved.status_code == 200
+
+    declined_request = await client.post(
+        f"/api/v1/guest/groups/{group_id}/transfer-administration",
+        headers=bearer("transfer-lifecycle-owner"),
+        params={"member_id": joined.json()["id"]},
+    )
+    transfer_id = declined_request.json()["id"]
+    declined = await client.post(
+        f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}/decline",
+        headers=bearer("transfer-lifecycle-target"),
+    )
+    assert declined.status_code == 200
+    assert declined.json()["status"] == "declined"
+
+    pending_request = await client.post(
+        f"/api/v1/guest/groups/{group_id}/transfer-administration",
+        headers=bearer("transfer-lifecycle-owner"),
+        params={"member_id": joined.json()["id"]},
+    )
+    transfer_id = pending_request.json()["id"]
+    removed = await client.delete(
+        f"/api/v1/guest/groups/{group_id}/members/{joined.json()['id']}",
+        headers=bearer("transfer-lifecycle-owner"),
+    )
+    assert removed.status_code == 204
+    stale_acceptance = await client.post(
+        f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}/accept",
+        headers=bearer("transfer-lifecycle-target"),
+    )
+    assert stale_acceptance.status_code == 404
+
+    cancelled = await client.delete(
+        f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}",
+        headers=bearer("transfer-lifecycle-owner"),
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    owner = await client.get(
+        f"/api/v1/guest/groups/{group_id}",
+        headers=bearer("transfer-lifecycle-owner"),
+    )
+    assert owner.status_code == 200
+    assert owner.json()["role"] == "admin"
+    async with session_factory() as session:
+        transfer = await session.get(
+            guest_service.GuestGroupAdminTransfer, UUID(transfer_id)
+        )
+        assert transfer is not None
+        assert transfer.status == "cancelled"
