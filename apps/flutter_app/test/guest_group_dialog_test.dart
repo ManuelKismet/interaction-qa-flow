@@ -677,6 +677,9 @@ void main() {
       ProviderScope(
         overrides: [
           firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(
+            _EmptyGroupsRepository(),
+          ),
           guestWorkspaceStoreProvider.overrideWithValue(store),
         ],
         child: const MaterialApp(
