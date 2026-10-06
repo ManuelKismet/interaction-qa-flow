@@ -136,3 +136,48 @@ Organisation improvements remain explicitly deferred until founder instruction.
 
 Cleanup confirmed: Codespace bookish happiness stopped after review source and
 checkpoint were pushed. Restart only for the next independent correction check.
+
+
+## Incremental correction independently validated — 2026-10-06
+
+Copilot artifact `6c69662936102ee6a47fedaef73b102475d7ca68`, authored
+`d9d2a506298787e21ea41296004b9273914ba1e3`, contains
+`unified-knowledge-search-corrections-20261006.patch` with base `44422230`.
+Applied unchanged in the isolated review worktree, producing exact source
+`047d4131f2542a02762c3fdc9822dd52ce59f43d`; pushed on
+`fix/unified-search-dev-20261006` and GitHub branch readback confirmed.
+
+Executed independent checks:
+
+- Python compileall passed; Alembic single head 0014.
+- Backend: 111 passed, 4 PostgreSQL skips, 10 warnings, 27.33s.
+- Flutter analyzer: zero errors/warnings, 13 informational notices, 19.9s;
+  exit 1 due to infos. These are not a zero-exit result.
+- Full Flutter suite: 167 passed, 1 failed, about 77s, exit 1. New stale
+  account-result and partial-source retry widget regressions passed.
+- Fresh disposable PostgreSQL16 upgraded through 0014. Search, personal
+  concurrency and Group lock-order suites: 4 passed, 0.44s, exit 0.
+- Isolated 0014→0013→0014 round-trip passed, exit 0. No hosted DB changes.
+- Release compilation started separately; result pending at this checkpoint.
+
+Single failing Flutter scenario: `guest_interact_widget_test.dart:87`,
+“Saved Q&A search edits and removes local entries and returns to the form”,
+expects “On this device” in the search result, while approved badge is now
+“Local”. Detailed local storage status must remain independently asserted.
+[One targeted test correction](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6025524398)
+was sent against exact `047d413`; no competing requests. Next step: apply that
+incremental correction unchanged, rerun affected/full frontend gates and
+record release result before authorised DEV rollout.
+
+DEV remains source `aafc112`, backend `reviewaafc112`, schema0013 and
+Hosting1791307395456000/version49afc5b14f53f3b0. No deployment, merge,
+production, security change or automatic local upload performed.
+Meaningful live semantic-provider quality and authenticated personal-import
+E2E remain unverified; organisation improvements remain deferred.
+
+Database files are retained at
+`/home/vscode/.local/share/intqaflow/search-review-20261006`, loopback55442.
+Server stopped after isolated checks. Validation evidence is copied to
+`/home/vscode/.local/share/intqaflow/search-validation-047d413`.
+Main worktree's four pre-existing dirty docs preserved. Recurring monitoring
+was cancelled by the founder; do not recreate it.
