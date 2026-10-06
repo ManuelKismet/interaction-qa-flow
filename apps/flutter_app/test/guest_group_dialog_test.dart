@@ -425,6 +425,43 @@ void main() {
     },
   );
 
+  testWidgets('shared group creation validates required fields in place', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(
+            _EmptyGroupsRepository(),
+          ),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create group'));
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == label,
+    );
+    final createDialogButton = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, 'Create group'),
+    );
+    await tester.tap(createDialogButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a group name.'), findsOneWidget);
+    expect(find.text('Enter a display name.'), findsOneWidget);
+
+    await tester.enterText(field('Group name'), 'Safety');
+    await tester.tap(createDialogButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a group name.'), findsNothing);
+    expect(find.text('Enter a display name.'), findsOneWidget);
+    expect(tester.widget<TextField>(field('Group name')).controller!.text, 'Safety');
+  });
+
   testWidgets('group lookup failure does not claim there are no groups', (
     tester,
   ) async {
@@ -446,7 +483,7 @@ void main() {
     );
     expect(find.textContaining('No approved shared groups are linked'), findsNothing);
     expect(find.text('private test detail'), findsNothing);
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Refresh status'));
     await tester.pumpAndSettle();
     expect(repository.attempts, 2);
   });
