@@ -21,19 +21,19 @@ base-commit: aafc112fbbf220eda1077895334dc16b4930eeab
  backend/app/models/guest.py                        |   4 +
  backend/app/models/personal_workspace.py           |   4 +
  backend/app/repositories/guest.py                  |  54 +-
- backend/app/repositories/search.py                 |  47 +-
+ backend/app/repositories/search.py                 |  53 +-
  backend/app/schemas/search.py                      |   4 +-
  backend/app/services/answer.py                     |  30 +
- backend/app/services/canonical.py                  |  31 +-
- backend/app/services/governance.py                 |  32 +-
+ backend/app/services/canonical.py                  |  33 +-
+ backend/app/services/governance.py                 |  30 +-
  backend/app/services/guest.py                      | 241 +++++++-
  backend/app/services/personal_workspace.py         | 156 +++++-
  backend/app/services/question.py                   |   3 +
- backend/app/services/search.py                     |  14 +
+ backend/app/services/search.py                     |  16 +
  .../backfill_private_knowledge_embeddings.py       |  76 +++
  backend/tests/conftest.py                          |  43 +-
  backend/tests/test_answer_governance.py            |  43 ++
- backend/tests/test_canonical_questions.py          |  40 ++
+ backend/tests/test_canonical_questions.py          |  54 +-
  backend/tests/test_embeddings.py                   |  80 ++-
  backend/tests/test_guest_groups.py                 |  78 +++
  backend/tests/test_personal_workspace.py           |  71 +++
@@ -41,7 +41,7 @@ base-commit: aafc112fbbf220eda1077895334dc16b4930eeab
  backend/tests/test_search_service.py               |  26 +-
  backend/tests/test_unified_search_migration.py     |  20 +
  docs/architecture.md                               |  16 +-
- 36 files changed, 2226 insertions(+), 61 deletions(-)
+ 36 files changed, 2244 insertions(+), 65 deletions(-)
 ---
 diff --git a/apps/flutter_app/lib/core/routing/app_router.dart b/apps/flutter_app/lib/core/routing/app_router.dart
 index 564df27c6d0bdbf57d5d197b44048b7fbc85ab01..e8a316192fe9ec037648e78f7bd716b84910d817 100644
@@ -1510,7 +1510,7 @@ index 9986708e7c2886be1eb840866342d48c6c5a6f86..11adb8196940330ee2b203b706e256c9
          self, group_id: UUID, firebase_uid: str, import_key: str
      ) -> GuestGroupEntry | None:
 diff --git a/backend/app/repositories/search.py b/backend/app/repositories/search.py
-index 878f6deef47c66f364cd3d90b35623acab513c4d..0db53a3000cc5077c6ac17b3f2e1185ff77af23c 100644
+index 878f6deef47c66f364cd3d90b35623acab513c4d..92ffa1dcaf426860691bd4682209c5b788b23d1a 100644
 --- a/backend/app/repositories/search.py
 +++ b/backend/app/repositories/search.py
 @@ -1,7 +1,7 @@
@@ -1544,16 +1544,34 @@ index 878f6deef47c66f364cd3d90b35623acab513c4d..0db53a3000cc5077c6ac17b3f2e1185f
  
      def _candidate_statement(
          self,
-@@ -245,6 +249,8 @@ class SearchRepository:
+@@ -174,7 +178,7 @@ class SearchRepository:
+                 canonical_visibility,
+             )
+         )
+-        return statement, canonical_question
++        return statement, canonical_question, candidate_answer
+ 
+     @staticmethod
+     def _limit_distinct_candidates(
+@@ -245,7 +249,9 @@ class SearchRepository:
      ) -> list[
          tuple[Question, Question, Answer | None, Department | None, Team | None, float, int]
      ]:
+-        statement, canonical_question = self._candidate_statement(
 +        if embedding_model.startswith("deterministic-fake-"):
 +            return []
-         statement, canonical_question = self._candidate_statement(
++        statement, canonical_question, _ = self._candidate_statement(
              organisation_id=organisation_id,
              actor=actor,
-@@ -297,16 +303,20 @@ class SearchRepository:
+             include_unanswered=include_unanswered,
+@@ -291,22 +297,26 @@ class SearchRepository:
+         if not tokens and not query_text.strip():
+             return []
+ 
+-        statement, canonical_question = self._candidate_statement(
++        statement, canonical_question, candidate_answer = self._candidate_statement(
+             organisation_id=organisation_id,
+             actor=actor,
              include_unanswered=include_unanswered,
          )
          exact_title = func.lower(func.trim(Question.title)) == query_text.strip().lower()
@@ -1757,7 +1775,7 @@ index 69c6d50de5434c7804075ef44d1dbce163c0c5af..6a44e4af572b9634edc5a9f642d25009
          question = await self.questions.get_for_organisation(
              answer.question_id,
 diff --git a/backend/app/services/canonical.py b/backend/app/services/canonical.py
-index 6bcac0079cd123716b3665d7bde0fc354bf929ae..a93443c86accff7e375ea0184837c388742b588e 100644
+index 6bcac0079cd123716b3665d7bde0fc354bf929ae..ebf792c1730c3a8799b0b8e3b2f590735a635b7a 100644
 --- a/backend/app/services/canonical.py
 +++ b/backend/app/services/canonical.py
 @@ -1,10 +1,16 @@
@@ -1824,8 +1842,17 @@ index 6bcac0079cd123716b3665d7bde0fc354bf929ae..a93443c86accff7e375ea0184837c388
      async def candidates(
          self,
          question_id: UUID,
+@@ -219,6 +248,8 @@ class CanonicalQuestionService:
+             await self._audit(actor, action, "duplicate_suggestion", suggestion.id)
+         await self.session.commit()
+         await self.session.refresh(suggestion)
++        if accept:
++            await self._sync_embedding_for_question(target)
+         return self._suggestion_response(suggestion, question, target)
+ 
+     async def _merge(
 diff --git a/backend/app/services/governance.py b/backend/app/services/governance.py
-index c87fda410844be22e4411d8ec647b0c165e24d5e..64ed9c65b5b4c24da08850f0c4014224a0dc5c9c 100644
+index c87fda410844be22e4411d8ec647b0c165e24d5e..cb25992f41831e40c9eee17a1dba2872eb3569d1 100644
 --- a/backend/app/services/governance.py
 +++ b/backend/app/services/governance.py
 @@ -1,8 +1,14 @@
@@ -1879,12 +1906,8 @@ index c87fda410844be22e4411d8ec647b0c165e24d5e..64ed9c65b5b4c24da08850f0c4014224
          return answer
  
      async def review(
-@@ -149,8 +161,24 @@ class GovernanceService:
-         )
-         await self.session.commit()
+@@ -151,6 +163,20 @@ class GovernanceService:
          await self.session.refresh(challenge)
-+        if accept:
-+            await self._sync_question_embedding(question)
          return AnswerChallengeResponse.model_validate(challenge)
  
 +    async def _sync_question_embedding(self, question: Question | None) -> None:
@@ -1904,7 +1927,7 @@ index c87fda410844be22e4411d8ec647b0c165e24d5e..64ed9c65b5b4c24da08850f0c4014224
      async def list_challenges(
          self,
          answer_id: UUID,
-@@ -215,6 +243,8 @@ class GovernanceService:
+@@ -215,6 +241,8 @@ class GovernanceService:
          await self._audit(actor, action, "answer_challenge", challenge.id)
          await self.session.commit()
          await self.session.refresh(challenge)
@@ -2469,7 +2492,7 @@ index 382766a2146bc03b3f30fb969bece7da2d3ddc81..da7932c48bbe66dad1d9cbef922e45cc
  
      async def request_change(
 diff --git a/backend/app/services/search.py b/backend/app/services/search.py
-index 46fb5c702ea62d7eeee8ff4c657499fee9d1f78a..b549c6a58b05c51f96a1c1c7a4dfe0576c4038a1 100644
+index 46fb5c702ea62d7eeee8ff4c657499fee9d1f78a..c53f3e162808fe26ded73f3213ab73dd1af5d04b 100644
 --- a/backend/app/services/search.py
 +++ b/backend/app/services/search.py
 @@ -4,11 +4,13 @@ from uuid import UUID
@@ -2494,17 +2517,19 @@ index 46fb5c702ea62d7eeee8ff4c657499fee9d1f78a..b549c6a58b05c51f96a1c1c7a4dfe057
          self.search_repository = SearchRepository(session)
          self.permissions = PermissionService(UserRepository(session))
          self.clock = clock or (lambda: datetime.now(UTC))
-@@ -48,6 +51,9 @@ class SearchService:
+@@ -48,6 +51,11 @@ class SearchService:
          include_unanswered: bool = False,
      ) -> list[SemanticSearchResult]:
          actor = await self.permissions.actor(user_id, organisation_id)
 +        organisation_name = await self.session.scalar(
 +            select(Organisation.name).where(Organisation.id == organisation_id)
 +        )
++        if not isinstance(organisation_name, str):
++            organisation_name = None
          lexical_candidates = await self.search_repository.lexical_candidates(
              organisation_id=organisation_id,
              actor=actor,
-@@ -121,6 +127,12 @@ class SearchService:
+@@ -121,6 +129,12 @@ class SearchService:
                  challenge_count,
              ) = candidate
              semantic_similarity = semantic_entry[0][5] if semantic_entry else 0.0
@@ -2517,7 +2542,7 @@ index 46fb5c702ea62d7eeee8ff4c657499fee9d1f78a..b549c6a58b05c51f96a1c1c7a4dfe057
              matched_ids = set()
              if lexical_entry:
                  matched_ids.update(lexical_entry[1])
-@@ -178,6 +190,8 @@ class SearchService:
+@@ -178,6 +192,8 @@ class SearchService:
                  resolved_at=canonical_question.resolved_at,
                  visibility=canonical_question.visibility,
                  answer_id=answer.id if answer else None,
@@ -2734,7 +2759,7 @@ index 3fa08f0417b45283a66429053ce2f15e76822fcb..871f666e7d5aeed8e46b933e21ec5afc
  async def test_replacing_verified_answer_supersedes_and_versions(app_client) -> None:
      client, session_factory = app_client
 diff --git a/backend/tests/test_canonical_questions.py b/backend/tests/test_canonical_questions.py
-index e22e1277530fbe01e791a353c6491b16192106ce..0231bc3f3a7ed73eaecd37554a249ba3f880f790 100644
+index e22e1277530fbe01e791a353c6491b16192106ce..308ca0830758fadee226b8a7a07877c8dcca97cd 100644
 --- a/backend/tests/test_canonical_questions.py
 +++ b/backend/tests/test_canonical_questions.py
 @@ -115,6 +115,46 @@ async def test_owner_merges_multiple_questions_and_preserves_history(app_client)
@@ -2784,6 +2809,36 @@ index e22e1277530fbe01e791a353c6491b16192106ce..0231bc3f3a7ed73eaecd37554a249ba3
  @pytest.mark.asyncio
  async def test_answer_conflict_requires_selection_and_copies_without_moving(app_client) -> None:
      client, session_factory = app_client
+@@ -232,9 +272,20 @@ async def test_unmerge_restores_independent_question(app_client) -> None:
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(app_client) -> None:
++async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(
++    app_client, monkeypatch
++) -> None:
+     client, session_factory = app_client
+     ids = await seed_governance(session_factory)
++    synced_questions = []
++
++    async def record_sync(_service, question):
++        synced_questions.append(question.id)
++        return True
++
++    monkeypatch.setattr(
++        canonical_module.EmbeddingService, "sync_question", record_sync
++    )
+     duplicate_id, _ = await add_question(session_factory, ids, "Possible duplicate")
+     suggestion = await client.post(
+         f"/api/v1/questions/{duplicate_id}/duplicate-suggestions",
+@@ -277,6 +328,7 @@ async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(app_clie
+     )
+     assert accepted.status_code == 200
+     assert accepted.json()["status"] == "accepted"
++    assert synced_questions == [ids["finance_question"]]
+ 
+     async with session_factory() as session:
+         duplicate = await session.get(Question, duplicate_id)
 diff --git a/backend/tests/test_embeddings.py b/backend/tests/test_embeddings.py
 index d19a8bf92b8ee736c877b600cc7a4c8aeb4e13b3..8fa77472b290993b23d52d96a91131f577c66600 100644
 --- a/backend/tests/test_embeddings.py
