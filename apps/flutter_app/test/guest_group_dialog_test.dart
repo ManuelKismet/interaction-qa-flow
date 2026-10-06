@@ -624,7 +624,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(field('Invitation token'), 'temporary-token');
     await tester.enterText(field('Display name'), 'Alice');
-    await tapDialogAction('Preview invitation');
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Preview invitation'),
+      ),
+    );
+    await _pumpUntilFound(tester, find.text('Request to join?'));
     await tapDialogAction('Request access');
     expect(repository.joinAttempts, 1);
     expect(find.textContaining('temporary-token'), findsNothing);
@@ -913,7 +919,16 @@ void main() {
           },
         ],
         templates: [
-          {'id': 'template-1', 'name': 'Local template'},
+          {
+            'id': 'template-1',
+            'name': 'Local template',
+            'participant_slots': [
+              {'id': 'slot-1', 'label': 'Participant 1'},
+            ],
+            'questions': [
+              {'id': 'template-question-1', 'text': 'Template prompt'},
+            ],
+          },
         ],
       ),
     );
