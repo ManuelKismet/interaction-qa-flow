@@ -488,7 +488,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       await Clipboard.setData(ClipboardData(text: latest.encodeBackup()));
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.removeCurrentSnackBar();
+      messenger.showSnackBar(
         const SnackBar(content: Text('Unable to copy the local JSON backup.')),
       );
       return;
@@ -2811,8 +2813,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   String _createGroupDisplayNameDraft = '';
   String _joinTokenDraft = '';
   String _joinDisplayNameDraft = '';
-  String _createKnowledgeTitleDraft = '';
-  String _createKnowledgeBodyDraft = '';
+  final Map<String, Map<String, String>> _createKnowledgeDrafts = {};
   final Map<String, Map<String, String>> _entryEditDrafts = {};
 
   GuestGroupRepository get _repository => ref.read(guestGroupRepositoryProvider);
@@ -2836,7 +2837,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     super.dispose();
   }
 
-  Future<void> _loadGroups() async {
+  Future<bool> _loadGroups() async {
     setState(() {
       _busy = true;
       _error = null;
@@ -2854,20 +2855,22 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           : groups.isEmpty
           ? null
           : groups.first['id'] as String;
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _groups = groups;
         _archivedGroups = archivedGroups;
         _groupId = selected;
       });
       if (selected != null) {
-        await _loadGroup(selected);
+        return _loadGroup(selected);
       } else {
+        if (!mounted) return false;
         setState(() {
           _group = null;
           _entries = const [];
           _invitations = const [];
         });
+        return true;
       }
     } on Object catch (error) {
       if (mounted) {
@@ -2880,6 +2883,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           _error = _safeGuestError(error);
         });
       }
+      return false;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -3430,6 +3434,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _createKnowledge() async {
     final groupId = _groupId;
     if (groupId == null) return;
+    final draft = _createKnowledgeDrafts[groupId] ?? const <String, String>{};
     final values = await showDialog<List<String>>(
       context: context,
       builder: (context) => _GuestRequiredTextDialog(
@@ -3440,12 +3445,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           _GuestRequiredTextField(
             label: 'Title',
             errorText: 'Enter a title.',
-            initialValue: _createKnowledgeTitleDraft,
+            initialValue: draft['title'] ?? '',
           ),
           _GuestRequiredTextField(
             label: 'Knowledge / answer',
             errorText: 'Enter the Knowledge or answer.',
-            initialValue: _createKnowledgeBodyDraft,
+            initialValue: draft['body'] ?? '',
             minLines: 3,
             maxLines: 8,
           ),
@@ -3453,13 +3458,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       ),
     );
     if (values == null) {
-      _createKnowledgeTitleDraft = '';
-      _createKnowledgeBodyDraft = '';
+      _createKnowledgeDrafts.remove(groupId);
       return;
     }
     if (!mounted) return;
-    _createKnowledgeTitleDraft = values[0];
-    _createKnowledgeBodyDraft = values[1];
+    _createKnowledgeDrafts[groupId] = {
+      'title': values[0],
+      'body': values[1],
+    };
     final succeeded = await _run(() async {
       await _repository.createKnowledge(
         groupId: groupId,
@@ -3470,8 +3476,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       await _loadGroup(groupId);
     });
     if (succeeded) {
-      _createKnowledgeTitleDraft = '';
-      _createKnowledgeBodyDraft = '';
+      _createKnowledgeDrafts.remove(groupId);
     } else {
       await _refreshAfterUncertainWrite(groupId: groupId);
     }
@@ -3979,16 +3984,18 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _refreshAfterUncertainWrite({String? groupId}) async {
     if (!mounted) return;
     final failure = _error;
-    if (groupId == null) {
-      await _loadGroups();
-    } else {
-      await _loadGroup(groupId);
-    }
+    final refreshed = groupId == null
+        ? await _loadGroups()
+        : await _loadGroup(groupId);
     if (!mounted) return;
+    final refreshFailure = _error;
     setState(() {
-      _error =
-          '${failure ?? 'The request could not be verified.'} '
-          'Status was refreshed. Review it before retrying.';
+      _error = refreshed
+          ? '${failure ?? 'The request could not be verified.'} '
+                'Status was refreshed. Review it before retrying.'
+          : 'The write outcome is uncertain and status refresh failed. '
+                '${refreshFailure ?? 'Group status is unavailable.'} '
+                'Your draft is retained; refresh status before retrying.';
     });
   }
 

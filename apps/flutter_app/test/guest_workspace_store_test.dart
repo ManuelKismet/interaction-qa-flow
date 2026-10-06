@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
@@ -82,44 +84,45 @@ void main() {
                         },
                       ],
                     },
+                  ],
+                },
+              ],
+            },
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {
+              'id': 'session',
+              'participants': [
+                {'id': 'p1'},
+                {'name': 'Missing ID'},
+              ],
+              'questions': [],
+            },
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {
+              'id': 'session',
+              'participants': [
+                {'id': 'p1'},
+              ],
+              'questions': [
+                {
+                  'id': 'question',
+                  'text': 'Question',
+                  'answers': [
                     {
-                      'schema_version': 1,
-                      'knowledge': [],
-                      'sessions': [
-                        {
-                          'id': 'session',
-                          'participants': [
-                            {'name': 'Missing ID'},
-                          ],
-                          'questions': [],
-                        },
-                      ],
-                      'templates': [],
-                    },
-                    {
-                      'schema_version': 1,
-                      'knowledge': [],
-                      'sessions': [
-                        {
-                          'id': 'session',
-                          'participants': [
-                            {'id': 'p1'},
-                          ],
-                          'questions': [
-                            {
-                              'id': 'question',
-                              'text': 'Question',
-                              'answers': [
-                                {
-                                  'participant_id': 'p1',
-                                  'branches_collapsed': 'yes',
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      ],
-                      'templates': [],
+                      'participant_id': 'p1',
+                      'branches_collapsed': 'yes',
                     },
                   ],
                 },
