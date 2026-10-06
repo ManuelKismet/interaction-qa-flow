@@ -107,7 +107,13 @@ void main() {
       await tester.enterText(find.byType(TextField).first, 'New local question');
       await tester.enterText(find.byType(TextField).at(1), 'Details');
       await tester.enterText(find.byType(TextField).at(2), 'Answer');
-      await tester.tap(find.text('Save locally'));
+      final saveLocalQuestion = find.widgetWithText(
+        FilledButton,
+        'Save locally',
+      );
+      await tester.ensureVisible(saveLocalQuestion);
+      await tester.pumpAndSettle();
+      await tester.tap(saveLocalQuestion);
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 300));
       saved = await store.load();
