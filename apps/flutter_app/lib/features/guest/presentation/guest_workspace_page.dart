@@ -290,6 +290,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         guestGroupOwnershipUnavailable = true;
       }
     }
+    if (!mounted) return;
     if (!await _saveBeforeLeaving() || !mounted) return;
     final data = _data;
     await Navigator.of(context).push<void>(
@@ -561,6 +562,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       final current = _data;
       if (current != null &&
           (_unsavedChanges || !await _flushPendingSave())) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -570,13 +572,31 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         );
         return;
       }
-      final merged = await ref.read(guestWorkspaceStoreProvider).importSelected(
-        imported: imported,
-        knowledgeIds: selection.knowledgeIds,
-        sessionIds: selection.sessionIds,
-        templateIds: selection.templateIds,
-      );
       if (!mounted) return;
+      final importRevision = _dataRevision;
+      final store = _store;
+      late final GuestWorkspaceData merged;
+      try {
+        merged = await store.importSelected(
+          imported: imported,
+          knowledgeIds: selection.knowledgeIds,
+          sessionIds: selection.sessionIds,
+          templateIds: selection.templateIds,
+        );
+      } on Object {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Unable to import the selected backup. Your current work was kept.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
+      if (_dataRevision != importRevision) return;
       setState(() {
         _data = merged;
         _dataRevision++;
@@ -1780,7 +1800,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
   Future<void> _saveTemplate(Map<String, dynamic> session) async {
     final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => const _GuestRequiredTextDialog(
+      builder: (context) => _GuestRequiredTextDialog(
         title: 'Save local template',
         submitLabel: 'Save template',
         fields: [
@@ -2787,6 +2807,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   String? _groupId;
   bool _busy = false;
   String? _error;
+  String _createGroupNameDraft = '';
+  String _createGroupDisplayNameDraft = '';
+  String _joinTokenDraft = '';
+  String _joinDisplayNameDraft = '';
+  String _createKnowledgeTitleDraft = '';
+  String _createKnowledgeBodyDraft = '';
+  final Map<String, Map<String, String>> _entryEditDrafts = {};
 
   GuestGroupRepository get _repository => ref.read(guestGroupRepositoryProvider);
 
@@ -3043,7 +3070,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _createGroup() async {
     final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => const _GuestRequiredTextDialog(
+      builder: (context) => _GuestRequiredTextDialog(
         title: 'Create a shared group',
         description:
             'This creates the group using your current Firebase identity. '
@@ -3055,16 +3082,25 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           _GuestRequiredTextField(
             label: 'Group name',
             errorText: 'Enter a group name.',
+            initialValue: _createGroupNameDraft,
           ),
           _GuestRequiredTextField(
             label: 'Your display name',
             errorText: 'Enter a display name.',
+            initialValue: _createGroupDisplayNameDraft,
           ),
         ],
       ),
     );
-    if (values == null || !mounted) return;
-    await _run(() async {
+    if (values == null) {
+      _createGroupNameDraft = '';
+      _createGroupDisplayNameDraft = '';
+      return;
+    }
+    if (!mounted) return;
+    _createGroupNameDraft = values[0];
+    _createGroupDisplayNameDraft = values[1];
+    final succeeded = await _run(() async {
       final group = await _repository.createGroup(
         name: values[0],
         displayName: values[1],
@@ -3072,12 +3108,18 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       _groupId = group['id'] as String;
       await _loadGroups();
     });
+    if (succeeded) {
+      _createGroupNameDraft = '';
+      _createGroupDisplayNameDraft = '';
+    } else {
+      await _refreshAfterUncertainWrite();
+    }
   }
 
   Future<void> _joinByInvitation() async {
     final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => const _GuestRequiredTextDialog(
+      builder: (context) => _GuestRequiredTextDialog(
         title: 'Join a shared group',
         description:
             'Paste an invitation token. Preview checks validity only and reveals no group content.',
@@ -3086,18 +3128,27 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           _GuestRequiredTextField(
             label: 'Invitation token',
             errorText: 'Enter an invitation token.',
+            initialValue: _joinTokenDraft,
           ),
           _GuestRequiredTextField(
             label: 'Display name',
             errorText: 'Enter a display name.',
+            initialValue: _joinDisplayNameDraft,
           ),
         ],
       ),
     );
-    if (values == null || !mounted) return;
+    if (values == null) {
+      _joinTokenDraft = '';
+      _joinDisplayNameDraft = '';
+      return;
+    }
+    if (!mounted) return;
     final inviteToken = values[0];
     final memberName = values[1];
-    await _run(() async {
+    _joinTokenDraft = inviteToken;
+    _joinDisplayNameDraft = memberName;
+    final succeeded = await _run(() async {
       if (!await _repository.previewInvitation(inviteToken)) {
         throw const ApiException(
           'This invitation is unavailable, expired or revoked.',
@@ -3135,6 +3186,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       }
       await _loadGroups();
     });
+    if (succeeded) {
+      _joinTokenDraft = '';
+      _joinDisplayNameDraft = '';
+    } else {
+      await _refreshAfterUncertainWrite();
+    }
   }
 
   Future<void> _createInvitation() async {
@@ -3185,14 +3242,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                   await Clipboard.setData(
                     ClipboardData(text: invitation['token'] as String),
                   );
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  if (!mounted || !context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Invitation token copied.')),
                   );
                   Navigator.pop(context);
                 } on Object {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  if (!mounted || !context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
                         'Unable to copy the invitation token. Select and copy it from the dialog.',
@@ -3375,7 +3432,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (groupId == null) return;
     final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => const _GuestRequiredTextDialog(
+      builder: (context) => _GuestRequiredTextDialog(
         title: 'Add shared Knowledge',
         description: 'This item will be stored online for approved group members.',
         submitLabel: 'Share with group',
@@ -3383,18 +3440,27 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           _GuestRequiredTextField(
             label: 'Title',
             errorText: 'Enter a title.',
+            initialValue: _createKnowledgeTitleDraft,
           ),
           _GuestRequiredTextField(
             label: 'Knowledge / answer',
             errorText: 'Enter the Knowledge or answer.',
+            initialValue: _createKnowledgeBodyDraft,
             minLines: 3,
             maxLines: 8,
           ),
         ],
       ),
     );
-    if (values == null || !mounted) return;
-    await _run(() async {
+    if (values == null) {
+      _createKnowledgeTitleDraft = '';
+      _createKnowledgeBodyDraft = '';
+      return;
+    }
+    if (!mounted) return;
+    _createKnowledgeTitleDraft = values[0];
+    _createKnowledgeBodyDraft = values[1];
+    final succeeded = await _run(() async {
       await _repository.createKnowledge(
         groupId: groupId,
         title: values[0],
@@ -3403,6 +3469,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       );
       await _loadGroup(groupId);
     });
+    if (succeeded) {
+      _createKnowledgeTitleDraft = '';
+      _createKnowledgeBodyDraft = '';
+    } else {
+      await _refreshAfterUncertainWrite(groupId: groupId);
+    }
   }
 
   Future<void> _shareSelectedLocalWork() async {
@@ -3805,19 +3877,34 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _editEntry(Map<String, dynamic> entry) async {
     final groupId = _groupId;
     if (groupId == null) return;
+    final entryId = entry['id'] as String;
     final sourceData = entry['data'] is Map
         ? Map<String, dynamic>.from(entry['data'] as Map)
         : <String, dynamic>{};
     final values = await showDialog<Map<String, String>>(
       context: context,
       builder: (context) => _GuestEntryEditDialog(
-        title: entry['title'] as String? ?? '',
-        body: sourceData['body'] as String? ?? '',
-        answer: sourceData['answer'] as String? ?? '',
+        title:
+            _entryEditDrafts[entryId]?['title'] ??
+            entry['title'] as String? ??
+            '',
+        body:
+            _entryEditDrafts[entryId]?['body'] ??
+            sourceData['body'] as String? ??
+            '',
+        answer:
+            _entryEditDrafts[entryId]?['answer'] ??
+            sourceData['answer'] as String? ??
+            '',
         editKnowledge: entry['kind'] != 'interact_session',
       ),
     );
-    if (values == null || !mounted) return;
+    if (values == null) {
+      if (mounted) _entryEditDrafts.remove(entryId);
+      return;
+    }
+    if (!mounted) return;
+    _entryEditDrafts[entryId] = values;
     final editedTitle = values['title']!;
     final updatedData = entry['kind'] == 'interact_session'
         ? sourceData
@@ -3826,16 +3913,21 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
             'body': values['body']!,
             'answer': values['answer']!,
           };
-    await _run(() async {
+    final succeeded = await _run(() async {
       await _repository.updateEntry(
         groupId: groupId,
-        entryId: entry['id'] as String,
+        entryId: entryId,
         expectedRevision: entry['revision'] as int,
         title: editedTitle,
         data: updatedData,
       );
       await _loadGroup(groupId);
     });
+    if (succeeded) {
+      _entryEditDrafts.remove(entryId);
+    } else {
+      await _refreshAfterUncertainWrite(groupId: groupId);
+    }
   }
 
   Future<void> _deleteEntry(Map<String, dynamic> entry) async {
@@ -3862,13 +3954,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     });
   }
 
-  Future<void> _run(Future<void> Function() action) async {
+  Future<bool> _run(Future<void> Function() action) async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
       await action();
+      return true;
     } on Object catch (error) {
       if (mounted) {
         final safeMessage = _safeGuestError(error);
@@ -3877,9 +3970,26 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           SnackBar(content: Text(safeMessage)),
         );
       }
+      return false;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _refreshAfterUncertainWrite({String? groupId}) async {
+    if (!mounted) return;
+    final failure = _error;
+    if (groupId == null) {
+      await _loadGroups();
+    } else {
+      await _loadGroup(groupId);
+    }
+    if (!mounted) return;
+    setState(() {
+      _error =
+          '${failure ?? 'The request could not be verified.'} '
+          'Status was refreshed. Review it before retrying.';
+    });
   }
 
   @override

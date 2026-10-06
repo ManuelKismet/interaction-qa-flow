@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/app.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
+import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/core/routing/app_router.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
@@ -132,6 +133,101 @@ class _FailingGroupsRepository extends GuestGroupRepository {
     attempts++;
     throw StateError('private test detail');
   }
+}
+
+class _FailingDraftRepository extends GuestGroupRepository {
+  _FailingDraftRepository() : super(Dio());
+
+  var createGroupAttempts = 0;
+  var joinAttempts = 0;
+  var createKnowledgeAttempts = 0;
+  var updateEntryAttempts = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => [
+    {'id': 'group-1', 'name': 'Test group', 'role': 'editor'},
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async => {
+    'id': groupId,
+    'name': 'Test group',
+    'role': 'editor',
+    'members': [],
+  };
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => [
+    {
+      'id': 'entry-1',
+      'kind': 'knowledge',
+      'title': 'Original title',
+      'revision': 1,
+      'created_by_uid': 'test-anonymous-uid',
+      'data': {'body': 'Original body', 'answer': 'Original answer'},
+    },
+  ];
+
+  @override
+  Future<Map<String, dynamic>> createGroup({
+    required String name,
+    required String displayName,
+  }) async {
+    createGroupAttempts++;
+    throw StateError('private invitation-token detail');
+  }
+
+  @override
+  Future<bool> previewInvitation(String token) async => true;
+
+  @override
+  Future<Map<String, dynamic>> joinInvitation({
+    required String token,
+    required String displayName,
+  }) async {
+    joinAttempts++;
+    throw StateError('private invitation-token detail');
+  }
+
+  @override
+  Future<Map<String, dynamic>> createKnowledge({
+    required String groupId,
+    required String title,
+    required String body,
+    required String answer,
+  }) async {
+    createKnowledgeAttempts++;
+    throw StateError('private answer detail');
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateEntry({
+    required String groupId,
+    required String entryId,
+    required int expectedRevision,
+    required String title,
+    required Map<String, dynamic> data,
+  }) async {
+    updateEntryAttempts++;
+    throw StateError('private answer detail');
+  }
+}
+
+class _FailingLocalStorage implements GuestStorage {
+  @override
+  String? read() => null;
+
+  @override
+  void write(String value) => throw StateError('private storage detail');
+
+  @override
+  void remove() {}
 }
 
 class _EmptyGroupsRepository extends GuestGroupRepository {
@@ -460,6 +556,164 @@ void main() {
     expect(find.text('Enter a group name.'), findsNothing);
     expect(find.text('Enter a display name.'), findsOneWidget);
     expect(tester.widget<TextField>(field('Group name')).controller!.text, 'Safety');
+  });
+
+  testWidgets('failed remote forms retain drafts without replaying writes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _FailingDraftRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == label,
+    );
+    Future<void> tapDialogAction(String label) async {
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog).last,
+          matching: find.text(label),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Create group').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(field('Group name'), 'Safety team');
+    await tester.enterText(field('Your display name'), 'Alice');
+    await tapDialogAction('Create group');
+    expect(repository.createGroupAttempts, 1);
+    expect(
+      find.textContaining('private invitation-token detail'),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('Status was refreshed. Review it before retrying.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Create group').first);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field('Group name')).controller!.text, 'Safety team');
+    expect(tester.widget<TextField>(field('Your display name')).controller!.text, 'Alice');
+    await tapDialogAction('Cancel');
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Join with invitation'));
+    await tester.pumpAndSettle();
+    await tester.enterText(field('Invitation token'), 'temporary-token');
+    await tester.enterText(field('Display name'), 'Alice');
+    await tapDialogAction('Preview invitation');
+    await tapDialogAction('Request access');
+    expect(repository.joinAttempts, 1);
+    expect(find.textContaining('temporary-token'), findsNothing);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Join with invitation'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field('Invitation token')).controller!.text, 'temporary-token');
+    expect(tester.widget<TextField>(field('Display name')).controller!.text, 'Alice');
+    await tapDialogAction('Cancel');
+
+    final addKnowledge = find.widgetWithText(
+      OutlinedButton,
+      'Add shared Knowledge',
+    );
+    await tester.ensureVisible(addKnowledge);
+    await tester.tap(addKnowledge);
+    await tester.pumpAndSettle();
+    await tester.enterText(field('Title'), 'Draft title');
+    await tester.enterText(field('Knowledge / answer'), 'Draft content');
+    await tapDialogAction('Share with group');
+    expect(repository.createKnowledgeAttempts, 1);
+    await tester.tap(addKnowledge);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field('Title')).controller!.text, 'Draft title');
+    expect(
+      tester.widget<TextField>(field('Knowledge / answer')).controller!.text,
+      'Draft content',
+    );
+    await tapDialogAction('Cancel');
+
+    await tester.tap(find.text('Original title'));
+    await tester.pumpAndSettle();
+    await tapDialogAction('Edit');
+    await tester.enterText(field('Title'), 'Edited draft title');
+    await tester.enterText(field('Knowledge'), 'Edited draft body');
+    await tester.enterText(field('Answer'), 'Edited draft answer');
+    await tapDialogAction('Save revision');
+    expect(repository.updateEntryAttempts, 1);
+    await tester.tap(find.text('Original title'));
+    await tester.pumpAndSettle();
+    await tapDialogAction('Edit');
+    expect(tester.widget<TextField>(field('Title')).controller!.text, 'Edited draft title');
+    expect(tester.widget<TextField>(field('Knowledge')).controller!.text, 'Edited draft body');
+    expect(tester.widget<TextField>(field('Answer')).controller!.text, 'Edited draft answer');
+    expect(
+      find.textContaining('private answer detail'),
+      findsNothing,
+    );
+    await tapDialogAction('Cancel');
+    expect(repository.createGroupAttempts, 1);
+    expect(repository.joinAttempts, 1);
+    expect(repository.createKnowledgeAttempts, 1);
+    expect(repository.updateEntryAttempts, 1);
+  });
+
+  testWidgets('failed autosave blocks sign-in navigation with warning', (
+    tester,
+  ) async {
+    final storage = _FailingLocalStorage();
+    final store = GuestWorkspaceStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+        ],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final question = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == 'Question',
+    );
+    await tester.enterText(question, 'Keep this draft');
+    final save = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SignInPage), findsNothing);
+    expect(
+      find.text(
+        'Unable to save local changes. Retry saving before leaving this workspace.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Your changes are not saved. Keep this page open and retry.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('private storage detail'), findsNothing);
   });
 
   testWidgets('group lookup failure does not claim there are no groups', (

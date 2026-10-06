@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
@@ -772,6 +771,10 @@ void main() {
       await tester.tap(saveButton);
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
+      await tester.enterText(_field('Question'), 'Latest rescue work');
+      await tester.tap(saveButton);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Guest workspace options'));
       await tester.pumpAndSettle();
@@ -781,7 +784,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         GuestWorkspaceData.decodeBackup(copiedText!).knowledge.single['title'],
-        'Rescue this work',
+        'Latest rescue work',
       );
       expect(
         find.textContaining(
