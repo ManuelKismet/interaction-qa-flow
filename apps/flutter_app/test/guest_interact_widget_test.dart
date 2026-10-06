@@ -84,7 +84,7 @@ void main() {
       await tester.enterText(localSearch, 'passw');
       await tester.pumpAndSettle();
       expect(find.text('Password rotation'), findsOneWidget);
-      expect(find.textContaining('On this device'), findsOneWidget);
+      expect(find.widgetWithText(Chip, 'Local'), findsOneWidget);
       expect(find.textContaining('Local on this device'), findsOneWidget);
       await tester.tap(find.text('Password rotation'));
       await tester.pumpAndSettle();
