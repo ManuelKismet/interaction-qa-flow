@@ -158,6 +158,67 @@ unavailable. Backend behavior and authorization were not changed. The exact
 pre-clarification head `2f4186c` backend-validation run was `action_required`
 with zero jobs/logs; it did not execute.
 
+### Development-only authentication diagnostics — 2026-10-06
+
+This source follow-up adds opt-in diagnostics for existing-account sign-in. They
+record credential-presence booleans, guest confirmation outcome, Firebase SDK
+call outcome, auth-state category, and subsequent account-state/membership lookup
+outcomes. Each structured event has a random ephemeral attempt ID, UTC stage
+timestamp, elapsed milliseconds, Firebase app/project identity, and optional
+`APP_BUILD_ID`. Firebase exception codes map to a finite allowlist; unknown
+values become `other`. Email/password values and lengths, credential hashes,
+tokens, UIDs, raw exceptions, request/response bodies, and headers are never
+included. Attempts are in-memory only, expire after two minutes, and clear after
+failure or completion of account/membership lookup. The Firebase UID is compared
+transiently in memory to correlate the SDK result with the auth-state event;
+mismatches discard the attempt before account lookups are recorded, and the UID
+is never serialized or persisted.
+
+Diagnostics are disabled by default and require all three gates: debug build,
+explicit `AUTH_DIAGNOSTICS=true`, and `FIREBASE_PROJECT_ID=intqaflow-dev`.
+Release builds and other Firebase projects cannot enable them with the flag.
+Events go only to debug console output; the app does not persist or transmit
+them. Authentication behavior, App Check, email-enumeration protection, and
+authorization remain unchanged.
+For a controlled local DEV run, supply
+`--dart-define=AUTH_DIAGNOSTICS=true`,
+`--dart-define=FIREBASE_PROJECT_ID=intqaflow-dev`, and an opaque
+`--dart-define=APP_BUILD_ID=dev-auth-review` to `flutter run`; do not pass
+credentials as command-line arguments.
+
+Founder-provided DEV server evidence (not independently reproduced here):
+Identity Platform end-user activity request logging was temporarily enabled
+after explicit approval. One secure browser sign-in produced
+`auth/invalid-credential`; its matching Cloud Logging event reported
+`SignInWithPassword`, status code 3, and safe code
+`INVALID_LOGIN_CREDENTIALS`. Logging was promptly disabled and read back as
+false. The event remains subject to existing log retention. This confirms an
+actual Firebase rejection rather than only stale UI/backend membership state;
+it does not prove that submitted and expected credentials matched or establish
+the rejection's cause. No credential values or request bodies were read, and no
+reset, retry, account recreation, deployment, or isolated SDK reproduction was
+performed.
+
+Added focused tests:
+
+- `account_state_widget_test.dart` — `opt-in diagnostics follow captured
+  credentials through confirmation`, exercising controller snapshot, async
+  guest confirmation, exact Firebase arguments, and absence of submitted values
+  and exception text in emitted diagnostics.
+- `auth_diagnostics_test.dart` — `diagnostics require explicit opt-in to a
+  debug development build`, `disabled diagnostics emit no events`, `only one
+  diagnostic sign-in attempt can be active at a time`, `diagnostics never start
+  for a non-development Firebase project`, `diagnostic lifecycle contains only
+  allowlisted fields and values`, `auth and membership providers emit the staged
+  lookup lifecycle`, `a different UID transition clears the attempt before
+  lookups`, `unknown Firebase exception codes collapse to other`, and `unknown
+  exception content is not emitted`.
+
+Flutter tests, analyzer, and web build were not run here because Flutter/Dart
+are unavailable. The canonical PR15 acceptance index and checkpoint are not
+present in this clone; this PR13 checkpoint records the source scope and the
+supplied DEV evidence without asserting hosted acceptance.
+
 ### Handoff and lessons
 
 - Keep normal sign-in separate from guest account linking and explicit start

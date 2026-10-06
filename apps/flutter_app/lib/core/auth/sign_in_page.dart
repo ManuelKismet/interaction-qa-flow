@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:int_qa_flow/core/auth/auth_diagnostics.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 
 class SignInPage extends ConsumerStatefulWidget {
@@ -52,17 +53,42 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   }
 
   Future<void> _submit() async {
+    if (_busy) return;
     final isResetOperation = _resetMode;
     final isSeparateAccountCreation = _createAccountMode && !_linkGuestMode;
+    final isExistingAccountSignIn = !_resetMode && !_createAccountMode;
     final email = _email.text.trim();
     final password = _password.text;
+    AuthDiagnosticAttempt? diagnosticAttempt;
     setState(() {
       _busy = true;
       _error = null;
       _message = null;
     });
-    final auth = ref.read(firebaseAuthProvider);
     try {
+      final auth = ref.read(firebaseAuthProvider);
+      final currentUser = auth.currentUser;
+      final diagnosticLogger = ref.read(authDiagnosticLoggerProvider);
+      if (isExistingAccountSignIn && diagnosticLogger.hasActiveAttempt) {
+        setState(() {
+          _error = 'A sign-in attempt is already in progress. Please wait.';
+        });
+        return;
+      }
+      if (isExistingAccountSignIn) {
+        try {
+          diagnosticAttempt = diagnosticLogger.beginSignIn(
+            auth: auth,
+            anonymousAtStart: currentUser?.isAnonymous == true,
+            registeredAtStart:
+                currentUser != null && !currentUser.isAnonymous,
+            emailPresent: email.isNotEmpty,
+            passwordPresent: password.isNotEmpty,
+          );
+        } on Object {
+          diagnosticAttempt = null;
+        }
+      }
       if (_resetMode) {
         await auth.sendPasswordResetEmail(email: email);
         if (!mounted) return;
@@ -156,37 +182,42 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           });
         }
       } else {
-        final currentUser = auth.currentUser;
-        if ((currentUser?.isAnonymous == true ||
-                (currentUser == null && _hasMeaningfulCurrentGuestState)) &&
+        final requiresConfirmation =
+            currentUser?.isAnonymous == true ||
+            (currentUser == null && _hasMeaningfulCurrentGuestState);
+        if (requiresConfirmation &&
             !await _confirmCurrentGuestState(
               auth,
               currentUser,
               createSeparateAccount: false,
+              diagnosticAttempt: diagnosticAttempt,
             )) {
           return;
         }
-        await auth.signInWithEmailAndPassword(
+        if (!requiresConfirmation) {
+          diagnosticAttempt?.record(
+            AuthDiagnosticStage.confirmationCompleted,
+            confirmationOutcome:
+                AuthDiagnosticConfirmationOutcome.notRequired,
+          );
+        }
+        diagnosticAttempt?.record(AuthDiagnosticStage.firebaseCallStarted);
+        final signedIn = await auth.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
+        diagnosticAttempt?.recordFirebaseSuccess(
+          signedInUid:
+              signedIn.user?.uid ?? auth.currentUser?.uid,
+        );
       }
     } on FirebaseAuthException catch (error) {
-      // Log only a sanitized error code; never credentials or exception details.
       final code = error.code
           .toLowerCase()
           .split('/')
           .last
           .replaceAll(RegExp(r'[^a-z0-9_-]'), '');
-      const diagnostics = bool.fromEnvironment('AUTH_DIAGNOSTICS');
-      if (diagnostics) {
-        final app = auth.app;
-        final projectId = app.options.projectId;
-        debugPrint(
-          'Firebase authentication failed: auth/$code '
-          '(app=${app.name}, project=$projectId)',
-        );
-      }
+      diagnosticAttempt?.recordFirebaseFailure(error.code);
       if (!mounted) return;
       final message = isResetOperation
           ? 'Unable to send a reset email. Please check the address and try again.'
@@ -234,9 +265,20 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               _ => 'Sign-in failed. Please try again.',
             };
       setState(() {
-        _error = message + (diagnostics ? ' [auth/$code]' : '');
+        _error = message;
       });
+    } catch (_) {
+      if (diagnosticAttempt?.firebaseCallStarted == true) {
+        diagnosticAttempt?.recordFirebaseFailure('other');
+      } else {
+        diagnosticAttempt?.complete();
+      }
+      rethrow;
     } finally {
+      if (diagnosticAttempt != null &&
+          !diagnosticAttempt.firebaseCallSucceeded) {
+        diagnosticAttempt.complete();
+      }
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -250,6 +292,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     FirebaseAuth auth,
     User? currentUser, {
     required bool createSeparateAccount,
+    AuthDiagnosticAttempt? diagnosticAttempt,
   }) async {
     if (widget.guestGroupOwnershipUnavailable ||
         widget.hasSoleAdministeredGroup) {
@@ -263,6 +306,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                 'accept, or archive the group before leaving it. An archived group '
                 'can be restored for 30 days only by this same Firebase identity.';
       if (mounted) {
+        diagnosticAttempt?.record(AuthDiagnosticStage.confirmationPrompted);
         await showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
@@ -277,10 +321,20 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           ),
         );
       }
+      diagnosticAttempt?.record(
+        AuthDiagnosticStage.confirmationCompleted,
+        confirmationOutcome: AuthDiagnosticConfirmationOutcome.blocked,
+      );
       return false;
     }
 
-    if (!_hasMeaningfulCurrentGuestState) return true;
+    if (!_hasMeaningfulCurrentGuestState) {
+      diagnosticAttempt?.record(
+        AuthDiagnosticStage.confirmationCompleted,
+        confirmationOutcome: AuthDiagnosticConfirmationOutcome.notRequired,
+      );
+      return true;
+    }
 
     final currentUid = currentUser?.uid;
     final wasAnonymous = currentUser?.isAnonymous == true;
@@ -289,6 +343,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               'Firebase account that archived them; starting fresh does not '
               'transfer restoration rights.'
         : '';
+    diagnosticAttempt?.record(AuthDiagnosticStage.confirmationPrompted);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -334,6 +389,10 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       ),
     );
     if (confirmed != true || !mounted) {
+      diagnosticAttempt?.record(
+        AuthDiagnosticStage.confirmationCompleted,
+        confirmationOutcome: AuthDiagnosticConfirmationOutcome.cancelled,
+      );
       if (confirmed == false && createSeparateAccount && mounted) {
         setState(() {
           _message = currentUser?.isAnonymous == true
@@ -345,12 +404,20 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     }
     if (auth.currentUser?.uid != currentUid ||
         (auth.currentUser?.isAnonymous == true) != wasAnonymous) {
+      diagnosticAttempt?.record(
+        AuthDiagnosticStage.confirmationCompleted,
+        confirmationOutcome: AuthDiagnosticConfirmationOutcome.identityChanged,
+      );
       setState(() {
         _error =
             'The current identity changed while confirming. No account action was started.';
       });
       return false;
     }
+    diagnosticAttempt?.record(
+      AuthDiagnosticStage.confirmationCompleted,
+      confirmationOutcome: AuthDiagnosticConfirmationOutcome.confirmed,
+    );
     return true;
   }
 

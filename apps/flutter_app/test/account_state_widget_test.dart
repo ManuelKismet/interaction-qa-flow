@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/app.dart';
+import 'package:int_qa_flow/core/auth/auth_diagnostics.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
@@ -73,6 +77,19 @@ class _TestUserCredential extends Fake implements UserCredential {
   final User? user;
 }
 
+class _TestFirebaseApp extends Fake implements FirebaseApp {
+  @override
+  String get name => 'test-app';
+
+  @override
+  FirebaseOptions get options => const FirebaseOptions(
+    apiKey: 'test-api-key',
+    appId: 'test-app-id',
+    messagingSenderId: 'test-sender-id',
+    projectId: 'intqaflow-dev',
+  );
+}
+
 class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   _TestFirebaseAuth(
     this.currentUser, {
@@ -82,6 +99,9 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
 
   @override
   final User? currentUser;
+
+  @override
+  FirebaseApp get app => _TestFirebaseApp();
 
   final FirebaseAuthException? createError;
   final FirebaseAuthException? signInError;
@@ -1087,6 +1107,83 @@ void main() {
     expect(auth.signInAttempts, 1);
     expect(auth.lastSignInEmail, 'destination@example.test');
     expect(auth.lastSignInPassword, 'safe-test-password');
+  });
+
+  testWidgets('opt-in diagnostics follow captured credentials through confirmation', (
+    tester,
+  ) async {
+    final auth = _TestFirebaseAuth(
+      _TestUser(isAnonymous: true),
+      signInError: FirebaseAuthException(
+        code: 'invalid-credential',
+        message: 'private exception message',
+      ),
+    );
+    final output = <String>[];
+    final diagnostics = AuthDiagnosticLogger(
+      enabled: true,
+      appName: 'test-app',
+      projectId: 'intqaflow-dev',
+      buildId: 'test-build',
+      sink: output.add,
+      attemptIdGenerator: () => 'ephemeral-test-attempt',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(auth),
+          authDiagnosticLoggerProvider.overrideWithValue(diagnostics),
+        ],
+        child: const MaterialApp(
+          home: SignInPage(hasMeaningfulGuestWork: true),
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byType(TextField).first,
+      'private-user@example.test',
+    );
+    await tester.enterText(find.byType(TextField).last, 'private-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    tester.widget<TextField>(find.byType(TextField).first).controller!.text =
+        'changed@example.test';
+    tester.widget<TextField>(find.byType(TextField).last).controller!.text =
+        'changed-password';
+    await tester.tap(find.text('Continue to sign in'));
+    await tester.pumpAndSettle();
+
+    expect(auth.lastSignInEmail, 'private-user@example.test');
+    expect(auth.lastSignInPassword, 'private-password');
+    final events = output.map(
+      (line) => jsonDecode(line) as Map<String, dynamic>,
+    );
+    final eventList = events.toList();
+    expect(
+      eventList.map((event) => event['stage']),
+      containsAllInOrder([
+        'credentialsCaptured',
+        'confirmationPrompted',
+        'confirmationCompleted',
+        'firebaseCallStarted',
+        'firebaseCallFailed',
+      ]),
+    );
+    expect(
+      eventList[2]['confirmationOutcome'],
+      AuthDiagnosticConfirmationOutcome.confirmed.name,
+    );
+    expect(eventList.first['anonymousAtStart'], isTrue);
+    expect(eventList.first['emailPresent'], isTrue);
+    expect(eventList.first['passwordPresent'], isTrue);
+    expect(eventList.last['sanitizedExceptionCode'], 'invalid-credential');
+    final serializedEvents = jsonEncode(eventList);
+    expect(serializedEvents, isNot(contains('private-user@example.test')));
+    expect(serializedEvents, isNot(contains('private-password')));
+    expect(serializedEvents, isNot(contains('changed@example.test')));
+    expect(serializedEvents, isNot(contains('changed-password')));
+    expect(serializedEvents, isNot(contains('private exception message')));
+    expect(serializedEvents, isNot(contains('account-uid')));
   });
 
   testWidgets('sole shared-group administrator cannot switch identities', (
