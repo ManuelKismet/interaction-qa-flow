@@ -636,6 +636,123 @@ void main() {
     ]);
   });
 
+  testWidgets(
+    'local backup copies latest in-memory work when persistence fails',
+    (tester) async {
+      final storage = _MemoryGuestStorage();
+      final store = GuestWorkspaceStore(storage);
+      String? copiedText;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+          child: const MaterialApp(
+            home: GuestWorkspacePage(firebaseReady: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(_field('Question'), 'Latest rescue item');
+      final saveLocalQuestion = find.widgetWithText(
+        FilledButton,
+        'Save locally',
+      );
+      await tester.ensureVisible(saveLocalQuestion);
+      await tester.pumpAndSettle();
+      await tester.tap(saveLocalQuestion);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      storage.failWrites = true;
+      await tester.enterText(_field('Question'), 'Unsaved rescue item');
+      await tester.ensureVisible(saveLocalQuestion);
+      await tester.pumpAndSettle();
+      await tester.tap(saveLocalQuestion);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Your changes are not saved. Keep this page open and retry.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byTooltip('Guest workspace options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Copy local JSON backup'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Copy backup'));
+      await tester.pumpAndSettle();
+
+      expect(copiedText, isNotNull);
+      expect(
+        GuestWorkspaceData.decodeBackup(
+          copiedText!,
+        ).knowledge.map((item) => item['title']),
+        ['Unsaved rescue item', 'Latest rescue item'],
+      );
+      expect(
+        find.text(
+          'Local JSON backup copied to clipboard. Local changes are not saved. Keep this page open and retry saving.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Your changes are not saved. Keep this page open and retry.'),
+        findsOneWidget,
+      );
+      expect(storage.value, isNot(contains('Unsaved rescue item')));
+    },
+  );
+
+  testWidgets('clipboard failure does not claim that backup was copied', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'saved', 'title': 'Saved item'},
+        ],
+      ),
+    );
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async => throw PlatformException(code: 'clipboard-failed'),
+    );
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy local JSON backup'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy backup'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unable to copy the local JSON backup.'), findsOneWidget);
+    expect(find.text('Local JSON backup copied to clipboard.'), findsNothing);
+  });
+
   testWidgets('failed local save preserves the latest work for explicit retry', (
     tester,
   ) async {

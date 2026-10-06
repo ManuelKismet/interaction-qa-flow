@@ -411,8 +411,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   }
 
   Future<void> _copyLocalBackup() async {
-    final data = _data;
-    if (data == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -435,30 +433,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    if (_unsavedChanges) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'The backup was not copied because local changes could not be saved. Retry saving first.',
-          ),
-        ),
-      );
-      return;
-    }
-    if (!await _flushPendingSave()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'The backup was not copied because local changes could not be saved.',
-            ),
-          ),
-        );
-      }
-      return;
-    }
+    final saved = await _flushPendingSave();
+    if (!mounted) return;
     final latest = _data;
     if (latest == null) return;
+    final localChangesSaved =
+        saved && !_unsavedChanges && _savedRevision == _dataRevision;
     try {
       await Clipboard.setData(ClipboardData(text: latest.encodeBackup()));
     } on Object {
@@ -470,7 +450,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Local JSON backup copied to clipboard.')),
+      SnackBar(
+        content: Text(
+          localChangesSaved
+              ? 'Local JSON backup copied to clipboard.'
+              : 'Local JSON backup copied to clipboard. Local changes are not saved. Keep this page open and retry saving.',
+        ),
+      ),
     );
   }
 
