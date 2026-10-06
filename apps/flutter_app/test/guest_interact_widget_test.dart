@@ -92,8 +92,6 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       saved = await store.load();
       expect(saved.knowledge.map((item) => item['id']), ['password-rotation']);
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pumpAndSettle();
 
       final backButton = find.text('Back to add a local question');
       await tester.ensureVisible(backButton);
@@ -109,6 +107,8 @@ void main() {
       await tester.enterText(find.byType(TextField).first, 'New local question');
       await tester.enterText(find.byType(TextField).at(1), 'Details');
       await tester.enterText(find.byType(TextField).at(2), 'Answer');
+      await tester.drag(find.byType(SnackBar), const Offset(0, 100));
+      await tester.pumpAndSettle();
       final saveLocalQuestion = find.widgetWithText(
         FilledButton,
         'Save locally',
