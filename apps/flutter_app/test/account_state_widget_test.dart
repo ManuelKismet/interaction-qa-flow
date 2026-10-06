@@ -765,10 +765,20 @@ void main() {
     expect((await store.load()).knowledge, hasLength(2));
     await tester.tap(find.text('Saved Q&A'));
     await tester.pumpAndSettle();
+    final savedListScrollable = find
+        .ancestor(
+          of: find.text('Back to add a local question'),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    expect(
+      tester.widget<Scrollable>(savedListScrollable).axisDirection,
+      AxisDirection.down,
+    );
     await tester.scrollUntilVisible(
       find.text('Keep this item local'),
       250,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: savedListScrollable,
     );
     expect(find.text('Import this item'), findsOneWidget);
     expect(find.text('Keep this item local'), findsOneWidget);
@@ -1042,10 +1052,20 @@ void main() {
       'Keep this Knowledge item local',
     );
     final saveLocally = find.text('Save locally');
+    final addQuestionScrollable = find
+        .ancestor(
+          of: find.text('Add a local question'),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    expect(
+      tester.widget<Scrollable>(addQuestionScrollable).axisDirection,
+      AxisDirection.down,
+    );
     await tester.scrollUntilVisible(
       saveLocally,
       250,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: addQuestionScrollable,
     );
     await tester.tap(saveLocally);
     await tester.pumpAndSettle();
