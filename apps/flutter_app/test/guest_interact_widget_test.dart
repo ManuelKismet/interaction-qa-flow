@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -91,6 +93,18 @@ void main() {
       final dialogFields = find.descendant(
         of: find.byType(AlertDialog),
         matching: find.byType(TextField),
+      );
+      await tester.enterText(dialogFields.at(0), '');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save locally'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a question.'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(dialogFields.at(1)).controller!.text,
+        'Rotate keys quarterly.',
+      );
+      expect(
+        tester.widget<TextField>(dialogFields.at(0)).focusNode!.hasFocus,
+        isTrue,
       );
       await tester.enterText(dialogFields.at(0), 'Rotated guidance');
       await tester.enterText(dialogFields.at(1), 'Updated rotation details.');
@@ -621,6 +635,267 @@ void main() {
       'New backup item',
     ]);
   });
+
+  testWidgets('failed local save preserves the latest work for explicit retry', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage()..failWrites = true;
+    final store = GuestWorkspaceStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(_field('Question'), 'Kept after failure');
+    final saveButton = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Your changes are not saved. Keep this page open and retry.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('secret-password'), findsNothing);
+    expect((await store.load()).knowledge, isEmpty);
+    expect(storage.value, isNull);
+
+    storage.failWrites = false;
+    await tester.tap(find.text('Retry saving'));
+    await tester.pumpAndSettle();
+
+    expect((await store.load()).knowledge.single['title'], 'Kept after failure');
+    expect(
+      find.text('Your changes are not saved. Keep this page open and retry.'),
+      findsNothing,
+    );
+    expect(find.textContaining('Saved on this device'), findsOneWidget);
+  });
+
+  testWidgets('failed backup import preserves source and current local data', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'existing', 'title': 'Existing local item'},
+        ],
+      ),
+    );
+    final existingStoredValue = storage.value;
+    final backup = const GuestWorkspaceData(
+      knowledge: [
+        {'id': 'new', 'title': 'New backup item'},
+      ],
+    ).encodeBackup();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    storage.failWrites = true;
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local JSON backup'));
+    await tester.pumpAndSettle();
+    await tester.enterText(_field('Paste backup JSON'), backup);
+    await tester.tap(find.text('Preview import'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import selected locally'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'The backup could not be imported. Your current local work was kept.',
+      ),
+      findsOneWidget,
+    );
+    expect(storage.value, existingStoredValue);
+    expect((await store.load()).knowledge.single['title'], 'Existing local item');
+
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local JSON backup'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(_field('Paste backup JSON')).controller!.text, backup);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a stale save completion never reports newer edits as saved', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage();
+    await GuestWorkspaceStore(storage).save(const GuestWorkspaceData());
+    final store = _DelayedFirstSaveStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(_field('Question'), 'First change');
+    final saveButton = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pump(const Duration(milliseconds: 300));
+    await store.firstWriteStarted.future;
+
+    await tester.enterText(_field('Question'), 'Latest change');
+    await tester.tap(saveButton);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('Saving locally…'), findsOneWidget);
+
+    store.releaseFirstWrite();
+    await tester.pumpAndSettle();
+    final saved = await store.load();
+    expect(saved.knowledge.map((item) => item['title']), [
+      'Latest change',
+      'First change',
+    ]);
+    expect(store.writeSnapshots.last, ['Latest change', 'First change']);
+    expect(find.textContaining('Saved on this device'), findsOneWidget);
+  });
+
+  testWidgets('corrupt local data is preserved and the initial load can retry', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'recoverable', 'title': 'Recoverable item'},
+        ],
+      ),
+    );
+    final validStoredValue = storage.value!;
+    storage.value = '{corrupt local data';
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('stored copy was not changed'), findsOneWidget);
+    expect(find.text('Retry loading'), findsOneWidget);
+    expect(storage.value, '{corrupt local data');
+    storage.value = validStoredValue;
+    await tester.tap(find.text('Retry loading'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recoverable item'), findsOneWidget);
+    expect((await store.load()).knowledge.single['title'], 'Recoverable item');
+  });
+
+  testWidgets('local read failure retains storage and exposes retry', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'kept', 'title': 'Kept item'},
+        ],
+      ),
+    );
+    final originalValue = storage.value;
+    storage.failReads = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('stored copy was not changed'), findsOneWidget);
+    expect(find.text('Retry loading'), findsOneWidget);
+    expect(storage.value, originalValue);
+    storage.failReads = false;
+    await tester.tap(find.text('Retry loading'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kept item'), findsOneWidget);
+    expect(storage.value, originalValue);
+  });
+
+  testWidgets('required Knowledge and session fields show inline errors', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final knowledgeSave = find.widgetWithText(FilledButton, 'Save locally');
+    await tester.ensureVisible(knowledgeSave);
+    await tester.pumpAndSettle();
+    await tester.tap(knowledgeSave);
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a question.'), findsOneWidget);
+    expect(tester.widget<TextField>(_field('Question')).focusNode!.hasFocus, isTrue);
+    await tester.enterText(_field('Question'), '  ');
+    await tester.tap(knowledgeSave);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(_field('Question')).controller!.text, '  ');
+    expect(find.text('Enter a question.'), findsOneWidget);
+    expect((await store.load()).knowledge, isEmpty);
+
+    await tester.tap(find.text('Interact').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create session locally'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a session title.'), findsOneWidget);
+    await tester.enterText(_field('New Interact session'), 'Interview');
+    await tester.enterText(_field('First participant'), '');
+    await tester.tap(find.text('Create session locally'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a participant name.'), findsOneWidget);
+    await tester.enterText(_field('First participant'), 'Alice');
+    await tester.tap(find.text('Create session locally'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect((await store.load()).sessions.single['title'], 'Interview');
+  });
 }
 
 Finder _field(String label) => find.byWidgetPredicate(
@@ -741,13 +1016,43 @@ Map<String, dynamic> _narrowSession() {
 
 class _MemoryGuestStorage implements GuestStorage {
   String? value;
+  bool failWrites = false;
+  bool failReads = false;
 
   @override
   void remove() => value = null;
 
   @override
-  String? read() => value;
+  String? read() {
+    if (failReads) throw StateError('secret-password storage read failure');
+    return value;
+  }
 
   @override
-  void write(String value) => this.value = value;
+  void write(String value) {
+    if (failWrites) throw StateError('secret-password storage failure');
+    this.value = value;
+  }
+}
+
+class _DelayedFirstSaveStore extends GuestWorkspaceStore {
+  _DelayedFirstSaveStore(GuestStorage storage) : super(storage);
+
+  final firstWriteStarted = Completer<void>();
+  final _firstWriteGate = Completer<void>();
+  final writeSnapshots = <List<String>>[];
+
+  @override
+  Future<void> save(GuestWorkspaceData data) async {
+    writeSnapshots.add(
+      data.knowledge.map((item) => item['title'] as String).toList(),
+    );
+    if (writeSnapshots.length == 1) {
+      firstWriteStarted.complete();
+      await _firstWriteGate.future;
+    }
+    await super.save(data);
+  }
+
+  void releaseFirstWrite() => _firstWriteGate.complete();
 }

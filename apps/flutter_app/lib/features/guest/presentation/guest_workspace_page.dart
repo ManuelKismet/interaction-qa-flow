@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
+import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -61,7 +62,13 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
 class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   GuestWorkspaceData? _data;
   String? _loadError;
+  String? _pendingImportJson;
   String _saveStatus = 'Saved on this device';
+  bool _unsavedChanges = false;
+  bool _isLoading = false;
+  int _dataRevision = 0;
+  int _savedRevision = 0;
+  Future<bool>? _saveOperation;
   Timer? _autosaveTimer;
 
   @override
@@ -77,33 +84,86 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   }
 
   Future<void> _load() async {
+    if (_isLoading) return;
+    final revisionAtStart = _dataRevision;
+    setState(() => _isLoading = true);
     try {
       final data = await ref.read(guestWorkspaceStoreProvider).load();
-      if (mounted) setState(() => _data = data);
+      if (mounted) {
+        setState(() {
+          if (_dataRevision == revisionAtStart && _data == null) {
+            _data = data;
+            _savedRevision = _dataRevision;
+          }
+          _loadError = null;
+        });
+      }
     } on Object {
       if (mounted) {
         setState(() {
-          _loadError = 'Unable to read local guest data. The stored copy was not changed.';
+          _loadError =
+              'Unable to read local guest data. The stored copy was not changed.';
         });
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _save(GuestWorkspaceData data) {
     setState(() {
       _data = data;
+      _dataRevision++;
       _saveStatus = 'Saving locally…';
-      _loadError = null;
     });
     _autosaveTimer?.cancel();
-    _autosaveTimer = Timer(const Duration(milliseconds: 250), () async {
-      try {
-        await ref.read(guestWorkspaceStoreProvider).save(data);
-        if (mounted) setState(() => _saveStatus = 'Saved on this device');
-      } on Object {
-        if (mounted) setState(() => _saveStatus = 'Unable to save locally');
-      }
+    _autosaveTimer = Timer(
+      const Duration(milliseconds: 250),
+      _flushPendingSave,
+    );
+  }
+
+  Future<bool> _flushPendingSave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = null;
+    final operation = _saveOperation;
+    if (operation != null) {
+      return operation.then(
+        (saved) => saved && _savedRevision == _dataRevision,
+      );
+    }
+    final nextOperation = _writeLatestSnapshots();
+    _saveOperation = nextOperation;
+    return nextOperation.whenComplete(() {
+      if (identical(_saveOperation, nextOperation)) _saveOperation = null;
     });
+  }
+
+  Future<bool> _writeLatestSnapshots() async {
+    try {
+      while (mounted && _savedRevision < _dataRevision) {
+        final revision = _dataRevision;
+        final snapshot = _data;
+        if (snapshot == null) return false;
+        await ref.read(guestWorkspaceStoreProvider).save(snapshot);
+        _savedRevision = revision;
+      }
+      if (mounted && _savedRevision == _dataRevision) {
+        setState(() {
+          _saveStatus = 'Saved on this device';
+          _unsavedChanges = false;
+        });
+      }
+      return _savedRevision == _dataRevision;
+    } on Object {
+      if (mounted) {
+        setState(() {
+          _saveStatus = 'Unable to save locally';
+          _unsavedChanges = true;
+        });
+      }
+      return false;
+    }
   }
 
   Future<void> _startSharedGuestIdentity() async {
@@ -283,7 +343,19 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       ),
     );
     if (confirmed == true && mounted) {
-      await ref.read(firebaseAuthProvider).signOut();
+      try {
+        await ref.read(firebaseAuthProvider).signOut();
+      } on Object {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Unable to sign out right now. Your local work remains on this device.',
+              ),
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -309,7 +381,31 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(guestWorkspaceStoreProvider).clear();
+    final hadUnpersistedWork = _savedRevision < _dataRevision;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = null;
+    final pendingSave = _saveOperation;
+    if (pendingSave != null) await pendingSave;
+    try {
+      await ref.read(guestWorkspaceStoreProvider).clear();
+    } on Object {
+      if (mounted) {
+        if (hadUnpersistedWork) {
+          setState(() {
+            _saveStatus = 'Unable to save locally';
+            _unsavedChanges = true;
+          });
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unable to clear the local copy. Your current work was kept.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     if (!mounted) return;
     _save(const GuestWorkspaceData());
   }
@@ -339,10 +435,32 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    _autosaveTimer?.cancel();
+    if (_unsavedChanges) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The backup was not copied because local changes could not be saved. Retry saving first.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (!await _flushPendingSave()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The backup was not copied because local changes could not be saved.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    final latest = _data;
+    if (latest == null) return;
     try {
-      await ref.read(guestWorkspaceStoreProvider).save(data);
-      await Clipboard.setData(ClipboardData(text: data.encodeBackup()));
+      await Clipboard.setData(ClipboardData(text: latest.encodeBackup()));
     } on Object {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -357,7 +475,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
   }
 
   Future<void> _importLocalBackup() async {
-    final controller = TextEditingController();
+    final controller = TextEditingController(text: _pendingImportJson ?? '');
     try {
       final submit = await showDialog<bool>(
         context: context,
@@ -370,6 +488,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
               controller: controller,
               minLines: 4,
               maxLines: 12,
+              onChanged: (value) => _pendingImportJson = value,
               decoration: const InputDecoration(
                 labelText: 'Paste backup JSON',
                 alignLabelWithHint: true,
@@ -409,10 +528,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
         ),
       );
       if (selection == null || !mounted) return;
-      _autosaveTimer?.cancel();
       final current = _data;
-      if (current != null) {
-        await ref.read(guestWorkspaceStoreProvider).save(current);
+      if (current != null &&
+          (_unsavedChanges || !await _flushPendingSave())) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The import was cancelled because current local changes are not saved. Retry saving first.',
+            ),
+          ),
+        );
+        return;
       }
       final merged = await ref.read(guestWorkspaceStoreProvider).importSelected(
         imported: imported,
@@ -423,12 +549,26 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
       if (!mounted) return;
       setState(() {
         _data = merged;
+        _dataRevision++;
+        _savedRevision = _dataRevision;
         _saveStatus = 'Saved on this device';
+        _unsavedChanges = false;
         _loadError = null;
       });
+      _pendingImportJson = null;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Selected backup items imported locally.')),
       );
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The backup could not be imported. Your current local work was kept.',
+            ),
+          ),
+        );
+      }
     } finally {
       controller.dispose();
     }
@@ -524,7 +664,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                     ? const CircularProgressIndicator()
                     : Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text(_loadError!),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_loadError!, textAlign: TextAlign.center),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              onPressed: _isLoading ? null : _load,
+                              icon: const Icon(Icons.refresh),
+                              label: Text(
+                                _isLoading ? 'Retrying…' : 'Retry loading',
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
               )
             : Column(
@@ -534,6 +687,18 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage> {
                     isRegistered: _hasSignedInNonGuestUser,
                     saveStatus: _saveStatus,
                   ),
+                  if (_unsavedChanges)
+                    MaterialBanner(
+                      content: const Text(
+                        'Your changes are not saved. Keep this page open and retry.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: _flushPendingSave,
+                          child: const Text('Retry saving'),
+                        ),
+                      ],
+                    ),
                   if (widget.authUnavailable)
                     const _AccountMembershipNotice(
                       text: 'Account status could not be verified. This workspace is local; organisation access is not assumed.',
@@ -1170,10 +1335,12 @@ class _GuestKnowledgeTab extends StatefulWidget {
 }
 
 class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+  final _formKey = GlobalKey<FormState>();
   final _query = TextEditingController();
   final _title = TextEditingController();
   final _body = TextEditingController();
   final _answer = TextEditingController();
+  final _titleFocus = FocusNode();
   bool _showSavedQuestions = false;
 
   @override
@@ -1182,12 +1349,16 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     _title.dispose();
     _body.dispose();
     _answer.dispose();
+    _titleFocus.dispose();
     super.dispose();
   }
 
   void _create() {
+    if (!_formKey.currentState!.validate()) {
+      _titleFocus.requestFocus();
+      return;
+    }
     final title = _title.text.trim();
-    if (title.isEmpty) return;
     widget.onCreate({
       'id': newGuestItemId(),
       'title': title,
@@ -1321,23 +1492,34 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
               ],
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _title,
-              decoration: const InputDecoration(labelText: 'Question'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _body,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Details'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _answer,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Answer'),
+            Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: _title,
+                    focusNode: _titleFocus,
+                    decoration: const InputDecoration(labelText: 'Question'),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Enter a question.'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _body,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(labelText: 'Details'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _answer,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(labelText: 'Answer'),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Align(
@@ -1366,9 +1548,11 @@ class _EditGuestKnowledgeDialog extends StatefulWidget {
 }
 
 class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
+  final _formKey = GlobalKey<FormState>();
   late final TextEditingController _title;
   late final TextEditingController _body;
   late final TextEditingController _answer;
+  late final FocusNode _titleFocus;
 
   @override
   void initState() {
@@ -1378,6 +1562,7 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
     _answer = TextEditingController(
       text: widget.item['answer'] as String? ?? '',
     );
+    _titleFocus = FocusNode();
   }
 
   @override
@@ -1385,36 +1570,44 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
     _title.dispose();
     _body.dispose();
     _answer.dispose();
+    _titleFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Edit local Knowledge'),
-    content: SizedBox(
-      width: 560,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _title,
-            decoration: const InputDecoration(labelText: 'Question'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _body,
-            minLines: 2,
-            maxLines: 4,
-            decoration: const InputDecoration(labelText: 'Details'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _answer,
-            minLines: 2,
-            maxLines: 4,
-            decoration: const InputDecoration(labelText: 'Answer'),
-          ),
-        ],
+    content: Form(
+      key: _formKey,
+      child: SizedBox(
+        width: 560,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _title,
+              focusNode: _titleFocus,
+              decoration: const InputDecoration(labelText: 'Question'),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Enter a question.'
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _body,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Details'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _answer,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Answer'),
+            ),
+          ],
+        ),
       ),
     ),
     actions: [
@@ -1423,12 +1616,18 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
         child: const Text('Cancel'),
       ),
       FilledButton(
-        onPressed: () => Navigator.pop(context, {
-          ...widget.item,
-          'title': _title.text.trim(),
-          'body': _body.text.trim(),
-          'answer': _answer.text.trim(),
-        }),
+        onPressed: () {
+          if (!_formKey.currentState!.validate()) {
+            _titleFocus.requestFocus();
+            return;
+          }
+          Navigator.pop(context, {
+            ...widget.item,
+            'title': _title.text.trim(),
+            'body': _body.text.trim(),
+            'answer': _answer.text.trim(),
+          });
+        },
         child: const Text('Save locally'),
       ),
     ],
@@ -1453,21 +1652,33 @@ class _GuestInteractTab extends StatefulWidget {
 }
 
 class _GuestInteractTabState extends State<_GuestInteractTab> {
+  final _sessionFormKey = GlobalKey<FormState>();
   final _newSessionTitle = TextEditingController();
   final _newSessionParticipant = TextEditingController(text: 'Participant 1');
+  final _sessionTitleFocus = FocusNode();
+  final _participantFocus = FocusNode();
   String? _selectedTemplateId;
 
   @override
   void dispose() {
     _newSessionTitle.dispose();
     _newSessionParticipant.dispose();
+    _sessionTitleFocus.dispose();
+    _participantFocus.dispose();
     super.dispose();
   }
 
   void _createSession() {
+    if (!_sessionFormKey.currentState!.validate()) {
+      if (_newSessionTitle.text.trim().isEmpty) {
+        _sessionTitleFocus.requestFocus();
+      } else {
+        _participantFocus.requestFocus();
+      }
+      return;
+    }
     final title = _newSessionTitle.text.trim();
     final participant = _newSessionParticipant.text.trim();
-    if (title.isEmpty || participant.isEmpty) return;
     final template = widget.data.templates
         .where((item) => item['id'] == _selectedTemplateId)
         .firstOrNull;
@@ -1541,32 +1752,25 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
   }
 
   Future<void> _saveTemplate(Map<String, dynamic> session) async {
-    final name = TextEditingController();
-    final value = await showDialog<String>(
+    final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Save local template'),
-        content: TextField(
-          controller: name,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Template name'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, name.text.trim()),
-            child: const Text('Save template'),
+      builder: (context) => const _GuestRequiredTextDialog(
+        title: 'Save local template',
+        submitLabel: 'Save template',
+        fields: [
+          _GuestRequiredTextField(
+            label: 'Template name',
+            errorText: 'Enter a template name.',
           ),
         ],
       ),
     );
-    name.dispose();
-    if (value == null || value.isEmpty || !mounted) return;
+    if (values == null || !mounted) return;
     widget.onSaveTemplate(
       createGuestTemplateFromSession(
         session: session,
         id: newGuestItemId(),
-        name: value,
+        name: values.single,
       ),
     );
   }
@@ -1620,36 +1824,49 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                       setState(() => _selectedTemplateId = value),
                 ),
               const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final width = constraints.maxWidth >= 680
-                      ? (constraints.maxWidth - 12) / 2
-                      : constraints.maxWidth;
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      SizedBox(
-                        width: width,
-                        child: TextField(
-                          controller: _newSessionTitle,
-                          decoration: const InputDecoration(
-                            labelText: 'New Interact session',
+              Form(
+                key: _sessionFormKey,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth >= 680
+                        ? (constraints.maxWidth - 12) / 2
+                        : constraints.maxWidth;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: width,
+                          child: TextFormField(
+                            controller: _newSessionTitle,
+                            focusNode: _sessionTitleFocus,
+                            decoration: const InputDecoration(
+                              labelText: 'New Interact session',
+                            ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                    ? 'Enter a session title.'
+                                    : null,
                           ),
                         ),
-                      ),
-                      SizedBox(
-                        width: width,
-                        child: TextField(
-                          controller: _newSessionParticipant,
-                          decoration: const InputDecoration(
-                            labelText: 'First participant',
+                        SizedBox(
+                          width: width,
+                          child: TextFormField(
+                            controller: _newSessionParticipant,
+                            focusNode: _participantFocus,
+                            decoration: const InputDecoration(
+                              labelText: 'First participant',
+                            ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                    ? 'Enter a participant name.'
+                                    : null,
                           ),
                         ),
-                      ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 12),
               Align(
@@ -1721,8 +1938,12 @@ class _GuestSessionEditor extends StatefulWidget {
 }
 
 class _GuestSessionEditorState extends State<_GuestSessionEditor> {
+  final _participantFormKey = GlobalKey<FormState>();
+  final _questionFormKey = GlobalKey<FormState>();
   final _participant = TextEditingController();
   final _question = TextEditingController();
+  final _participantFocus = FocusNode();
+  final _questionFocus = FocusNode();
   String? _selectedParticipantId;
 
   @override
@@ -1746,6 +1967,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   void dispose() {
     _participant.dispose();
     _question.dispose();
+    _participantFocus.dispose();
+    _questionFocus.dispose();
     super.dispose();
   }
 
@@ -1761,8 +1984,11 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   }
 
   void _addParticipant() {
+    if (!_participantFormKey.currentState!.validate()) {
+      _participantFocus.requestFocus();
+      return;
+    }
     final name = _participant.text.trim();
-    if (name.isEmpty) return;
     final id = newGuestItemId();
     _editSession((session) {
       (session['participants'] as List).add({'id': id, 'name': name});
@@ -1783,37 +2009,24 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
         .where((item) => item['id'] == _selectedParticipantId)
         .firstOrNull;
     if (participant == null) return;
-    final name = TextEditingController(
-      text: participant['name'] as String? ?? '',
-    );
-    final updatedName = await showDialog<String>(
+    final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rename participant'),
-        content: TextField(
-          controller: name,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Participant name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, name.text.trim()),
-            child: const Text('Save name locally'),
+      builder: (context) => _GuestRequiredTextDialog(
+        title: 'Rename participant',
+        submitLabel: 'Save name locally',
+        fields: [
+          _GuestRequiredTextField(
+            label: 'Participant name',
+            initialValue: participant['name'] as String? ?? '',
+            errorText: 'Enter a participant name.',
           ),
         ],
       ),
     );
-    name.dispose();
-    if (updatedName == null ||
-        updatedName.isEmpty ||
-        !mounted ||
-        participant['id'] is! String) {
+    if (values == null || !mounted || participant['id'] is! String) {
       return;
     }
+    final updatedName = values.single;
     final participantId = participant['id'] as String;
     _editSession((session) {
       for (final item in session['participants'] as List) {
@@ -1824,8 +2037,11 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   }
 
   void _addQuestion({required bool shared}) {
+    if (!_questionFormKey.currentState!.validate()) {
+      _questionFocus.requestFocus();
+      return;
+    }
     final text = _question.text.trim();
-    if (text.isEmpty) return;
     final participantIds = _participants
         .map((item) => item['id'] as String)
         .toList();
@@ -1959,36 +2175,51 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             const SizedBox(height: 4),
           ],
           if (!hasDuplicateParticipantIds)
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _participant,
-                    decoration: const InputDecoration(
-                      labelText: 'Add participant',
+            Form(
+              key: _participantFormKey,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _participant,
+                      focusNode: _participantFocus,
+                      decoration: const InputDecoration(
+                        labelText: 'Add participant',
+                      ),
+                      validator: (value) =>
+                          value == null || value.trim().isEmpty
+                              ? 'Enter a participant name.'
+                              : null,
+                      onFieldSubmitted: (_) => _addParticipant(),
                     ),
-                    onSubmitted: (_) => _addParticipant(),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Add participant',
-                  onPressed: _addParticipant,
-                  icon: const Icon(Icons.person_add_alt_1),
-                ),
-              ],
+                  IconButton(
+                    tooltip: 'Add participant',
+                    onPressed: _addParticipant,
+                    icon: const Icon(Icons.person_add_alt_1),
+                  ),
+                ],
+              ),
             ),
           if (!hasDuplicateParticipantIds) ...[
             const SizedBox(height: 12),
-            TextField(
-              controller: _question,
-              decoration: const InputDecoration(
-                labelText: 'Prepared question',
-                suffixIcon: _GuestInfoButton(
-                  tooltip: 'Prepared question help',
-                  title: 'About shared questions',
-                  content:
-                      'Shared questions get separate answers from each participant.',
+            Form(
+              key: _questionFormKey,
+              child: TextFormField(
+                controller: _question,
+                focusNode: _questionFocus,
+                decoration: const InputDecoration(
+                  labelText: 'Prepared question',
+                  suffixIcon: _GuestInfoButton(
+                    tooltip: 'Prepared question help',
+                    title: 'About shared questions',
+                    content:
+                        'Shared questions get separate answers from each participant.',
+                  ),
                 ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter a question.'
+                    : null,
               ),
             ),
             const SizedBox(height: 8),
@@ -2286,9 +2517,11 @@ class _GuestAnswerEditor extends StatefulWidget {
 }
 
 class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
+  final _followUpFormKey = GlobalKey<FormState>();
   late final TextEditingController _answer;
   final _followUp = TextEditingController();
   final _answerFocus = FocusNode();
+  final _followUpFocus = FocusNode();
 
   @override
   void initState() {
@@ -2312,10 +2545,15 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
     _answer.dispose();
     _followUp.dispose();
     _answerFocus.dispose();
+    _followUpFocus.dispose();
     super.dispose();
   }
 
   void _addFollowUp() {
+    if (!_followUpFormKey.currentState!.validate()) {
+      _followUpFocus.requestFocus();
+      return;
+    }
     widget.onAddFollowUp(_followUp.text);
     _followUp.clear();
   }
@@ -2402,12 +2640,19 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                     child: Text('${branches.length} follow-ups'),
                   ),
               ];
-              final field = TextField(
-                controller: _followUp,
-                decoration: const InputDecoration(
-                  labelText: 'Follow-up question',
+              final field = Form(
+                key: _followUpFormKey,
+                child: TextFormField(
+                  controller: _followUp,
+                  focusNode: _followUpFocus,
+                  decoration: const InputDecoration(
+                    labelText: 'Follow-up question',
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter a follow-up question.'
+                      : null,
+                  onFieldSubmitted: (_) => _addFollowUp(),
                 ),
-                onSubmitted: (_) => _addFollowUp(),
               );
               if (constraints.maxWidth < 440) {
                 return Column(
@@ -2587,8 +2832,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     }
   }
 
-  Future<void> _loadGroup(String groupId) async {
-    if (!mounted) return;
+  Future<bool> _loadGroup(String groupId) async {
+    if (!mounted) return false;
     setState(() {
       _busy = true;
       _error = null;
@@ -2606,7 +2851,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       final invitations = detail['role'] == 'admin'
           ? await _repository.listInvitations(groupId)
           : const <Map<String, dynamic>>[];
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _groupId = groupId;
         _group = detail;
@@ -2614,8 +2859,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         _invitations = invitations;
         _error = null;
       });
+      return true;
     } on Object catch (error) {
       if (mounted) setState(() => _error = _safeGuestError(error));
+      return false;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -2768,48 +3015,33 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   }
 
   Future<void> _createGroup() async {
-    final name = TextEditingController();
-    final displayName = TextEditingController();
-    final accepted = await showDialog<bool>(
+    final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Create a shared group'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'This creates the group using your current Firebase identity. '
-              'Only content you later choose to share is uploaded. Linking an '
-              'account from this guest identity keeps its group access; a separate '
-              'account does not inherit this group or its data.',
-            ),
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Group name')),
-            TextField(
-              controller: displayName,
-              decoration: const InputDecoration(labelText: 'Your display name'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create group')),
+      builder: (context) => const _GuestRequiredTextDialog(
+        title: 'Create a shared group',
+        description:
+            'This creates the group using your current Firebase identity. '
+            'Only content you later choose to share is uploaded. Linking an '
+            'account from this guest identity keeps its group access; a separate '
+            'account does not inherit this group or its data.',
+        submitLabel: 'Create group',
+        fields: [
+          _GuestRequiredTextField(
+            label: 'Group name',
+            errorText: 'Enter a group name.',
+          ),
+          _GuestRequiredTextField(
+            label: 'Your display name',
+            errorText: 'Enter a display name.',
+          ),
         ],
       ),
     );
-    if (accepted != true || !mounted) {
-      name.dispose();
-      displayName.dispose();
-      return;
-    }
-    final groupName = name.text.trim();
-    final memberName = displayName.text.trim();
-    name.dispose();
-    displayName.dispose();
-    if (groupName.isEmpty || memberName.isEmpty) return;
+    if (values == null || !mounted) return;
     await _run(() async {
       final group = await _repository.createGroup(
-        name: groupName,
-        displayName: memberName,
+        name: values[0],
+        displayName: values[1],
       );
       _groupId = group['id'] as String;
       await _loadGroups();
@@ -2817,34 +3049,33 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   }
 
   Future<void> _joinByInvitation() async {
-    final token = TextEditingController();
-    final displayName = TextEditingController();
-    final accepted = await showDialog<bool>(
+    final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Join a shared group'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Paste an invitation token. Preview checks validity only and reveals no group content.'),
-            TextField(controller: token, decoration: const InputDecoration(labelText: 'Invitation token')),
-            TextField(controller: displayName, decoration: const InputDecoration(labelText: 'Display name')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Preview invitation')),
+      builder: (context) => const _GuestRequiredTextDialog(
+        title: 'Join a shared group',
+        description:
+            'Paste an invitation token. Preview checks validity only and reveals no group content.',
+        submitLabel: 'Preview invitation',
+        fields: [
+          _GuestRequiredTextField(
+            label: 'Invitation token',
+            errorText: 'Enter an invitation token.',
+          ),
+          _GuestRequiredTextField(
+            label: 'Display name',
+            errorText: 'Enter a display name.',
+          ),
         ],
       ),
     );
-    final inviteToken = token.text.trim();
-    final memberName = displayName.text.trim();
-    token.dispose();
-    displayName.dispose();
-    if (accepted != true || inviteToken.isEmpty || memberName.isEmpty || !mounted) return;
+    if (values == null || !mounted) return;
+    final inviteToken = values[0];
+    final memberName = values[1];
     await _run(() async {
       if (!await _repository.previewInvitation(inviteToken)) {
-        throw StateError('This invitation is unavailable, expired or revoked.');
+        throw const ApiException(
+          'This invitation is unavailable, expired or revoked.',
+        );
       }
       if (!mounted) return;
       final join = await showDialog<bool>(
@@ -2923,9 +3154,26 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: invitation['token'] as String));
-                Navigator.pop(context);
+              onPressed: () async {
+                try {
+                  await Clipboard.setData(
+                    ClipboardData(text: invitation['token'] as String),
+                  );
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(content: Text('Invitation token copied.')),
+                  );
+                  Navigator.pop(context);
+                } on Object {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Unable to copy the invitation token. Select and copy it from the dialog.',
+                      ),
+                    ),
+                  );
+                }
               },
               child: const Text('Copy token'),
             ),
@@ -3099,42 +3347,33 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _createKnowledge() async {
     final groupId = _groupId;
     if (groupId == null) return;
-    final title = TextEditingController();
-    final body = TextEditingController();
-    final accepted = await showDialog<bool>(
+    final values = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add shared Knowledge'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('This item will be stored online for approved group members.'),
-            TextField(controller: title, decoration: const InputDecoration(labelText: 'Title')),
-            TextField(
-              controller: body,
-              minLines: 3,
-              maxLines: 8,
-              decoration: const InputDecoration(labelText: 'Knowledge / answer'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Share with group')),
+      builder: (context) => const _GuestRequiredTextDialog(
+        title: 'Add shared Knowledge',
+        description: 'This item will be stored online for approved group members.',
+        submitLabel: 'Share with group',
+        fields: [
+          _GuestRequiredTextField(
+            label: 'Title',
+            errorText: 'Enter a title.',
+          ),
+          _GuestRequiredTextField(
+            label: 'Knowledge / answer',
+            errorText: 'Enter the Knowledge or answer.',
+            minLines: 3,
+            maxLines: 8,
+          ),
         ],
       ),
     );
-    final itemTitle = title.text.trim();
-    final itemBody = body.text.trim();
-    title.dispose();
-    body.dispose();
-    if (accepted != true || itemTitle.isEmpty || itemBody.isEmpty || !mounted) return;
+    if (values == null || !mounted) return;
     await _run(() async {
       await _repository.createKnowledge(
         groupId: groupId,
-        title: itemTitle,
-        body: itemBody,
-        answer: itemBody,
+        title: values[0],
+        body: values[1],
+        answer: values[1],
       );
       await _loadGroup(groupId);
     });
@@ -3165,11 +3404,15 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         knowledgeIds: selection.knowledgeIds,
         sessionIds: selection.sessionIds,
       );
-      await _loadGroup(groupId);
+      final refreshed = await _loadGroup(groupId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Selected copies were shared. Your local work remains on this device.'),
+          SnackBar(
+            content: Text(
+              refreshed
+                  ? 'Selected copies were shared. Your local work remains on this device.'
+                  : 'The share request completed, but the group could not be refreshed. Refresh status before sharing again.',
+            ),
           ),
         );
       }
@@ -3536,36 +3779,26 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _editEntry(Map<String, dynamic> entry) async {
     final groupId = _groupId;
     if (groupId == null) return;
-    final title = TextEditingController(text: entry['title'] as String? ?? '');
     final sourceData = entry['data'] is Map
         ? Map<String, dynamic>.from(entry['data'] as Map)
         : <String, dynamic>{};
-    final body = TextEditingController(text: sourceData['body'] as String? ?? '');
-    final answer = TextEditingController(
-      text: sourceData['answer'] as String? ?? '',
-    );
-    final accepted = await showDialog<bool>(
+    final values = await showDialog<Map<String, String>>(
       context: context,
       builder: (context) => _GuestEntryEditDialog(
-        title: title,
-        body: body,
-        answer: answer,
+        title: entry['title'] as String? ?? '',
+        body: sourceData['body'] as String? ?? '',
+        answer: sourceData['answer'] as String? ?? '',
         editKnowledge: entry['kind'] != 'interact_session',
       ),
     );
-    final editedTitle = title.text.trim();
-    final editedBody = body.text.trim();
-    final editedAnswer = answer.text.trim();
-    title.dispose();
-    body.dispose();
-    answer.dispose();
-    if (accepted != true || editedTitle.isEmpty || !mounted) return;
+    if (values == null || !mounted) return;
+    final editedTitle = values['title']!;
     final updatedData = entry['kind'] == 'interact_session'
         ? sourceData
         : {
             ...sourceData,
-            'body': editedBody,
-            'answer': editedAnswer,
+            'body': values['body']!,
+            'answer': values['answer']!,
           };
     await _run(() async {
       await _repository.updateEntry(
@@ -3611,7 +3844,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     try {
       await action();
     } on Object catch (error) {
-      if (mounted) setState(() => _error = _safeGuestError(error));
+      if (mounted) {
+        final safeMessage = _safeGuestError(error);
+        setState(() => _error = safeMessage);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(safeMessage)),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -3666,7 +3905,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           const SizedBox(height: 12),
           MaterialBanner(
             content: Text(_error!),
-            actions: [TextButton(onPressed: _loadGroups, child: const Text('Retry'))],
+            actions: [
+              TextButton(
+                onPressed: _busy ? null : _loadGroups,
+                child: const Text('Refresh status'),
+              ),
+            ],
           ),
         ],
         if (_busy) const LinearProgressIndicator(),
@@ -3816,11 +4060,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 
 String _safeGuestError(Object error) {
   if (error is ApiException) return error.message;
-  final text = error.toString();
-  if (text.contains('429')) return 'Request limit reached. Wait before trying again.';
-  if (text.contains('403')) return 'This shared-group action is not allowed for your role.';
-  if (text.contains('404')) return 'This group, invitation or entry is unavailable.';
-  if (text.contains('401')) return 'Guest identity is unavailable. Sign in again to continue.';
+  if (error is DioException) return ApiException.fromDio(error).message;
   return 'The shared-group request could not be verified. Check your sign-in and group access, then retry.';
 }
 
@@ -3850,9 +4090,9 @@ class _GuestEntryEditDialog extends StatefulWidget {
     required this.editKnowledge,
   });
 
-  final TextEditingController title;
-  final TextEditingController body;
-  final TextEditingController answer;
+  final String title;
+  final String body;
+  final String answer;
   final bool editKnowledge;
 
   @override
@@ -3860,41 +4100,209 @@ class _GuestEntryEditDialog extends StatefulWidget {
 }
 
 class _GuestEntryEditDialogState extends State<_GuestEntryEditDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _title;
+  late final TextEditingController _body;
+  late final TextEditingController _answer;
+  late final FocusNode _titleFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    _title = TextEditingController(text: widget.title);
+    _body = TextEditingController(text: widget.body);
+    _answer = TextEditingController(text: widget.answer);
+    _titleFocus = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    _answer.dispose();
+    _titleFocus.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) {
+      _titleFocus.requestFocus();
+      return;
+    }
+    Navigator.pop(context, {
+      'title': _title.text.trim(),
+      'body': _body.text.trim(),
+      'answer': _answer.text.trim(),
+    });
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Edit shared group entry'),
     content: SizedBox(
       width: 640,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(controller: widget.title, decoration: const InputDecoration(labelText: 'Title')),
-          if (widget.editKnowledge) ...[
-            TextField(
-              controller: widget.body,
-              minLines: 2,
-              maxLines: 5,
-              decoration: const InputDecoration(labelText: 'Knowledge'),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _title,
+              focusNode: _titleFocus,
+              decoration: const InputDecoration(labelText: 'Title'),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Enter a title.'
+                  : null,
             ),
-            TextField(
-              controller: widget.answer,
-              minLines: 2,
-              maxLines: 5,
-              decoration: const InputDecoration(labelText: 'Answer'),
-            ),
-          ] else
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: Text('Interact questions and answers are unchanged.'),
-            ),
-        ],
+            if (widget.editKnowledge) ...[
+              TextField(
+                controller: _body,
+                minLines: 2,
+                maxLines: 5,
+                decoration: const InputDecoration(labelText: 'Knowledge'),
+              ),
+              TextField(
+                controller: _answer,
+                minLines: 2,
+                maxLines: 5,
+                decoration: const InputDecoration(labelText: 'Answer'),
+              ),
+            ] else
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text('Interact questions and answers are unchanged.'),
+              ),
+          ],
+        ),
       ),
     ),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
       FilledButton(
-        onPressed: () => Navigator.pop(context, true),
+        onPressed: _save,
         child: const Text('Save revision'),
+      ),
+    ],
+  );
+}
+
+class _GuestRequiredTextField {
+  const _GuestRequiredTextField({
+    required this.label,
+    required this.errorText,
+    this.initialValue = '',
+    this.minLines = 1,
+    this.maxLines = 1,
+  });
+
+  final String label;
+  final String errorText;
+  final String initialValue;
+  final int minLines;
+  final int maxLines;
+}
+
+class _GuestRequiredTextDialog extends StatefulWidget {
+  const _GuestRequiredTextDialog({
+    required this.title,
+    required this.submitLabel,
+    required this.fields,
+    this.description,
+  });
+
+  final String title;
+  final String submitLabel;
+  final List<_GuestRequiredTextField> fields;
+  final String? description;
+
+  @override
+  State<_GuestRequiredTextDialog> createState() =>
+      _GuestRequiredTextDialogState();
+}
+
+class _GuestRequiredTextDialogState extends State<_GuestRequiredTextDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final List<TextEditingController> _controllers;
+  late final List<FocusNode> _focusNodes;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = [
+      for (final field in widget.fields)
+        TextEditingController(text: field.initialValue),
+    ];
+    _focusNodes = [for (var i = 0; i < widget.fields.length; i++) FocusNode()];
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    for (final focusNode in _focusNodes) {
+      focusNode.dispose();
+    }
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) {
+      final firstEmpty = _controllers.indexWhere(
+        (controller) => controller.text.trim().isEmpty,
+      );
+      if (firstEmpty >= 0) _focusNodes[firstEmpty].requestFocus();
+      return;
+    }
+    Navigator.of(context).pop(
+      _controllers.map((controller) => controller.text.trim()).toList(),
+    );
+  }
+
+  Widget _input(int index) {
+    final field = widget.fields[index];
+    return TextFormField(
+      controller: _controllers[index],
+      focusNode: _focusNodes[index],
+      minLines: field.minLines,
+      maxLines: field.maxLines,
+      decoration: InputDecoration(labelText: field.label),
+      validator: (value) =>
+          value == null || value.trim().isEmpty ? field.errorText : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: Text(widget.title),
+    content: SizedBox(
+      width: 560,
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.description != null) ...[
+              Text(widget.description!),
+              const SizedBox(height: 12),
+            ],
+            for (var i = 0; i < widget.fields.length; i++) ...[
+              if (i > 0) const SizedBox(height: 12),
+              _input(i),
+            ],
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _submit,
+        child: Text(widget.submitLabel),
       ),
     ],
   );
