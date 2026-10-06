@@ -89,3 +89,47 @@ Founder explicitly instructed search only, then dev rollout after confirmation
 it works. [Organisation improvements](organisation-improvements-deferred-2026-10-06.md)
 are recorded but must not be implemented or assigned to Copilot until the
 founder gives the later start instruction.
+
+## Corrected patch applied and independently tested — 2026-10-06
+
+Artifact `7eca2357ecc774508bf827bd694f73f531177925` was applied unchanged
+in a new isolated worktree, producing
+`44422230f7435e503b82e96586ff6ec5314bdab1` on
+`fix/unified-search-dev-20261006`. Source branch is pushed and GitHub readback
+verified. Deployed source remains `aafc112`; **no search deployment yet**.
+
+| Check | Executed result |
+|---|---|
+| Python compileall | Pass |
+| Alembic heads | Single head 0014 |
+| Backend suite | 110 passed, 1 failed, 4 PostgreSQL tests skipped without URL; 10 warnings, 26.32 s, exit 1 |
+| Flutter dependencies | Pass |
+| Flutter analysis | 2 errors, 3 warnings, 11 informational notices; 23.1 s, exit 1 |
+| Fresh isolated PostgreSQL migration | Upgrade through 0014 passed |
+| Actual PostgreSQL search/concurrency | 2 passed, 1 failed; 0.87 s, exit 1 |
+| Isolated migration round-trip | 0014 → 0013 → 0014 passed, exit 0 |
+| Full Flutter suite / release build | Not run: compile errors block these gates |
+
+Failures and remaining matching issues were consolidated into
+[Copilot correction request](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6025264339):
+
+- Nullable membership status access and nonexistent personal reload method in
+  guest_workspace_page.dart; redundant assertions and unused savedItems warnings.
+- Account search test incorrectly expects one record despite two legitimate
+  same-owner sentinel records. Preserve owner isolation while correcting the assertion.
+- PostgreSQL semantic fixture fails because GuestGroup is never added before
+  flushing/using its ID, producing null group_id.
+- Personal backend typo coverage, strong answer/body lexical priority against
+  semantic-only matches, compact Private/Local badges and remote widget regressions
+  still require completion.
+
+Requested a targeted incremental patch against the exact pushed `44422230`
+source, not another reconstructed full feature patch. Next step is review/apply
+that correction, repeat independent gates, then DEV-only rollout if passing.
+No automatic claim of test completion or meaningful live semantic quality.
+
+The database was disposable PostgreSQL16 on loopback port55442, not Cloud SQL.
+Its server was stopped after the isolated migration round-trip; files retained
+for resumable checks. Logs are private under /tmp/intqaflow-search-*.log in the
+Codespace. Main worktree's four pre-existing dirty docs were preserved.
+Organisation improvements remain explicitly deferred until founder instruction.
