@@ -70,9 +70,13 @@ confirms its grants; do not broaden IAM or database privileges for this task.
 
 Shared-group membership and administrator roles are keyed to the Firebase UID.
 Creating an account from the current guest identity links credentials to that
-same UID; signing into or creating a separate identity does not transfer group
-membership or local browser work. Registered identities without an organisation
-can still use their local workspace and any groups already linked to their UID.
+same UID; after email verification, that registered identity can continue to
+access groups already linked to the UID. Groups require a non-anonymous Firebase
+identity with a verified email, but do not require organisation membership.
+Signing into or creating a separate identity does not transfer group membership
+or local browser work. Anonymous guests retain local Knowledge, Interact,
+templates, and import/export; account creation or sign-in does not upload,
+migrate, or delete that local data or automatically purge existing Groups data.
 Organisation membership and roles are independent of shared-group membership.
 
 Administration transfer is recipient-accepted. An active group admin may request
@@ -109,10 +113,8 @@ Archived listings expose server-derived `can_delete` separately from the
 
 The Shared groups UI explains the member impact, irreversibility, and retained
 local/exported copies before permanent deletion. It also explains the member
-impact and same-UID recovery limit before archive and account departure. A
-sole-admin identity may leave only after another active member accepts a transfer
-or the group is archived. No group data is automatically migrated, imported, or
-deleted by account creation or sign-in.
+impact and same-UID recovery limit before archive. No group data is automatically
+migrated, imported, or deleted by account creation or sign-in.
 
 ## Scheduler review
 

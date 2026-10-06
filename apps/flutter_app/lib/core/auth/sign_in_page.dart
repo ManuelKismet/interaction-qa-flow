@@ -8,20 +8,12 @@ class SignInPage extends ConsumerStatefulWidget {
     this.linkGuestIdentity = false,
     this.createAccount = false,
     this.hasMeaningfulGuestWork = false,
-    this.hasCurrentGuestGroupAccess = false,
-    this.hasArchivedGuestGroups = false,
-    this.hasSoleAdministeredGroup = false,
-    this.guestGroupOwnershipUnavailable = false,
     super.key,
   });
 
   final bool linkGuestIdentity;
   final bool createAccount;
   final bool hasMeaningfulGuestWork;
-  final bool hasCurrentGuestGroupAccess;
-  final bool hasArchivedGuestGroups;
-  final bool hasSoleAdministeredGroup;
-  final bool guestGroupOwnershipUnavailable;
 
   @override
   ConsumerState<SignInPage> createState() => _SignInPageState();
@@ -97,17 +89,25 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         } on FirebaseAuthException {
           if (!mounted) return;
           await _finishGuestLink(
-            'Account created from this guest, but the account status could not be refreshed. The guest identity and group access remain linked. Sign in again to verify the account state.',
+            'Account created from this guest, but the account status could not '
+            'be refreshed. The guest identity remains linked. Sign in again to '
+            'verify the account state.',
           );
           return;
         }
         if (!mounted) return;
         await _finishGuestLink(
           verificationEmailFailed
-              ? 'Account created from this guest, but the verification email could not be sent. The guest identity and group access remain linked. Sign in normally and contact your administrator if verification is still pending.'
+              ? 'Account created from this guest, but the verification email '
+                  'could not be sent. The guest identity remains linked. Sign '
+                  'in normally and contact your administrator if verification '
+                  'is still pending.'
               : linkedUser.emailVerified
-              ? 'Account created from this guest and verified. Group access is retained; local work stays on this device.'
-              : 'Account created from this guest. Check your email to verify it. The guest identity and group access are retained; local work stays on this device.',
+              ? 'Account created from this guest and verified. Local work '
+                  'stays on this device.'
+              : 'Account created from this guest. Check your email to verify '
+                  'it. The guest identity remains linked; local work stays on '
+                  'this device.',
         );
       } else if (_createAccountMode) {
         final currentUser = auth.currentUser;
@@ -213,7 +213,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               'email-already-in-use' ||
               'credential-already-in-use' ||
               'provider-already-linked' =>
-                'That account could not be linked. This guest identity remains active; an existing account is never linked or granted group access automatically.',
+                'That account could not be linked. This guest identity remains '
+                'active; sign in with the existing account or try again.',
               'network-request-failed' =>
                 'Unable to reach the sign-in service. Check your connection and try again.',
               'too-many-requests' =>
@@ -247,53 +248,17 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   }
 
   bool get _hasMeaningfulCurrentGuestState =>
-      widget.hasMeaningfulGuestWork ||
-      widget.hasCurrentGuestGroupAccess ||
-      widget.hasArchivedGuestGroups;
+      widget.hasMeaningfulGuestWork;
 
   Future<bool> _confirmCurrentGuestState(
     FirebaseAuth auth,
     User? currentUser, {
     required bool createSeparateAccount,
   }) async {
-    if (widget.guestGroupOwnershipUnavailable ||
-        widget.hasSoleAdministeredGroup) {
-      final message = widget.guestGroupOwnershipUnavailable
-          ? 'Group administration could not be checked, so sign-in and '
-                'separate-account creation are paused to protect group access. '
-                'Keep this identity and retry after group access is available.'
-          : 'This identity is the only administrator of at least one group. '
-                'Keep this identity, or return to Groups → Manage '
-                'members to request a transfer and wait for an active member to '
-                'accept, or archive the group before leaving it. An archived group '
-                'can be restored for 30 days only by this same Firebase identity.';
-      if (mounted) {
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Keep this group identity'),
-            content: Text(message),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Keep this identity'),
-              ),
-            ],
-          ),
-        );
-      }
-      return false;
-    }
-
     if (!_hasMeaningfulCurrentGuestState) return true;
 
     final currentUid = currentUser?.uid;
     final wasAnonymous = currentUser?.isAnonymous == true;
-    final archivedGroupWarning = widget.hasArchivedGuestGroups
-        ? ' Archived groups can be restored for 30 days only by the same '
-              'Firebase account that archived them; starting fresh does not '
-              'transfer restoration rights.'
-        : '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -307,16 +272,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               ? 'This starts a separate registered identity. The current guest '
                     'workspace is different from that new account: local work '
                     'stays in this browser unless you explicitly clear only its '
-                    'local copy from Workspace options. Group membership '
-                    'or administration does not transfer or get deleted. To keep '
-                    'group access, create an account from this guest instead.'
+                    'local copy from Workspace options.'
               : 'This signs in to your existing account; it does not upgrade '
                     'the current guest identity. Local work stays in this browser. '
                     'Keep it, or explicitly clear only the local copy from '
-                    'Workspace options; sign-in never clears it. Group '
-                    'membership and ownership stay with the current identity and '
-                    'are not transferred.') +
-              archivedGroupWarning,
+                    'Workspace options; sign-in never clears it.'),
         ),
         actions: [
           TextButton(
@@ -342,8 +302,10 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       if (confirmed == false && createSeparateAccount && mounted) {
         setState(() {
           _message = currentUser?.isAnonymous == true
-              ? 'Account creation cancelled. Your guest identity, group access, and local work are unchanged.'
-              : 'Account creation cancelled. Your current workspace and local work are unchanged.';
+              ? 'Account creation cancelled. Your guest identity and local work '
+                  'are unchanged.'
+              : 'Account creation cancelled. Your current workspace and local '
+                  'work are unchanged.';
         });
       }
       return false;
@@ -422,10 +384,12 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                               const SizedBox(height: 8),
                               Text(
                                 _linkGuestMode
-                                      ? 'Create a sign-in account from this guest to keep the same identity and group access. '
-                                          'Local work stays on this device; it is not uploaded.'
+                                      ? 'Create a registered account from this '
+                                          'guest identity. Local work stays on '
+                                          'this device; it is not uploaded.'
                                       : 'Start fresh with a separate registered identity. '
-                                          'It does not transfer group access or upload local work; '
+                                          'It does not transfer local work or '
+                                          'upload it; '
                                           'local work remains on this device.',
                               ),
                             ],

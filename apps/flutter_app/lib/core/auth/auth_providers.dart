@@ -2,6 +2,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
 
+bool isVerifiedRegisteredFirebaseUser(User? user) =>
+    user != null && !user.isAnonymous && user.emailVerified;
+
 final firebaseAuthProvider = Provider<FirebaseAuth>(
   (ref) => FirebaseAuth.instance,
 );

@@ -198,98 +198,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     return false;
   }
 
-  Future<void> _startSharedGuestIdentity() async {
-    final currentUser = ref.read(firebaseAuthProvider).currentUser;
-    if (currentUser != null && !currentUser.isAnonymous) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'This account is not a guest identity. Its signed-in identity was left unchanged.',
-          ),
-        ),
-      );
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Enable groups?'),
-        content: const Text(
-          'This uses a per-device guest identity. Only content you deliberately '
-          'add to a group is stored online. Your local drafts stay on this device '
-          'unless you preview and confirm an import.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Stay local'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Continue to Groups'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    if (!await _saveBeforeLeaving() || !mounted) return;
-    try {
-      await ref.read(firebaseAuthProvider).signInAnonymously();
-    } on Object {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Groups are unavailable. Your local guest work is unchanged.',
-            ),
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _openSignIn({
     bool createAccount = false,
     bool linkGuest = false,
   }) async {
     if (_data == null && _loadError == null) await _load();
-    if (!mounted) return;
-    final user = _currentAccountUser;
-    var hasCurrentGuestGroupAccess = false;
-    var hasArchivedGuestGroups = false;
-    var hasSoleAdministeredGroup = false;
-    var guestGroupOwnershipUnavailable = false;
-    if (user?.isAnonymous == true && !linkGuest) {
-      try {
-        hasArchivedGuestGroups = (await ref
-                .read(guestGroupRepositoryProvider)
-                .listArchivedGroups())
-            .isNotEmpty;
-        final groups = await ref
-            .read(guestGroupRepositoryProvider)
-            .listGroups();
-        hasCurrentGuestGroupAccess = groups.isNotEmpty;
-        for (final group in groups.where(
-          (group) => group['role'] == 'admin',
-        )) {
-          final detail = await ref
-              .read(guestGroupRepositoryProvider)
-              .getGroup(group['id'] as String);
-          final members = (detail['members'] as List? ?? const [])
-              .whereType<Map>();
-          final activeAdmins = members.where(
-            (member) =>
-                member['role'] == 'admin' && member['status'] == 'active',
-          );
-          if (activeAdmins.length <= 1) {
-            hasSoleAdministeredGroup = true;
-            break;
-          }
-        }
-      } on Object {
-        guestGroupOwnershipUnavailable = true;
-      }
-    }
     if (!mounted) return;
     if (!await _saveBeforeLeaving() || !mounted) return;
     final data = _data;
@@ -304,10 +217,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               data.knowledge.isNotEmpty ||
               data.sessions.isNotEmpty ||
               data.templates.isNotEmpty,
-          hasCurrentGuestGroupAccess: hasCurrentGuestGroupAccess,
-          hasArchivedGuestGroups: hasArchivedGuestGroups,
-          hasSoleAdministeredGroup: hasSoleAdministeredGroup,
-          guestGroupOwnershipUnavailable: guestGroupOwnershipUnavailable,
         ),
       ),
     );
@@ -315,6 +224,42 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 
   Future<void> _openSharedGroups() async {
     if (!await _saveBeforeLeaving() || !mounted) return;
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    if (!isVerifiedRegisteredFirebaseUser(user)) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Create an account to use Groups'),
+          content: const Text(
+            'Groups require a registered account with a verified email. '
+            'Your local Knowledge, Interact sessions, and drafts stay on this '
+            'device and are not uploaded by creating an account.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'sign-in'),
+              child: const Text('Already have an account? Sign in'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, 'create-account'),
+              child: const Text('Create an account'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (action == 'sign-in') {
+        await _openSignIn();
+      } else if (action == 'create-account') {
+        final linkGuest = user?.isAnonymous == true;
+        await _openSignIn(createAccount: true, linkGuest: linkGuest);
+      }
+      return;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => const SharedGuestGroupsPage(),
@@ -323,56 +268,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }
 
   Future<void> _signOut() async {
-    var hasArchivedGroups = false;
-    if (widget.sharedIdentityActive) {
-      try {
-        final repository = ref.read(guestGroupRepositoryProvider);
-        final groups = await repository.listGroups();
-        hasArchivedGroups = (await repository.listArchivedGroups()).isNotEmpty;
-        for (final group in groups.where((group) => group['role'] == 'admin')) {
-          final detail = await repository.getGroup(group['id'] as String);
-          final members = (detail['members'] as List? ?? const [])
-              .whereType<Map>();
-          final activeAdmins = members.where(
-            (member) =>
-                member['role'] == 'admin' && member['status'] == 'active',
-          );
-          if (activeAdmins.length <= 1) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Keep this identity until another active administrator '
-                    'accepts a transfer or you archive the group.',
-                  ),
-                ),
-              );
-            }
-            return;
-          }
-        }
-      } on Object {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Group administration could not be checked. Keep this '
-                'identity and retry before signing out.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
-    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Sign out?'),
         content: Text(
-          widget.sharedIdentityActive
-              ? 'This signs out of the shared guest identity. Active group access stays with this Firebase identity. Archived groups can be restored for 30 days only by the same identity that archived them; a different account does not inherit recovery rights.${hasArchivedGroups ? ' You have archived groups whose recovery depends on this identity.' : ''} Local work stays on this device.'
-              : 'Your local work stays on this device.',
+          'Your local work stays on this device.',
         ),
         actions: [
           TextButton(
@@ -629,15 +530,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   @override
   Widget build(BuildContext context) {
     final data = _data;
-    final guestGroupsState = _hasSignedInNonGuestUser
+    final groupIdentity =
+        ref.watch(authStateProvider).value ??
+        ref.read(firebaseAuthProvider).currentUser;
+    final canUseGroups = isVerifiedRegisteredFirebaseUser(groupIdentity);
+    final guestGroupsState = canUseGroups
         ? ref.watch(currentGuestGroupsProvider)
         : null;
-    final existingGuestGroups = guestGroupsState?.value ?? const [];
-    final canOpenGuestGroups =
-        widget.sharedIdentityActive ||
-        _currentAccountUser?.isAnonymous == true ||
-        _hasSignedInNonGuestUser ||
-        existingGuestGroups.isNotEmpty;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -650,23 +549,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             overflow: TextOverflow.ellipsis,
           ),
           actions: [
-            if (canOpenGuestGroups)
+            if (widget.firebaseReady)
               IconButton(
                 tooltip: 'Groups',
                 onPressed: _openSharedGroups,
                 icon: const Icon(Icons.group_outlined),
-              )
-            else if (_canStartSharedGuestIdentity)
-              IconButton(
-                tooltip: 'Enable groups',
-                onPressed: _startSharedGuestIdentity,
-                icon: const Icon(Icons.group_outlined),
-              )
-            else if (guestGroupsState?.hasError == true)
-              IconButton(
-                tooltip: 'Retry group access check',
-                onPressed: () => ref.invalidate(currentGuestGroupsProvider),
-                icon: const Icon(Icons.refresh),
               ),
             _accountMenu(),
             PopupMenuButton<String>(
@@ -754,7 +641,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                   if (widget.membershipStatus ==
                       AccountMembershipStatus.noMembership)
                     const _AccountMembershipNotice(
-                      text: 'This signed-in account has no organisation membership. Creating an account does not enrol it. Groups are separate; only existing group access applies.',
+                      text: 'This signed-in account has no organisation '
+                          'membership. Groups require a verified registered '
+                          'account, but do not require organisation membership.',
                     ),
                   if (widget.membershipStatus ==
                       AccountMembershipStatus.inactive)
@@ -772,9 +661,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: Text(
-                        _currentAccountUser?.emailVerified == true
-                            ? 'Groups use this signed-in identity. Linking an account from a guest identity preserves its Firebase UID and group access; a separate account does not inherit group data.'
-                            : 'Verify this account’s email before creating groups or redeeming invitations. You can keep using local work and existing groups; this account will not be switched to anonymous.',
+                        canUseGroups
+                            ? 'Groups use this signed-in Firebase identity. '
+                                'Group access is associated with this account; '
+                                'a separate account does not inherit its group '
+                                'data.'
+                            : 'Verify this account’s email before using Groups. '
+                                'Local work remains available, and organisation '
+                                'membership is not required for Groups.',
                       ),
                     ),
                   if (guestGroupsState?.hasError == true)
@@ -1141,12 +1035,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     }
   }
 
-  bool get _canStartSharedGuestIdentity {
-    if (!widget.firebaseReady) return false;
-    final user = ref.read(firebaseAuthProvider).currentUser;
-    return user == null || user.isAnonymous;
-  }
-
   bool get _hasSignedInNonGuestUser {
     final user = _currentAccountUser;
     return user != null && !user.isAnonymous;
@@ -1178,7 +1066,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       };
       explanation = switch (widget.membershipStatus) {
         AccountMembershipStatus.noMembership =>
-          'An account does not create an organisation membership. Groups are separate; only existing group access applies.',
+          'An account does not create an organisation membership. Groups '
+          'require a verified registered account but do not require '
+          'organisation membership.',
         AccountMembershipStatus.inactive =>
           'Organisation access is inactive. Local work remains on this device.',
         AccountMembershipStatus.unavailable =>
@@ -1186,9 +1076,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         _ => 'Organisation roles and group roles are separate.',
       };
     } else if (widget.sharedIdentityActive) {
-      stateText = 'Group access identity';
+      stateText = 'Anonymous guest workspace';
       explanation =
-          'Only work explicitly shared with a group is online. Groups do not grant organisation access.';
+          'Anonymous guest identities can use local Knowledge and Interact '
+          'only. Groups require a registered account with a verified email.';
     } else {
       stateText = 'Local guest workspace';
       explanation =
@@ -1301,10 +1192,17 @@ class _GuestNotice extends StatelessWidget {
         ? 'Registered workspace · $saveStatus'
         : 'Guest workspace · $saveStatus';
     final explanation = sharedIdentityActive
-        ? 'A guest sign-in is active in this browser profile. People using this profile share that sign-in and its local drafts. Groups are separate; only work deliberately shared with a group is online.'
+        ? 'An anonymous guest sign-in is active in this browser profile. '
+            'People using this profile share that sign-in and its local drafts. '
+            'Groups require a registered account with a verified email.'
         : isRegistered
-        ? 'Registered workspace. Local drafts stay in this browser profile and may be visible to people using it. Groups and organisation access are separate.'
-        : 'Guest workspace active in this browser profile. People using this profile can see its local work. Groups are separate; only work deliberately shared with a group is online. Clearing browser data or losing this device can erase local work.';
+        ? 'Registered workspace. Local drafts stay in this browser profile '
+            'and may be visible to people using it. Group and organisation '
+            'access are separate.'
+        : 'Guest workspace active in this browser profile. People using this '
+            'profile can see its local work. Groups require a registered '
+            'account with a verified email. Clearing browser data or losing '
+            'this device can erase local work.';
     return Container(
       width: double.infinity,
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -2812,6 +2710,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   String? _groupId;
   bool _busy = false;
   String? _error;
+  String? _activeUid;
+  int _loadGeneration = 0;
   String _createGroupNameDraft = '';
   String _createGroupDisplayNameDraft = '';
   String _joinTokenDraft = '';
@@ -2827,7 +2727,31 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadGroups());
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    _activeUid = isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null;
+    if (_activeUid != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadGroups());
+    }
+  }
+
+  void _identityChanged(User? user) {
+    final nextUid = isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null;
+    if (nextUid == _activeUid) return;
+    _activeUid = nextUid;
+    _loadGeneration++;
+    if (mounted) {
+      setState(() {
+        _groups = const [];
+        _archivedGroups = const [];
+        _group = null;
+        _groupId = null;
+        _entries = const [];
+        _invitations = const [];
+        _error = null;
+        _busy = nextUid != null;
+      });
+    }
+    if (nextUid != null) _loadGroups();
   }
 
   @override
@@ -2843,6 +2767,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   }
 
   Future<bool> _loadGroups() async {
+    if (!mounted) return false;
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+      return false;
+    }
+    final currentUser = user!;
+    final uid = currentUser.uid;
+    final generation = ++_loadGeneration;
     setState(() {
       _busy = true;
       _error = null;
@@ -2854,13 +2786,15 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     });
     try {
       final groups = await _repository.listGroups();
+      if (!_isCurrentLoad(uid, generation)) return false;
       final archivedGroups = await _repository.listArchivedGroups();
+      if (!_isCurrentLoad(uid, generation)) return false;
       final selected = groups.any((group) => group['id'] == _groupId)
           ? _groupId
           : groups.isEmpty
           ? null
           : groups.first['id'] as String;
-      if (!mounted) return false;
+      if (!_isCurrentLoad(uid, generation)) return false;
       setState(() {
         _groups = groups;
         _archivedGroups = archivedGroups;
@@ -2869,7 +2803,11 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         _groupId = selected;
       });
       if (selected != null) {
-        return await _loadGroup(selected);
+        return await _loadGroup(
+          selected,
+          uid: uid,
+          generation: generation,
+        );
       } else {
         if (!mounted) return false;
         setState(() {
@@ -2880,7 +2818,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         return true;
       }
     } on Object catch (error) {
-      if (mounted) {
+      if (_isCurrentLoad(uid, generation)) {
         setState(() {
           _groups = const [];
           _archivedGroups = const [];
@@ -2892,12 +2830,33 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       }
       return false;
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_isCurrentLoad(uid, generation)) {
+        setState(() => _busy = false);
+      }
     }
   }
 
-  Future<bool> _loadGroup(String groupId) async {
-    if (!mounted) return false;
+  bool _isCurrentLoad(String uid, int generation) {
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    return mounted &&
+        generation == _loadGeneration &&
+        uid == _activeUid &&
+        user?.uid == uid &&
+        isVerifiedRegisteredFirebaseUser(user);
+  }
+
+  Future<bool> _loadGroup(
+    String groupId, {
+    String? uid,
+    int? generation,
+  }) async {
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+      return false;
+    }
+    final loadUid = uid ?? user!.uid;
+    final loadGeneration = generation ?? ++_loadGeneration;
+    if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
     setState(() {
       _busy = true;
       _error = null;
@@ -2908,14 +2867,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     });
     try {
       final detail = await _repository.getGroup(groupId);
+      if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
       final entries = await _repository.searchEntries(
         groupId: groupId,
         query: _search.text,
       );
+      if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
       final invitations = detail['role'] == 'admin'
           ? await _repository.listInvitations(groupId)
           : const <Map<String, dynamic>>[];
-      if (!mounted) return false;
+      if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
       setState(() {
         _groupId = groupId;
         _group = detail;
@@ -2925,10 +2886,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       });
       return true;
     } on Object catch (error) {
-      if (mounted) setState(() => _error = _safeGuestError(error));
+      if (_isCurrentLoad(loadUid, loadGeneration)) {
+        setState(() => _error = _safeGuestError(error));
+      }
       return false;
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_isCurrentLoad(loadUid, loadGeneration)) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -3011,6 +2976,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     Map<String, dynamic> archived,
   ) async {
     if (!mounted) return;
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+      return;
+    }
+    final uid = user!.uid;
+    final generation = ++_loadGeneration;
     final groupId = archived['id'] as String;
     final failure = _error ?? 'The request could not be verified.';
     setState(() {
@@ -3019,7 +2990,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     });
     try {
       final groups = await _repository.listArchivedGroups();
-      if (!mounted) return;
+      if (!_isCurrentLoad(uid, generation)) return;
       setState(() {
         _archivedGroups = groups;
         _uncertainArchivedDeletionIds.remove(groupId);
@@ -3027,7 +2998,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
             'Review it before retrying.';
       });
     } on Object catch (error) {
-      if (!mounted) return;
+      if (!_isCurrentLoad(uid, generation)) return;
       setState(() {
         _uncertainArchivedDeletionIds.add(groupId);
         if (!_archivedGroups.any((group) => group['id'] == groupId)) {
@@ -3038,7 +3009,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
             'The item is retained; refresh status before retrying.';
       });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_isCurrentLoad(uid, generation)) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -3053,10 +3026,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 
   Future<void> _refreshArchivedGroups() async {
     if (!mounted) return;
+    final user = ref.read(firebaseAuthProvider).currentUser;
+    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+      return;
+    }
+    final uid = user!.uid;
+    final generation = ++_loadGeneration;
     setState(() => _busy = true);
     try {
       final groups = await _repository.listArchivedGroups();
-      if (!mounted) return;
+      if (!_isCurrentLoad(uid, generation)) return;
       setState(() {
         _archivedGroups = groups;
         _uncertainArchivedDeletionIds.clear();
@@ -3064,7 +3043,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         _error = null;
       });
     } on Object catch (error) {
-      if (mounted) {
+      if (_isCurrentLoad(uid, generation)) {
         setState(
           () => _error =
               'Archived-group status could not be refreshed. '
@@ -3073,7 +3052,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_isCurrentLoad(uid, generation)) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -3188,10 +3169,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       builder: (context) => _GuestRequiredTextDialog(
         title: 'Create a group',
         description:
-            'This creates the group using your current Firebase identity. '
-            'Only content you later choose to share is uploaded. Linking an '
-            'account from this guest identity keeps its group access; a separate '
-            'account does not inherit this group or its data.',
+            'Groups require a registered account with a verified email. '
+            'Only content you later choose to share is uploaded.',
         submitLabel: 'Create group',
         fields: [
           _GuestRequiredTextField(
@@ -4111,7 +4090,60 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    ref.listen<AsyncValue<User?>>(authStateProvider, (previous, next) {
+      if (next.isLoading) return;
+      _identityChanged(next.hasError ? null : next.value);
+    });
+    final user = ref.watch(firebaseAuthProvider).currentUser;
+    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+      final eligible = isVerifiedRegisteredFirebaseUser(user);
+      return Scaffold(
+        appBar: AppBar(title: const Text('Groups')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  eligible
+                      ? 'Checking account access…'
+                      : 'Groups require a registered account with a verified email.',
+                  textAlign: TextAlign.center,
+                ),
+                if (!eligible) ...[
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const SignInPage(),
+                      ),
+                    ),
+                    child: const Text('Sign in'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => SignInPage(
+                          createAccount: true,
+                          linkGuestIdentity: user?.isAnonymous == true,
+                        ),
+                      ),
+                    ),
+                    child: const Text('Create account'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return _buildGroupsScaffold();
+  }
+
+  Widget _buildGroupsScaffold() => Scaffold(
     appBar: AppBar(
       title: const Text('Groups'),
       actions: [
@@ -4134,14 +4166,20 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           children: [
             const Expanded(
               child: Text(
-                'Groups are separate from organisations and teams. Membership does not grant organisation, department, or private-session access.',
+                'Groups require a registered account with a verified email, but '
+                'do not require organisation membership. Group membership does '
+                'not grant organisation, department, or private-session access.',
               ),
             ),
             const _GuestInfoButton(
               tooltip: 'Groups information',
               title: 'About groups',
               content:
-                  'Groups are separate from organisations and teams. Group membership does not grant organisation, department, or private-session access. Use this signed-in Firebase identity for ownership. Linking an account from this guest identity preserves its group memberships; a separate account does not inherit group data or archived-group recovery rights.',
+                  'Groups require a registered Firebase account with a verified '
+                  'email, but do not require organisation membership. Group '
+                  'membership does not grant organisation, department, or '
+                  'private-session access. Group data remains associated with '
+                  'its Firebase UID; another account does not inherit it.',
             ),
           ],
         ),
@@ -4350,22 +4388,24 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 
   bool get _canCreateOrJoin {
     final user = ref.read(firebaseAuthProvider).currentUser;
-    return user != null && (user.isAnonymous || user.emailVerified);
+    return isVerifiedRegisteredFirebaseUser(user);
   }
 
   String get _ineligibleIdentityMessage {
     final user = ref.read(firebaseAuthProvider).currentUser;
     if (user == null) {
-      return 'Sign in with a Firebase anonymous identity or verified account before creating groups or redeeming invitations.';
+      return 'Sign in with a registered account and verify its email before '
+          'using Groups.';
     }
-    return 'Verify this account’s email before creating groups or redeeming invitations. Existing group access and local work remain available; the app will not switch identities.';
+    return 'Verify this account’s email before using Groups. Local work '
+        'remains available.';
   }
 }
 
 String _safeGuestError(Object error) {
   if (error is ApiException) return error.message;
   if (error is DioException) return ApiException.fromDio(error).message;
-  return 'The group request could not be verified. Check your sign-in and group access, then retry.';
+  return 'The group request could not be verified. Check your sign-in and retry.';
 }
 
 Future<ShareResultStatus?> _downloadPdfOrShareFile(

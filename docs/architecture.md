@@ -90,10 +90,13 @@ infer the user's formal department.
   `backend/app/models/guest.py`, not an organisation or department. Their API
   verifies Firebase ID tokens and App Check independently and derives access
   from the Firebase UID's group membership; caller-supplied identity headers are
-  rejected. Anonymous Firebase identities and registered identities with a
-  verified email may create groups or redeem invitations; unverified registered
-  identities are denied these actions. Every invitation redemption remains
-  pending until a group admin approves it.
+  rejected. Every group operation requires a non-anonymous Firebase identity
+  with a verified email; organisation membership is not required. Anonymous and
+  unverified identities are denied access, including read-only operations.
+  Existing group content remains keyed to its Firebase UID; linking credentials
+  to that same UID and verifying the email restores eligibility without
+  migrating the content. Every invitation redemption remains pending until a
+  group admin approves it.
 - Group roles and invitation approval are enforced by guest services on every
   content, search, history, export, and membership request. Invitation previews
   disclose validity only. Group membership does not grant organisation,
@@ -118,6 +121,10 @@ infer the user's formal department.
   (24 hours by default, up to seven days); expired/revoked invitations are not
   valid for preview or redemption. No backend store for private guest drafts
   exists; group content is stored remotely only after an explicit group action.
+- Anonymous guests can continue using local Knowledge, Interact, templates, and
+  backup/import. Creating or signing into an account does not upload, migrate,
+  or delete that local data; account creation also does not purge existing
+  Groups content.
 - Registered organisation routes continue to resolve active Firebase UID
   mappings and retain the existing tenant, department, private-session,
   governance, and audit checks. A linked guest identity can access only its

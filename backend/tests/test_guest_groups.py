@@ -25,7 +25,7 @@ PROJECT_ID = "intqaflow-dev"
 
 def bearer(
     uid: str,
-    provider: str = "anonymous",
+    provider: str = "password",
     *,
     email_verified: bool | None = None,
 ) -> dict[str, str]:
@@ -59,6 +59,190 @@ async def make_group(client, uid: str, name: str) -> dict:
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+@pytest.mark.asyncio
+async def test_all_group_routes_require_verified_registered_identity(
+    app_client, monkeypatch
+) -> None:
+    client, _ = app_client
+    install_test_tokens(monkeypatch)
+    group_id = "00000000-0000-0000-0000-000000000001"
+    entry_id = "00000000-0000-0000-0000-000000000002"
+    member_id = "00000000-0000-0000-0000-000000000003"
+    transfer_id = "00000000-0000-0000-0000-000000000004"
+    invitation_id = "00000000-0000-0000-0000-000000000005"
+    invitation_token = "x" * 40
+    knowledge = {
+        "kind": "knowledge",
+        "title": "Policy",
+        "data": {"body": "Local review only"},
+    }
+    routes = [
+        ("GET", "/api/v1/guest/groups", None, None),
+        ("GET", "/api/v1/guest/groups/archived", None, None),
+        (
+            "POST",
+            "/api/v1/guest/groups",
+            {"name": "Policy group", "display_name": "Reviewer"},
+            None,
+        ),
+        ("GET", f"/api/v1/guest/groups/{group_id}", None, None),
+        (
+            "POST",
+            f"/api/v1/guest/groups/{group_id}/invitations",
+            {"role": "viewer", "expires_in_hours": 24},
+            None,
+        ),
+        ("GET", f"/api/v1/guest/groups/{group_id}/invitations", None, None),
+        (
+            "DELETE",
+            f"/api/v1/guest/groups/{group_id}/invitations/{invitation_id}",
+            None,
+            None,
+        ),
+        (
+            "POST",
+            "/api/v1/guest/invitations/preview",
+            {"token": invitation_token},
+            None,
+        ),
+        (
+            "POST",
+            "/api/v1/guest/invitations/join",
+            {"token": invitation_token, "display_name": "Reviewer"},
+            None,
+        ),
+        (
+            "POST",
+            f"/api/v1/guest/groups/{group_id}/members/{member_id}/approve",
+            None,
+            None,
+        ),
+        (
+            "PATCH",
+            f"/api/v1/guest/groups/{group_id}/members/{member_id}/role",
+            {"role": "viewer"},
+            None,
+        ),
+        (
+            "DELETE",
+            f"/api/v1/guest/groups/{group_id}/members/{member_id}",
+            None,
+            None,
+        ),
+        (
+            "POST",
+            f"/api/v1/guest/groups/{group_id}/transfer-administration",
+            None,
+            {"member_id": member_id},
+        ),
+        (
+            "POST",
+            f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}/accept",
+            None,
+            None,
+        ),
+        (
+            "POST",
+            f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}/decline",
+            None,
+            None,
+        ),
+        (
+            "DELETE",
+            f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}",
+            None,
+            None,
+        ),
+        ("POST", f"/api/v1/guest/groups/{group_id}/archive", None, None),
+        ("POST", f"/api/v1/guest/groups/{group_id}/restore", None, None),
+        ("DELETE", f"/api/v1/guest/groups/{group_id}/permanent", None, None),
+        ("DELETE", f"/api/v1/guest/groups/{group_id}", None, None),
+        ("GET", f"/api/v1/guest/groups/{group_id}/entries", None, None),
+        (
+            "POST",
+            f"/api/v1/guest/groups/{group_id}/entries",
+            knowledge,
+            None,
+        ),
+        (
+            "POST",
+            f"/api/v1/guest/groups/{group_id}/import",
+            {"entries": [knowledge]},
+            None,
+        ),
+        (
+            "GET",
+            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}",
+            None,
+            None,
+        ),
+        (
+            "PATCH",
+            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}",
+            {"expected_revision": 1, "title": "Updated policy"},
+            None,
+        ),
+        (
+            "DELETE",
+            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}",
+            None,
+            None,
+        ),
+        (
+            "GET",
+            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}/history",
+            None,
+            None,
+        ),
+        (
+            "GET",
+            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}/export",
+            None,
+            None,
+        ),
+    ]
+
+    missing_token = await client.get("/api/v1/guest/groups")
+    invalid_token = await client.get(
+        "/api/v1/guest/groups",
+        headers={"Authorization": "Bearer " + "invalid"},
+    )
+    assert missing_token.status_code == 401
+    assert invalid_token.status_code == 401
+
+    for method, path, payload, params in routes:
+        for identity, detail in (
+            (
+                bearer("registered-shape", "anonymous"),
+                "A registered account is required to use Groups",
+            ),
+            (
+                bearer(
+                    "unverified-registered",
+                    "password",
+                    email_verified=False,
+                ),
+                "Verify your email address to use Groups",
+            ),
+        ):
+            response = await client.request(
+                method,
+                path,
+                headers=identity,
+                json=payload,
+                params=params,
+            )
+            assert response.status_code == 403, (method, path, response.text)
+            assert response.json() == {"detail": detail}
+
+    account_state = await client.get(
+        "/api/v1/account/state",
+        headers=bearer("preserved-anonymous-account-state", "anonymous"),
+    )
+    assert account_state.status_code == 200
+    assert account_state.json() == {"status": "shared_guest"}
 
 
 @pytest.mark.asyncio
@@ -459,7 +643,7 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
         )
     ).status_code == 404
     anonymous_org_route = await client.get(
-        "/api/v1/auth/me", headers=bearer("new-anonymous-user")
+        "/api/v1/auth/me", headers=bearer("new-anonymous-user", "anonymous")
     )
     assert anonymous_org_route.status_code == 401
     wrong_header = await client.get(

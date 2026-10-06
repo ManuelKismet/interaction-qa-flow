@@ -84,6 +84,9 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   @override
   final User? currentUser;
 
+  @override
+  Stream<User?> authStateChanges() => Stream.value(currentUser);
+
   final FirebaseAuthException? createError;
   final FirebaseAuthException? signInError;
   int createAttempts = 0;
@@ -155,16 +158,27 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
 
   final List<Map<String, dynamic>> groups;
   final Map<String, Map<String, dynamic>> details;
+  var listGroupsCalls = 0;
+  var listArchivedGroupsCalls = 0;
+  var getGroupCalls = 0;
 
   @override
-  Future<List<Map<String, dynamic>>> listGroups() async => groups;
+  Future<List<Map<String, dynamic>>> listGroups() async {
+    listGroupsCalls++;
+    return groups;
+  }
 
   @override
-  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
+    listArchivedGroupsCalls++;
+    return const [];
+  }
 
   @override
-  Future<Map<String, dynamic>> getGroup(String groupId) async =>
-      details[groupId]!;
+  Future<Map<String, dynamic>> getGroup(String groupId) async {
+    getGroupCalls++;
+    return details[groupId]!;
+  }
 }
 
 class _SignInLauncher extends StatelessWidget {
@@ -270,13 +284,13 @@ void main() {
       await pumpGuestWorkspace(tester);
 
       expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
-      final enableGroupsButton = tester.widget<IconButton>(
+      final groupsButton = tester.widget<IconButton>(
         find.byWidgetPredicate(
           (widget) =>
-              widget is IconButton && widget.tooltip == 'Enable groups',
+              widget is IconButton && widget.tooltip == 'Groups',
         ),
       );
-      expect((enableGroupsButton.icon as Icon).icon, Icons.group_outlined);
+      expect((groupsButton.icon as Icon).icon, Icons.group_outlined);
       expect(
         find.textContaining('People using this profile can see its local work.'),
         findsNothing,
@@ -411,7 +425,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
-    expect(find.text('Group access identity'), findsOneWidget);
+    expect(find.text('Anonymous guest workspace'), findsOneWidget);
     expect(find.text('Already have an account? Sign in'), findsOneWidget);
     expect(find.text('Create account from this guest'), findsOneWidget);
     expect(find.text('Start fresh with a separate account'), findsOneWidget);
@@ -453,7 +467,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('keep the same identity and group access'),
+      find.textContaining('Create a registered account from this guest identity'),
       findsOneWidget,
     );
     expect(find.text('Start fresh with a separate account'), findsNothing);
@@ -578,7 +592,7 @@ void main() {
     expect(find.text('Create account'), findsNothing);
   });
 
-  testWidgets('registered accounts can still open existing groups', (
+  testWidgets('unverified registered accounts see the Groups gate', (
     tester,
   ) async {
     await pumpGuestWorkspace(
@@ -591,7 +605,10 @@ void main() {
     );
 
     expect(find.byTooltip('Groups'), findsOneWidget);
-    expect(find.byTooltip('Enable groups'), findsNothing);
+    expect(
+      find.textContaining('Verify this account’s email before using Groups'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('verified account without an organisation can open groups', (
@@ -607,6 +624,56 @@ void main() {
     expect(find.byTooltip('Groups'), findsOneWidget);
     expect(find.byTooltip('Enable groups'), findsNothing);
   });
+
+  testWidgets(
+    'anonymous Groups prompt preserves local account flow without API calls',
+    (tester) async {
+      final guest = _TestUser(isAnonymous: true);
+      final repository = _TestGuestGroupRepository(
+        const [
+          {'id': 'group-1', 'name': 'Existing group', 'role': 'admin'},
+        ],
+        const {
+          'group-1': {
+            'members': [
+              {'id': 'member-1', 'role': 'admin', 'status': 'active'},
+            ],
+          },
+        },
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(guest)),
+            guestGroupRepositoryProvider.overrideWithValue(repository),
+            guestWorkspaceStoreProvider.overrideWithValue(
+              GuestWorkspaceStore(_MemoryGuestStorage()),
+            ),
+          ],
+          child: MaterialApp(
+            home: GuestWorkspacePage(
+              firebaseReady: true,
+              accountUser: guest,
+              sharedIdentityActive: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Groups'));
+      await tester.pumpAndSettle();
+      expect(find.text('Create an account to use Groups'), findsOneWidget);
+      expect(repository.listGroupsCalls, 0);
+      expect(repository.listArchivedGroupsCalls, 0);
+      expect(repository.getGroupCalls, 0);
+
+      await tester.tap(find.text('Create an account'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SignInPage), findsOneWidget);
+      expect(repository.listGroupsCalls, 0);
+      expect(repository.getGroupCalls, 0);
+    },
+  );
 
   testWidgets('inactive and unavailable memberships are distinct states', (
     tester,
@@ -651,7 +718,9 @@ void main() {
             ),
           ),
           firebaseAuthProvider.overrideWithValue(
-            _TestFirebaseAuth(_TestUser(isAnonymous: false)),
+            _TestFirebaseAuth(
+              _TestUser(isAnonymous: false, isEmailVerified: true),
+            ),
           ),
         ],
         child: const MaterialApp(
@@ -676,6 +745,46 @@ void main() {
     );
     expect(find.text('Groups'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
+  });
+
+  testWidgets('Groups navigation is hidden for anonymous and unverified users', (
+    tester,
+  ) async {
+    for (final user in [
+      _TestUser(isAnonymous: true),
+      _TestUser(isAnonymous: false, isEmailVerified: false),
+    ]) {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith((ref) => Stream.value(user)),
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+            currentMembershipProvider.overrideWith(
+              (ref) async => const ActiveMembership(
+                userId: 'app-user',
+                organisationId: 'org',
+                email: 'member@example.test',
+                displayName: 'Member',
+                role: 'member',
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: AppShell(
+                currentPath: '/',
+                child: Center(child: Text('Organisation content')),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Groups'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
   });
 
   testWidgets('registered account with no membership stays in local workspace', (
@@ -717,7 +826,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Groups and organisation access are separate'),
+      find.textContaining('Group and organisation access are separate'),
       findsOneWidget,
     );
     await tester.tap(find.text('Close'));
@@ -817,7 +926,7 @@ void main() {
     expect(find.text('No organisation membership'), findsNothing);
   });
 
-  testWidgets('group lookup errors remain distinct from no access and retry', (
+  testWidgets('unverified accounts do not query Groups', (
     tester,
   ) async {
     final user = _TestUser(isAnonymous: false);
@@ -850,14 +959,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('Existing group access could not be checked'),
+      find.textContaining('Verify this account’s email before using Groups'),
       findsOneWidget,
     );
     expect(find.text('private test detail'), findsNothing);
     expect(find.text('No approved groups are linked to this identity.'), findsNothing);
-    await tester.tap(find.text('Retry groups'));
-    await tester.pumpAndSettle();
-    expect(attempts, 2);
+    expect(attempts, 0);
   });
 
   testWidgets('link conflict keeps the current shared guest identity', (
@@ -877,7 +984,7 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('Create a sign-in account from this guest'),
+      find.textContaining('Create a registered account from this guest identity'),
       findsOneWidget,
     );
     await tester.enterText(find.byType(TextField).first, 'account@example.test');
@@ -925,7 +1032,7 @@ void main() {
     expect(user.reloadAttempts, 1);
     expect(find.byType(SignInPage), findsNothing);
     expect(
-      find.textContaining('The guest identity and group access are retained'),
+      find.textContaining('The guest identity remains linked'),
       findsOneWidget,
     );
   });
@@ -961,7 +1068,7 @@ void main() {
     );
     expect(
       find.textContaining('group access remain linked'),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -1013,7 +1120,8 @@ void main() {
     );
     expect(
       find.textContaining(
-        'Start fresh with a separate registered identity. It does not transfer group access',
+        'Start fresh with a separate registered identity. '
+        'It does not transfer local work',
       ),
       findsOneWidget,
     );
@@ -1058,7 +1166,7 @@ void main() {
     );
   });
 
-  testWidgets('separate account creation warns before leaving groups', (
+  testWidgets('separate account creation preserves local-work confirmation', (
     tester,
   ) async {
     final user = _TestUser(isAnonymous: true);
@@ -1069,7 +1177,7 @@ void main() {
         child: const MaterialApp(
           home: SignInPage(
             createAccount: true,
-            hasCurrentGuestGroupAccess: true,
+            hasMeaningfulGuestWork: true,
           ),
         ),
       ),
@@ -1085,6 +1193,7 @@ void main() {
       find.textContaining('current guest workspace is different from that new account'),
       findsOneWidget,
     );
+    expect(find.textContaining('group access'), findsNothing);
     await tester.tap(find.text('Cancel account creation'));
     await tester.pumpAndSettle();
     expect(auth.createAttempts, 0);
@@ -1119,16 +1228,13 @@ void main() {
 
     expect(find.text('Start fresh with a separate account?'), findsOneWidget);
     expect(find.textContaining('local work stays in this browser'), findsOneWidget);
-    expect(
-      find.textContaining('Group membership or administration does not transfer'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('group membership'), findsNothing);
     await tester.tap(find.text('Cancel account creation'));
     await tester.pumpAndSettle();
     expect(auth.createAttempts, 0);
   });
 
-  testWidgets('empty anonymous bootstrap can sign in without a warning', (
+  testWidgets('empty anonymous guest signs in without workspace confirmation', (
     tester,
   ) async {
     final guest = _TestUser(isAnonymous: true);
@@ -1152,7 +1258,7 @@ void main() {
     expect(auth.lastSignInPassword, 'safe-test-password');
   });
 
-  testWidgets('sign-in warning identifies current workspace and destination', (
+  testWidgets('sign-in confirmation identifies local workspace and destination', (
     tester,
   ) async {
     final guest = _TestUser(isAnonymous: true);
@@ -1187,51 +1293,19 @@ void main() {
     expect(auth.lastSignInPassword, 'safe-test-password');
   });
 
-  testWidgets('sole group administrator cannot switch identities', (
+  testWidgets('guest sign-in is blocked only for local-work confirmation', (
     tester,
   ) async {
     final guest = _TestUser(isAnonymous: true);
-    final auth = _TestFirebaseAuth(guest);
+    final auth = _TestFirebaseAuth(
+      guest,
+      signInError: FirebaseAuthException(code: 'network-request-failed'),
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
         child: const MaterialApp(
-          home: SignInPage(
-            hasCurrentGuestGroupAccess: true,
-            hasSoleAdministeredGroup: true,
-          ),
-        ),
-      ),
-    );
-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
-    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Keep this group identity'), findsOneWidget);
-    expect(
-      find.textContaining(
-        'request a transfer and wait for an active member to accept',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Continue to sign in'), findsNothing);
-    await tester.tap(find.text('Keep this identity'));
-    await tester.pumpAndSettle();
-    expect(auth.signInAttempts, 0);
-    expect(identical(auth.currentUser, guest), isTrue);
-  });
-
-  testWidgets('archived group recovery is disclosed before sign-in', (
-    tester,
-  ) async {
-    final guest = _TestUser(isAnonymous: true);
-    final auth = _TestFirebaseAuth(guest);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(
-          home: SignInPage(hasArchivedGuestGroups: true),
+          home: SignInPage(hasMeaningfulGuestWork: true),
         ),
       ),
     );
@@ -1241,19 +1315,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Sign in to your existing account?'), findsOneWidget);
-    expect(
-      find.textContaining(
-        'only by the same Firebase account that archived them',
-      ),
-      findsOneWidget,
-    );
-    expect(find.textContaining('does not transfer restoration rights'), findsOneWidget);
-    await tester.tap(find.text('Keep guest workspace'));
+    expect(find.textContaining('group access'), findsNothing);
+    expect(find.text('Keep this group identity'), findsNothing);
+    await tester.tap(find.text('Continue to sign in'));
     await tester.pumpAndSettle();
-    expect(auth.signInAttempts, 0);
+    expect(auth.signInAttempts, 1);
+    expect(identical(auth.currentUser, guest), isTrue);
   });
 
-  testWidgets('account menu detects and blocks a sole group administrator', (
+  testWidgets('opening sign-in never preflights Groups ownership', (
     tester,
   ) async {
     final guest = _TestUser(isAnonymous: true);
@@ -1293,40 +1363,20 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Already have an account? Sign in'));
     await tester.pumpAndSettle();
+    expect(repository.listGroupsCalls, 0);
+    expect(repository.listArchivedGroupsCalls, 0);
+    expect(repository.getGroupCalls, 0);
     await tester.enterText(find.byType(TextField).first, 'destination@example.test');
     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Keep this group identity'), findsOneWidget);
-    expect(auth.signInAttempts, 0);
-  });
-
-  testWidgets('unavailable group ownership check fails closed on identity switch', (
-    tester,
-  ) async {
-    final guest = _TestUser(isAnonymous: true);
-    final auth = _TestFirebaseAuth(guest);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(
-          home: SignInPage(guestGroupOwnershipUnavailable: true),
-        ),
-      ),
-    );
-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
-    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.textContaining('sign-in and separate-account creation are paused'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Keep this identity'));
-    await tester.pumpAndSettle();
-    expect(auth.signInAttempts, 0);
+    if (find.text('Continue to sign in').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Continue to sign in'));
+      await tester.pumpAndSettle();
+    }
+    expect(auth.signInAttempts, 1);
+    expect(find.text('Keep this group identity'), findsNothing);
     expect(identical(auth.currentUser, guest), isTrue);
   });
 }

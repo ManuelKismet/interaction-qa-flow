@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 
 final guestGroupRepositoryProvider = Provider<GuestGroupRepository>((ref) {
@@ -10,6 +11,12 @@ final guestGroupRepositoryProvider = Provider<GuestGroupRepository>((ref) {
 
 final currentGuestGroupsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
+      final user =
+          ref.watch(authStateProvider).value ??
+          ref.watch(firebaseAuthProvider).currentUser;
+      if (!isVerifiedRegisteredFirebaseUser(user)) {
+        return const [];
+      }
       return ref.watch(guestGroupRepositoryProvider).listGroups();
     });
 

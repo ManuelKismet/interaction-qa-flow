@@ -22,7 +22,10 @@ class _TestFirebaseAuth implements FirebaseAuth {
   final User? user;
 
   @override
-  User? get currentUser => user ?? _TestUser();
+  User? get currentUser => user ?? _TestUser(anonymous: false, verified: true);
+
+  @override
+  Stream<User?> authStateChanges() => Stream.value(currentUser);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -30,8 +33,8 @@ class _TestFirebaseAuth implements FirebaseAuth {
 
 class _TestUser implements User {
   _TestUser({
-    this.anonymous = true,
-    this.verified = false,
+    this.anonymous = false,
+    this.verified = true,
     this.testUid = 'test-anonymous-uid',
   });
 
@@ -244,11 +247,57 @@ class _FailingLocalStorage implements GuestStorage {
 class _EmptyGroupsRepository extends GuestGroupRepository {
   _EmptyGroupsRepository() : super(Dio());
 
+  var listGroupsCalls = 0;
+  var listArchivedGroupsCalls = 0;
+
   @override
-  Future<List<Map<String, dynamic>>> listGroups() async => [];
+  Future<List<Map<String, dynamic>>> listGroups() async {
+    listGroupsCalls++;
+    return [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
+    listArchivedGroupsCalls++;
+    return const [];
+  }
+}
+
+class _IdentityTransitionGroupsRepository extends GuestGroupRepository {
+  _IdentityTransitionGroupsRepository() : super(Dio());
+
+  final staleGroups = Completer<List<Map<String, dynamic>>>();
+  final recipientGroups = Completer<List<Map<String, dynamic>>>();
+  var listGroupsCalls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() {
+    listGroupsCalls++;
+    return switch (listGroupsCalls) {
+      1 => Future<List<Map<String, dynamic>>>.value([
+        {'id': 'owner-group', 'name': 'Owner group', 'role': 'viewer'},
+      ]),
+      2 => staleGroups.future,
+      _ => recipientGroups.future,
+    };
+  }
 
   @override
   Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async => {
+    'id': groupId,
+    'name': groupId == 'owner-group' ? 'Owner group' : 'Recipient group',
+    'role': 'viewer',
+    'members': [],
+  };
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => const [];
 }
 
 class _ShareRepository extends GuestGroupRepository {
@@ -505,22 +554,21 @@ class _MemoryGuestStorage implements GuestStorage {
 
 void main() {
   testWidgets(
-    'verified registered identity can create and join while unverified is denied',
+    'only verified registered identities can create and join groups',
     (tester) async {
       for (final user in [
-        _TestUser(),
+        _TestUser(anonymous: true, verified: false),
         _TestUser(anonymous: false, verified: true),
         _TestUser(anonymous: false, verified: false),
       ]) {
-        final eligible = user.isAnonymous || user.emailVerified;
+        final eligible = !user.isAnonymous && user.emailVerified;
+        final repository = _EmptyGroupsRepository();
         final auth = _TestFirebaseAuth(user);
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
               firebaseAuthProvider.overrideWithValue(auth),
-              guestGroupRepositoryProvider.overrideWithValue(
-                _EmptyGroupsRepository(),
-              ),
+              guestGroupRepositoryProvider.overrideWithValue(repository),
             ],
             child: const MaterialApp(home: SharedGuestGroupsPage()),
           ),
@@ -528,26 +576,150 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Groups'), findsOneWidget);
-        final createButton = tester.widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'Create group'),
-        );
-        final joinButton = tester.widget<OutlinedButton>(
-          find.widgetWithText(OutlinedButton, 'Join with invitation'),
-        );
-        expect(createButton.onPressed != null, eligible);
-        expect(joinButton.onPressed != null, eligible);
-        expect(
-          find.textContaining('Verify this account’s email'),
-          user.isAnonymous || user.emailVerified
-              ? findsNothing
-              : findsOneWidget,
-        );
+        if (eligible) {
+          final createButton = tester.widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Create group'),
+          );
+          final joinButton = tester.widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Join with invitation'),
+          );
+          expect(createButton.onPressed, isNotNull);
+          expect(joinButton.onPressed, isNotNull);
+          expect(repository.listGroupsCalls, 1);
+        } else {
+          expect(
+            find.textContaining('Groups require a registered account'),
+            findsOneWidget,
+          );
+          expect(find.text('Create group'), findsNothing);
+          expect(repository.listGroupsCalls, 0);
+          expect(repository.listArchivedGroupsCalls, 0);
+        }
         expect(identical(user, auth.currentUser), isTrue);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();
       }
     },
   );
+
+  testWidgets(
+    'direct Groups route and lifecycle loads do not call API for guests',
+    (tester) async {
+    final user = _TestUser(anonymous: true, verified: false);
+    final auth = _TestFirebaseAuth(user);
+    final repository = _EmptyGroupsRepository();
+    final router = GoRouter(
+      initialLocation: '/guest/groups',
+      routes: [
+        GoRoute(
+          path: '/guest/groups',
+          builder: (context, state) => const SharedGuestGroupsPage(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(user)),
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Groups require a registered account'),
+      findsOneWidget,
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    expect(repository.listGroupsCalls, 0);
+    expect(repository.listArchivedGroupsCalls, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    router.dispose();
+  });
+
+  testWidgets('UID change clears Groups state and ignores stale loads', (
+    tester,
+  ) async {
+    final owner = _TestUser(testUid: 'owner-uid');
+    final recipient = _TestUser(testUid: 'recipient-uid');
+    final auth = _SwitchingFirebaseAuth(owner);
+    final authEvents = StreamController<User?>.broadcast();
+    final repository = _IdentityTransitionGroupsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => authEvents.stream),
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Owner group · viewer'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pump();
+    expect(repository.listGroupsCalls, 2);
+
+    auth.user = recipient;
+    authEvents.add(recipient);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Owner group · viewer'), findsNothing);
+
+    repository.staleGroups.complete([
+      {'id': 'stale-group', 'name': 'Stale group', 'role': 'viewer'},
+    ]);
+    await tester.pump();
+    expect(find.text('Stale group · viewer'), findsNothing);
+
+    repository.recipientGroups.complete([
+      {'id': 'recipient-group', 'name': 'Recipient group', 'role': 'viewer'},
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.text('Recipient group · viewer'), findsOneWidget);
+    expect(find.text('Stale group · viewer'), findsNothing);
+    await authEvents.close();
+  });
+
+  testWidgets('sign-out hides previously loaded Groups state', (tester) async {
+    final owner = _TestUser(testUid: 'owner-uid');
+    final auth = _SwitchingFirebaseAuth(owner);
+    final authEvents = StreamController<User?>.broadcast();
+    final repository = _IdentityTransitionGroupsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => authEvents.stream),
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Owner group · viewer'), findsOneWidget);
+
+    auth.user = null;
+    authEvents.add(null);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Owner group · viewer'), findsNothing);
+    expect(
+      find.textContaining('Groups require a registered account'),
+      findsOneWidget,
+    );
+    expect(repository.listGroupsCalls, 1);
+    await authEvents.close();
+  });
 
   testWidgets('Groups page explains access behind its info button', (
     tester,
@@ -568,7 +740,8 @@ void main() {
     expect(find.text('Groups'), findsOneWidget);
     expect(
       find.textContaining(
-        'Membership does not grant organisation, department, or private-session access.',
+        'Groups require a registered account with a verified email, but do '
+        'not require organisation membership.',
       ),
       findsOneWidget,
     );
@@ -576,11 +749,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('About groups'), findsOneWidget);
     expect(
-      find.textContaining('Use this signed-in Firebase identity for ownership.'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('archived-group recovery rights.'),
+      find.textContaining('Group data remains associated with its Firebase UID.'),
       findsOneWidget,
     );
     await tester.tap(find.text('Close'));
@@ -1082,17 +1251,20 @@ void main() {
   });
 
   testWidgets(
-    'verified registered identity can create and join while unverified is denied',
+    'only verified registered identities can create and join groups',
     (tester) async {
-      for (final verified in [true, false]) {
-        final user = _TestUser(anonymous: false, verified: verified);
+      for (final user in [
+        _TestUser(anonymous: false, verified: true),
+        _TestUser(anonymous: false, verified: false),
+        _TestUser(anonymous: true, verified: false),
+      ]) {
+        final eligible = !user.isAnonymous && user.emailVerified;
+        final repository = _EmptyGroupsRepository();
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
               firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
-              guestGroupRepositoryProvider.overrideWithValue(
-                _EmptyGroupsRepository(),
-              ),
+              guestGroupRepositoryProvider.overrideWithValue(repository),
             ],
             child: const MaterialApp(home: SharedGuestGroupsPage()),
           ),
@@ -1100,18 +1272,25 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Groups'), findsOneWidget);
-        final createButton = tester.widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'Create group'),
-        );
-        final joinButton = tester.widget<OutlinedButton>(
-          find.widgetWithText(OutlinedButton, 'Join with invitation'),
-        );
-        expect(createButton.onPressed != null, verified);
-        expect(joinButton.onPressed != null, verified);
-        expect(
-          find.textContaining('Verify this account’s email'),
-          verified ? findsNothing : findsOneWidget,
-        );
+        if (eligible) {
+          final createButton = tester.widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Create group'),
+          );
+          final joinButton = tester.widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Join with invitation'),
+          );
+          expect(createButton.onPressed, isNotNull);
+          expect(joinButton.onPressed, isNotNull);
+          expect(repository.listGroupsCalls, 1);
+        } else {
+          expect(
+            find.textContaining('Groups require a registered account'),
+            findsOneWidget,
+          );
+          expect(find.text('Create group'), findsNothing);
+          expect(repository.listGroupsCalls, 0);
+          expect(repository.listArchivedGroupsCalls, 0);
+        }
         expect(identical(user, _TestFirebaseAuth(user).currentUser), isTrue);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();

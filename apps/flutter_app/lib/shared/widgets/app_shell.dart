@@ -15,7 +15,10 @@ class AppShell extends ConsumerWidget {
   final String currentPath;
   final Widget child;
 
-  List<AppDestination> _destinations(String role) => [
+  List<AppDestination> _destinations(
+    String role, {
+    required bool showGroups,
+  }) => [
     AppDestination(
       label: 'Knowledge',
       path: '/',
@@ -28,12 +31,13 @@ class AppShell extends ConsumerWidget {
       icon: Icons.account_tree_outlined,
       selectedIcon: Icons.account_tree,
     ),
-    AppDestination(
-      label: 'Groups',
-      path: '/guest/groups',
-      icon: Icons.group_outlined,
-      selectedIcon: Icons.groups,
-    ),
+    if (showGroups)
+      AppDestination(
+        label: 'Groups',
+        path: '/guest/groups',
+        icon: Icons.group_outlined,
+        selectedIcon: Icons.groups,
+      ),
     AppDestination(
       label: 'Review',
       path: '/review-queue',
@@ -129,7 +133,13 @@ class AppShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final membership = ref.watch(currentMembershipProvider).value;
     final role = membership?.role ?? '';
-    final destinations = _destinations(role).where((destination) {
+    final user =
+        ref.watch(authStateProvider).value ??
+        ref.watch(firebaseAuthProvider).currentUser;
+    final destinations = _destinations(
+      role,
+      showGroups: isVerifiedRegisteredFirebaseUser(user),
+    ).where((destination) {
       return destination.path != '/review-queue' ||
           {'admin', 'answer_owner'}.contains(role);
     }).toList();

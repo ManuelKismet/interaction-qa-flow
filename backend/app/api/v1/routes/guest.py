@@ -33,22 +33,30 @@ async def reject_identity_overrides(request: Request) -> None:
         )
 
 
+def require_registered_verified_group_identity(
+    identity: GuestIdentity = Depends(get_guest_identity),
+) -> None:
+    if identity.sign_in_provider == "anonymous":
+        raise HTTPException(
+            status_code=403,
+            detail="A registered account is required to use Groups",
+        )
+    if not identity.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Verify your email address to use Groups",
+        )
+
+
 router = APIRouter(
     prefix="/guest",
     tags=["shared guest groups"],
-    dependencies=[Depends(require_app_check), Depends(reject_identity_overrides)],
+    dependencies=[
+        Depends(require_app_check),
+        Depends(reject_identity_overrides),
+        Depends(require_registered_verified_group_identity),
+    ],
 )
-
-
-def require_eligible_group_identity(identity: GuestIdentity) -> None:
-    if (
-        identity.sign_in_provider != "anonymous"
-        and not identity.email_verified
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="A verified email is required for registered Firebase identities",
-        )
 
 
 @router.get("/groups")
@@ -73,7 +81,6 @@ async def create_group(
     identity: GuestIdentity = Depends(get_guest_identity),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    require_eligible_group_identity(identity)
     return await GuestService(session).create_group(identity.firebase_uid, payload)
 
 
@@ -142,7 +149,6 @@ async def join_invitation(
     identity: GuestIdentity = Depends(get_guest_identity),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    require_eligible_group_identity(identity)
     return await GuestService(session).join_invitation(
         identity.firebase_uid, payload.token, payload.display_name
     )
