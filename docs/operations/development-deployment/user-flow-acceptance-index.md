@@ -334,3 +334,10 @@ Dev backend intqaflow-dev-api-reviewfc9f5cc at100% traffic; health/ready200. Run
 Live existing anonymous and fresh local guests see Create an account to use Groups with verified-email explanation, Already have an account? Sign in, Create an account and Cancel. Cancel returns to local workspace; Knowledge search and Saved Q&A remain accessible, fresh Interact offers Create session locally. Old anonymous archived fixture is retained but inaccessible through Groups. No live registered login was exercised; registered/no-organisation behavior is independently covered by widget/API tests. Screenshot intqaflow-registered-groups-1791296111115.jpg, Librarylibfile_8699cd2f7f8c8191b8a5e8c37bc92554.
 
 Production, IAM/AppCheck configuration and PR merges unchanged. Historical separate F09/F04/F08 broader acceptance gaps remain pending.
+
+
+### Local guest to registered personal account — approved, implementation pending (2026-10-06)
+
+Founder approved removing redundant anonymous Firebase guest authentication, using normal registration/sign-in and accurate registered-account labels, and offering optional selected local-work import to private personal backend storage. Local Knowledge/Interact/templates remain intact; no automatic upload or local deletion. Personal storage must be UID-owned, usable across devices, independent of organisation/group membership and excluded from organisation/group/global semantic indexes. Verified registered identity required for private backend storage; Guests remain local-only and Groups stays registered+verified. Repeat/retry imports must be idempotent with server commit confirmation, safe failures and account-switch/disposal guards.
+
+Copilot implementation handoff PR13 comment6019064909 from scoped base64247aa8e691379cca48515f0dec0d7f1a397544. Codex will review unchanged format-patch, execute independent full tests and disposable migration cycle, and deploy only validated DEV candidate. Current deployed registered-only Groups release remains frontend62ab4165c63e4fc3/backendreviewfc9f5cc. New personal import/auth cleanup is NOT yet deployed/accepted. Production, purges and PR merges remain excluded.
