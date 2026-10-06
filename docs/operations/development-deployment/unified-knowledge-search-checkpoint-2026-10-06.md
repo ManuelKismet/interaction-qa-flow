@@ -51,7 +51,8 @@ Logs/exit receipts retained privately under
 /home/vscode/.local/share/intqaflow/ask-validation-e9e3cc8.
 Codespace restarted through existing GitHub UI for validation.
 Temporary PostgreSQL stopped and files retained; no proxy used.
-Codespace stop will be confirmed during final cleanup.
+GitHub UI confirmed “Codespace bookish happiness stopped”. Validation runners
+completed; no temporary database/proxy left active. Files/evidence retained.
 Recurring monitoring remains cancelled by founder; do not recreate.
 
 ## Active follow-up — Ask & search unified parity, founder-authorised 2026-10-06
