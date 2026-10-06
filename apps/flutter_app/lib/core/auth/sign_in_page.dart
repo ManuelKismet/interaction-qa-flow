@@ -269,24 +269,6 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       setState(() {
         _error = message;
       });
-    } on Object {
-      try {
-        if (diagnosticAttempt?.firebaseCallStarted == true) {
-          diagnosticAttempt?.recordFirebaseFailure('other');
-        } else {
-          diagnosticAttempt?.complete();
-        }
-      } on Object {
-        diagnosticAttempt?.complete();
-      }
-      if (!mounted) return;
-      setState(() {
-        _error = isResetOperation
-            ? 'Unable to send a reset email. Please try again.'
-            : isSeparateAccountCreation
-            ? 'Unable to create the account. Check the details and try again.'
-            : 'Sign-in failed. Please try again.';
-      });
     } finally {
       if (diagnosticAttempt != null &&
           !diagnosticAttempt.firebaseCallSucceeded) {
