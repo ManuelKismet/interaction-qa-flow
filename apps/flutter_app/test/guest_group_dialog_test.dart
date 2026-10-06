@@ -1338,7 +1338,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Groups'), findsOneWidget);
+        if (eligible || user.isAnonymous) {
+          expect(find.text('Groups'), findsOneWidget);
+        }
         if (eligible) {
           final createButton = tester.widget<FilledButton>(
             find.widgetWithText(FilledButton, 'Create group'),
@@ -1350,13 +1352,27 @@ void main() {
           expect(joinButton.onPressed, isNotNull);
           expect(repository.listGroupsCalls, 1);
         } else {
-          expect(
-            find.textContaining('Groups require a registered account'),
-            findsOneWidget,
-          );
           expect(find.text('Create group'), findsNothing);
           expect(repository.listGroupsCalls, 0);
           expect(repository.listArchivedGroupsCalls, 0);
+          if (user.isAnonymous) {
+            expect(
+              find.textContaining('Groups require a registered account'),
+              findsOneWidget,
+            );
+            expect(find.text('Create account'), findsOneWidget);
+          } else {
+            expect(
+              find.text('Verify your email to use Groups'),
+              findsOneWidget,
+            );
+            expect(
+              find.textContaining('Check your email for the verification link'),
+              findsOneWidget,
+            );
+            expect(find.text('Sign in'), findsOneWidget);
+            expect(find.text('Create account'), findsNothing);
+          }
         }
         expect(identical(user, _TestFirebaseAuth(user).currentUser), isTrue);
         await tester.pumpWidget(const SizedBox.shrink());
