@@ -237,6 +237,7 @@ void main() {
       'questions': [
         {
           'id': 'shared-question',
+          'text': 'What happened?',
           'scope': 'shared',
           'answers': [
             {
@@ -285,14 +286,18 @@ void main() {
         sessions: [
           {
             'id': 'branch-session',
+            'participants': [
+              {'id': 'p', 'name': 'Participant'},
+            ],
             'questions': [
               {
                 'id': 'q',
+                'text': 'Root prompt',
                 'answers': [
                   {
                     'participant_id': 'p',
                     'follow_ups': [
-                      {'id': 'nested'},
+                      {'id': 'nested', 'text': 'Nested prompt'},
                     ],
                   },
                 ],
