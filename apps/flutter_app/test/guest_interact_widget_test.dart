@@ -391,7 +391,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.text(
-        'Interact sessions stay private on this device until you explicitly select one for a shared group.',
+        'Interact sessions stay private on this device until you explicitly select one for a group.',
       ),
       findsOneWidget,
     );

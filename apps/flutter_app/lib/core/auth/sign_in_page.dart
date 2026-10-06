@@ -259,11 +259,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     if (widget.guestGroupOwnershipUnavailable ||
         widget.hasSoleAdministeredGroup) {
       final message = widget.guestGroupOwnershipUnavailable
-          ? 'Shared-group administration could not be checked, so sign-in and '
+          ? 'Group administration could not be checked, so sign-in and '
                 'separate-account creation are paused to protect group access. '
-                'Keep this identity and retry after shared groups are available.'
-          : 'This identity is the only administrator of at least one shared '
-                'group. Keep this identity, or return to Shared groups → Manage '
+                'Keep this identity and retry after group access is available.'
+          : 'This identity is the only administrator of at least one group. '
+                'Keep this identity, or return to Groups → Manage '
                 'members to request a transfer and wait for an active member to '
                 'accept, or archive the group before leaving it. An archived group '
                 'can be restored for 30 days only by this same Firebase identity.';
@@ -271,7 +271,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         await showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Keep this shared-group identity'),
+            title: const Text('Keep this group identity'),
             content: Text(message),
             actions: [
               FilledButton(
@@ -307,13 +307,13 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               ? 'This starts a separate registered identity. The current guest '
                     'workspace is different from that new account: local work '
                     'stays in this browser unless you explicitly clear only its '
-                    'local copy from Workspace options. Shared-group membership '
+                    'local copy from Workspace options. Group membership '
                     'or administration does not transfer or get deleted. To keep '
                     'group access, create an account from this guest instead.'
               : 'This signs in to your existing account; it does not upgrade '
                     'the current guest identity. Local work stays in this browser. '
                     'Keep it, or explicitly clear only the local copy from '
-                    'Workspace options; sign-in never clears it. Shared-group '
+                    'Workspace options; sign-in never clears it. Group '
                     'membership and ownership stay with the current identity and '
                     'are not transferred.') +
               archivedGroupWarning,
@@ -425,7 +425,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                                       ? 'Create a sign-in account from this guest to keep the same identity and group access. '
                                           'Local work stays on this device; it is not uploaded.'
                                       : 'Start fresh with a separate registered identity. '
-                                          'It does not transfer shared-group access or upload local work; '
+                                          'It does not transfer group access or upload local work; '
                                           'local work remains on this device.',
                               ),
                             ],

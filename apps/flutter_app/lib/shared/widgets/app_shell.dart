@@ -29,7 +29,7 @@ class AppShell extends ConsumerWidget {
       selectedIcon: Icons.account_tree,
     ),
     AppDestination(
-      label: 'Shared groups',
+      label: 'Groups',
       path: '/guest/groups',
       icon: Icons.group_outlined,
       selectedIcon: Icons.groups,
@@ -101,7 +101,7 @@ class AppShell extends ConsumerWidget {
                   Text(membership.email),
                   Text('Organisation workspace · ${membership.role}'),
                   const Text(
-                    'Shared-group roles are separate from organisation roles.',
+                    'Group roles are separate from organisation roles.',
                   ),
                 ],
               ),

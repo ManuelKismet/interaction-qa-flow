@@ -213,7 +213,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Enable shared groups?'),
+        title: const Text('Enable groups?'),
         content: const Text(
           'This uses a per-device guest identity. Only content you deliberately '
           'add to a group is stored online. Your local drafts stay on this device '
@@ -226,7 +226,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Continue to shared groups'),
+            child: const Text('Continue to Groups'),
           ),
         ],
       ),
@@ -240,7 +240,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Shared groups are unavailable. Your local guest work is unchanged.',
+              'Groups are unavailable. Your local guest work is unchanged.',
             ),
           ),
         );
@@ -356,7 +356,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Shared-group administration could not be checked. Keep this '
+                'Group administration could not be checked. Keep this '
                 'identity and retry before signing out.',
               ),
             ),
@@ -411,7 +411,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         title: const Text('Clear this device’s local work?'),
         content: const Text(
           'This permanently removes this browser’s local copy. '
-          'Shared group content is not changed.',
+          'Group content is not changed.',
         ),
         actions: [
           TextButton(
@@ -652,19 +652,19 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           actions: [
             if (canOpenGuestGroups)
               IconButton(
-                tooltip: 'Shared groups',
+                tooltip: 'Groups',
                 onPressed: _openSharedGroups,
                 icon: const Icon(Icons.group_outlined),
               )
             else if (_canStartSharedGuestIdentity)
               IconButton(
-                tooltip: 'Enable shared groups',
+                tooltip: 'Enable groups',
                 onPressed: _startSharedGuestIdentity,
-                icon: const Icon(Icons.cloud_upload_outlined),
+                icon: const Icon(Icons.group_outlined),
               )
             else if (guestGroupsState?.hasError == true)
               IconButton(
-                tooltip: 'Retry shared-group access check',
+                tooltip: 'Retry group access check',
                 onPressed: () => ref.invalidate(currentGuestGroupsProvider),
                 icon: const Icon(Icons.refresh),
               ),
@@ -754,7 +754,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                   if (widget.membershipStatus ==
                       AccountMembershipStatus.noMembership)
                     const _AccountMembershipNotice(
-                      text: 'This signed-in account has no organisation membership. Creating an account does not enrol it. Shared groups are separate; only existing group access applies.',
+                      text: 'This signed-in account has no organisation membership. Creating an account does not enrol it. Groups are separate; only existing group access applies.',
                     ),
                   if (widget.membershipStatus ==
                       AccountMembershipStatus.inactive)
@@ -773,20 +773,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       padding: const EdgeInsets.all(12),
                       child: Text(
                         _currentAccountUser?.emailVerified == true
-                            ? 'Shared groups use this signed-in identity. Linking an account from a guest identity preserves its Firebase UID and group access; a separate account does not inherit group data.'
-                            : 'Verify this account’s email before creating shared groups or redeeming invitations. You can keep using local work and existing groups; this account will not be switched to anonymous.',
+                            ? 'Groups use this signed-in identity. Linking an account from a guest identity preserves its Firebase UID and group access; a separate account does not inherit group data.'
+                            : 'Verify this account’s email before creating groups or redeeming invitations. You can keep using local work and existing groups; this account will not be switched to anonymous.',
                       ),
                     ),
                   if (guestGroupsState?.hasError == true)
                     MaterialBanner(
                       content: const Text(
-                        'Existing shared-group access could not be checked. This does not confirm that no groups are linked.',
+                        'Existing group access could not be checked. This does not confirm that no groups are linked.',
                       ),
                       actions: [
                         TextButton(
                           onPressed: () =>
                               ref.invalidate(currentGuestGroupsProvider),
-                          child: const Text('Retry shared groups'),
+                          child: const Text('Retry groups'),
                         ),
                       ],
                     ),
@@ -1178,17 +1178,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       };
       explanation = switch (widget.membershipStatus) {
         AccountMembershipStatus.noMembership =>
-          'An account does not create an organisation membership. Shared groups are separate; only existing group access applies.',
+          'An account does not create an organisation membership. Groups are separate; only existing group access applies.',
         AccountMembershipStatus.inactive =>
           'Organisation access is inactive. Local work remains on this device.',
         AccountMembershipStatus.unavailable =>
           'Organisation access could not be verified. No organisation access is being assumed.',
-        _ => 'Organisation roles and shared-group roles are separate.',
+        _ => 'Organisation roles and group roles are separate.',
       };
     } else if (widget.sharedIdentityActive) {
-      stateText = 'Shared groups identity';
+      stateText = 'Group access identity';
       explanation =
-          'Only work explicitly shared with a group is online. Shared groups do not grant organisation access.';
+          'Only work explicitly shared with a group is online. Groups do not grant organisation access.';
     } else {
       stateText = 'Local guest workspace';
       explanation =
@@ -1301,10 +1301,10 @@ class _GuestNotice extends StatelessWidget {
         ? 'Registered workspace · $saveStatus'
         : 'Guest workspace · $saveStatus';
     final explanation = sharedIdentityActive
-        ? 'A guest sign-in is active in this browser profile. People using this profile share that sign-in and its local drafts. Shared groups are separate; only work deliberately shared with a group is online.'
+        ? 'A guest sign-in is active in this browser profile. People using this profile share that sign-in and its local drafts. Groups are separate; only work deliberately shared with a group is online.'
         : isRegistered
-        ? 'Registered workspace. Local drafts stay in this browser profile and may be visible to people using it. Shared groups and organisation access are separate.'
-        : 'Guest workspace active in this browser profile. People using this profile can see its local work. Shared groups are separate; only work deliberately shared with a group is online. Clearing browser data or losing this device can erase local work.';
+        ? 'Registered workspace. Local drafts stay in this browser profile and may be visible to people using it. Groups and organisation access are separate.'
+        : 'Guest workspace active in this browser profile. People using this profile can see its local work. Groups are separate; only work deliberately shared with a group is online. Clearing browser data or losing this device can erase local work.';
     return Container(
       width: double.infinity,
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -1846,7 +1846,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                     tooltip: 'Interact privacy information',
                     title: 'About local Interact sessions',
                     content:
-                        'Interact sessions stay private on this device until you explicitly select one for a shared group.',
+                        'Interact sessions stay private on this device until you explicitly select one for a group.',
                   ),
                 ],
               ),
@@ -2938,7 +2938,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Archive this shared group?'),
+        title: const Text('Archive this group?'),
         content: const Text(
           'All members will lose group access and outstanding invitations will '
           'be revoked. Members, content, and revisions are retained. For 30 days, '
@@ -2976,13 +2976,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _deleteArchivedGroup(Map<String, dynamic> archived) async {
     if (_busy || archived['can_delete'] != true) return;
     final groupId = archived['id'] as String;
-    final groupName = archived['name'] as String? ?? 'Shared group';
+    final groupName = archived['name'] as String? ?? 'Group';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Delete "$groupName" permanently?'),
         content: const Text(
-          'This permanently deletes the shared group, its content, and its '
+          'This permanently deletes the group, its content, and its '
           'memberships for everyone. It cannot be restored. Existing exports '
           'and local copies are not affected.',
         ),
@@ -3186,7 +3186,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final values = await showDialog<List<String>>(
       context: context,
       builder: (context) => _GuestRequiredTextDialog(
-        title: 'Create a shared group',
+        title: 'Create a group',
         description:
             'This creates the group using your current Firebase identity. '
             'Only content you later choose to share is uploaded. Linking an '
@@ -3235,7 +3235,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final values = await showDialog<List<String>>(
       context: context,
       builder: (context) => _GuestRequiredTextDialog(
-        title: 'Join a shared group',
+        title: 'Join a group',
         description:
             'Paste an invitation token. Preview checks validity only and reveals no group content.',
         submitLabel: 'Preview invitation',
@@ -3294,7 +3294,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
             content: Text(
               membership['status'] == 'pending'
                   ? 'Join request sent; the host must approve before you can access content.'
-                  : 'Shared group membership confirmed.',
+                  : 'Group membership confirmed.',
             ),
           ),
         );
@@ -3389,7 +3389,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Shared group members'),
+        title: const Text('Group members'),
         content: SizedBox(
           width: 560,
           height: MediaQuery.sizeOf(context).height * 0.65,
@@ -3599,7 +3599,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     await _run(() async {
       final local = await ref.read(guestWorkspaceStoreProvider).load();
       if (!mounted) return;
-      final groupName = _group?['name'] as String? ?? 'this shared group';
+      final groupName = _group?['name'] as String? ?? 'this group';
       final selection = await showDialog<_GuestImportSelection>(
         context: context,
         builder: (context) => _GuestImportPreview(
@@ -3640,7 +3640,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final entryDialog = showDialog<void>(
       context: context,
       builder: (entryDialogContext) => AlertDialog(
-          title: Text(entry['title'] as String? ?? 'Shared group entry'),
+          title: Text(entry['title'] as String? ?? 'Group entry'),
           content: SizedBox(
             width: 700,
             child: _GuestGroupEntryContent(entry: entry),
@@ -3732,7 +3732,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _exportAuthorizedGroupEntry(
     Map<String, dynamic> entry,
   ) async {
-    final title = entry['title'] as String? ?? 'Shared group entry';
+    final title = entry['title'] as String? ?? 'Group entry';
     final data = entry['data'] is Map
         ? Map<String, dynamic>.from(entry['data'] as Map)
         : <String, dynamic>{};
@@ -3812,7 +3812,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 
     final document = GuestPortableDocument(
       title: title,
-      scope: 'Authorized shared-group Knowledge entry',
+      scope: 'Authorized group Knowledge entry',
       exportedAt: DateTime.now().toUtc(),
       sections: [
         if (data['body'] is String)
@@ -4113,7 +4113,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Shared groups'),
+      title: const Text('Groups'),
       actions: [
         IconButton(
           tooltip: 'Manage members and invitations',
@@ -4130,8 +4130,20 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     body: ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text(
-          'Shared groups are separate from organisations and teams. Group membership does not grant organisation, department, or private-session access. Use this signed-in Firebase identity for ownership. Linking an account from this guest identity preserves its group memberships; a separate account does not inherit group data or archived-group recovery rights.',
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Groups are separate from organisations and teams. Membership does not grant organisation, department, or private-session access.',
+              ),
+            ),
+            const _GuestInfoButton(
+              tooltip: 'Groups information',
+              title: 'About groups',
+              content:
+                  'Groups are separate from organisations and teams. Group membership does not grant organisation, department, or private-session access. Use this signed-in Firebase identity for ownership. Linking an account from this guest identity preserves its group memberships; a separate account does not inherit group data or archived-group recovery rights.',
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -4182,7 +4194,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      archived['name'] as String? ?? 'Shared group',
+                      archived['name'] as String? ?? 'Group',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
@@ -4238,7 +4250,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _groupId,
-            decoration: const InputDecoration(labelText: 'Your approved shared groups'),
+            decoration: const InputDecoration(labelText: 'Your approved groups'),
             items: [
               for (final group in _groups)
                 DropdownMenuItem(
@@ -4323,7 +4335,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Text(
-              'No approved shared groups are linked to this identity. Create a group or request to join with an invitation. A group admin must approve requests before they can read group content.',
+              'No approved groups are linked to this identity. Create a group or request to join with an invitation. A group admin must approve requests before they can read group content.',
               textAlign: TextAlign.center,
             ),
           ),
@@ -4353,7 +4365,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 String _safeGuestError(Object error) {
   if (error is ApiException) return error.message;
   if (error is DioException) return ApiException.fromDio(error).message;
-  return 'The shared-group request could not be verified. Check your sign-in and group access, then retry.';
+  return 'The group request could not be verified. Check your sign-in and group access, then retry.';
 }
 
 Future<ShareResultStatus?> _downloadPdfOrShareFile(
@@ -4430,7 +4442,7 @@ class _GuestEntryEditDialogState extends State<_GuestEntryEditDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Edit shared group entry'),
+    title: const Text('Edit group entry'),
     content: SizedBox(
       width: 640,
       child: Form(
@@ -4956,7 +4968,7 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
             child: Text(
               widget.shareWithGroup
                   ? 'Sharing uploads selected copies online to '
-                    '${widget.groupName ?? 'this shared group'}. '
+                    '${widget.groupName ?? 'this group'}. '
                     'Approved group members may be able to access them. '
                     'Your local originals stay on this device. If an item '
                     'from this identity was already shared to this group, '

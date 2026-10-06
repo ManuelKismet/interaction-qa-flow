@@ -527,7 +527,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Shared groups'), findsOneWidget);
+        expect(find.text('Groups'), findsOneWidget);
         final createButton = tester.widget<FilledButton>(
           find.widgetWithText(FilledButton, 'Create group'),
         );
@@ -549,7 +549,45 @@ void main() {
     },
   );
 
-  testWidgets('shared group creation validates required fields in place', (
+  testWidgets('Groups page explains access behind its info button', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(
+            _EmptyGroupsRepository(),
+          ),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Groups'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Membership does not grant organisation, department, or private-session access.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byTooltip('Groups information'));
+    await tester.pumpAndSettle();
+    expect(find.text('About groups'), findsOneWidget);
+    expect(
+      find.textContaining('Use this signed-in Firebase identity for ownership.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('archived-group recovery rights.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('group creation validates required fields in place', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -892,10 +930,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('The shared-group request could not be verified'),
+      find.textContaining('The group request could not be verified'),
       findsOneWidget,
     );
-    expect(find.textContaining('No approved shared groups are linked'), findsNothing);
+    expect(find.textContaining('No approved groups are linked'), findsNothing);
     expect(find.text('private test detail'), findsNothing);
     await tester.tap(find.text('Refresh status'));
     await tester.pumpAndSettle();
@@ -1061,7 +1099,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Shared groups'), findsOneWidget);
+        expect(find.text('Groups'), findsOneWidget);
         final createButton = tester.widget<FilledButton>(
           find.widgetWithText(FilledButton, 'Create group'),
         );
@@ -1081,7 +1119,7 @@ void main() {
     },
   );
 
-  testWidgets('removing a member keeps the shared groups page mounted', (
+  testWidgets('removing a member keeps the groups page mounted', (
     tester,
   ) async {
     final repository = _MemberManagementRepository();
@@ -1104,7 +1142,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Remove this guest member?'), findsOneWidget);
-    expect(find.text('Shared groups'), findsOneWidget);
+    expect(find.text('Groups'), findsOneWidget);
     await tester.tap(
       find.widgetWithText(FilledButton, 'Remove member').last,
     );
@@ -1112,7 +1150,7 @@ void main() {
 
     expect(repository.removeRequests, 1);
     expect(repository.memberStatus, 'removed');
-    expect(find.text('Shared groups'), findsOneWidget);
+    expect(find.text('Groups'), findsOneWidget);
     expect(find.byType(Scaffold), findsOneWidget);
     expect(find.text('Invited viewer'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -1185,7 +1223,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('account transition remounts shared-group state for recipient', (
+  testWidgets('account transition remounts group state for recipient', (
     tester,
   ) async {
     final owner = _TestUser(anonymous: false, testUid: 'owner-uid');
@@ -1277,7 +1315,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, 'Archive group'));
     await tester.pumpAndSettle();
-    expect(find.text('Archive this shared group?'), findsOneWidget);
+    expect(find.text('Archive this group?'), findsOneWidget);
     expect(find.textContaining('only the same Firebase account'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, 'Archive group').last);
     await tester.pumpAndSettle();
@@ -1323,7 +1361,7 @@ void main() {
     expect(find.text('Delete "Research group" permanently?'), findsOneWidget);
     expect(
       find.textContaining(
-        'permanently deletes the shared group, its content, and its memberships for everyone',
+        'permanently deletes the group, its content, and its memberships for everyone',
       ),
       findsOneWidget,
     );
@@ -1395,7 +1433,7 @@ void main() {
     expect(find.text('Archived groups'), findsOneWidget);
     expect(find.text('Delete permanently'), findsOneWidget);
     expect(
-      find.textContaining('The shared-group request could not be verified.'),
+      find.textContaining('The group request could not be verified.'),
       findsWidgets,
     );
     expect(find.text('private backend detail'), findsNothing);

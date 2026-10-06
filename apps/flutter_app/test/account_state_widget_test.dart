@@ -270,6 +270,10 @@ void main() {
       await pumpGuestWorkspace(tester);
 
       expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+      final enableGroupsButton = tester.widget<IconButton>(
+        find.byTooltip('Enable groups'),
+      );
+      expect((enableGroupsButton.icon as Icon).icon, Icons.group_outlined);
       expect(
         find.textContaining('People using this profile can see its local work.'),
         findsNothing,
@@ -399,12 +403,12 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.textContaining('Shared groups are separate'), findsOneWidget);
+    expect(find.textContaining('Groups are separate'), findsOneWidget);
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
-    expect(find.text('Shared groups identity'), findsOneWidget);
+    expect(find.text('Group access identity'), findsOneWidget);
     expect(find.text('Already have an account? Sign in'), findsOneWidget);
     expect(find.text('Create account from this guest'), findsOneWidget);
     expect(find.text('Start fresh with a separate account'), findsOneWidget);
@@ -571,7 +575,7 @@ void main() {
     expect(find.text('Create account'), findsNothing);
   });
 
-  testWidgets('registered accounts can still open existing shared groups', (
+  testWidgets('registered accounts can still open existing groups', (
     tester,
   ) async {
     await pumpGuestWorkspace(
@@ -583,11 +587,11 @@ void main() {
       ],
     );
 
-    expect(find.byTooltip('Shared groups'), findsOneWidget);
-    expect(find.byTooltip('Enable shared groups'), findsNothing);
+    expect(find.byTooltip('Groups'), findsOneWidget);
+    expect(find.byTooltip('Enable groups'), findsNothing);
   });
 
-  testWidgets('verified account without an organisation can open shared groups', (
+  testWidgets('verified account without an organisation can open groups', (
     tester,
   ) async {
     await pumpGuestWorkspace(
@@ -597,8 +601,8 @@ void main() {
     );
 
     expect(find.textContaining('no organisation membership'), findsOneWidget);
-    expect(find.byTooltip('Shared groups'), findsOneWidget);
-    expect(find.byTooltip('Enable shared groups'), findsNothing);
+    expect(find.byTooltip('Groups'), findsOneWidget);
+    expect(find.byTooltip('Enable groups'), findsNothing);
   });
 
   testWidgets('inactive and unavailable memberships are distinct states', (
@@ -664,9 +668,10 @@ void main() {
     expect(find.text('member@example.test'), findsOneWidget);
     expect(find.text('Organisation workspace · answer_owner'), findsOneWidget);
     expect(
-      find.text('Shared-group roles are separate from organisation roles.'),
+      find.text('Group roles are separate from organisation roles.'),
       findsOneWidget,
     );
+    expect(find.text('Groups'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
   });
 
@@ -709,7 +714,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Shared groups and organisation access are separate'),
+      find.textContaining('Groups and organisation access are separate'),
       findsOneWidget,
     );
     await tester.tap(find.text('Close'));
@@ -809,7 +814,7 @@ void main() {
     expect(find.text('No organisation membership'), findsNothing);
   });
 
-  testWidgets('shared-group lookup errors remain distinct from no access and retry', (
+  testWidgets('group lookup errors remain distinct from no access and retry', (
     tester,
   ) async {
     final user = _TestUser(isAnonymous: false);
@@ -842,12 +847,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.textContaining('Existing shared-group access could not be checked'),
+      find.textContaining('Existing group access could not be checked'),
       findsOneWidget,
     );
     expect(find.text('private test detail'), findsNothing);
-    expect(find.text('No approved shared groups are linked to this identity.'), findsNothing);
-    await tester.tap(find.text('Retry shared groups'));
+    expect(find.text('No approved groups are linked to this identity.'), findsNothing);
+    await tester.tap(find.text('Retry groups'));
     await tester.pumpAndSettle();
     expect(attempts, 2);
   });
@@ -1005,7 +1010,7 @@ void main() {
     );
     expect(
       find.textContaining(
-        'Start fresh with a separate registered identity. It does not transfer shared-group access',
+        'Start fresh with a separate registered identity. It does not transfer group access',
       ),
       findsOneWidget,
     );
@@ -1050,7 +1055,7 @@ void main() {
     );
   });
 
-  testWidgets('separate account creation warns before leaving shared groups', (
+  testWidgets('separate account creation warns before leaving groups', (
     tester,
   ) async {
     final user = _TestUser(isAnonymous: true);
@@ -1112,7 +1117,7 @@ void main() {
     expect(find.text('Start fresh with a separate account?'), findsOneWidget);
     expect(find.textContaining('local work stays in this browser'), findsOneWidget);
     expect(
-      find.textContaining('Shared-group membership or administration does not transfer'),
+      find.textContaining('Group membership or administration does not transfer'),
       findsOneWidget,
     );
     await tester.tap(find.text('Cancel account creation'));
@@ -1179,7 +1184,7 @@ void main() {
     expect(auth.lastSignInPassword, 'safe-test-password');
   });
 
-  testWidgets('sole shared-group administrator cannot switch identities', (
+  testWidgets('sole group administrator cannot switch identities', (
     tester,
   ) async {
     final guest = _TestUser(isAnonymous: true);
@@ -1200,7 +1205,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Keep this shared-group identity'), findsOneWidget);
+    expect(find.text('Keep this group identity'), findsOneWidget);
     expect(
       find.textContaining(
         'request a transfer and wait for an active member to accept',
@@ -1290,7 +1295,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Keep this shared-group identity'), findsOneWidget);
+    expect(find.text('Keep this group identity'), findsOneWidget);
     expect(auth.signInAttempts, 0);
   });
 
