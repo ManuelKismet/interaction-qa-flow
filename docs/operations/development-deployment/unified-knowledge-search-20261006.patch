@@ -1,0 +1,1349 @@
+From 04b09c259e8d5bed408b8ebf07268af3e5b218ef Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 19:37:44 +0000
+Subject: [PATCH] Add unified Knowledge search
+base-commit: aafc112fbbf220eda1077895334dc16b4930eeab
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../lib/core/routing/app_router.dart          |   2 +
+ .../guest/data/guest_group_repository.dart    |  15 +
+ .../guest/domain/guest_workspace_data.dart    |  40 ++-
+ .../presentation/guest_workspace_page.dart    | 311 +++++++++++++++++-
+ .../test/guest_interact_widget_test.dart      |  19 +-
+ .../versions/0013_unified_search_trigrams.py  |  32 ++
+ backend/app/ai/embedding_service.py           |  28 +-
+ backend/app/api/v1/routes/guest.py            |  14 +
+ backend/app/repositories/guest.py             |  52 ++-
+ backend/app/repositories/search.py            |  47 ++-
+ backend/app/services/answer.py                |  30 ++
+ backend/app/services/guest.py                 |  87 ++++-
+ backend/app/services/question.py              |   2 +
+ backend/tests/test_embeddings.py              |  27 +-
+ backend/tests/test_guest_groups.py            |  62 ++++
+ .../test_search_postgresql_integration.py     |  28 ++
+ backend/tests/test_search_service.py          |  26 +-
+ 17 files changed, 797 insertions(+), 25 deletions(-)
+ create mode 100644 backend/alembic/versions/0013_unified_search_trigrams.py
+
+diff --git a/apps/flutter_app/lib/core/routing/app_router.dart b/apps/flutter_app/lib/core/routing/app_router.dart
+index 564df27..7d6f123 100644
+--- a/apps/flutter_app/lib/core/routing/app_router.dart
++++ b/apps/flutter_app/lib/core/routing/app_router.dart
+@@ -1,5 +1,6 @@
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:go_router/go_router.dart';
++import 'package:int_qa_flow/core/auth/auth_providers.dart';
+ import 'package:int_qa_flow/core/routing/session_deep_link.dart';
+ import 'package:int_qa_flow/features/admin/presentation/admin_page.dart';
+ import 'package:int_qa_flow/features/ask/presentation/ask_page.dart';
+@@ -63,6 +64,7 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+             builder: (context, state) => const GuestWorkspacePage(
+               firebaseReady: true,
+               personalWorkspaceEnabled: true,
++              membershipStatus: AccountMembershipStatus.active,
+             ),
+           ),
+         ],
+diff --git a/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart b/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
+index 15966e9..887e479 100644
+--- a/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
++++ b/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
+@@ -223,6 +223,21 @@ class GuestGroupRepository {
+         .toList();
+   });
+ 
++  Future<Map<String, dynamic>> searchKnowledge(String query) =>
++      _request(() async {
++        final response = await _client.get<Map<String, dynamic>>(
++          '/api/v1/guest/groups/search-knowledge',
++          queryParameters: {'query': query, 'limit': 25},
++        );
++        final data = response.data ?? const <String, dynamic>{};
++        return {
++          'results': (data['results'] as List<dynamic>? ?? const [])
++            .map((item) => Map<String, dynamic>.from(item as Map))
++            .toList(),
++          'partial': data['partial'] == true,
++        };
++      });
++
+   Future<Map<String, dynamic>> createKnowledge({
+     required String groupId,
+     required String title,
+diff --git a/apps/flutter_app/lib/features/guest/domain/guest_workspace_data.dart b/apps/flutter_app/lib/features/guest/domain/guest_workspace_data.dart
+index 2fb365c..2f951ca 100644
+--- a/apps/flutter_app/lib/features/guest/domain/guest_workspace_data.dart
++++ b/apps/flutter_app/lib/features/guest/domain/guest_workspace_data.dart
+@@ -242,10 +242,48 @@ bool matchesGuestKeywordOrPrefix(
+   final words = searchable.split(RegExp(r'[^a-z0-9_-]+'));
+   return tokens.every(
+     (token) =>
+-        searchable.contains(token) || words.any((word) => word.startsWith(token)),
++        searchable.contains(token) ||
++        words.any(
++          (word) =>
++              word.startsWith(token) ||
++              (token.length >= 4 &&
++                  (word.length - token.length).abs() <= 1 &&
++                  _guestWordsOneEditApart(word, token)),
++        ),
+   );
+ }
+ 
++bool _guestWordsOneEditApart(String left, String right) {
++  if ((left.length - right.length).abs() > 1) return false;
++  if (left.length == right.length) {
++    final mismatches = <int>[
++      for (var index = 0; index < left.length; index++)
++        if (left.codeUnitAt(index) != right.codeUnitAt(index)) index,
++    ];
++    if (mismatches.length == 2 &&
++        mismatches[1] == mismatches[0] + 1 &&
++        left.codeUnitAt(mismatches[0]) == right.codeUnitAt(mismatches[1]) &&
++        left.codeUnitAt(mismatches[1]) == right.codeUnitAt(mismatches[0])) {
++      return true;
++    }
++  }
++  var previous = List<int>.generate(right.length + 1, (index) => index);
++  for (var row = 1; row <= left.length; row++) {
++    final current = <int>[row];
++    for (var column = 1; column <= right.length; column++) {
++      current.add([
++        current.last + 1,
++        previous[column] + 1,
++        previous[column - 1] +
++            (left.codeUnitAt(row - 1) == right.codeUnitAt(column - 1) ? 0 : 1),
++      ].reduce((a, b) => a < b ? a : b));
++    }
++    if (current.reduce((a, b) => a < b ? a : b) > 1) return false;
++    previous = current;
++  }
++  return previous.last <= 1;
++}
++
+ List<Map<String, dynamic>> mergeSelectedGuestItems({
+   required List<Map<String, dynamic>> existing,
+   required List<Map<String, dynamic>> imported,
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 95248a8..39531b6 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:go_router/go_router.dart';
+ import 'package:int_qa_flow/core/api/api_exception.dart';
+ import 'package:int_qa_flow/core/auth/auth_providers.dart';
+ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
+@@ -20,6 +21,8 @@ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
++import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
++import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+ import 'package:share_plus/share_plus.dart';
+ 
+ void _showPdfFontFallbackNotice(BuildContext context) {
+@@ -1560,6 +1563,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                       children: [
+                         _GuestKnowledgeTab(
+                           items: data.knowledge,
++                          searchIdentityKey: _verifiedPersonalUid,
++                          searchOrganization:
++                              _verifiedPersonalUid != null &&
++                                  widget.membershipStatus ==
++                                      AccountMembershipStatus.active
++                              ? (query) => ref
++                                    .read(questionsRepositoryProvider)
++                                    .searchQuestions(query, limit: 10)
++                              : null,
++                          searchGroups: _verifiedPersonalUid == null
++                              ? null
++                              : (query) => ref
++                                    .read(guestGroupRepositoryProvider)
++                                    .searchKnowledge(query),
+                           storageStatus: (item) =>
+                               _storageStatus('knowledge', item),
+                           isPersonalAccount: (item) =>
+@@ -2129,6 +2146,9 @@ class _AccountMembershipNotice extends StatelessWidget {
+ class _GuestKnowledgeTab extends StatefulWidget {
+   const _GuestKnowledgeTab({
+     required this.items,
++    required this.searchIdentityKey,
++    required this.searchOrganization,
++    required this.searchGroups,
+     required this.storageStatus,
+     required this.isPersonalAccount,
+     required this.onCreate,
+@@ -2137,6 +2157,10 @@ class _GuestKnowledgeTab extends StatefulWidget {
+   });
+ 
+   final List<Map<String, dynamic>> items;
++  final String? searchIdentityKey;
++  final Future<List<SemanticSearchResult>> Function(String)?
++  searchOrganization;
++  final Future<Map<String, dynamic>> Function(String)? searchGroups;
+   final String Function(Map<String, dynamic>) storageStatus;
+   final bool Function(Map<String, dynamic>) isPersonalAccount;
+   final ValueChanged<Map<String, dynamic>> onCreate;
+@@ -2154,10 +2178,19 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+   final _body = TextEditingController();
+   final _answer = TextEditingController();
+   final _titleFocus = FocusNode();
++  Timer? _searchTimer;
++  int _searchGeneration = 0;
++  List<SemanticSearchResult> _organizationResults = [];
++  List<Map<String, dynamic>> _groupResults = [];
++  bool _organizationSearchFailed = false;
++  bool _groupSearchFailed = false;
++  bool _groupSearchPartial = false;
++  bool _remoteSearchLoading = false;
+   bool _showSavedQuestions = false;
+ 
+   @override
+   void dispose() {
++    _searchTimer?.cancel();
+     _query.dispose();
+     _title.dispose();
+     _body.dispose();
+@@ -2166,6 +2199,268 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+     super.dispose();
+   }
+ 
++  @override
++  void didUpdateWidget(covariant _GuestKnowledgeTab oldWidget) {
++    super.didUpdateWidget(oldWidget);
++    if (oldWidget.searchIdentityKey == widget.searchIdentityKey &&
++        (oldWidget.searchOrganization != null) ==
++            (widget.searchOrganization != null) &&
++        (oldWidget.searchGroups != null) == (widget.searchGroups != null)) {
++      return;
++    }
++    _searchGeneration++;
++    _searchTimer?.cancel();
++    _organizationResults = [];
++    _groupResults = [];
++    _organizationSearchFailed = false;
++    _groupSearchFailed = false;
++    _groupSearchPartial = false;
++    _remoteSearchLoading = false;
++    if (_query.text.trim().length >= 3) {
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (mounted) _scheduleRemoteSearch(_query.text);
++      });
++    }
++  }
++
++  void _scheduleRemoteSearch(String value) {
++    _searchTimer?.cancel();
++    final generation = ++_searchGeneration;
++    final query = value.trim();
++    setState(() {
++      _organizationResults = [];
++      _groupResults = [];
++      _organizationSearchFailed = false;
++      _groupSearchFailed = false;
++      _groupSearchPartial = false;
++      _remoteSearchLoading = query.length >= 3 &&
++          query.length <= 100 &&
++          (widget.searchOrganization != null || widget.searchGroups != null);
++    });
++    if (!_remoteSearchLoading) return;
++    _searchTimer = Timer(const Duration(milliseconds: 300), () {
++      unawaited(_searchRemote(query, generation));
++    });
++  }
++
++  Future<void> _searchRemote(String query, int generation) async {
++    final identityKey = widget.searchIdentityKey;
++    final searchOrganization = widget.searchOrganization;
++    final searchGroups = widget.searchGroups;
++    var organizationFailed = false;
++    var groupsFailed = false;
++    List<SemanticSearchResult> organizationResults = [];
++    List<Map<String, dynamic>> groupResults = [];
++    var groupSearchPartial = false;
++    await Future.wait<void>([
++      if (searchOrganization != null)
++        (() async {
++          try {
++            organizationResults = await searchOrganization(query);
++          } on Object {
++            organizationFailed = true;
++          }
++        })(),
++      if (searchGroups != null)
++        (() async {
++          try {
++            final response = await searchGroups(query);
++            groupResults = (response['results'] as List<dynamic>? ?? const [])
++                .whereType<Map<String, dynamic>>()
++                .toList();
++            groupSearchPartial = response['partial'] == true;
++          } on Object {
++            groupsFailed = true;
++          }
++        })(),
++    ]);
++    if (!mounted ||
++        generation != _searchGeneration ||
++        identityKey != widget.searchIdentityKey) {
++      return;
++    }
++    setState(() {
++      _organizationResults = organizationResults;
++      _groupResults = groupResults;
++      _organizationSearchFailed = organizationFailed;
++      _groupSearchFailed = groupsFailed;
++      _groupSearchPartial = groupSearchPartial;
++      _remoteSearchLoading = false;
++    });
++  }
++
++  String _matchMethodLabel(String method) => switch (method) {
++    'semantic' => 'meaning-based match',
++    'hybrid' => 'keyword and meaning match',
++    _ => 'keyword or prefix match',
++  };
++
++  String _snippet(String? text) {
++    final value = text?.trim() ?? '';
++    return value.length <= 240
++        ? value
++        : '${value.substring(0, 240).trimRight()}…';
++  }
++
++  String? _stringValue(Object? value) => value is String ? value : null;
++
++  Widget _remoteSearchResults(BuildContext context, String query) {
++    if (query.trim().length < 3 || query.trim().length > 100) {
++      return const SizedBox.shrink();
++    }
++    final hasResults =
++        _organizationResults.isNotEmpty || _groupResults.isNotEmpty;
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        if (_remoteSearchLoading)
++          const LinearProgressIndicator(
++            semanticsLabel: 'Searching authorized Knowledge sources',
++          ),
++        if (_organizationSearchFailed ||
++            _groupSearchFailed ||
++            _groupSearchPartial)
++          Padding(
++            padding: const EdgeInsets.only(top: 8),
++            child: Column(
++              crossAxisAlignment: CrossAxisAlignment.start,
++              children: [
++                if (_organizationSearchFailed)
++                  Text(
++                    'Organisation search could not be completed.',
++                    style: Theme.of(context).textTheme.bodySmall,
++                  ),
++                if (_groupSearchFailed)
++                  Text(
++                    'Group search could not be completed.',
++                    style: Theme.of(context).textTheme.bodySmall,
++                  ),
++                if (_groupSearchPartial)
++                  Text(
++                    'Group search reached its result limit. Some matches may be omitted.',
++                    style: Theme.of(context).textTheme.bodySmall,
++                  ),
++                if (_organizationSearchFailed || _groupSearchFailed)
++                  TextButton(
++                    onPressed: () => _scheduleRemoteSearch(_query.text),
++                    child: const Text('Retry available sources'),
++                  ),
++              ],
++            ),
++          ),
++        if (!_remoteSearchLoading &&
++            !_organizationSearchFailed &&
++            !_groupSearchFailed &&
++            !_groupSearchPartial &&
++            !hasResults &&
++            (widget.searchOrganization != null || widget.searchGroups != null))
++          Padding(
++            padding: const EdgeInsets.only(top: 8),
++            child: Text(
++              'No matches in the available organisation or Group sources.',
++              style: Theme.of(context).textTheme.bodySmall,
++            ),
++          ),
++        for (final result in _organizationResults)
++          Card(
++            child: ListTile(
++              leading: const Icon(Icons.business_outlined),
++              title: Text(result.title),
++              subtitle: Text(
++                [
++                  'Organisation Knowledge · '
++                      '${_matchMethodLabel(result.matchMethod)}',
++                  _snippet(result.canonicalBody),
++                  _snippet(result.acceptedAnswerBody),
++                ].whereType<String>().where((text) => text.isNotEmpty).join(
++                  '\n\n',
++                ),
++              ),
++              onTap: () => context.push('/questions/${result.questionId}'),
++            ),
++          ),
++        for (final result in _groupResults)
++          Builder(
++            builder: (context) {
++              final data = result['data'] is Map
++                  ? Map<String, dynamic>.from(result['data'] as Map)
++                  : const <String, dynamic>{};
++              final title = result['title'] as String? ?? '';
++              final groupName = result['group_name'] as String? ?? 'Group';
++              final snippet = [
++                _snippet(_stringValue(data['body'])),
++                _snippet(_stringValue(data['answer'])),
++              ].whereType<String>().where((text) => text.isNotEmpty).join(
++                '\n\n',
++              );
++              return Card(
++                child: ListTile(
++                  leading: const Icon(Icons.groups_outlined),
++                  title: Text(title),
++                  subtitle: Text(
++                    [
++                      'Group Knowledge · $groupName',
++                      if (snippet.isNotEmpty) snippet,
++                    ].join('\n\n'),
++                  ),
++                  onTap: () => showDialog<void>(
++                    context: context,
++                    builder: (context) => AlertDialog(
++                      title: Text(title),
++                      content: SingleChildScrollView(
++                        child: Text(
++                          [
++                            'Shared in $groupName',
++                            data['body'],
++                            data['answer'],
++                          ]
++                              .whereType<String>()
++                              .where((text) => text.isNotEmpty)
++                              .join('\n\n'),
++                        ),
++                      ),
++                      actions: [
++                        TextButton(
++                          onPressed: () => Navigator.pop(context),
++                          child: const Text('Close'),
++                        ),
++                      ],
++                    ),
++                  ),
++                ),
++              );
++            },
++          ),
++      ],
++    );
++  }
++
++  Widget _localSearchResults(
++    BuildContext context,
++    String query,
++    List<Map<String, dynamic>> matches,
++  ) {
++    if (query.trim().isEmpty || matches.isEmpty) {
++      return const SizedBox.shrink();
++    }
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        const SizedBox(height: 16),
++        Text('On this device', style: Theme.of(context).textTheme.titleMedium),
++        for (final item in matches.take(5))
++          Card(
++            child: ListTile(
++              leading: const Icon(Icons.devices_outlined),
++              title: Text(item['title'] as String? ?? ''),
++              subtitle: Text(widget.storageStatus(item)),
++              onTap: () => setState(() => _showSavedQuestions = true),
++            ),
++          ),
++      ],
++    );
++  }
++
+   void _create() {
+     if (!_formKey.currentState!.validate()) {
+       _titleFocus.requestFocus();
+@@ -2213,11 +2508,16 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+         suffixIcon: const _GuestInfoButton(
+           tooltip: 'Search help',
+           title: 'About Knowledge search',
+-          content: 'Keyword and prefix search of loaded local and '
+-              'personal-account Knowledge on this device; no semantic search.',
++          content: 'Search local and personal-account Knowledge on this '
++              'device, plus authorised organisation and Group Knowledge when '
++              'available. Only your query is sent to those services; local '
++              'content is never uploaded by search.',
+         ),
+       ),
+-      onChanged: (_) => setState(() {}),
++      onChanged: (value) {
++        setState(() {});
++        _scheduleRemoteSearch(value);
++      },
+     );
+     if (_showSavedQuestions) {
+       return Align(
+@@ -2228,6 +2528,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+             padding: const EdgeInsets.all(16),
+             children: [
+               searchField,
++              _remoteSearchResults(context, query),
+               const SizedBox(height: 16),
+               Align(
+                 alignment: Alignment.centerLeft,
+@@ -2245,7 +2546,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+                   child: Text(
+                     widget.items.isEmpty
+                         ? 'No saved Q&A yet. Add a local question to get started.'
+-                        : 'No local matches. Shared organisation Knowledge is not shown here.',
++                        : 'No local matches.',
+                   ),
+                 ),
+               for (final item in matches)
+@@ -2295,6 +2596,8 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+           padding: const EdgeInsets.all(16),
+           children: [
+             searchField,
++            _remoteSearchResults(context, query),
++            _localSearchResults(context, query, matches),
+             const SizedBox(height: 16),
+             Row(
+               children: [
+diff --git a/apps/flutter_app/test/guest_interact_widget_test.dart b/apps/flutter_app/test/guest_interact_widget_test.dart
+index 723fb29..25f93e8 100644
+--- a/apps/flutter_app/test/guest_interact_widget_test.dart
++++ b/apps/flutter_app/test/guest_interact_widget_test.dart
+@@ -10,6 +10,17 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
+ 
+ void main() {
++  test('local Knowledge search supports prefixes and one bounded typo', () {
++    const item = {
++      'title': 'Interaction handover',
++      'body': 'Steps for a shift change.',
++      'answer': 'Use the approved checklist.',
++    };
++    expect(matchesGuestKeywordOrPrefix('interact', item), isTrue);
++    expect(matchesGuestKeywordOrPrefix('interactoin', item), isTrue);
++    expect(matchesGuestKeywordOrPrefix('intrxctoin', item), isFalse);
++  });
++
+   testWidgets(
+     'Saved Q&A search edits and removes local entries and returns to the form',
+     (tester) async {
+@@ -59,8 +70,10 @@ void main() {
+       await tester.pumpAndSettle();
+       expect(
+         find.text(
+-          'Keyword and prefix search of loaded local and personal-account '
+-          'Knowledge on this device; no semantic search.',
++          'Search local and personal-account Knowledge on this device, plus '
++          'authorised organisation and Group Knowledge when available. Only '
++          'your query is sent to those services; local content is never '
++          'uploaded by search.',
+         ),
+         findsOneWidget,
+       );
+@@ -70,6 +83,8 @@ void main() {
+ 
+       await tester.enterText(localSearch, 'passw');
+       await tester.pumpAndSettle();
++      expect(find.text('Password rotation'), findsOneWidget);
++      expect(find.text('Local on this device'), findsOneWidget);
+       await tester.tap(find.text('Saved Q&A'));
+       await tester.pumpAndSettle();
+       expect(localSearch, findsOneWidget);
+diff --git a/backend/alembic/versions/0013_unified_search_trigrams.py b/backend/alembic/versions/0013_unified_search_trigrams.py
+new file mode 100644
+index 0000000..9229971
+--- /dev/null
++++ b/backend/alembic/versions/0013_unified_search_trigrams.py
+@@ -0,0 +1,32 @@
++"""Add trigram indexes for typo-tolerant Knowledge retrieval."""
++
++from collections.abc import Sequence
++
++from alembic import op
++
++revision: str = "0013"
++down_revision: str | None = "0012"
++branch_labels: str | Sequence[str] | None = None
++depends_on: str | Sequence[str] | None = None
++
++
++def upgrade() -> None:
++    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
++    op.execute(
++        "CREATE INDEX ix_questions_title_trgm "
++        "ON questions USING gin (title gin_trgm_ops)"
++    )
++    op.execute(
++        "CREATE INDEX ix_questions_body_trgm "
++        "ON questions USING gin (body gin_trgm_ops)"
++    )
++    op.execute(
++        "CREATE INDEX ix_answers_body_trgm "
++        "ON answers USING gin (body gin_trgm_ops)"
++    )
++
++
++def downgrade() -> None:
++    op.drop_index("ix_answers_body_trgm", table_name="answers")
++    op.drop_index("ix_questions_body_trgm", table_name="questions")
++    op.drop_index("ix_questions_title_trgm", table_name="questions")
+diff --git a/backend/app/ai/embedding_service.py b/backend/app/ai/embedding_service.py
+index 35ad659..884695e 100644
+--- a/backend/app/ai/embedding_service.py
++++ b/backend/app/ai/embedding_service.py
+@@ -1,17 +1,25 @@
+ import hashlib
+ 
++from sqlalchemy import case, select
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from app.ai.embedding_provider import EmbeddingProvider
++from app.models.answer import Answer, AnswerStatus
+ from app.models.question import Question
+ from app.models.question_embedding import QuestionEmbedding
+ from app.repositories.question_embedding import QuestionEmbeddingRepository
+ 
+ 
+-def question_embedding_text(title: str, body: str | None) -> str:
++def question_embedding_text(
++    title: str,
++    body: str | None,
++    answer: str | None = None,
++) -> str:
+     parts = [title.strip()]
+     if body and body.strip():
+         parts.append(body.strip())
++    if answer and answer.strip():
++        parts.append(answer.strip())
+     return "\n\n".join(parts)
+ 
+ 
+@@ -26,7 +34,23 @@ class EmbeddingService:
+         self.embeddings = QuestionEmbeddingRepository(session)
+ 
+     async def sync_question(self, question: Question) -> bool:
+-        text = question_embedding_text(question.title, question.body)
++        answer_body = await self.session.scalar(
++            select(Answer.body)
++            .where(
++                Answer.question_id == question.id,
++                Answer.organisation_id == question.organisation_id,
++                Answer.archived_at.is_(None),
++                (Answer.status == AnswerStatus.VERIFIED)
++                | (Answer.id == question.accepted_answer_id),
++            )
++            .order_by(
++                case((Answer.id == question.accepted_answer_id, 0), else_=1),
++                Answer.created_at.desc(),
++                Answer.id.desc(),
++            )
++            .limit(1)
++        )
++        text = question_embedding_text(question.title, question.body, answer_body)
+         source_hash = embedding_source_hash(text, self.provider.model_name)
+         existing = await self.embeddings.get_for_question(
+             question.id,
+diff --git a/backend/app/api/v1/routes/guest.py b/backend/app/api/v1/routes/guest.py
+index 66532b2..3c8ee61 100644
+--- a/backend/app/api/v1/routes/guest.py
++++ b/backend/app/api/v1/routes/guest.py
+@@ -67,6 +67,20 @@ async def list_groups(
+     return await GuestService(session).list_groups(identity.firebase_uid)
+ 
+ 
++@router.get("/groups/search-knowledge")
++async def search_member_knowledge(
++    query: str = Query(min_length=3, max_length=100),
++    limit: int = Query(default=25, ge=1, le=50),
++    identity: GuestIdentity = Depends(get_guest_identity),
++    session: AsyncSession = Depends(get_session),
++) -> dict:
++    return await GuestService(session).search_member_knowledge(
++        identity.firebase_uid,
++        query,
++        limit=limit,
++    )
++
++
+ @router.get("/groups/archived")
+ async def list_archived_groups(
+     identity: GuestIdentity = Depends(get_guest_identity),
+diff --git a/backend/app/repositories/guest.py b/backend/app/repositories/guest.py
+index 9986708..bdf2af6 100644
+--- a/backend/app/repositories/guest.py
++++ b/backend/app/repositories/guest.py
+@@ -3,7 +3,7 @@ import time
+ from datetime import datetime
+ from uuid import UUID
+ 
+-from sqlalchemy import case, delete, func, or_, select
++from sqlalchemy import String, case, cast, delete, func, literal, or_, select
+ from sqlalchemy.dialects.postgresql import insert as postgres_insert
+ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+ from sqlalchemy.ext.asyncio import AsyncSession
+@@ -298,6 +298,56 @@ class GuestRepository:
+             statement = statement.limit(limit)
+         return list(await self.session.scalars(statement))
+ 
++    async def knowledge_entries_for_member(
++        self,
++        firebase_uid: str,
++        query_tokens: list[str],
++        now: datetime,
++        *,
++        limit: int,
++    ) -> list[tuple[GuestGroupEntry, str]]:
++        searchable_data = cast(GuestGroupEntry.data, String)
++        statement = (
++            select(GuestGroupEntry, GuestGroup.name)
++            .join(GuestGroup, GuestGroup.id == GuestGroupEntry.group_id)
++            .join(
++                GuestGroupMembership,
++                GuestGroupMembership.group_id == GuestGroup.id,
++            )
++            .where(
++                GuestGroupMembership.firebase_uid == firebase_uid,
++                GuestGroupMembership.status == "active",
++                GuestGroup.archived_at.is_(None),
++                GuestGroup.expires_at > now,
++                GuestGroupEntry.kind == "knowledge",
++            )
++        )
++        if query_tokens:
++            token_matches = []
++            for token in query_tokens:
++                pattern = f"%{token}%"
++                matches = [
++                    GuestGroupEntry.title.ilike(pattern),
++                    searchable_data.ilike(pattern),
++                ]
++                if (
++                    len(token) >= 4
++                    and self.session.get_bind().dialect.name == "postgresql"
++                ):
++                    matches.append(
++                        or_(
++                            literal(token).op("<%")(GuestGroupEntry.title),
++                            literal(token).op("<%")(searchable_data),
++                        )
++                    )
++                token_matches.append(
++                    or_(*matches)
++                )
++            statement = statement.where(*token_matches)
++        statement = statement.order_by(GuestGroupEntry.updated_at.desc()).limit(limit)
++        result = await self.session.execute(statement)
++        return list(result.all())
++
+     async def entry_for_import(
+         self, group_id: UUID, firebase_uid: str, import_key: str
+     ) -> GuestGroupEntry | None:
+diff --git a/backend/app/repositories/search.py b/backend/app/repositories/search.py
+index 878f6de..0db53a3 100644
+--- a/backend/app/repositories/search.py
++++ b/backend/app/repositories/search.py
+@@ -1,7 +1,7 @@
+ import re
+ from uuid import UUID
+ 
+-from sqlalchemy import and_, case, func, literal_column, or_, select
++from sqlalchemy import and_, case, func, literal, literal_column, or_, select
+ from sqlalchemy.ext.asyncio import AsyncSession
+ from sqlalchemy.orm import aliased
+ 
+@@ -19,7 +19,7 @@ class SearchRepository:
+         self.session = session
+ 
+     @staticmethod
+-    def _weighted_search_document(title, body):
++    def _weighted_search_document(title, body, answer):
+         title_vector = func.setweight(
+             func.to_tsvector("simple", func.coalesce(title, "")),
+             literal_column("'A'"),
+@@ -28,7 +28,11 @@ class SearchRepository:
+             func.to_tsvector("simple", func.coalesce(body, "")),
+             literal_column("'B'"),
+         )
+-        return title_vector.op("||")(body_vector)
++        answer_vector = func.setweight(
++            func.to_tsvector("simple", func.coalesce(answer, "")),
++            literal_column("'C'"),
++        )
++        return title_vector.op("||")(body_vector).op("||")(answer_vector)
+ 
+     def _candidate_statement(
+         self,
+@@ -245,6 +249,8 @@ class SearchRepository:
+     ) -> list[
+         tuple[Question, Question, Answer | None, Department | None, Team | None, float, int]
+     ]:
++        if embedding_model.startswith("deterministic-fake-"):
++            return []
+         statement, canonical_question = self._candidate_statement(
+             organisation_id=organisation_id,
+             actor=actor,
+@@ -297,16 +303,20 @@ class SearchRepository:
+             include_unanswered=include_unanswered,
+         )
+         exact_title = func.lower(func.trim(Question.title)) == query_text.strip().lower()
++        fuzzy_matches = []
+         if self.session.get_bind().dialect.name == "postgresql" and tokens:
+             document = self._weighted_search_document(
+                 Question.title,
+                 Question.body,
++                candidate_answer.body,
+             )
+             search_document = func.to_tsvector(
+                 "simple",
+                 func.coalesce(Question.title, "")
+                 + " "
+                 + func.coalesce(Question.body, ""),
++            ).op("||")(
++                func.to_tsvector("simple", func.coalesce(candidate_answer.body, ""))
+             )
+             lexical_query = func.to_tsquery(
+                 "simple", " | ".join(f"{token}:*" for token in tokens)
+@@ -323,8 +333,22 @@ class SearchRepository:
+             identifier_matches = [
+                 Question.title.ilike(f"%{token}%", escape="\\")
+                 | Question.body.ilike(f"%{token}%", escape="\\")
++                | candidate_answer.body.ilike(f"%{token}%", escape="\\")
++                for token in tokens
++            ]
++            fuzzy_matches = [
++                or_(
++                    literal(token).op("<%")(Question.title),
++                    literal(token).op("<%")(Question.body),
++                    literal(token).op("<%")(candidate_answer.body),
++                )
+                 for token in tokens
++                if len(token) >= 4
+             ]
++            score += sum(
++                case((match, 0.5), else_=0.0) for match in fuzzy_matches
++            )
++            text_match = or_(text_match, *fuzzy_matches)
+         else:
+             title_matches = [
+                 func.lower(Question.title).contains(token) for token in tokens
+@@ -333,20 +357,27 @@ class SearchRepository:
+                 func.lower(func.coalesce(Question.body, "")).contains(token)
+                 for token in tokens
+             ]
++            answer_matches = [
++                func.lower(func.coalesce(candidate_answer.body, "")).contains(token)
++                for token in tokens
++            ]
+             text_match = (
+-                or_(*title_matches, *body_matches) if tokens else exact_title
++                or_(*title_matches, *body_matches, *answer_matches)
++                if tokens
++                else exact_title
+             )
+             score = case((exact_title, 100.0), else_=0.0)
+             score += sum(
+                 case((match, 10.0), else_=0.0) for match in title_matches
+             )
+             score += sum(case((match, 1.0), else_=0.0) for match in body_matches)
++            score += sum(case((match, 1.0), else_=0.0) for match in answer_matches)
+             all_terms_match = (
+                 and_(
+                     *(
+-                        or_(title_match, body_match)
+-                        for title_match, body_match in zip(
+-                            title_matches, body_matches
++                        or_(title_match, body_match, answer_match)
++                        for title_match, body_match, answer_match in zip(
++                            title_matches, body_matches, answer_matches
+                         )
+                     )
+                 )
+@@ -357,7 +388,7 @@ class SearchRepository:
+             identifier_matches = []
+ 
+         statement = statement.add_columns(score.label("similarity")).where(
+-            or_(exact_title, text_match, *identifier_matches)
++            or_(exact_title, text_match, *identifier_matches, *fuzzy_matches)
+         )
+         statement = self._limit_distinct_candidates(
+             statement,
+diff --git a/backend/app/services/answer.py b/backend/app/services/answer.py
+index 69c6d50..6a44e4a 100644
+--- a/backend/app/services/answer.py
++++ b/backend/app/services/answer.py
+@@ -1,8 +1,12 @@
++import logging
+ from datetime import UTC, datetime
+ from uuid import UUID
+ 
++from sqlalchemy.exc import SQLAlchemyError
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
++from app.ai.embedding_provider import EmbeddingProviderError, get_embedding_provider
++from app.ai.embedding_service import EmbeddingService
+ from app.core.config import get_settings
+ from app.core.exceptions import (
+     ConflictError,
+@@ -31,6 +35,8 @@ from app.schemas.user import UserSummary
+ from app.services.freshness import answer_freshness
+ from app.services.permissions import PermissionService
+ 
++logger = logging.getLogger(__name__)
++
+ 
+ class AnswerService:
+     def __init__(self, session: AsyncSession) -> None:
+@@ -42,6 +48,9 @@ class AnswerService:
+         self.governance = GovernanceRepository(session)
+         self.permissions = PermissionService(self.users)
+         self.settings = get_settings()
++        self.embedding_service = EmbeddingService(
++            session, get_embedding_provider(self.settings)
++        )
+ 
+     async def create(
+         self,
+@@ -70,6 +79,7 @@ class AnswerService:
+         if commit:
+             await self.session.commit()
+             await self.session.refresh(answer)
++            await self._sync_question_embedding(question)
+         else:
+             await self.session.flush()
+         return await self._detail(answer)
+@@ -142,6 +152,7 @@ class AnswerService:
+         answer.body = data.body
+         await self.session.commit()
+         await self.session.refresh(answer)
++        await self._sync_question_embedding(question)
+         return await self._detail(answer)
+ 
+     async def delete(
+@@ -186,10 +197,12 @@ class AnswerService:
+                 {"reason": archive_reason},
+             )
+             await self.session.commit()
++            await self._sync_question_embedding(question)
+             return
+         self.permissions.require_owner(actor, answer.author_id)
+         await self.answers.delete(answer)
+         await self.session.commit()
++        await self._sync_question_embedding(question)
+ 
+     async def restore(
+         self,
+@@ -220,6 +233,7 @@ class AnswerService:
+         )
+         await self.session.commit()
+         await self.session.refresh(answer)
++        await self._sync_question_embedding(question)
+         return await self._detail(answer)
+ 
+     async def react(self, answer_id: UUID, data: ReactionCreate) -> ReactionResponse:
+@@ -335,6 +349,22 @@ class AnswerService:
+         self.permissions.require_question_visibility(actor, question)
+         return question, actor
+ 
++    async def _sync_question_embedding(self, question: Question) -> None:
++        try:
++            await self.embedding_service.sync_question(question)
++        except (EmbeddingProviderError, ValueError):
++            logger.exception(
++                "Failed to regenerate search embedding for question %s",
++                question.id,
++            )
++        except SQLAlchemyError:
++            await self.session.rollback()
++            await self.session.refresh(question)
++            logger.exception(
++                "Failed to persist search embedding for question %s",
++                question.id,
++            )
++
+     async def _detail(self, answer: Answer) -> AnswerDetailResponse:
+         question = await self.questions.get_for_organisation(
+             answer.question_id,
+diff --git a/backend/app/services/guest.py b/backend/app/services/guest.py
+index 28f27a6..408cd3a 100644
+--- a/backend/app/services/guest.py
++++ b/backend/app/services/guest.py
+@@ -1,5 +1,6 @@
+ import hashlib
+ import json
++import re
+ import secrets
+ from datetime import datetime, timedelta, timezone
+ from typing import Any
+@@ -679,6 +680,46 @@ class GuestService:
+         await self.guest.commit()
+         return result
+ 
++    async def search_member_knowledge(
++        self,
++        firebase_uid: str,
++        query: str,
++        *,
++        limit: int = 25,
++    ) -> dict[str, Any]:
++        await self._rate_limit(firebase_uid, "search")
++        if len(query) > 100:
++            raise HTTPException(status_code=422, detail="Search query is too long")
++        words = re.findall(r"[a-z0-9]+", query.casefold())[:12]
++        if not words:
++            return {"results": [], "partial": False}
++        rows = await self.guest.knowledge_entries_for_member(
++            firebase_uid,
++            words,
++            datetime.now(timezone.utc),
++            limit=5000,
++        )
++        matches = [
++            {
++                "id": str(entry.id),
++                "kind": "knowledge",
++                "title": entry.title,
++                "data": {
++                    key: entry.data[key]
++                    for key in ("body", "answer")
++                    if isinstance(entry.data.get(key), str)
++                },
++                "group_id": str(entry.group_id),
++                "group_name": group_name,
++            }
++            for entry, group_name in rows
++            if _matches_query(words, entry.title, entry.data)
++        ]
++        return {
++            "results": matches[:limit],
++            "partial": len(rows) >= 5000 or len(matches) > limit,
++        }
++
+     async def create_entry(
+         self,
+         group_id: UUID,
+@@ -896,13 +937,55 @@ class GuestService:
+ 
+ def _matches_query(words: list[str], title: str, data: dict[str, Any]) -> bool:
+     text = " ".join([title, *_strings(data)]).casefold()
+-    candidates = text.replace("/", " ").replace("-", " ").split()
++    candidates = re.findall(r"[a-z0-9]+", text)
+     return all(
+-        token in text or any(candidate.startswith(token) for candidate in candidates)
++        token in text
++        or any(
++            candidate.startswith(token)
++            or (
++                len(token) >= 4
++                and abs(len(candidate) - len(token)) <= 1
++                and _one_edit_apart(candidate, token)
++            )
++            for candidate in candidates
++        )
+         for token in words
+     )
+ 
+ 
++def _one_edit_apart(left: str, right: str) -> bool:
++    if abs(len(left) - len(right)) > 1:
++        return False
++    if len(left) == len(right):
++        mismatches = [
++            index
++            for index, (left_char, right_char) in enumerate(zip(left, right))
++            if left_char != right_char
++        ]
++        if (
++            len(mismatches) == 2
++            and mismatches[1] == mismatches[0] + 1
++            and left[mismatches[0]] == right[mismatches[1]]
++            and left[mismatches[1]] == right[mismatches[0]]
++        ):
++            return True
++    previous = list(range(len(right) + 1))
++    for index, left_char in enumerate(left, start=1):
++        current = [index]
++        for column, right_char in enumerate(right, start=1):
++            current.append(
++                min(
++                    current[-1] + 1,
++                    previous[column] + 1,
++                    previous[column - 1] + (left_char != right_char),
++                )
++            )
++        if min(current) > 1:
++            return False
++        previous = current
++    return previous[-1] <= 1
++
++
+ def _strings(value: Any) -> list[str]:
+     if isinstance(value, str):
+         return [value]
+diff --git a/backend/app/services/question.py b/backend/app/services/question.py
+index 382766a..8efafd8 100644
+--- a/backend/app/services/question.py
++++ b/backend/app/services/question.py
+@@ -354,6 +354,7 @@ class QuestionService:
+         answer.protected_at = answer.protected_at or question.resolved_at
+         await self.session.commit()
+         await self.session.refresh(question)
++        await self._sync_embedding_safely(question)
+         return question
+ 
+     async def reopen(self, question_id: UUID, data: QuestionAction) -> Question:
+@@ -371,6 +372,7 @@ class QuestionService:
+         question.resolved_at = None
+         await self.session.commit()
+         await self.session.refresh(question)
++        await self._sync_embedding_safely(question)
+         return question
+ 
+     async def archive(
+diff --git a/backend/tests/test_embeddings.py b/backend/tests/test_embeddings.py
+index d19a8bf..1a48244 100644
+--- a/backend/tests/test_embeddings.py
++++ b/backend/tests/test_embeddings.py
+@@ -7,6 +7,7 @@ from app.ai.embedding_service import (
+     embedding_source_hash,
+     question_embedding_text,
+ )
++from app.models.answer import Answer, AnswerStatus
+ from app.models.organisation import Organisation
+ from app.models.question import Question
+ from app.models.question_embedding import QuestionEmbedding
+@@ -23,10 +24,16 @@ class CountingEmbeddingProvider(DeterministicFakeEmbeddingProvider):
+         return await super().embed_text(text)
+ 
+ 
+-def test_embedding_input_contains_only_question_content() -> None:
+-    text = question_embedding_text("  Mileage claims  ", "  How do I submit one? ")
++def test_embedding_input_contains_question_and_answer_content() -> None:
++    text = question_embedding_text(
++        "  Mileage claims  ",
++        "  How do I submit one? ",
++        "  Use the approved travel form. ",
++    )
+ 
+-    assert text == "Mileage claims\n\nHow do I submit one?"
++    assert text == (
++        "Mileage claims\n\nHow do I submit one?\n\nUse the approved travel form."
++    )
+     assert embedding_source_hash(text, "model-a") == embedding_source_hash(
+         text,
+         "model-a",
+@@ -61,6 +68,15 @@ async def test_embedding_sync_skips_unchanged_and_updates_changed_question(
+             body="Travel expense details",
+         )
+         session.add(question)
++        await session.flush()
++        answer = Answer(
++            organisation_id=organisation.id,
++            question_id=question.id,
++            author_id=author.id,
++            body="Submit the approved travel claim.",
++            status=AnswerStatus.VERIFIED,
++        )
++        session.add(answer)
+         await session.commit()
+ 
+         service = EmbeddingService(session, provider)
+@@ -71,7 +87,10 @@ async def test_embedding_sync_skips_unchanged_and_updates_changed_question(
+         question.body = "Updated travel expense details"
+         await session.commit()
+         assert await service.sync_question(question) is True
+-        assert provider.calls == 2
++        answer.body = "Use the new approved travel form."
++        await session.commit()
++        assert await service.sync_question(question) is True
++        assert provider.calls == 3
+ 
+         stored = (
+             await session.execute(
+diff --git a/backend/tests/test_guest_groups.py b/backend/tests/test_guest_groups.py
+index 0abb8ea..0abd120 100644
+--- a/backend/tests/test_guest_groups.py
++++ b/backend/tests/test_guest_groups.py
+@@ -160,6 +160,7 @@ async def test_all_group_routes_require_verified_registered_identity(
+         ("DELETE", f"/api/v1/guest/groups/{group_id}/permanent", None, None),
+         ("DELETE", f"/api/v1/guest/groups/{group_id}", None, None),
+         ("GET", f"/api/v1/guest/groups/{group_id}/entries", None, None),
++        ("GET", "/api/v1/guest/groups/search-knowledge?query=policy", None, None),
+         (
+             "POST",
+             f"/api/v1/guest/groups/{group_id}/entries",
+@@ -245,6 +246,67 @@ async def test_all_group_routes_require_verified_registered_identity(
+     assert account_state.json() == {"status": "shared_guest"}
+ 
+ 
++@pytest.mark.asyncio
++async def test_unified_group_search_only_returns_active_member_knowledge(
++    app_client, monkeypatch
++) -> None:
++    client, _ = app_client
++    install_test_tokens(monkeypatch)
++    group = await make_group(client, "search-owner", "Travel policies")
++    headers = bearer("search-owner")
++    knowledge = await client.post(
++        f"/api/v1/guest/groups/{group['id']}/entries",
++        headers=headers,
++        json={
++            "kind": "knowledge",
++            "title": "Mileage reimbursement",
++            "data": {"body": "Submit a travel claim."},
++        },
++    )
++    assert knowledge.status_code == 201, knowledge.text
++    shared_session = await client.post(
++        f"/api/v1/guest/groups/{group['id']}/entries",
++        headers=headers,
++        json={
++            "kind": "interact_session",
++            "title": "Mileage follow-up",
++            "data": {"title": "Mileage reimbursement"},
++            "share_with_group": True,
++        },
++    )
++    assert shared_session.status_code == 201, shared_session.text
++
++    owner_results = await client.get(
++        "/api/v1/guest/groups/search-knowledge?query=mileage",
++        headers=headers,
++    )
++    assert owner_results.status_code == 200, owner_results.text
++    assert [item["id"] for item in owner_results.json()["results"]] == [
++        knowledge.json()["id"]
++    ]
++    assert owner_results.json()["results"][0]["group_name"] == "Travel policies"
++
++    other_results = await client.get(
++        "/api/v1/guest/groups/search-knowledge?query=mileage",
++        headers=bearer("not-a-member"),
++    )
++    assert other_results.status_code == 200, other_results.text
++    assert other_results.json() == {"results": [], "partial": False}
++
++
++def test_group_knowledge_search_accepts_one_bounded_typo() -> None:
++    assert guest_service._matches_query(
++        ["interactoin"],
++        "Interaction process",
++        {},
++    )
++    assert not guest_service._matches_query(
++        ["intrxctoin"],
++        "Interaction process",
++        {},
++    )
++
++
+ @pytest.mark.asyncio
+ async def test_anonymous_same_uid_cannot_reuse_registered_group_access(
+     app_client, monkeypatch
+diff --git a/backend/tests/test_search_postgresql_integration.py b/backend/tests/test_search_postgresql_integration.py
+index f3cf0bf..572a7f8 100644
+--- a/backend/tests/test_search_postgresql_integration.py
++++ b/backend/tests/test_search_postgresql_integration.py
+@@ -30,6 +30,12 @@ async def test_lexical_candidates_execute_on_postgresql() -> None:
+                 await connection.execute(
+                     text(f'SET search_path TO "{schema_name}", public')
+                 )
++                await connection.execute(
++                    text(
++                        "CREATE EXTENSION IF NOT EXISTS pg_trgm "
++                        f'WITH SCHEMA "{schema_name}"'
++                    )
++                )
+                 await connection.run_sync(Base.metadata.create_all)
+                 await connection.commit()
+ 
+@@ -78,6 +84,28 @@ async def test_lexical_candidates_execute_on_postgresql() -> None:
+                     )
+                     assert candidates
+                     assert candidates[0][0].id == question.id
++
++                    answer_candidates = await SearchRepository(
++                        session
++                    ).lexical_candidates(
++                        organisation_id=organisation.id,
++                        actor=user,
++                        query_text="checklist",
++                        limit=5,
++                    )
++                    assert answer_candidates
++                    assert answer_candidates[0][0].id == question.id
++
++                    typo_candidates = await SearchRepository(
++                        session
++                    ).lexical_candidates(
++                        organisation_id=organisation.id,
++                        actor=user,
++                        query_text="handoverr",
++                        limit=5,
++                    )
++                    assert typo_candidates
++                    assert typo_candidates[0][0].id == question.id
+             finally:
+                 await connection.rollback()
+                 await connection.execute(
+diff --git a/backend/tests/test_search_service.py b/backend/tests/test_search_service.py
+index 442e71c..395a495 100644
+--- a/backend/tests/test_search_service.py
++++ b/backend/tests/test_search_service.py
+@@ -186,7 +186,7 @@ async def test_semantic_candidate_limit_partitions_by_canonical_question() -> No
+         actor=actor,
+         query_text="password",
+         query_embedding=[0.0] * 1536,
+-        embedding_model="deterministic-fake-v1",
++        embedding_model="test-semantic-model",
+         minimum_similarity=0.68,
+         limit=5,
+     )
+@@ -199,6 +199,30 @@ async def test_semantic_candidate_limit_partitions_by_canonical_question() -> No
+     assert "LIMIT" in sql
+ 
+ 
++@pytest.mark.asyncio
++async def test_deterministic_fake_embeddings_are_not_semantic_candidates() -> None:
++    session = AsyncMock()
++    repository = SearchRepository(session)
++
++    candidates = await repository.semantic_candidates(
++        organisation_id=uuid4(),
++        actor=User(
++            id=uuid4(),
++            organisation_id=uuid4(),
++            email="fake-embedding@example.test",
++            display_name="Fake Embedding Tester",
++        ),
++        query_text="meaningful concept",
++        query_embedding=[0.0] * 1536,
++        embedding_model="deterministic-fake-v1",
++        minimum_similarity=0.68,
++        limit=5,
++    )
++
++    assert candidates == []
++    session.execute.assert_not_awaited()
++
++
+ @pytest.mark.asyncio
+ async def test_search_ranks_fresh_verified_before_overdue_and_community() -> None:
+     now = datetime(2026, 2, 1, tzinfo=UTC)
