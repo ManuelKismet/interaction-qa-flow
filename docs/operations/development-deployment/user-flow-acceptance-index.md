@@ -220,4 +220,19 @@ F09 remains Partial: admin-side organisation/department/team assignment is verif
 
 Lessons: distinguish successful regularuser1 sign-in from unresolved guesttester sign-in; use newest PR investigation notes when local docs stop earlier. A widget test using disposable credentials establishes only that synthetic path. Inspect safe stage diagnostics before another real-account attempt. Preserve the diverged local development branch and unrelated untracked migration-review document; validate in an isolated worktree.
 
-Current cloud readback attempt on 6 October: Cloud SDK executable was unavailable and existing Application Default Credentials could not authorize the config check. No cloud setting was changed. The logging-disabled result above remains the prior verified result; fresh cloud verification requires restored operator authentication.
+Current cloud readback attempt on 6 October: the installed Cloud SDK was located outside PATH. Its existing operator authentication returned HTTP 403 for the Identity Platform config GET; Application Default Credentials were also unavailable. No cloud setting was changed. The logging-disabled result above remains the prior verified result; fresh verification requires authorized operator access.
+
+
+### Independent auth diagnostics review — 6 October 2026
+
+Exact PR13 candidate `6b0aee0da2f411f46962eec21708673ecec4be43` reviewed in isolated Codespace worktree. Rollout is HOLD. Review sent to Copilot in PR13 comment `6011794911`; application implementation remains Copilot's responsibility.
+
+- Account widget suite: 32 passed in 7 seconds. Other diagnostics unit tests: 8 passed. New provider lifecycle test independently timed out after 20 seconds, with StreamProvider disposed during loading; the initial combined run stalled and was stopped. This is a failed validation gate, not hosted sign-in evidence.
+- Analyzer `--no-fatal-infos --no-pub`: exit 1, two new warnings at `auth_diagnostics.dart:222` (non-null projectId null comparison / dead code), plus 18 informational notices, including four new helper style notices. Broad suite and release build withheld pending fixes. Backend unchanged; prior 95/no-skips validation retained.
+- Two disposable in-memory review probes failed as expected: a delayed account lookup completion from attempt A was logged against later attempt B and cleared B; auth-state/account lookup stages preceding the SDK future success were silently dropped. Temporary probe file removed; production source unchanged. These establish logger lifecycle defects under controlled ordering, not the cause of guesttester's Firebase rejection.
+- Source finding: `sign_in_page.dart:72–76` blocks real sign-in based on an active diagnostic attempt, which can persist awaiting downstream stages for two minutes. Diagnostics must not change authentication behavior; preserve the normal busy guard and decouple logging lifecycle. Lookup callbacks need captured attempt/request/identity handles and stale/disposal checks, plus coverage of both SDK/auth-state event orders.
+- Inspected event serialization excludes credential values, lengths/hashes, tokens, raw exceptions, UIDs and request bodies/headers. Default-off/debug/development-project gates are present. Debug-only logging is inert in the existing release Hosting workflow; controlled development reproduction must account for that without automatically publishing, weakening gates or claiming a root cause.
+
+Logs: `/tmp/intqaflow-review-6b0aee0-{account,unit,provider,analyze,probes}.log` in Codespace. No new live credential attempt, cloud configuration change, deployment, account reset/recreation or merge. F09 user-side sign-in, F04 recipient acceptance and F08 historical fixture gap remain unresolved. The Codespace was subsequently observed stopped; its review logs remain on disk, and no restart was needed to record these findings.
+
+Lesson: privacy-safe event fields alone do not ensure trustworthy diagnostics. Correlate each asynchronous callback with its originating attempt, test adverse event ordering, and keep telemetry state out of authentication decisions.
