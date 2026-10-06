@@ -217,3 +217,8 @@ Analyzer passed:14infos,no warning/error. Release web build passed using existin
 DEV Hosting release1791276172690000/versionce894e46fcb0ed4b,36files. Both hosting origins serve main.dart.js identical to tested build4432624bytes. Rollbackaf10c243f0df9ef8 retained. Live browser verified button, Saved Q&A/search/empty state and Back. Screenshot intqaflow-saved-qa-1791276278286.jpg saved. No live test content/account created. Backend unchanged, prior95/no-skips evidence retained. No production/backend/migration/IAM/AppCheck/merge action.
 
 Lesson: bound implementation to agreed user journey. Tests must await frames, scroll controls into view and handle notification overlays; runner failures alone are not product defects. Guesttester sign-in investigation remains separate and unresolved.
+
+
+#### Final Saved Q&A validation — 6 October 2026
+
+Supersedes the provisional test limitation above: Copilot4200316 supplies the normal downward Undo SnackBar dismissal. Exact isolated head11e0736712a1afa8bff512c0f099377f6a887fec FULL Flutter suite PASSED134tests in54seconds, exit0. No skips/failures. The entire saved-Q&A search/edit/delete/persistence/Back/add regression passes. Analyzer and release-build evidence retained because application lib/pubspec files are byte-identical to reviewed/built7e39550; later changes are test-only. Final branch pushed. DEV release1791276172690000/versionce894e46fcb0ed4b remains verified on both origins; live button/open/Back passed. Requested scoped UI fix is complete. Authentication investigation and other earlier acceptance gaps remain separately pending.
