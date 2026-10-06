@@ -92,6 +92,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       saved = await store.load();
       expect(saved.knowledge.map((item) => item['id']), ['password-rotation']);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
 
       final backButton = find.text('Back to add a local question');
       await tester.ensureVisible(backButton);
