@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -38,9 +39,13 @@ class _TestFirebaseApp extends Fake implements FirebaseApp {
 }
 
 class _TestAuth extends Fake implements FirebaseAuth {
-  _TestAuth({this.projectId = 'intqaflow-dev'});
+  _TestAuth({
+    this.projectId = 'intqaflow-dev',
+    Stream<User?>? authStateStream,
+  }) : _authStateStream = authStateStream;
 
   final String projectId;
+  final Stream<User?>? _authStateStream;
 
   @override
   FirebaseApp get app => _TestFirebaseApp(projectId);
@@ -49,7 +54,8 @@ class _TestAuth extends Fake implements FirebaseAuth {
   User? get currentUser => _TestUser('test-user-uid');
 
   @override
-  Stream<User?> authStateChanges() => Stream.value(_TestUser('test-user-uid'));
+  Stream<User?> authStateChanges() =>
+      _authStateStream ?? Stream.value(_TestUser('test-user-uid'));
 }
 
 class _ResponseAdapter implements HttpClientAdapter {
@@ -127,8 +133,8 @@ void main() {
       isNull,
     );
     diagnostics.observeAuthState(user: _TestUser('test-user-uid'));
-    diagnostics.accountLookupStarted();
-    diagnostics.accountLookupCompleted('active');
+    final lookup = diagnostics.beginAccountLookup(userId: 'test-user-uid');
+    lookup?.complete('active');
 
     expect(output, isEmpty);
   });
@@ -200,12 +206,16 @@ void main() {
       passwordPresent: true,
     )!;
     attempt.record(AuthDiagnosticStage.firebaseCallStarted);
-    attempt.recordFirebaseSuccess(signedInUid: 'test-user-uid');
     diagnostics.observeAuthState(user: _TestUser('test-user-uid'));
-    diagnostics.accountLookupStarted();
-    diagnostics.accountLookupCompleted('active');
-    diagnostics.membershipLookupStarted();
-    diagnostics.membershipLookupCompleted(succeeded: true);
+    attempt.recordFirebaseSuccess(signedInUid: 'test-user-uid');
+    final accountLookup = diagnostics.beginAccountLookup(
+      userId: 'test-user-uid',
+    )!;
+    accountLookup.complete('active');
+    final membershipLookup = diagnostics.beginMembershipLookup(
+      userId: 'test-user-uid',
+    )!;
+    membershipLookup.complete('success');
 
     final events = output
         .map((line) => jsonDecode(line) as Map<String, dynamic>)
@@ -256,65 +266,181 @@ void main() {
     attempt.complete();
   });
 
-  test('auth and membership providers emit the staged lookup lifecycle', () async {
-    final auth = _TestAuth();
+  test(
+    'provider lookups are attributed in either auth and SDK event order',
+    () async {
+      Future<List<Map<String, dynamic>>> runProviderLookups({
+        required bool sdkCompletesFirst,
+      }) async {
+        const userId = 'test-user-uid';
+        final authEvents = StreamController<User?>.broadcast();
+        final auth = _TestAuth(authStateStream: authEvents.stream);
+        final output = <String>[];
+        final diagnostics = AuthDiagnosticLogger(
+          enabled: true,
+          appName: 'test-app',
+          projectId: 'intqaflow-dev',
+          buildId: 'test-build',
+          sink: output.add,
+          attemptIdGenerator: () => 'lookup-attempt-id',
+        );
+        final attempt = diagnostics.beginSignIn(
+          auth: auth,
+          anonymousAtStart: true,
+          registeredAtStart: false,
+          emailPresent: true,
+          passwordPresent: true,
+        )!;
+        attempt.record(AuthDiagnosticStage.firebaseCallStarted);
+        if (sdkCompletesFirst) {
+          attempt.recordFirebaseSuccess(signedInUid: userId);
+        }
+
+        final client = Dio(BaseOptions(baseUrl: 'http://localhost'));
+        client.httpClientAdapter = _ResponseAdapter();
+        final container = ProviderContainer(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(auth),
+            authDiagnosticLoggerProvider.overrideWithValue(diagnostics),
+            apiClientProvider.overrideWithValue(client),
+          ],
+        );
+        final authSubscription = container.listen(
+          authStateProvider,
+          (_, _) {},
+          fireImmediately: true,
+        );
+        authEvents.add(_TestUser(userId));
+        await container.read(authStateProvider.future);
+        final accountSubscription = container.listen(
+          accountMembershipStatusProvider,
+          (_, _) {},
+        );
+        final membershipSubscription = container.listen(
+          currentMembershipProvider,
+          (_, _) {},
+        );
+        expect(
+          await container.read(accountMembershipStatusProvider.future),
+          AccountMembershipStatus.active,
+        );
+        expect(
+          (await container.read(currentMembershipProvider.future)).userId,
+          'app-user',
+        );
+
+        if (!sdkCompletesFirst) {
+          final pendingStages = output
+              .map((line) => jsonDecode(line)['stage'])
+              .where(
+                (stage) =>
+                    stage == 'authStateObserved' ||
+                    stage == 'accountLookupStarted' ||
+                    stage == 'accountLookupCompleted' ||
+                    stage == 'membershipLookupStarted' ||
+                    stage == 'membershipLookupCompleted',
+              );
+          expect(pendingStages, isEmpty);
+          attempt.recordFirebaseSuccess(signedInUid: userId);
+        }
+
+        final events = output
+            .map((line) => jsonDecode(line) as Map<String, dynamic>)
+            .toList();
+        expect(
+          events.map((event) => event['stage']),
+          containsAllInOrder([
+            'authStateObserved',
+            'accountLookupStarted',
+            'accountLookupCompleted',
+            'membershipLookupStarted',
+            'membershipLookupCompleted',
+          ]),
+        );
+        expect(events.last['lookupOutcome'], 'success');
+        final serializedEvents = jsonEncode(events);
+        expect(serializedEvents, isNot(contains('app-user')));
+        expect(serializedEvents, isNot(contains('user@example.test')));
+        expect(serializedEvents, isNot(contains('test-user-uid')));
+        authSubscription.close();
+        accountSubscription.close();
+        membershipSubscription.close();
+        container.dispose();
+        client.close();
+        await authEvents.close();
+        return events;
+      }
+
+      for (final sdkCompletesFirst in [false, true]) {
+        final events = await runProviderLookups(
+          sdkCompletesFirst: sdkCompletesFirst,
+        );
+        expect(
+          events.map((event) => event['stage']),
+          containsAllInOrder([
+            'firebaseCallSucceeded',
+            'authStateObserved',
+            'accountLookupStarted',
+            'accountLookupCompleted',
+            'membershipLookupStarted',
+            'membershipLookupCompleted',
+          ]),
+        );
+        expect(events.last['lookupOutcome'], 'success');
+      }
+    },
+  );
+
+  test('late lookup response cannot complete or clear a newer attempt', () async {
     final output = <String>[];
+    var nextAttempt = 0;
     final diagnostics = AuthDiagnosticLogger(
       enabled: true,
-      appName: 'test-app',
       projectId: 'intqaflow-dev',
-      buildId: 'test-build',
       sink: output.add,
-      attemptIdGenerator: () => 'lookup-attempt-id',
+      attemptIdGenerator: () => 'attempt-${nextAttempt++}',
     );
-    final attempt = diagnostics.beginSignIn(
-      auth: auth,
-      anonymousAtStart: true,
-      registeredAtStart: false,
-      emailPresent: true,
-      passwordPresent: true,
-    )!;
-    attempt.record(AuthDiagnosticStage.firebaseCallStarted);
-    attempt.recordFirebaseSuccess(signedInUid: 'test-user-uid');
+    AuthDiagnosticAttempt startAttempt(String uid) {
+      final attempt = diagnostics.beginSignIn(
+        auth: _TestAuth(),
+        anonymousAtStart: true,
+        registeredAtStart: false,
+        emailPresent: true,
+        passwordPresent: true,
+      )!;
+      attempt.record(AuthDiagnosticStage.firebaseCallStarted);
+      diagnostics.observeAuthState(user: _TestUser(uid));
+      attempt.recordFirebaseSuccess(signedInUid: uid);
+      return attempt;
+    }
 
-    final client = Dio(BaseOptions(baseUrl: 'http://localhost'));
-    client.httpClientAdapter = _ResponseAdapter();
-    final container = ProviderContainer(
-      overrides: [
-        firebaseAuthProvider.overrideWithValue(auth),
-        authDiagnosticLoggerProvider.overrideWithValue(diagnostics),
-        apiClientProvider.overrideWithValue(client),
-      ],
-    );
-    addTearDown(container.dispose);
-    await container.read(authStateProvider.future);
-    expect(
-      await container.read(accountMembershipStatusProvider.future),
-      AccountMembershipStatus.active,
-    );
-    expect(
-      (await container.read(currentMembershipProvider.future)).userId,
-      'app-user',
-    );
+    final attemptA = startAttempt('user-a');
+    final delayedResponse = Completer<String>();
+    final lookupA = diagnostics.beginAccountLookup(userId: 'user-a')!;
+    final lookupAFuture = delayedResponse.future.then(lookupA.complete);
+    attemptA.complete();
 
-    final events = output
-        .map((line) => jsonDecode(line) as Map<String, dynamic>)
-        .toList();
+    final attemptB = startAttempt('user-b');
     expect(
-      events.map((event) => event['stage']),
-      containsAllInOrder([
-        'authStateObserved',
-        'accountLookupStarted',
-        'accountLookupCompleted',
-        'membershipLookupStarted',
-        'membershipLookupCompleted',
-      ]),
+      diagnostics.beginAccountLookup(userId: 'unrelated-user'),
+      isNull,
     );
-    expect(events.last['lookupOutcome'], 'success');
-    final serializedEvents = jsonEncode(events);
-    expect(serializedEvents, isNot(contains('app-user')));
-    expect(serializedEvents, isNot(contains('user@example.test')));
-    expect(serializedEvents, isNot(contains('test-user-uid')));
+    expect(diagnostics.hasActiveAttempt, isTrue);
+    final lookupB = diagnostics.beginAccountLookup(userId: 'user-b')!;
+    delayedResponse.complete('no_membership');
+    await lookupAFuture;
+
+    expect(diagnostics.hasActiveAttempt, isTrue);
+    expect(
+      output
+          .map((line) => jsonDecode(line) as Map<String, dynamic>)
+          .where((event) => event['attemptId'] == 'attempt-1')
+          .map((event) => event['lookupOutcome']),
+      isNot(contains('no_membership')),
+    );
+    lookupB.complete('active');
+    expect(diagnostics.hasActiveAttempt, isTrue);
+    attemptB.complete();
   });
 
   test('a different UID transition clears the attempt before lookups', () {
@@ -334,9 +460,10 @@ void main() {
     attempt.record(AuthDiagnosticStage.firebaseCallStarted);
     diagnostics.observeAuthState(user: _TestUser('unexpected-uid'));
     attempt.recordFirebaseSuccess(signedInUid: 'expected-uid');
-    diagnostics.accountLookupStarted();
+    final lookup = diagnostics.beginAccountLookup(userId: 'expected-uid');
 
     expect(diagnostics.hasActiveAttempt, isFalse);
+    expect(lookup, isNull);
     expect(output, isNot(contains('unexpected-uid')));
     expect(output, isNot(contains('expected-uid')));
     expect(

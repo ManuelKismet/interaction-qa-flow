@@ -219,6 +219,28 @@ are unavailable. The canonical PR15 acceptance index and checkpoint are not
 present in this clone; this PR13 checkpoint records the source scope and the
 supplied DEV evidence without asserting hosted acceptance.
 
+### Diagnostics review follow-up — 2026-10-06
+
+The review hold identified two callback-ordering defects and a sign-in behavior
+coupling. Account and membership instrumentation now captures a request-scoped
+handle and the auth UID at request start. Provider disposal, attempt completion,
+or an identity mismatch invalidates that handle; a late completion cannot emit
+against or clear a later attempt. Auth-state and lookup stages are buffered
+until the SDK result UID matches the observed Firebase UID, so either event
+ordering is supported without logging events for an unverified identity.
+Diagnostics no longer reject sign-in while another diagnostic attempt is
+active; the page's existing per-submit `_busy` guard remains the only duplicate
+submission guard. The Firebase options project ID nullability check was also
+aligned with the SDK's non-null API.
+
+Added coverage for async stale lookup completion, provider-scheduled account
+and membership lookups with auth-state-before-SDK and SDK-before-auth ordering,
+and equivalent sign-in behavior with enabled versus disabled diagnostics.
+Flutter tests and analyzer were not run in this environment because Flutter/Dart
+are unavailable. No hosted rollout, credentials, account, or Firebase settings
+were changed; development rollout remains on hold pending independent review and
+runtime validation.
+
 ### Handoff and lessons
 
 - Keep normal sign-in separate from guest account linking and explicit start

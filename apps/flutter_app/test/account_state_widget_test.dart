@@ -490,6 +490,56 @@ void main() {
     );
   });
 
+  testWidgets('an active diagnostic attempt cannot block an ordinary sign-in', (
+    tester,
+  ) async {
+    Future<void> submitWithLogger(AuthDiagnosticLogger diagnostics) async {
+      final auth = _TestFirebaseAuth(
+        null,
+        signInError: FirebaseAuthException(code: 'invalid-credential'),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(auth),
+            authDiagnosticLoggerProvider.overrideWithValue(diagnostics),
+          ],
+          child: const MaterialApp(home: SignInPage()),
+        ),
+      );
+      await tester.enterText(find.byType(TextField).first, 'user@example.test');
+      await tester.enterText(find.byType(TextField).last, 'test-password');
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+      expect(auth.signInAttempts, 1);
+      expect(
+        find.text('Sign-in failed. Check your email and password and try again.'),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+
+    final enabledDiagnostics = AuthDiagnosticLogger(
+      enabled: true,
+      projectId: 'intqaflow-dev',
+      sink: (_) {},
+    );
+    final pendingAttempt = enabledDiagnostics.beginSignIn(
+      auth: _TestFirebaseAuth(null),
+      anonymousAtStart: false,
+      registeredAtStart: false,
+      emailPresent: true,
+      passwordPresent: true,
+    )!;
+    await submitWithLogger(enabledDiagnostics);
+    pendingAttempt.complete();
+
+    await submitWithLogger(
+      AuthDiagnosticLogger(enabled: false, sink: (_) {}),
+    );
+  });
+
   testWidgets('registered account without membership is not shown as signed out', (
     tester,
   ) async {

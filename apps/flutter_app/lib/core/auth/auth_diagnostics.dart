@@ -113,55 +113,52 @@ class AuthDiagnosticLogger {
     try {
       final anonymous = user?.isAnonymous == true;
       final registered = user != null && !anonymous;
-      attempt._record(
-        AuthDiagnosticStage.authStateObserved,
-        anonymous: anonymous,
-        registered: registered,
-      );
       attempt._observeIdentity(user: user, registered: registered);
     } on Object {
       attempt._finish();
     }
   }
 
-  void accountLookupStarted() {
-    final attempt = _eligibleAttempt;
-    attempt?.record(AuthDiagnosticStage.accountLookupStarted);
-  }
+  AuthDiagnosticLookup? beginAccountLookup({required String userId}) =>
+      _beginLookup(
+        userId: userId,
+        startedStage: AuthDiagnosticStage.accountLookupStarted,
+        completedStage: AuthDiagnosticStage.accountLookupCompleted,
+      );
 
-  void accountLookupCompleted(String outcome) {
-    final attempt = _eligibleAttempt;
-    if (attempt == null) return;
-    attempt._record(
-      AuthDiagnosticStage.accountLookupCompleted,
-      lookupOutcome: _lookupOutcome(outcome),
-    );
-    if (outcome != 'active') attempt._finish();
-  }
+  AuthDiagnosticLookup? beginMembershipLookup({required String userId}) =>
+      _beginLookup(
+        userId: userId,
+        startedStage: AuthDiagnosticStage.membershipLookupStarted,
+        completedStage: AuthDiagnosticStage.membershipLookupCompleted,
+      );
 
-  void membershipLookupStarted() {
-    final attempt = _eligibleAttempt;
-    attempt?.record(AuthDiagnosticStage.membershipLookupStarted);
-  }
-
-  void membershipLookupCompleted({required bool succeeded}) {
-    final attempt = _eligibleAttempt;
-    if (attempt == null) return;
-    attempt._record(
-      AuthDiagnosticStage.membershipLookupCompleted,
-      lookupOutcome: succeeded ? 'success' : 'failure',
-    );
-    attempt._finish();
-  }
-
-  AuthDiagnosticAttempt? get _eligibleAttempt {
+  AuthDiagnosticLookup? _beginLookup({
+    required String userId,
+    required AuthDiagnosticStage startedStage,
+    required AuthDiagnosticStage completedStage,
+  }) {
     final attempt = _activeAttempt;
     if (attempt == null ||
-        !attempt.firebaseCallSucceeded ||
-        !attempt._identityVerified) {
+        !attempt.firebaseCallStarted ||
+        !attempt._canObserveIdentity(userId)) {
       return null;
     }
-    return attempt;
+    final lookup = AuthDiagnosticLookup._(
+      attempt: attempt,
+      userId: userId,
+      startedStage: startedStage,
+      completedStage: completedStage,
+    );
+    return attempt._registerLookup(lookup) ? lookup : null;
+  }
+
+  DateTime _diagnosticTime() {
+    try {
+      return _clock();
+    } on Object {
+      return DateTime.now();
+    }
   }
 
   void _emit(
@@ -172,17 +169,19 @@ class AuthDiagnosticLogger {
     bool? anonymous,
     bool? registered,
     String? lookupOutcome,
+    DateTime? stageTime,
+    int? elapsedMs,
   }) {
     if (!enabled || !identical(_activeAttempt, attempt)) return;
     try {
-      final now = _clock();
+      final now = stageTime ?? _diagnosticTime();
       final event = <String, Object?>{
         'event': 'auth_diagnostic',
         'attemptId': attempt.attemptId,
         'operation': 'existing_account_sign_in',
         'stage': stage.name,
         'stageTimestampUtc': now.toUtc().toIso8601String(),
-        'elapsedMs': attempt.elapsedMilliseconds,
+        'elapsedMs': elapsedMs ?? attempt.elapsedMilliseconds,
         'appName': attempt.appName,
         'projectId': attempt.projectId,
         'buildId': _buildId,
@@ -219,7 +218,6 @@ class AuthDiagnosticLogger {
   String? _projectIdFor(FirebaseAuth auth) {
     try {
       final configuredProjectId = auth.app.options.projectId;
-      if (configuredProjectId == null) return null;
       final projectId = _safeIdentity(configuredProjectId, '');
       return projectId.isEmpty ? null : projectId;
     } on Object {
@@ -292,6 +290,10 @@ class AuthDiagnosticAttempt {
   bool firebaseCallStarted = false;
   bool _registeredStateObserved = false;
   bool _identityVerified = false;
+  bool _authStateObservedEmitted = false;
+  final Set<AuthDiagnosticLookup> _lookups = {};
+  DateTime? _authStateObservedAt;
+  int? _authStateObservedElapsedMs;
   String? _observedRegisteredUid;
   String? _expectedUid;
   bool _finished = false;
@@ -313,6 +315,7 @@ class AuthDiagnosticAttempt {
   }
 
   void recordFirebaseSuccess({required String? signedInUid}) {
+    if (_finished) return;
     firebaseCallSucceeded = true;
     record(AuthDiagnosticStage.firebaseCallSucceeded);
     if (signedInUid == null) {
@@ -324,6 +327,7 @@ class AuthDiagnosticAttempt {
     if (observedUid != null) {
       if (observedUid == signedInUid) {
         _identityVerified = true;
+        _flushPendingEvents();
       } else {
         _finish();
       }
@@ -336,15 +340,80 @@ class AuthDiagnosticAttempt {
       return;
     }
     _registeredStateObserved = true;
+    if (!_authStateObservedEmitted) {
+      _authStateObservedAt = _logger._diagnosticTime();
+      _authStateObservedElapsedMs = elapsedMilliseconds;
+    }
     final uid = user!.uid;
     _observedRegisteredUid = uid;
     final expectedUid = _expectedUid;
     if (expectedUid != null) {
       if (uid == expectedUid) {
         _identityVerified = true;
+        _flushPendingEvents();
       } else {
         _finish();
       }
+    }
+  }
+
+  bool _canObserveIdentity(String userId) {
+    if (_finished) return false;
+    final expectedUid = _expectedUid;
+    final observedUid = _observedRegisteredUid;
+    return (expectedUid == null || expectedUid == userId) &&
+        (observedUid == null || observedUid == userId);
+  }
+
+  bool _registerLookup(AuthDiagnosticLookup lookup) {
+    if (!_canObserveIdentity(lookup.userId)) return false;
+    _lookups.add(lookup);
+    if (_identityVerified) lookup._flushPendingEvents();
+    return true;
+  }
+
+  void _flushPendingEvents() {
+    if (!_identityVerified || _finished) return;
+    if (_registeredStateObserved && !_authStateObservedEmitted) {
+      _authStateObservedEmitted = true;
+      _record(
+        AuthDiagnosticStage.authStateObserved,
+        anonymous: false,
+        registered: true,
+        stageTime: _authStateObservedAt,
+        elapsedMs: _authStateObservedElapsedMs,
+      );
+    }
+    for (final lookup in _lookups.toList()) {
+      if (lookup.userId != _expectedUid) {
+        lookup.cancel();
+      } else {
+        lookup._flushPendingEvents();
+      }
+      if (_finished) break;
+    }
+  }
+
+  void _removeLookup(AuthDiagnosticLookup lookup) {
+    _lookups.remove(lookup);
+  }
+
+  void _completeLookup(AuthDiagnosticLookup lookup, String outcome) {
+    if (_finished || !_lookups.contains(lookup)) return;
+    if (!_identityVerified || lookup.userId != _expectedUid) {
+      lookup._setPendingOutcome(outcome);
+      return;
+    }
+    lookup._emitStarted();
+    lookup._emitCompleted(outcome);
+    _lookups.remove(lookup);
+    lookup._invalidate();
+    if (lookup.completedStage == AuthDiagnosticStage.accountLookupCompleted &&
+        outcome != 'active') {
+      _finish();
+    } else if (lookup.completedStage ==
+        AuthDiagnosticStage.membershipLookupCompleted) {
+      _finish();
     }
   }
 
@@ -357,6 +426,8 @@ class AuthDiagnosticAttempt {
     bool? anonymous,
     bool? registered,
     String? lookupOutcome,
+    DateTime? stageTime,
+    int? elapsedMs,
   }) {
     if (_finished) return;
     if (stage == AuthDiagnosticStage.firebaseCallStarted) {
@@ -370,6 +441,8 @@ class AuthDiagnosticAttempt {
       anonymous: anonymous,
       registered: registered,
       lookupOutcome: lookupOutcome,
+      stageTime: stageTime,
+      elapsedMs: elapsedMs,
     );
   }
 
@@ -378,7 +451,94 @@ class AuthDiagnosticAttempt {
     _finished = true;
     _timeout.cancel();
     _stopwatch.stop();
+    for (final lookup in _lookups.toList()) {
+      lookup._invalidate();
+    }
+    _lookups.clear();
+    _observedRegisteredUid = null;
+    _expectedUid = null;
     _logger._clear(this);
+  }
+}
+
+class AuthDiagnosticLookup {
+  AuthDiagnosticLookup._({
+    required AuthDiagnosticAttempt attempt,
+    required String userId,
+    required this.startedStage,
+    required this.completedStage,
+  }) : _attempt = attempt,
+       _userId = userId,
+       _startedAt = attempt._logger._diagnosticTime(),
+       _startedElapsedMs = attempt.elapsedMilliseconds;
+
+  final AuthDiagnosticAttempt _attempt;
+  String? _userId;
+  String get userId => _userId ?? '';
+  final AuthDiagnosticStage startedStage;
+  final AuthDiagnosticStage completedStage;
+  final DateTime _startedAt;
+  final int _startedElapsedMs;
+  bool _startedEmitted = false;
+  bool _completed = false;
+  String? _pendingOutcome;
+  DateTime? _completedAt;
+  int? _completedElapsedMs;
+  bool _cancelled = false;
+
+  void complete(String outcome) {
+    if (_cancelled || _completed) return;
+    _completed = true;
+    _completedAt = _attempt._logger._diagnosticTime();
+    _completedElapsedMs = _attempt.elapsedMilliseconds;
+    _attempt._completeLookup(this, outcome);
+  }
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    _attempt._removeLookup(this);
+    _userId = null;
+  }
+
+  void _flushPendingEvents() {
+    if (_cancelled || _attempt._finished) return;
+    _emitStarted();
+    final outcome = _pendingOutcome;
+    if (_completed && outcome != null) {
+      _pendingOutcome = null;
+      _attempt._completeLookup(this, outcome);
+    }
+  }
+
+  void _emitStarted() {
+    if (_cancelled || _startedEmitted) return;
+    _startedEmitted = true;
+    _attempt._record(
+      startedStage,
+      stageTime: _startedAt,
+      elapsedMs: _startedElapsedMs,
+    );
+  }
+
+  void _emitCompleted(String outcome) {
+    if (_cancelled) return;
+    _attempt._record(
+      completedStage,
+      lookupOutcome: AuthDiagnosticLogger._lookupOutcome(outcome),
+      stageTime: _completedAt,
+      elapsedMs: _completedElapsedMs,
+    );
+  }
+
+  void _setPendingOutcome(String outcome) {
+    _pendingOutcome = outcome;
+  }
+
+  void _invalidate() {
+    _cancelled = true;
+    _userId = null;
+    _pendingOutcome = null;
   }
 }
 

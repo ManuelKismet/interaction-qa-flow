@@ -69,12 +69,6 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       final auth = ref.read(firebaseAuthProvider);
       final currentUser = auth.currentUser;
       final diagnosticLogger = ref.read(authDiagnosticLoggerProvider);
-      if (isExistingAccountSignIn && diagnosticLogger.hasActiveAttempt) {
-        setState(() {
-          _error = 'A sign-in attempt is already in progress. Please wait.';
-        });
-        return;
-      }
       if (isExistingAccountSignIn) {
         try {
           diagnosticAttempt = diagnosticLogger.beginSignIn(
@@ -206,10 +200,14 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           email: email,
           password: password,
         );
-        diagnosticAttempt?.recordFirebaseSuccess(
-          signedInUid:
-              signedIn.user?.uid ?? auth.currentUser?.uid,
-        );
+        try {
+          diagnosticAttempt?.recordFirebaseSuccess(
+            signedInUid:
+                signedIn.user?.uid ?? auth.currentUser?.uid,
+          );
+        } on Object {
+          diagnosticAttempt?.complete();
+        }
       }
     } on FirebaseAuthException catch (error) {
       final code = error.code
@@ -217,7 +215,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           .split('/')
           .last
           .replaceAll(RegExp(r'[^a-z0-9_-]'), '');
-      diagnosticAttempt?.recordFirebaseFailure(error.code);
+      try {
+        diagnosticAttempt?.recordFirebaseFailure(error.code);
+      } on Object {
+        diagnosticAttempt?.complete();
+      }
       if (!mounted) return;
       final message = isResetOperation
           ? 'Unable to send a reset email. Please check the address and try again.'
@@ -268,9 +270,13 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         _error = message;
       });
     } catch (_) {
-      if (diagnosticAttempt?.firebaseCallStarted == true) {
-        diagnosticAttempt?.recordFirebaseFailure('other');
-      } else {
+      try {
+        if (diagnosticAttempt?.firebaseCallStarted == true) {
+          diagnosticAttempt?.recordFirebaseFailure('other');
+        } else {
+          diagnosticAttempt?.complete();
+        }
+      } on Object {
         diagnosticAttempt?.complete();
       }
       rethrow;
