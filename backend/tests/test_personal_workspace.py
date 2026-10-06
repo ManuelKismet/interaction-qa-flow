@@ -143,11 +143,16 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
         params={"query": "sentinel"},
     )
     assert private_search.status_code == 200, private_search.text
-    assert [item["id"] for item in private_search.json()["results"]] == [
-        result["items"][0]["id"]
-    ]
-    assert private_search.json()["results"][0]["match_method"] == "keyword"
-    assert private_search.json()["results"][0]["source_id"] == "local-id"
+    private_results = private_search.json()["results"]
+    assert {item["id"] for item in private_results} == {
+        result["items"][0]["id"],
+        replay.json()["items"][1]["id"],
+    }
+    assert {item["source_id"] for item in private_results} == {
+        "local-id",
+        "other",
+    }
+    assert all(item["match_method"] == "keyword" for item in private_results)
     other_private_search = await client.get(
         "/api/v1/personal/items/search",
         headers=bearer("other"),

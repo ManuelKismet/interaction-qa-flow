@@ -184,6 +184,29 @@ async def test_private_semantic_search_is_owner_and_membership_scoped() -> None:
                             )
                         )
                     session.add_all(personal_items)
+                    ranking_items = []
+                    for title, body in (
+                        ("Safety guidance", "Use the vault recovery phrase."),
+                        ("Semantic-only match", "General reference material."),
+                    ):
+                        data = {"id": title.casefold().replace(" ", "-"), "body": body}
+                        ranking_items.append(
+                            PersonalWorkspaceItem(
+                                firebase_uid="rank-owner",
+                                source_key=f"knowledge:{data['id']}",
+                                kind="knowledge",
+                                title=title,
+                                data=data,
+                                revision=1,
+                                knowledge_embedding=vector,
+                                embedding_model=provider.model_name,
+                                embedding_source_hash=embedding_source_hash(
+                                    private_knowledge_text(title, data),
+                                    provider.model_name,
+                                ),
+                            )
+                        )
+                    session.add_all(ranking_items)
 
                     entries = []
                     for uid in ("group-owner-a", "group-owner-b"):
@@ -192,6 +215,7 @@ async def test_private_semantic_search_is_owner_and_membership_scoped() -> None:
                             created_by_uid=uid,
                             expires_at=datetime.now(UTC) + timedelta(days=1),
                         )
+                        session.add(group)
                         await session.flush()
                         session.add(
                             GuestGroupMembership(
@@ -235,6 +259,23 @@ async def test_private_semantic_search_is_owner_and_membership_scoped() -> None:
                         session, provider
                     ).search_knowledge("personal-outsider", "semantic query")
                     assert outsider_results == {"results": [], "partial": False}
+                    typo_results = await PersonalWorkspaceService(
+                        session, provider
+                    ).search_knowledge("personal-owner-a", "privte rec")
+                    assert typo_results["results"][0]["title"] == (
+                        "Private record personal-owner-a"
+                    )
+                    assert typo_results["results"][0]["match_method"] == "hybrid"
+                    ranking_results = await PersonalWorkspaceService(
+                        session, provider
+                    ).search_knowledge("rank-owner", "vault recovery phrase")
+                    assert [
+                        item["title"] for item in ranking_results["results"]
+                    ] == ["Safety guidance", "Semantic-only match"]
+                    assert (
+                        ranking_results["results"][0]["relevance_score"]
+                        > ranking_results["results"][1]["relevance_score"]
+                    )
 
                     member_results = await GuestService(
                         session, provider
@@ -242,6 +283,15 @@ async def test_private_semantic_search_is_owner_and_membership_scoped() -> None:
                     assert [
                         item["title"] for item in member_results["results"]
                     ] == ["Group record group-owner-a"]
+                    typo_group_results = await GuestService(
+                        session, provider
+                    ).search_member_knowledge("group-owner-a", "grop recor")
+                    assert typo_group_results["results"][0]["title"] == (
+                        "Group record group-owner-a"
+                    )
+                    assert (
+                        typo_group_results["results"][0]["match_method"] == "hybrid"
+                    )
                     nonmember_results = await GuestService(
                         session, provider
                     ).search_member_knowledge(

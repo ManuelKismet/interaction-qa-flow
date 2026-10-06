@@ -1565,7 +1565,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                           items: data.knowledge,
                           searchIdentityKey: _verifiedPersonalUid == null
                               ? null
-                              : '${_verifiedPersonalUid!}:${widget.membershipStatus.name}',
+                              : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
                           searchOrganization:
                               _verifiedPersonalUid != null &&
                                   widget.membershipStatus ==
@@ -1588,7 +1588,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                               : (query) => ref
                                     .read(guestGroupRepositoryProvider)
                                     .searchKnowledge(query),
-                          reloadPersonalWorkspace: _loadPersonalWorkspace,
+                          reloadPersonalWorkspace: _refreshPersonalWorkspace,
                           storageStatus: (item) =>
                               _storageStatus('knowledge', item),
                           isPersonalAccount: (item) =>
@@ -2165,6 +2165,7 @@ class _UnifiedKnowledgeSearchHit {
     required this.snippet,
     required this.icon,
     required this.onTap,
+    this.storageStatus,
   });
 
   final String id;
@@ -2175,6 +2176,7 @@ class _UnifiedKnowledgeSearchHit {
   final String? snippet;
   final IconData icon;
   final VoidCallback onTap;
+  final String? storageStatus;
 }
 
 class _GuestKnowledgeTab extends StatefulWidget {
@@ -2493,8 +2495,8 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
           ? Map<String, dynamic>.from(accountResult!['data'] as Map)
           : const <String, dynamic>{};
       final source = widget.isPersonalAccount(item)
-          ? 'Personal account'
-          : 'On this device';
+          ? 'Private'
+          : 'Local';
       final snippet = _stringValue(accountResult?['snippet']) ??
           _matchingSnippet(query, [
             _stringValue(item['body']),
@@ -2524,6 +2526,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
               ? Icons.lock_outline
               : Icons.devices_outlined,
           onTap: () => _openPersonalResult(id),
+          storageStatus: widget.storageStatus(item),
         ),
       );
     }
@@ -2548,8 +2551,8 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
           id: id,
           title: result['title'] as String? ?? '',
           source: isAccountSource
-              ? 'Personal account'
-              : 'On this device · ${widget.storageStatus(sourceItem!)}',
+              ? 'Private'
+              : 'Local',
           method: _matchMethodLabel(
             result['match_method'] as String? ?? 'keyword',
           ),
@@ -2561,11 +2564,14 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                       _stringValue(data['answer']),
                     ])
               : _matchingSnippet(query, [
-                  _stringValue(sourceItem!['body']),
+                  _stringValue(sourceItem['body']),
                   _stringValue(sourceItem['answer']),
                 ]),
           icon: isAccountSource ? Icons.lock_outline : Icons.devices_outlined,
           onTap: () => _openPersonalResult(id),
+          storageStatus: sourceItem == null
+              ? null
+              : widget.storageStatus(sourceItem),
         ),
       );
     }
@@ -2655,8 +2661,11 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 if (_organizationSearchFailed ||
+                    _organizationSearchPartial ||
                     _personalSearchFailed ||
-                    _groupSearchFailed)
+                    _personalSearchPartial ||
+                    _groupSearchFailed ||
+                    _groupSearchPartial)
                   TextButton(
                     onPressed: () => _scheduleRemoteSearch(_query.text),
                     child: const Text('Retry available sources'),
@@ -2687,12 +2696,25 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
             child: ListTile(
               leading: Icon(hit.icon),
               title: Text(hit.title),
-              subtitle: Text(
-                [
-                  '${hit.source} · ${hit.method}',
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Chip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(hit.source),
+                      ),
+                      Text(hit.method),
+                    ],
+                  ),
+                  if (hit.storageStatus != null) Text(hit.storageStatus!),
                   if (hit.snippet != null && hit.snippet!.isNotEmpty)
-                    _snippet(hit.snippet),
-                ].join('\n\n'),
+                    Text(_snippet(hit.snippet)),
+                ],
               ),
               onTap: hit.onTap,
             ),
@@ -2740,11 +2762,6 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     final matches = widget.items
         .where((item) => matchesGuestKeywordOrPrefix(query, item))
         .toList();
-    final savedItems = _selectedKnowledgeItemId == null
-        ? matches
-        : widget.items
-            .where((item) => item['id'] == _selectedKnowledgeItemId)
-            .toList();
     final searchField = TextField(
       controller: _query,
       decoration: InputDecoration(

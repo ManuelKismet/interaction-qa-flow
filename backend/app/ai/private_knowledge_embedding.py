@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,17 +57,19 @@ async def sync_private_knowledge_embedding(
 def knowledge_match(
     query: str, title: str, data: dict[str, Any]
 ) -> tuple[float, str | None, str | None]:
-    words = [word.casefold() for word in query.split() if word.strip()]
+    words = re.findall(r"[a-z0-9]+", query.casefold())
     title_folded = title.casefold()
+    title_words = re.findall(r"[a-z0-9]+", title_folded)
     body = " ".join(
         value.casefold()
         for key in ("body", "answer")
         if isinstance((value := data.get(key)), str)
     )
+    body_words = re.findall(r"[a-z0-9]+", body)
     if not words:
         return 0.0, None, None
-    title_hits = [word for word in words if word in title_folded]
-    body_hits = [word for word in words if word in body]
+    title_hits = [word for word in words if _matches_word(word, title_words)]
+    body_hits = [word for word in words if _matches_word(word, body_words)]
     if not title_hits and not body_hits:
         return 0.0, None, None
     if title_folded == query.casefold().strip():
@@ -81,9 +84,54 @@ def knowledge_match(
                 value
                 for key in ("body", "answer")
                 if isinstance((value := data.get(key)), str)
-                and any(word in value.casefold() for word in body_hits)
+                and any(
+                    _matches_word(word, re.findall(r"[a-z0-9]+", value.casefold()))
+                    for word in body_hits
+                )
             ),
             "",
         )
-        return 0.9, "content", source[:240]
+        normalized_query = " ".join(words)
+        normalized_source = " ".join(re.findall(r"[a-z0-9]+", source.casefold()))
+        relevance = (
+            1.15
+            if normalized_query in normalized_source
+            else 1.1
+            if len(body_hits) == len(words)
+            else 0.9
+        )
+        return relevance, "content", source[:240]
     return 0.0, None, None
+
+
+def _matches_word(query_word: str, candidates: list[str]) -> bool:
+    return any(
+        candidate == query_word
+        or (len(query_word) >= 3 and candidate.startswith(query_word))
+        or (
+            len(query_word) >= 4
+            and abs(len(candidate) - len(query_word)) <= 1
+            and _one_edit_apart(candidate, query_word)
+        )
+        for candidate in candidates
+    )
+
+
+def _one_edit_apart(left: str, right: str) -> bool:
+    if abs(len(left) - len(right)) > 1:
+        return False
+    previous = list(range(len(right) + 1))
+    for index, left_char in enumerate(left, start=1):
+        current = [index]
+        for column, right_char in enumerate(right, start=1):
+            current.append(
+                min(
+                    current[-1] + 1,
+                    previous[column] + 1,
+                    previous[column - 1] + (left_char != right_char),
+                )
+            )
+        if min(current) > 1:
+            return False
+        previous = current
+    return previous[-1] <= 1

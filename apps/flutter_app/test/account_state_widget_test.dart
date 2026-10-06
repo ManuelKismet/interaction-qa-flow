@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -155,6 +157,7 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
   var listGroupsCalls = 0;
   var listArchivedGroupsCalls = 0;
   var getGroupCalls = 0;
+  Future<Map<String, dynamic>> Function(String query)? searchHandler;
 
   @override
   Future<List<Map<String, dynamic>>> listGroups() async {
@@ -173,6 +176,11 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
     getGroupCalls++;
     return details[groupId]!;
   }
+
+  @override
+  Future<Map<String, dynamic>> searchKnowledge(String query) =>
+      searchHandler?.call(query) ??
+      Future.value({'results': <Map<String, dynamic>>[], 'partial': false});
 }
 
 class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
@@ -187,6 +195,9 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
   List<Map<String, dynamic>>? conflictItems;
   final updateRevisions = <int>[];
   var deleteCalls = 0;
+  final searches = <(String, String)>[];
+  Future<Map<String, dynamic>> Function(String query, String expectedUid)?
+  searchHandler;
 
   @override
   Future<List<Map<String, dynamic>>> listItems({
@@ -194,6 +205,16 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
   }) async {
     listCalls++;
     return items;
+  }
+
+  @override
+  Future<Map<String, dynamic>> searchKnowledge(
+    String query, {
+    required String expectedUid,
+  }) {
+    searches.add((query, expectedUid));
+    return searchHandler?.call(query, expectedUid) ??
+        Future.value({'results': <Map<String, dynamic>>[], 'partial': false});
   }
 
   @override
@@ -635,6 +656,173 @@ void main() {
     expect(find.text('Account B private item'), findsOneWidget);
     expect(repository.listCalls, 2);
     expect((await storage.load()).knowledge, isEmpty);
+  });
+
+  testWidgets('stale personal search results are ignored after account switch', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    final staleResponse = Completer<Map<String, dynamic>>();
+    final userA = _TestUser(
+      isAnonymous: false,
+      isEmailVerified: true,
+      testUid: 'search-account-a',
+    );
+    final userB = _TestUser(
+      isAnonymous: false,
+      isEmailVerified: true,
+      testUid: 'search-account-b',
+    );
+    final authEvents = StreamController<User?>.broadcast();
+    final repository = _TestPersonalWorkspaceRepository([])
+      ..searchHandler = (query, uid) => uid == userA.uid
+          ? staleResponse.future
+          : Future.value({
+              'results': [
+                {
+                  'id': 'account-b-record',
+                  'source_id': 'account-b-item',
+                  'title': 'Account B result',
+                  'data': {'id': 'account-b-item', 'body': 'account-b needle'},
+                  'match_method': 'keyword',
+                  'relevance_score': 1.1,
+                },
+              ],
+              'partial': false,
+            });
+    final groups = _TestGuestGroupRepository([], {});
+    Widget page(User user) => ProviderScope(
+      overrides: [
+        authStateProvider.overrideWith((ref) => authEvents.stream),
+        firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+        guestWorkspaceStoreProvider.overrideWithValue(store),
+        personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+        guestGroupRepositoryProvider.overrideWithValue(groups),
+      ],
+      child: MaterialApp(
+        home: GuestWorkspacePage(
+          firebaseReady: true,
+          personalWorkspaceEnabled: true,
+          accountUser: user,
+          membershipStatus: AccountMembershipStatus.noMembership,
+        ),
+      ),
+    );
+    final searchField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.labelText == 'Search Knowledge',
+    );
+
+    await tester.pumpWidget(page(userA));
+    await tester.pumpAndSettle();
+    await tester.enterText(searchField, 'needle');
+    await tester.pump(const Duration(milliseconds: 301));
+    expect(repository.searches, [('needle', userA.uid)]);
+
+    await tester.pumpWidget(page(userB));
+    authEvents.add(userB);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    expect(repository.searches.last, ('needle', userB.uid));
+    expect(find.text('Account B result'), findsOneWidget);
+
+    staleResponse.complete({
+      'results': [
+        {
+          'id': 'account-a-record',
+          'source_id': 'account-a-item',
+          'title': 'Account A stale result',
+          'data': {'id': 'account-a-item', 'body': 'account-a needle'},
+          'match_method': 'keyword',
+          'relevance_score': 1.1,
+        },
+      ],
+      'partial': false,
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Account A stale result'), findsNothing);
+    expect(find.text('Account B result'), findsOneWidget);
+    await authEvents.close();
+  });
+
+  testWidgets('partial personal search can be retried from the widget', (
+    tester,
+  ) async {
+    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+    var searchCount = 0;
+    final repository = _TestPersonalWorkspaceRepository([])
+      ..searchHandler = (query, uid) async {
+        searchCount++;
+        return {
+          'results': [
+            {
+              'id': 'personal-record-$searchCount',
+              'source_id': 'personal-item-$searchCount',
+              'title': searchCount == 1 ? 'Partial result' : 'Complete result',
+              'data': {'id': 'personal-item-$searchCount', 'body': query},
+              'match_method': 'keyword',
+              'relevance_score': 1.1,
+            },
+          ],
+          'partial': searchCount == 1,
+        };
+      };
+    final groups = _TestGuestGroupRepository([], {});
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(user)),
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(
+            GuestWorkspaceStore(_MemoryGuestStorage()),
+          ),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+          guestGroupRepositoryProvider.overrideWithValue(groups),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            personalWorkspaceEnabled: true,
+            accountUser: user,
+            membershipStatus: AccountMembershipStatus.noMembership,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final searchField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.labelText == 'Search Knowledge',
+    );
+    await tester.enterText(searchField, 'partial');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+
+    expect(searchCount, 1);
+    expect(find.text('Partial result'), findsOneWidget);
+    expect(
+      find.text(
+        'Personal-account search reached its result limit. Some matches may be omitted.',
+      ),
+      findsOneWidget,
+    );
+    final retryButton = find.text('Retry available sources');
+    await tester.ensureVisible(retryButton);
+    await tester.tap(retryButton);
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+
+    expect(searchCount, 2);
+    expect(find.text('Complete result'), findsOneWidget);
+    expect(
+      find.text(
+        'Personal-account search reached its result limit. Some matches may be omitted.',
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('clearing local work does not delete personal account items', (
