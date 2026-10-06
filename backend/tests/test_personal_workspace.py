@@ -315,7 +315,12 @@ async def test_personal_workspace_validates_stable_ids_and_nested_content(
     }
     for item in [
         {**knowledge(), "data": {**knowledge()["data"], "id": "different-id"}},
+        {**knowledge(), "data": {**knowledge()["data"], "title": 4}},
+        {**knowledge(), "data": {**knowledge()["data"], "body": {"bad": "type"}}},
+        {**knowledge(), "data": {**knowledge()["data"], "answer": 4}},
         {**session, "data": {**session["data"], "participants": [{"name": "Alice"}]}},
+        {**session, "data": {**session["data"], "title": ["bad type"]}},
+        {**session, "data": {**session["data"], "visibility": 4}},
         {
             **template,
             "data": {
@@ -342,6 +347,22 @@ async def test_personal_workspace_validates_stable_ids_and_nested_content(
         )
         assert response.status_code == 422
 
+    atomic_batch = await client.post(
+        "/api/v1/personal/items/import",
+        headers=headers,
+        json={
+            "items": [
+                knowledge("knowledge:otherwise-valid"),
+                {
+                    **knowledge("knowledge:bad-root"),
+                    "data": {"id": "bad-root", "title": 4},
+                },
+            ]
+        },
+    )
+    assert atomic_batch.status_code == 422
+    assert (await client.get("/api/v1/personal/items", headers=headers)).json() == []
+
     valid_items = [knowledge(), session, template]
     imported = await client.post(
         "/api/v1/personal/items/import",
@@ -354,23 +375,113 @@ async def test_personal_workspace_validates_stable_ids_and_nested_content(
     ]
 
     for record in imported.json()["items"]:
-        updated_data = record["data"]
         if record["kind"] == "knowledge":
-            updated_data["id"] = "changed-id"
+            invalid_data = [
+                {**record["data"], "id": "changed-id"},
+                {**record["data"], "title": 4},
+                {**record["data"], "body": {"bad": "type"}},
+                {**record["data"], "answer": 4},
+            ]
         elif record["kind"] == "interact_session":
-            updated_data["questions"] = [{"text": "Missing question ID"}]
+            invalid_data = [
+                {**record["data"], "questions": [{"text": "Missing question ID"}]},
+                {**record["data"], "title": ["bad type"]},
+                {**record["data"], "visibility": 4},
+            ]
         else:
-            updated_data["questions"] = [{"id": "question-id"}]
-        response = await client.put(
-            f"/api/v1/personal/items/{record['id']}",
-            headers=headers,
-            json={
-                "expected_revision": 1,
-                "title": record["title"],
-                "data": updated_data,
+            invalid_data = [{**record["data"], "questions": [{"id": "question-id"}]}]
+        for data in invalid_data:
+            response = await client.put(
+                f"/api/v1/personal/items/{record['id']}",
+                headers=headers,
+                json={
+                    "expected_revision": 1,
+                    "title": record["title"],
+                    "data": data,
+                },
+            )
+            assert response.status_code == 422
+
+    unchanged = await client.get("/api/v1/personal/items", headers=headers)
+    assert all(item["revision"] == 1 for item in unchanged.json())
+    original_data = {
+        item["source_key"]: item["data"] for item in imported.json()["items"]
+    }
+    assert {
+        item["source_key"]: item["data"] for item in unchanged.json()
+    } == original_data
+
+
+@pytest.mark.asyncio
+async def test_personal_workspace_preserves_spaced_content_and_unknown_fields(
+    app_client, monkeypatch
+) -> None:
+    client, _ = app_client
+    install_test_tokens(monkeypatch)
+    headers = bearer("spaced-content")
+    items = [
+        {
+            **knowledge("knowledge:spaced"),
+            "data": {
+                **knowledge("knowledge:spaced")["data"],
+                "title": "  Knowledge title  ",
+                "body": "  Knowledge details  ",
+                "answer": "  Knowledge answer  ",
+                "custom_metadata": {"retain": True},
             },
-        )
-        assert response.status_code == 422
+        },
+        {
+            "kind": "interact_session",
+            "source_key": "session:spaced-session",
+            "title": "Session",
+            "data": {
+                "id": "spaced-session",
+                "title": "  Session title  ",
+                "visibility": "  private_local  ",
+                "participants": [{"id": "participant", "name": "Person"}],
+                "questions": [
+                    {
+                        "id": "question",
+                        "text": "  Question text  ",
+                        "custom_metadata": {"retain": True},
+                    }
+                ],
+                "custom_metadata": {"retain": True},
+            },
+        },
+        {
+            "kind": "template",
+            "source_key": "template:spaced-template",
+            "title": "Template",
+            "data": {
+                "id": "spaced-template",
+                "name": "  Template name  ",
+                "participant_slots": [{"id": "slot", "label": "  Slot label  "}],
+                "questions": [{"id": "template-question", "text": "  Prompt  "}],
+                "custom_metadata": {"retain": True},
+            },
+        },
+    ]
+
+    response = await client.post(
+        "/api/v1/personal/items/import",
+        headers=headers,
+        json={"items": items},
+    )
+    assert response.status_code == 201, response.text
+    imported = {item["kind"]: item["data"] for item in response.json()["items"]}
+    assert imported["knowledge"]["title"] == "  Knowledge title  "
+    assert imported["knowledge"]["body"] == "  Knowledge details  "
+    assert imported["knowledge"]["answer"] == "  Knowledge answer  "
+    assert imported["knowledge"]["custom_metadata"] == {"retain": True}
+    assert imported["interact_session"]["title"] == "  Session title  "
+    assert imported["interact_session"]["visibility"] == "  private_local  "
+    assert imported["interact_session"]["questions"][0]["text"] == "  Question text  "
+    assert imported["interact_session"]["custom_metadata"] == {"retain": True}
+    assert imported["template"]["name"] == "  Template name  "
+    assert imported["template"]["participant_slots"][0]["label"] == "  Slot label  "
+    assert imported["template"]["questions"][0]["text"] == "  Prompt  "
+    assert imported["template"]["custom_metadata"] == {"retain": True}
 
 
 @pytest.mark.asyncio

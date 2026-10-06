@@ -15,10 +15,25 @@ def _validate_content(value: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
-def _require_nonempty_string(value: Any, field: str) -> str:
-    if not isinstance(value, str) or not value.strip() or value != value.strip():
+def _require_nonempty_string(
+    value: Any,
+    field: str,
+    *,
+    identifier: bool = False,
+) -> str:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or (identifier and value != value.strip())
+    ):
         raise ValueError(f"{field} must be non-empty text.")
     return value
+
+
+def _validate_optional_string(data: dict[str, Any], field: str) -> None:
+    value = data.get(field)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"{field} must be text.")
 
 
 def _object_list(value: Any, field: str, *, optional: bool = False) -> list[dict]:
@@ -35,7 +50,7 @@ def validate_personal_workspace_data(
     *,
     source_key: str | None = None,
 ) -> None:
-    item_id = _require_nonempty_string(data.get("id"), "Item ID")
+    item_id = _require_nonempty_string(data.get("id"), "Item ID", identifier=True)
     if source_key is not None:
         prefix, separator, source_id = source_key.partition(":")
         expected_prefixes = {
@@ -51,14 +66,19 @@ def validate_personal_workspace_data(
             raise ValueError("The source key must match the item's stable ID.")
 
     if kind == "knowledge":
+        _require_nonempty_string(data.get("title"), "Knowledge title")
+        _validate_optional_string(data, "body")
+        _validate_optional_string(data, "answer")
         return
 
     participants: set[str] = set()
     slots: set[str] = set()
     if kind == "interact_session":
+        _validate_optional_string(data, "title")
+        _validate_optional_string(data, "visibility")
         for participant in _object_list(data.get("participants"), "Participants"):
             participant_id = _require_nonempty_string(
-                participant.get("id"), "Participant ID"
+                participant.get("id"), "Participant ID", identifier=True
             )
             if participant_id in participants:
                 raise ValueError("Participant IDs must be unique.")
@@ -72,7 +92,9 @@ def validate_personal_workspace_data(
         for slot in _object_list(
             data.get("participant_slots"), "Participant slots", optional=True
         ):
-            slot_id = _require_nonempty_string(slot.get("id"), "Participant slot ID")
+            slot_id = _require_nonempty_string(
+                slot.get("id"), "Participant slot ID", identifier=True
+            )
             _require_nonempty_string(slot.get("label"), "Participant slot label")
             if slot_id in slots:
                 raise ValueError("Participant slot IDs must be unique.")
@@ -84,7 +106,9 @@ def validate_personal_workspace_data(
 
     def validate_questions(value: Any, field: str) -> None:
         for question in _object_list(value, field, optional=field != "Questions"):
-            question_id = _require_nonempty_string(question.get("id"), "Question ID")
+            question_id = _require_nonempty_string(
+                question.get("id"), "Question ID", identifier=True
+            )
             _require_nonempty_string(question.get("text"), "Question text")
             if question_id in question_ids:
                 raise ValueError("Question IDs must be unique within an item.")
@@ -102,7 +126,7 @@ def validate_personal_workspace_data(
             )
             target = question.get(target_field)
             if target is not None:
-                target = _require_nonempty_string(target, target_field)
+                target = _require_nonempty_string(target, target_field, identifier=True)
                 allowed_targets = slots if kind == "template" else participants
                 if (
                     kind == "interact_session" or allowed_targets
@@ -119,7 +143,9 @@ def validate_personal_workspace_data(
                 owner_field = (
                     "participant_slot" if kind == "template" else "participant_id"
                 )
-                owner = _require_nonempty_string(answer.get(owner_field), owner_field)
+                owner = _require_nonempty_string(
+                    answer.get(owner_field), owner_field, identifier=True
+                )
                 allowed_owners = slots if kind == "template" else participants
                 if (
                     kind == "interact_session" or allowed_owners
