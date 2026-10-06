@@ -11,74 +11,77 @@ void main() {
     expect(ids.every((id) => id.startsWith('guest-v2-')), isTrue);
   });
 
-  test('malformed nested local and backup data are rejected unchanged', () async {
-    final malformed = jsonEncode({
-      'schema_version': 1,
-      'knowledge': [],
-      'sessions': [
-        {
-          'id': 'session',
-          'participants': 'not a list',
-          'questions': [],
-        },
-      ],
-      'templates': [],
-    });
-    final storage = MemoryGuestStorage()..write(malformed);
-    final store = GuestWorkspaceStore(storage);
-
-    await expectLater(store.load(), throwsFormatException);
-    expect(storage.read(), malformed);
-    expect(
-      () => GuestWorkspaceData.decodeBackup(malformed),
-      throwsFormatException,
-    );
-
-    for (final invalid in [
-      {
+  test(
+    'malformed nested local and backup data are rejected unchanged',
+    () async {
+      final malformed = jsonEncode({
         'schema_version': 1,
         'knowledge': [],
         'sessions': [
           {
             'id': 'session',
-            'participants': [
-              {'id': 'participant', 'name': 'Alice'},
-            ],
-            'questions': [
-              {
-                'answers': [
-                  {
-                    'follow_ups': [
-                      {'answers': 'not a list'},
-                    ],
-                  },
-                ],
-              },
-            ],
+            'participants': 'not a list',
+            'questions': [],
           },
         ],
         'templates': [],
-      },
-      {
-        'schema_version': 1,
-        'knowledge': [],
-        'sessions': [],
-        'templates': [
-          {
-            'id': 'template',
-            'participant_slots': [
-              {'id': 7},
-            ],
-          },
-        ],
-      },
-    ]) {
+      });
+      final storage = MemoryGuestStorage()..write(malformed);
+      final store = GuestWorkspaceStore(storage);
+
+      await expectLater(store.load(), throwsFormatException);
+      expect(storage.read(), malformed);
       expect(
-        () => GuestWorkspaceData.decodeBackup(jsonEncode(invalid)),
+        () => GuestWorkspaceData.decodeBackup(malformed),
         throwsFormatException,
       );
-    }
-  });
+
+      for (final invalid in [
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [
+            {
+              'id': 'session',
+              'participants': [
+                {'id': 'participant', 'name': 'Alice'},
+              ],
+              'questions': [
+                {
+                  'answers': [
+                    {
+                      'follow_ups': [
+                        {'answers': 'not a list'},
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          'templates': [],
+        },
+        {
+          'schema_version': 1,
+          'knowledge': [],
+          'sessions': [],
+          'templates': [
+            {
+              'id': 'template',
+              'participant_slots': [
+                {'id': 7},
+              ],
+            },
+          ],
+        },
+      ]) {
+        expect(
+          () => GuestWorkspaceData.decodeBackup(jsonEncode(invalid)),
+          throwsFormatException,
+        );
+      }
+    },
+  );
 
   test('local guest workspace persists Knowledge, templates and answer branches', () async {
     final storage = MemoryGuestStorage();
