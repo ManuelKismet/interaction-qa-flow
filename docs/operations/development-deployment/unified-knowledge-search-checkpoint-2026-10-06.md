@@ -1,5 +1,59 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Latest independent review — Ask parity correction pending, 2026-10-06
+
+Copilot Ask-parity run37540651764 completed success at22:41:25Z.
+Completion6026770454 published artifact
+`6de32ac7e97148eb4022ddc080c1f64387586749`, authored
+`607bcce3ea61e0fb9c9392c2cd9c0b2bbbc847c3`, base105a528.
+Its unified-knowledge-ask-parity-20261007.patch was applied UNCHANGED with git am
+in /workspaces/intqaflow-unified-search-dev-20261006, producing exact complete
+review source `e9e3cc804e8dbb45033e637304fd34c21cd14b2f`.
+Published to fix/unified-search-dev-20261006 and GitHub readback verified.
+Seven Flutter files only; backend/schema unchanged. Clean isolated tree and
+main worktree's four dirty documentation files preserved.
+
+| Independent check on e9e3cc8 | Executed result |
+|---|---|
+| Python compile / Alembic heads | exit0 / single0014 |
+| Full backend |111 passed,4 skipped,10 warnings,40.13s,exit0|
+| Fresh separate real PostgreSQL16 |4 passed,3.92s,exit0|
+| Isolated migration round-trip |0014→0013→0014 PASS,exit0|
+| Full Flutter |173 passed,1 failed,about91s,exit1|
+| Analyzer |0 errors,1 warning,13 infos,13.3s,exit1|
+| Configured DEV release build |PASS,49.9s,exit0|
+| Non-mutating Dart format check |7 changed files would be formatted,exit1; source untouched|
+
+Rollout BLOCKED by unused question_models import warning in
+ask_suggestions_controller.dart:11:8 and new AskPage widget harness failure:
+“No Material widget found” (bare AskPage route, pumpAndSettle line168).
+This is a test harness failure, not proof production lacks Material.
+Actual Ask-specific privacy/submission, stale account/organisation, partial
+failure/retry, local answer/body-vs-semantic, scoped navigation/dedup and
+mobile/keyboard acceptance coverage is also incomplete; do not mark it passed.
+
+[ONE consolidated incremental correction](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6026870639)
+requires exact complete basee9e3cc804e8dbb45033e637304fd34c21cd14b2f, not
+carrier6de32ac or a reconstructed old patch tree. Copilot owns app/tests.
+Await its one corrected artifact; no competing requests or further rollout.
+
+DEV is UNCHANGED: backendintqaflow-dev-api-review105a528 at100%,
+schema0014, Hostingrelease1791323636722000/version4eb839685c6f21c7.
+Both-origin current bundle hashes remain the105a528 snapshot below.
+For any next rollout, retain reviewed105a528 + Hosting4eb839685c6f21c7 as
+rollback; retain additive0014/private data, never live downgrade/purge.
+No Cloud Run stage, traffic switch, Hosting publish or hosted migration executed
+for rejected e9e3cc8. Fake-provider quality, authenticated personal-import
+E2E/F04/F08/F09 and live search/navigation gap remain separate; organisation
+owner/delegated-admin/Teams/join-request changes remain deferred.
+
+Logs/exit receipts retained privately under
+/home/vscode/.local/share/intqaflow/ask-validation-e9e3cc8.
+Codespace restarted through existing GitHub UI for validation.
+Temporary PostgreSQL stopped and files retained; no proxy used.
+Codespace stop will be confirmed during final cleanup.
+Recurring monitoring remains cancelled by founder; do not recreate.
+
 ## Active follow-up — Ask & search unified parity, founder-authorised 2026-10-06
 
 Founder reports the deployed search works in their manual test. Scope/account,
