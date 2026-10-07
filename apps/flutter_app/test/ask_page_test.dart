@@ -374,7 +374,10 @@ void main() {
             path: '/',
             builder: (_, _) => const Scaffold(body: AskPage()),
           ),
-          GoRoute(path: '/questions/:id', builder: (_, _) => const Text('Submitted')),
+          GoRoute(
+            path: '/questions/:id',
+            builder: (_, _) => const Text('Submitted'),
+          ),
         ],
       );
       addTearDown(router.dispose);
@@ -445,21 +448,25 @@ void main() {
           'teamId': 'team',
         },
       ]);
-      expect(questions.createdQuestions.single.values.join(' '),
-          isNot(contains('Local-only secret phrase.')));
-      expect(questions.createdQuestions.single.values.join(' '),
-          isNot(contains('Private-only account detail.')));
+      expect(
+        questions.createdQuestions.single.values.join(' '),
+        isNot(contains('Local-only secret phrase.')),
+      );
+      expect(
+        questions.createdQuestions.single.values.join(' '),
+        isNot(contains('Private-only account detail.')),
+      );
       expect(personal.writes, isEmpty);
       expect(personal.searchQueries, ['password', 'password']);
-      expect(personal.results.single['data']['answer'],
-          'Private-only account detail.');
+      expect(
+        personal.results.single['data']['answer'],
+        'Private-only account detail.',
+      );
       expect(storage.value, contains('Local-only secret phrase.'));
     },
   );
 
-  testWidgets('Ask source and scope chips wrap at mobile width and keyboard advances', (
-    tester,
-  ) async {
+  testWidgets('Ask mobile chips wrap and keyboard advances', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -482,7 +489,10 @@ void main() {
     final router = GoRouter(
       initialLocation: '/',
       routes: [
-        GoRoute(path: '/', builder: (_, _) => const Scaffold(body: AskPage())),
+        GoRoute(
+          path: '/',
+          builder: (_, _) => const Scaffold(body: AskPage()),
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -519,14 +529,21 @@ void main() {
     await tester.enterText(titleField, 'password');
     await tester.testTextInput.receiveAction(TextInputAction.next);
     await tester.pumpAndSettle();
+    final detailField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.hintText == 'Add detail (optional)',
+    );
     expect(
-      tester.widget<TextField>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextField &&
-              widget.decoration?.hintText == 'Add detail (optional)',
-        ),
-      ).focusNode?.hasFocus,
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: detailField,
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode
+          .hasFocus,
       isTrue,
     );
     await tester.pump(const Duration(milliseconds: 360));
