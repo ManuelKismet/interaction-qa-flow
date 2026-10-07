@@ -8,6 +8,44 @@ import 'package:int_qa_flow/features/organisation/data/organisation_repository.d
 import 'package:int_qa_flow/features/organisation/domain/organisation_models.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
+OrganisationDataScope? _currentOrganisationScope(
+  WidgetRef ref,
+  OrganisationProfile profile, {
+  required bool mounted,
+}) {
+  final value = ref.read(organisationDataScopeProvider);
+  if (!value.hasValue) return null;
+  final scope = value.requireValue;
+  if (scope.userId != profile.userId ||
+      scope.organisationId != profile.organisationId ||
+      !_isScopeCurrent(ref, scope, mounted: mounted)) {
+    return null;
+  }
+  return scope;
+}
+
+bool _isScopeCurrent(
+  WidgetRef ref,
+  OrganisationDataScope scope, {
+  required bool mounted,
+}) => isOrganisationDataScopeCurrent(
+  mounted: mounted,
+  firebaseUid: ref.read(authStateProvider).value?.uid,
+  membership: ref.read(currentMembershipProvider),
+  scope: scope,
+);
+
+bool _isCurrentOrganisationScope(
+  WidgetRef ref,
+  OrganisationDataScope scope,
+  OrganisationProfile profile, {
+  required bool mounted,
+}) =>
+    profile.userId == scope.userId &&
+    profile.organisationId == scope.organisationId &&
+    profile.role == scope.role &&
+    _isScopeCurrent(ref, scope, mounted: mounted);
+
 class OrganisationPage extends ConsumerStatefulWidget {
   const OrganisationPage({super.key});
 
@@ -19,27 +57,32 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
   String _requestType = 'team';
   String? _targetId;
   bool _busy = false;
+  String? _scopeKey;
+
+  OrganisationDataScope? _currentScope(OrganisationProfile profile) =>
+      _currentOrganisationScope(ref, profile, mounted: mounted);
 
   Future<void> _request(OrganisationProfile profile) async {
-    final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
-    if (uid == null || _targetId == null) return;
+    final scope = _currentScope(profile);
+    if (scope == null || _targetId == null) return;
     setState(() => _busy = true);
     try {
       await ref
           .read(organisationRepositoryProvider)
           .requestMembership(
-            uid,
+            scope.firebaseUid,
             requestType: _requestType,
             targetId: _targetId!,
           );
-      ref.invalidate(myOrganisationJoinRequestsProvider);
-      if (mounted) {
+      if (mounted && _isCurrentScope(scope, profile)) {
+        ref.invalidate(myOrganisationJoinRequestsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Membership request saved.')),
         );
       }
     } on Object catch (error) {
-      if (mounted) {
+      if (mounted && _isCurrentScope(scope, profile)) {
+        _invalidateOrganisationLists();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Request could not be saved: $error')),
         );
@@ -97,6 +140,16 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
   }
 
   Widget _profile(OrganisationProfile profile) {
+    final scope = _currentScope(profile);
+    final nextScopeKey = scope == null
+        ? '${profile.userId}:${profile.organisationId}:${profile.role}'
+        : '${scope.firebaseUid}:${scope.userId}:${scope.organisationId}:${scope.role}';
+    if (_scopeKey != nextScopeKey) {
+      _scopeKey = nextScopeKey;
+      _requestType = 'team';
+      _targetId = null;
+      _busy = false;
+    }
     final departments = ref.watch(departmentsProvider);
     final teams = ref.watch(teamsProvider);
     final myRequests = ref.watch(myOrganisationJoinRequestsProvider);
@@ -291,7 +344,12 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
         ],
         if (profile.isOwner) ...[
           const SizedBox(height: 24),
-          _OwnerAdministration(profile: profile),
+          _OwnerAdministration(
+            key: ValueKey(
+              '${scope?.firebaseUid}:${profile.userId}:${profile.organisationId}:${profile.role}',
+            ),
+            profile: profile,
+          ),
         ],
       ],
     );
@@ -335,25 +393,43 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
       );
 
   Future<void> _decide(OrganisationJoinRequest request, bool approve) async {
-    final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
-    if (uid == null) return;
+    final profileState = ref.read(organisationProfileProvider);
+    if (!profileState.hasValue) return;
+    final profile = profileState.requireValue;
+    final scope = _currentScope(profile);
+    if (scope == null) return;
     setState(() => _busy = true);
     try {
       await ref
           .read(organisationRepositoryProvider)
-          .decideJoinRequest(uid, request.id, approve: approve);
-      ref.invalidate(pendingOrganisationJoinRequestsProvider);
-      ref.invalidate(myOrganisationJoinRequestsProvider);
+          .decideJoinRequest(scope.firebaseUid, request.id, approve: approve);
+      if (_isCurrentScope(scope, profile)) {
+        ref.invalidate(pendingOrganisationJoinRequestsProvider);
+        ref.invalidate(myOrganisationJoinRequestsProvider);
+      }
     } on Object catch (error) {
-      if (mounted) {
+      if (mounted && _isCurrentScope(scope, profile)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Decision was not saved: $error')),
         );
+        _invalidateOrganisationLists();
       }
-      ref.invalidate(pendingOrganisationJoinRequestsProvider);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  bool _isCurrentScope(
+    OrganisationDataScope scope,
+    OrganisationProfile profile,
+  ) => _isCurrentOrganisationScope(ref, scope, profile, mounted: mounted);
+
+  void _invalidateOrganisationLists() {
+    ref.invalidate(organisationProfileProvider);
+    ref.invalidate(organisationPermissionsProvider);
+    ref.invalidate(organisationOwnersProvider);
+    ref.invalidate(myOrganisationJoinRequestsProvider);
+    ref.invalidate(pendingOrganisationJoinRequestsProvider);
   }
 
   String _permissionScopes(OrganisationProfile profile, String permission) {
@@ -402,7 +478,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
 }
 
 class _OwnerAdministration extends ConsumerStatefulWidget {
-  const _OwnerAdministration({required this.profile});
+  const _OwnerAdministration({super.key, required this.profile});
 
   final OrganisationProfile profile;
 
@@ -426,16 +502,19 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
   bool _busy = false;
 
   Future<void> _withAction(Future<void> Function(String uid) action) async {
-    final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
-    if (uid == null) return;
+    final scope = _currentOrganisationScope(
+      ref,
+      widget.profile,
+      mounted: mounted,
+    );
+    if (scope == null) return;
     setState(() => _busy = true);
     try {
-      await action(uid);
-      ref.invalidate(organisationPermissionsProvider);
-      ref.invalidate(organisationOwnersProvider);
-      ref.invalidate(organisationProfileProvider);
+      await action(scope.firebaseUid);
+      if (_isCurrentScope(scope)) _invalidateOrganisationData();
     } on Object catch (error) {
-      if (mounted) {
+      if (mounted && _isCurrentScope(scope)) {
+        _invalidateOrganisationData();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Organisation change failed: $error')),
         );
@@ -443,6 +522,15 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  bool _isCurrentScope(OrganisationDataScope scope) =>
+      _isCurrentOrganisationScope(ref, scope, widget.profile, mounted: mounted);
+
+  void _invalidateOrganisationData() {
+    ref.invalidate(organisationPermissionsProvider);
+    ref.invalidate(organisationOwnersProvider);
+    ref.invalidate(organisationProfileProvider);
   }
 
   @override

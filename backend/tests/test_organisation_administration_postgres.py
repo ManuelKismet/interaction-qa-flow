@@ -304,6 +304,65 @@ async def test_postgres_duplicate_requests_and_concurrent_decisions_are_serializ
 
 
 @pytest.mark.asyncio
+async def test_postgres_self_approval_race_allows_only_separate_reviewer(
+    postgres_sessions,
+):
+    ids = await seed_postgres(postgres_sessions)
+    async with postgres_sessions() as session:
+        session.add(
+            OrganisationPermissionGrant(
+                organisation_id=ids["organisation_id"],
+                user_id=ids["requester"],
+                permission="review",
+                scope_type="department",
+                scope_id=ids["department_id"],
+                granted_by=ids["owner_a"],
+            )
+        )
+        await session.commit()
+        request = await OrganisationAdministrationService(
+            session
+        ).request_membership(
+            ids["organisation_id"],
+            ids["requester"],
+            OrganisationJoinRequestCreate(
+                request_type="department",
+                target_id=ids["department_id"],
+                reason="Requester's own department change",
+            ),
+        )
+        request_id = request.id
+
+    async def decide(actor_id):
+        async with postgres_sessions() as session:
+            try:
+                await OrganisationAdministrationService(session).decide_request(
+                    ids["organisation_id"],
+                    actor_id,
+                    request_id,
+                    OrganisationJoinRequestDecision(decision="approve"),
+                )
+                return 200
+            except (HTTPException, PermissionDeniedError) as error:
+                await session.rollback()
+                return getattr(error, "status_code", 403)
+
+    outcomes = await asyncio.gather(
+        decide(ids["requester"]),
+        decide(ids["owner_a"]),
+    )
+    assert sorted(outcomes) == [200, 403]
+    async with postgres_sessions() as session:
+        requester = await session.get(User, ids["requester"])
+        request = await session.get(OrganisationJoinRequest, request_id)
+        assert requester is not None
+        assert requester.department_id == ids["department_id"]
+        assert request is not None
+        assert request.status == "approved"
+        assert request.reviewed_by == ids["owner_a"]
+
+
+@pytest.mark.asyncio
 async def test_postgres_grant_revocation_serializes_against_team_action(
     postgres_sessions,
 ):

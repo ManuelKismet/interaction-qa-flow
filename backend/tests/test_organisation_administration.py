@@ -363,6 +363,58 @@ async def test_department_change_request_requires_scoped_review_approval(
 
 
 @pytest.mark.asyncio
+async def test_department_requester_cannot_approve_their_own_scoped_request(
+    app_client,
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_administration(session_factory)
+    for user in ("requester", "manager"):
+        grant = await client.post(
+            "/api/v1/organisation/permissions",
+            headers=headers(ids),
+            json={
+                "user_id": str(ids[user]),
+                "permission": "review",
+                "scope_type": "department",
+                "scope_id": str(ids["other_department"]),
+            },
+        )
+        assert grant.status_code == 201
+    request = await client.post(
+        "/api/v1/organisation/join-requests",
+        headers=headers(ids, "requester"),
+        json={
+            "request_type": "department",
+            "target_id": str(ids["other_department"]),
+        },
+    )
+    assert request.status_code == 201
+
+    self_approval = await client.post(
+        f"/api/v1/organisation/join-requests/{request.json()['id']}/decision",
+        headers=headers(ids, "requester"),
+        json={"decision": "approve"},
+    )
+    assert self_approval.status_code == 403
+    async with session_factory() as session:
+        requester = await session.get(User, ids["requester"])
+        pending = await session.get(OrganisationJoinRequest, UUID(request.json()["id"]))
+        assert requester is not None and requester.department_id is None
+        assert pending is not None and pending.status == "pending"
+
+    other_reviewer = await client.post(
+        f"/api/v1/organisation/join-requests/{request.json()['id']}/decision",
+        headers=headers(ids, "manager"),
+        json={"decision": "approve"},
+    )
+    assert other_reviewer.status_code == 200
+    async with session_factory() as session:
+        requester = await session.get(User, ids["requester"])
+        assert requester is not None
+        assert requester.department_id == ids["other_department"]
+
+
+@pytest.mark.asyncio
 async def test_last_owner_guard_and_permission_revocation_take_effect_immediately(
     app_client,
 ) -> None:

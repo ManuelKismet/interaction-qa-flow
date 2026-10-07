@@ -115,6 +115,51 @@ void main() {
     client.close();
   });
 
+  test('rejects a successful response after the Firebase UID changes', () async {
+    final tokens = _FakeTokenSource()..currentUid = 'owner-a';
+    final adapter = _RecordingAdapter((_) {
+      tokens.currentUid = 'owner-b';
+      return _okList();
+    });
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await expectLater(
+      client.get<List<dynamic>>(
+        '/api/v1/organisation/permissions',
+        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
+      ),
+      throwsA(
+        isA<DioException>().having(
+          (error) => error.type,
+          'type',
+          DioExceptionType.cancel,
+        ),
+      ),
+    );
+
+    expect(adapter.requests, hasLength(1));
+    client.close();
+  });
+
+  test('does not dispatch after identity changes while loading App Check', () async {
+    final tokens = _FakeTokenSource()
+      ..currentUid = 'owner-a'
+      ..uidAfterAppCheck = 'owner-b';
+    final adapter = _RecordingAdapter((_) => _ok());
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await expectLater(
+      client.get<void>(
+        '/api/v1/organisation/permissions',
+        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
+      ),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(adapter.requests, isEmpty);
+    client.close();
+  });
+
   test('keeps a linked guest identity after organisation membership lookup returns 401', () async {
     final tokens = _FakeTokenSource();
     final adapter = _RecordingAdapter((_) => _unauthorized());
@@ -153,6 +198,7 @@ class _FakeTokenSource implements ApiTokenSource {
   String? currentUid = 'test-uid';
 
   String currentToken = 'current-id-token';
+  String? uidAfterAppCheck;
   int forceRefreshCount = 0;
   bool signedOut = false;
 
@@ -166,7 +212,10 @@ class _FakeTokenSource implements ApiTokenSource {
   }
 
   @override
-  Future<String?> appCheckToken() async => 'current-app-check-token';
+  Future<String?> appCheckToken() async {
+    if (uidAfterAppCheck != null) currentUid = uidAfterAppCheck;
+    return 'current-app-check-token';
+  }
 
   @override
   Future<void> signOut() async => signedOut = true;
