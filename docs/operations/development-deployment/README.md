@@ -33,7 +33,10 @@ on `fix/unified-search-dev-20261006` is deployed to intqaflow-dev only.
 - Copilot PR20 incremental mailbox applied unchanged, source pushed/readback;
   old stalled PR13 output remains quarantined. No production or merge.
   Temporary PostgreSQL/proxy stopped; Codespace stopped, files/four dirty docs
-  preserved. Organisation improvements deferred; monitoring already cancelled.
+  preserved. Organisation improvements authorised2026-10-07; active Copilot task
+  8a480ce0-4a41-465c-9b0e-a453ab56de03, no organisation rollout yet.
+  Real semantic-provider activation deferred until first customer;
+  monitoring already cancelled.
 - Detailed evidence:
   [unified-search checkpoint](unified-knowledge-search-checkpoint-2026-10-06.md).
 
