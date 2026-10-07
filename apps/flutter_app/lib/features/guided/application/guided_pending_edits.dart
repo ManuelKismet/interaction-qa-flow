@@ -221,7 +221,9 @@ class GuidedPendingEdits {
   Future<void> flush() async {
     _timer?.cancel();
     if (_saving) return _completion!.future;
-    if (_closed || _retrying || _pending.isEmpty || conflict) return;
+    if (_closed || _retrying || _pending.isEmpty || conflict || error != null) {
+      return;
+    }
     _completion = Completer<void>();
     _saving = true;
     state = GuidedSaveState.saving;
@@ -306,6 +308,7 @@ class GuidedPendingEdits {
       error = failure.toString();
       state = GuidedSaveState.failed;
     } finally {
+      if (_pending.isEmpty || error != null) _timer?.cancel();
       _saving = false;
       _completion!.complete();
       if (!_closed) onChanged();

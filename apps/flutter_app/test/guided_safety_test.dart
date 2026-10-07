@@ -204,6 +204,87 @@ void main() {
     }
   }
 
+  test('failed route flush is not replayed without explicit retry', () async {
+    final h = _Harness();
+    addTearDown(h.close);
+    await h.ready();
+    final repository = h.container.read(guidedRepositoryProvider);
+    final pending = GuidedPendingEdits(
+      repository: repository,
+      sessionId: 'session-1',
+      onChanged: () {},
+    );
+    addTearDown(pending.close);
+    final session = await repository.getSession('session-1');
+    pending.reconcile(session);
+    await pending.answer(
+      session.questions.first,
+      session.questions.first.answerFor('participant-1'),
+      'participant-1',
+      'Retained route draft',
+    );
+    h.adapter.failWrites = true;
+    await Future.wait([pending.flush(), pending.flush()]);
+    await pending.flush();
+    expect(h.adapter.writes, hasLength(1));
+    expect(pending.state, GuidedSaveState.failed);
+    expect(pending.values.values, contains('Retained route draft'));
+    h.adapter.failWrites = false;
+    await pending.retry();
+    expect(h.adapter.writes, hasLength(2));
+    expect(
+      h.adapter.writes.map((request) => request.path),
+      everyElement('/api/v1/guided/answers/answer-1'),
+    );
+    expect(h.adapter.body, 'Retained route draft');
+    expect(pending.state, GuidedSaveState.saved);
+  });
+
+  test('concurrent full-read flushes retain the original participant', () async {
+    final h = _Harness();
+    h.adapter.filterToActiveParticipant = true;
+    addTearDown(h.close);
+    await h.ready();
+    final repository = h.container.read(guidedRepositoryProvider);
+    final pending = GuidedPendingEdits(
+      repository: repository,
+      sessionId: 'session-1',
+      onChanged: () {},
+    );
+    addTearDown(pending.close);
+    final session = await repository.getSession('session-1');
+    pending.reconcile(session);
+    await pending.answer(
+      session.questions.first,
+      session.questions.first.answerFor('participant-1'),
+      'participant-1',
+      'Alice retained draft',
+    );
+    pending.reconcile(
+      await repository.getSession('session-1', participantId: 'bob'),
+      complete: false,
+    );
+    h.adapter.holdReads = true;
+    final readsBeforeFlush = h.adapter.reads.length;
+    final drain = Future.wait([pending.flush(), pending.flush()]);
+    final rawRead = repository.getSession('session-1');
+    await _waitFor(
+      () => h.adapter.reads.length == readsBeforeFlush + 2,
+      reason: 'The drain and independent read must both wait on the gate.',
+    );
+    expect(h.adapter.writes, isEmpty);
+    h.adapter.holdReads = false;
+    h.adapter.readGate!.complete(_response(h.adapter.session()));
+    await drain;
+    expect((await rawRead).id, 'session-1');
+    expect(h.adapter.writes, hasLength(1));
+    expect(h.adapter.writes.single.path, '/api/v1/guided/answers/answer-1');
+    expect(h.adapter.writes.single.data['expected_revision'], 1);
+    expect(h.adapter.body, 'Alice retained draft');
+    expect(h.adapter.bobBody, 'Bob original answer');
+    expect(pending.state, GuidedSaveState.saved);
+  });
+
   testWidgets(
     'blank answer persists, reloads blank, but blank question remains unsaved',
     (tester) async {
@@ -538,6 +619,26 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Bob').last);
       await tester.pump(const Duration(milliseconds: 100));
+      await _pumpUntil(tester, () {
+        final detail = h.container.read(
+          guidedSessionProvider((
+            sessionId: 'session-1',
+            participantId: 'bob',
+            viewMode: GuidedViewMode.allRelevant,
+          )),
+        );
+        return !detail.isLoading &&
+            !detail.hasError &&
+            detail.hasValue &&
+            detail.requireValue.questions.first.answerFor('participant-1') ==
+                null &&
+            detail.requireValue.questions.first.answerFor('bob') != null &&
+            find
+                .byKey(const ValueKey('answer-question-1-bob'))
+                .evaluate()
+                .isNotEmpty;
+      }, reason: 'Bob’s filtered view must reconcile before debounce expires.');
+      await tester.pump();
       expect(h.adapter.writes, isEmpty);
       await tester.pump(const Duration(milliseconds: 651));
       await tester.pumpAndSettle();
@@ -1204,9 +1305,10 @@ class _Adapter implements HttpClientAdapter {
   bool filterToActiveParticipant = false;
   bool collapsed = false;
   String followUpOwner = 'participant-1';
-  Completer<ResponseBody>? readGate;
-  Completer<ResponseBody>? writeGate;
-  Completer<ResponseBody>? exportGate;
+  Completer<_Response>? readGate;
+  Completer<_Response>? writeGate;
+  Completer<_Response>? exportGate;
+  final Map<Completer<ResponseBody>, RequestOptions> _heldRequests = {};
   String body = 'Original answer';
   String title = 'What happened?';
   String visibility = 'organisation';
@@ -1299,22 +1401,36 @@ class _Adapter implements HttpClientAdapter {
     if (options.path == '/api/v1/guided/import/legacy') {
       final payload = options.data['payload'] as Map;
       if (payload.containsKey('sessions'))
-        return _response({'detail': 'Unsupported guest backup'}, status: 409);
+        return _response(
+          {'detail': 'Unsupported guest backup'},
+          status: 409,
+        ).open();
       return _response({
         'session': session(),
         'warnings': ['Missing legacy participant name was replaced.'],
-      });
+      }).open();
     }
     if (options.method != 'GET') {
       writes.add(options);
-      if (failWrites) return _response({}, status: 503);
+      if (failWrites) return _response({}, status: 503).open();
       final expected = options.data['expected_revision'];
       if (expected != null && expected != revision)
-        return _response({}, status: 409);
+        return _response({}, status: 409).open();
       if (options.method == 'POST' && options.path.endsWith('/answers')) {
         removeAnswer = false;
       }
-      if (options.data['body'] != null) body = options.data['body'] as String;
+      if (options.data['body'] != null) {
+        final value = options.data['body'] as String;
+        if (options.path.endsWith('/answer-bob') ||
+            options.data['participant_id'] == 'bob') {
+          bobBody = value;
+        } else if (options.path.endsWith('/answer-2') ||
+            options.data['participant_id'] == 'participant-2') {
+          secondBody = value;
+        } else {
+          body = value;
+        }
+      }
       if (options.data['branches_collapsed'] != null) {
         collapsed = options.data['branches_collapsed'] as bool;
       }
@@ -1322,27 +1438,27 @@ class _Adapter implements HttpClientAdapter {
       revision += revisionStep;
       if (failAfterWrite) {
         failAfterWrite = false;
-        return _response({}, status: 503);
+        return _response({}, status: 503).open();
       }
       if (holdWrites) {
-        writeGate ??= Completer<ResponseBody>();
+        writeGate ??= Completer<_Response>();
         return _heldResponse(writeGate!, options, cancelFuture);
       }
-      return _response({'session_revision': revision});
+      return _response({'session_revision': revision}).open();
     }
     if (options.path.contains('/sessions/') &&
         options.path.contains('/export/')) {
       exports.add(options);
       if (holdExports) {
-        exportGate ??= Completer<ResponseBody>();
+        exportGate ??= Completer<_Response>();
         return _heldResponse(exportGate!, options, cancelFuture);
       }
-      return _response(session());
+      return _response(session()).open();
     }
     if (options.path.contains('/sessions/session-')) {
       reads.add(options);
       if (holdReads) {
-        readGate ??= Completer<ResponseBody>();
+        readGate ??= Completer<_Response>();
         return _heldResponse(readGate!, options, cancelFuture);
       }
       final id = options.path.split('/').last;
@@ -1372,7 +1488,7 @@ class _Adapter implements HttpClientAdapter {
               },
         ];
       }
-      return _response(detail);
+      return _response(detail).open();
     }
     if (options.path == '/api/v1/guided/templates' && showTemplate) {
       return _response([
@@ -1384,27 +1500,35 @@ class _Adapter implements HttpClientAdapter {
           'current_version': 1,
           'questions': [],
         },
-      ]);
+      ]).open();
     }
-    return _response([]);
+    return _response([]).open();
   }
 
   Future<ResponseBody> _heldResponse(
-    Completer<ResponseBody> gate,
+    Completer<_Response> gate,
     RequestOptions options,
     Future<void>? cancelFuture,
   ) {
-    if (cancelFuture == null) return gate.future;
-    return Future.any([
-      gate.future,
-      cancelFuture.then<ResponseBody>((_) {
-        if (options.method == 'GET') cancelledReads.add(options);
-        throw DioException.requestCancelled(
+    final result = Completer<ResponseBody>();
+    _heldRequests[result] = options;
+    gate.future.then((response) {
+      if (result.isCompleted) return;
+      _heldRequests.remove(result);
+      result.complete(response.open());
+    });
+    cancelFuture?.then((_) {
+      if (result.isCompleted) return;
+      _heldRequests.remove(result);
+      if (options.method == 'GET') cancelledReads.add(options);
+      result.completeError(
+        DioException.requestCancelled(
           requestOptions: options,
           reason: 'Interact authority changed.',
-        );
-      }),
-    ]);
+        ),
+      );
+    });
+    return result.future;
   }
 
   void releaseGates() {
@@ -1423,17 +1547,38 @@ class _Adapter implements HttpClientAdapter {
   }
 
   @override
-  void close({bool force = false}) => releaseGates();
+  void close({bool force = false}) {
+    for (final entry in _heldRequests.entries.toList()) {
+      entry.key.completeError(
+        DioException.requestCancelled(
+          requestOptions: entry.value,
+          reason: 'Test adapter closed.',
+        ),
+      );
+    }
+    _heldRequests.clear();
+    releaseGates();
+  }
 }
 
-ResponseBody _response(Object? data, {int status = 200}) =>
-    ResponseBody.fromString(
-      jsonEncode(data),
-      status,
-      headers: {
-        Headers.contentTypeHeader: ['application/json'],
-      },
-    );
+_Response _response(Object? data, {int status = 200}) =>
+    _Response(jsonEncode(data), status);
+
+class _Response {
+  const _Response(this.body, this.status);
+
+  final String body;
+  final int status;
+
+  // Each held request owns a stream, including concurrent reads on one gate.
+  ResponseBody open() => ResponseBody.fromString(
+    body,
+    status,
+    headers: {
+      Headers.contentTypeHeader: ['application/json'],
+    },
+  );
+}
 
 Future<void> _waitFor(bool Function() condition, {String? reason}) async {
   for (var attempt = 0; attempt < 200 && !condition(); attempt++) {
