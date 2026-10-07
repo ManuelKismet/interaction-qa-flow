@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -212,7 +211,9 @@ void main() {
     expect(h.adapter.collapsed, isTrue);
     expect(find.text('Expand branch'), findsOneWidget);
     expect(find.text('Original follow-up'), findsNothing);
-    final reloaded = await h.container.read(guidedRepositoryProvider).getSession('session-1');
+    final reloaded = (await tester.runAsync(
+      () => h.container.read(guidedRepositoryProvider).getSession('session-1'),
+    ))!;
     expect(reloaded.questions.first.followUps.single.id, 'follow-up-1');
     expect(reloaded.questions.first.answerFor('participant-1')!.branchesCollapsed, isTrue);
   });
@@ -241,7 +242,9 @@ void main() {
     expect(h.adapter.writes.last.method, 'POST');
     expect(h.adapter.writes.last.data['body'], '');
     expect(h.adapter.removeAnswer, isFalse);
-    final reloaded = await h.container.read(guidedRepositoryProvider).getSession('session-1');
+    final reloaded = (await tester.runAsync(
+      () => h.container.read(guidedRepositoryProvider).getSession('session-1'),
+    ))!;
     expect(reloaded.questions.first.answerFor('participant-1'), isNotNull);
     expect(reloaded.questions.first.answerFor('participant-1')!.body, '');
     expect(find.text('Saved'), findsOneWidget);
