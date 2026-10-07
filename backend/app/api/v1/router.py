@@ -8,6 +8,7 @@ from app.api.v1.routes import (
 	departments,
 	governance,
 	guided,
+	organisation_administration,
 	questions,
 	teams,
 )
@@ -27,3 +28,4 @@ api_router.include_router(comments.router)
 api_router.include_router(governance.router)
 api_router.include_router(teams.router)
 api_router.include_router(guided.router)
+api_router.include_router(organisation_administration.router)

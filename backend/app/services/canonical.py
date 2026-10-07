@@ -402,7 +402,7 @@ class CanonicalQuestionService:
         for question in questions:
             self.permissions.require_question_visibility(actor, question)
             await self.permissions.require_answer_manager(
-                actor, question, self.governance
+                actor, question, self.governance, permission="review"
             )
 
     async def _validate_structure(

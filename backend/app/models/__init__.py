@@ -43,6 +43,9 @@ from app.models.guest import (
     GuestGroupMembership,
 )
 from app.models.organisation import Organisation
+from app.models.organisation_join_request import OrganisationJoinRequest
+from app.models.organisation_owner import OrganisationOwner
+from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.personal_workspace import PersonalWorkspaceItem
 from app.models.question import Question, QuestionStatus, QuestionVisibility
 from app.models.question_embedding import QuestionEmbedding
@@ -92,6 +95,9 @@ __all__ = [
     "KnowledgeProposal",
     "KnowledgeProposalStatus",
     "Organisation",
+    "OrganisationJoinRequest",
+    "OrganisationOwner",
+    "OrganisationPermissionGrant",
     "PersonalWorkspaceItem",
     "Question",
     "QuestionChangeRequest",

@@ -10,6 +10,7 @@ from app.models.audit_event import AuditAction, AuditEvent
 from app.models.department import Department
 from app.models.department_answer_owner import DepartmentAnswerOwner
 from app.models.organisation import Organisation
+from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.question import Question, QuestionStatus
 from app.models.user import User, UserRole
 from app.schemas.governance import FreshnessStatus
@@ -63,6 +64,14 @@ async def seed_governance(session_factory):
         await session.flush()
         session.add_all(
             [
+                OrganisationPermissionGrant(
+                    organisation_id=organisation.id,
+                    user_id=admin.id,
+                    permission="legacy_admin",
+                    scope_type="organisation",
+                    scope_id=None,
+                    granted_by=admin.id,
+                ),
                 DepartmentAnswerOwner(
                     organisation_id=organisation.id,
                     department_id=finance.id,

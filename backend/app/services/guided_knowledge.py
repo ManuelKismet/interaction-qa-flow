@@ -13,7 +13,6 @@ from app.models.guided import (
     KnowledgeProposalStatus,
 )
 from app.models.question import QuestionVisibility
-from app.models.user import UserRole
 from app.repositories.governance import GovernanceRepository
 from app.repositories.department import DepartmentRepository
 from app.repositories.guided import GuidedRepository
@@ -68,7 +67,7 @@ class GuidedKnowledgeService:
             raise NotFoundError("Guided session not found")
         if actor.id != session.created_by and (
             session.visibility == GuidedSessionVisibility.PRIVATE
-            or actor.role != UserRole.ADMIN
+            or not await self.permissions.is_organisation_admin(actor)
         ):
             raise PermissionDeniedError("Only the session owner can use private-session content")
         if not answer.body.strip():
@@ -104,12 +103,16 @@ class GuidedKnowledgeService:
         self, organisation_id: UUID, user_id: UUID
     ) -> list[KnowledgeProposalResponse]:
         actor = await self.permissions.actor(user_id, organisation_id)
-        if actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError("Administrator permission is required")
-        return [
-            KnowledgeProposalResponse.model_validate(item)
-            for item in await self.guided.proposals(organisation_id)
-        ]
+        visible = []
+        for item in await self.guided.proposals(organisation_id):
+            if await self.permissions.has_permission(
+                actor,
+                "review",
+                department_id=item.department_id,
+                team_id=item.team_id,
+            ):
+                visible.append(KnowledgeProposalResponse.model_validate(item))
+        return visible
 
     async def duplicates(
         self,
@@ -154,7 +157,7 @@ class GuidedKnowledgeService:
             actor.id != guided_session.created_by
             and (
                 guided_session.visibility == GuidedSessionVisibility.PRIVATE
-                or actor.role != UserRole.ADMIN
+                or not await self.permissions.is_organisation_admin(actor)
             )
         ):
             raise PermissionDeniedError("Only the session owner can use private-session content")
@@ -168,8 +171,13 @@ class GuidedKnowledgeService:
         data: KnowledgeProposalDecision,
     ) -> KnowledgeProposalResponse:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
         proposal = await self._proposal(proposal_id, organisation_id)
+        await self.permissions.require_permission(
+            actor,
+            "review",
+            department_id=proposal.department_id,
+            team_id=proposal.team_id,
+        )
         if proposal.status != KnowledgeProposalStatus.PENDING:
             raise ConflictError("Knowledge proposal has already been reviewed")
         question = None

@@ -22,6 +22,7 @@ class OrganisationMemberCreate(BaseModel):
 class OrganisationMemberUpdate(BaseModel):
     role: UserRole | None = None
     department_id: UUID | None = Field(default=None)
+    status: str | None = None
 
 
 class OrganisationMemberResponse(BaseModel):

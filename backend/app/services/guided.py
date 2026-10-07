@@ -25,7 +25,6 @@ from app.models.guided import (
     GuidedTemplateStatus,
     GuidedTemplateVersion,
 )
-from app.models.user import UserRole
 from app.repositories.department import DepartmentRepository
 from app.repositories.governance import GovernanceRepository
 from app.repositories.guided import GuidedRepository
@@ -105,7 +104,7 @@ class GuidedService:
             user_id,
             actor.department_id,
             team_ids,
-            actor.role == UserRole.ADMIN,
+            await self.permissions.is_organisation_admin(actor),
             status,
         )
         return [GuidedSessionSummary.model_validate(item) for item in sessions]
@@ -877,7 +876,7 @@ class GuidedService:
         template = await self.guided.template(template_id, organisation_id)
         if not template:
             raise NotFoundError("Guided template not found")
-        if actor.id != template.created_by and actor.role != UserRole.ADMIN:
+        if actor.id != template.created_by and not await self.permissions.is_organisation_admin(actor):
             raise PermissionDeniedError("Only the template owner or an admin can update it")
         changes = data.model_dump(exclude_unset=True)
         await self._validate_structure(
@@ -908,7 +907,7 @@ class GuidedService:
         template = await self.guided.template(template_id, organisation_id)
         if not template:
             raise NotFoundError("Guided template not found")
-        if actor.id != template.created_by and actor.role != UserRole.ADMIN:
+        if actor.id != template.created_by and not await self.permissions.is_organisation_admin(actor):
             raise PermissionDeniedError("Only the template owner or an admin can version it")
         template.current_version += 1
         version = await self._create_template_version(
@@ -932,7 +931,7 @@ class GuidedService:
         template = await self.guided.template(template_id, organisation_id)
         if not template:
             raise NotFoundError("Guided template not found")
-        if actor.id != template.created_by and actor.role != UserRole.ADMIN:
+        if actor.id != template.created_by and not await self.permissions.is_organisation_admin(actor):
             raise PermissionDeniedError("Only the template owner or an admin can archive it")
         template.status = GuidedTemplateStatus.ARCHIVED
         await self._audit(
@@ -952,7 +951,7 @@ class GuidedService:
         template = await self.guided.template(template_id, organisation_id)
         if not template:
             raise NotFoundError("Guided template not found")
-        if actor.id != template.created_by and actor.role != UserRole.ADMIN:
+        if actor.id != template.created_by and not await self.permissions.is_organisation_admin(actor):
             raise PermissionDeniedError("Only the template owner or an admin can restore it")
         if template.status != GuidedTemplateStatus.ARCHIVED:
             raise ConflictError("Only archived templates can be restored")
@@ -1287,7 +1286,7 @@ class GuidedService:
         session = await self._session(session_id, organisation_id)
         if actor.id != session.created_by and (
             session.visibility == GuidedSessionVisibility.PRIVATE
-            or actor.role != UserRole.ADMIN
+            or not await self.permissions.is_organisation_admin(actor)
         ):
             raise PermissionDeniedError("Only the session owner can change a private session")
         return session
@@ -1296,7 +1295,7 @@ class GuidedService:
         if actor.id == session.created_by:
             return
         if (
-            actor.role == UserRole.ADMIN
+            await self.permissions.is_organisation_admin(actor)
             and session.visibility != GuidedSessionVisibility.PRIVATE
         ):
             return
