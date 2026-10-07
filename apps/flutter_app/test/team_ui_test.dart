@@ -103,24 +103,27 @@ void main() {
     );
   });
 
-  testWidgets('ask form exposes team selector and selects parent department',
-      (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        currentMembershipProvider.overrideWith(
-          (ref) async => const ActiveMembership(
-            userId: 'admin-user',
-            organisationId: 'test-organisation',
-            email: 'admin@example.test',
-            displayName: 'Test Admin',
-            role: 'admin',
+  testWidgets('ask form exposes team selector and selects parent department', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMembershipProvider.overrideWith(
+            (ref) async => const ActiveMembership(
+              userId: 'admin-user',
+              organisationId: 'test-organisation',
+              email: 'admin@example.test',
+              displayName: 'Test Admin',
+              role: 'admin',
+            ),
           ),
-        ),
-        departmentsProvider.overrideWith((ref) async => const [finance]),
-        teamsProvider.overrideWith((ref) async => const [payroll]),
-      ],
-      child: const MaterialApp(home: Scaffold(body: AskPage())),
-    ));
+          departmentsProvider.overrideWith((ref) async => const [finance]),
+          teamsProvider.overrideWith((ref) async => const [payroll]),
+        ],
+        child: const MaterialApp(home: Scaffold(body: AskPage())),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Team (optional)'), findsOneWidget);
@@ -132,8 +135,9 @@ void main() {
     expect(find.text('Finance'), findsOneWidget);
   });
 
-  testWidgets('admin surface shows team creation and membership controls',
-      (tester) async {
+  testWidgets('admin surface shows team creation and membership controls', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -141,55 +145,57 @@ void main() {
 
     final questionsRepository = _FakeQuestionsRepository();
     final governanceRepository = _FakeGovernanceRepository();
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        currentMembershipProvider.overrideWith(
-          (ref) async => const ActiveMembership(
-            userId: 'admin-user',
-            organisationId: 'test-organisation',
-            email: 'admin@example.test',
-            displayName: 'Test Admin',
-            role: 'admin',
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMembershipProvider.overrideWith(
+            (ref) async => const ActiveMembership(
+              userId: 'admin-user',
+              organisationId: 'test-organisation',
+              email: 'admin@example.test',
+              displayName: 'Test Admin',
+              role: 'admin',
+            ),
           ),
-        ),
-        organisationProfileProvider.overrideWith(
-          (ref) async => const OrganisationProfile(
-            organisationId: 'test-organisation',
-            organisationName: 'Test organisation',
-            userId: 'admin-user',
-            role: 'admin',
-            primaryDepartment: null,
-            teams: [],
-            isOwner: false,
-            permissions: {'legacy_admin'},
-            permissionScopes: [],
-            assignmentManagers: [],
+          organisationProfileProvider.overrideWith(
+            (ref) async => const OrganisationProfile(
+              organisationId: 'test-organisation',
+              organisationName: 'Test organisation',
+              userId: 'admin-user',
+              role: 'admin',
+              primaryDepartment: null,
+              teams: [],
+              isOwner: false,
+              permissions: {'legacy_admin'},
+              permissionScopes: [],
+              assignmentManagers: [],
+            ),
           ),
-        ),
-        governanceRepositoryProvider.overrideWithValue(governanceRepository),
-        questionsRepositoryProvider.overrideWithValue(questionsRepository),
-        departmentsProvider.overrideWith(
-          (ref) async => questionsRepository.departments.toList(),
-        ),
-        teamsProvider.overrideWith((ref) async => const [payroll]),
-        departmentOwnersProvider.overrideWith((ref) async => const []),
-        organisationMembersProvider.overrideWith(
-          (ref) async => const [adminMember, answerOwnerMember],
-        ),
-        teamMembersProvider(payroll.id).overrideWith(
-          (ref) async => governanceRepository.teamMemberships,
-        ),
-      ],
-      child: const MaterialApp(
-        home: Scaffold(body: AdminPage()),
+          governanceRepositoryProvider.overrideWithValue(governanceRepository),
+          questionsRepositoryProvider.overrideWithValue(questionsRepository),
+          departmentsProvider.overrideWith(
+            (ref) async => questionsRepository.departments.toList(),
+          ),
+          teamsProvider.overrideWith((ref) async => const [payroll]),
+          departmentOwnersProvider.overrideWith((ref) async => const []),
+          organisationMembersProvider.overrideWith(
+            (ref) async => const [adminMember, answerOwnerMember],
+          ),
+          teamMembersProvider(
+            payroll.id,
+          ).overrideWith((ref) async => governanceRepository.teamMemberships),
+        ],
+        child: const MaterialApp(home: Scaffold(body: AdminPage())),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Departments'), findsOneWidget);
     expect(find.text('Members'), findsOneWidget);
-    final addOrganisationMember =
-        find.widgetWithText(FilledButton, 'Add organisation member');
+    final addOrganisationMember = find.widgetWithText(
+      FilledButton,
+      'Add organisation member',
+    );
     expect(addOrganisationMember, findsOneWidget);
     await tester.tap(addOrganisationMember);
     await tester.pumpAndSettle();
@@ -208,21 +214,20 @@ void main() {
       find.text('member@example.test · employee · Finance'),
       findsOneWidget,
     );
-    final noDepartmentsMessage =
-        find.text('No departments yet. Create one to assign members.');
+    final noDepartmentsMessage = find.text(
+      'No departments yet. Create one to assign members.',
+    );
     await tester.scrollUntilVisible(
       noDepartmentsMessage,
       300,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    expect(
-      noDepartmentsMessage,
-      findsOneWidget,
-    );
+    expect(noDepartmentsMessage, findsOneWidget);
     const departmentName = 'Operations and Compliance Department';
-    final createDepartmentButton =
-        find.byKey(const ValueKey('create-department-button'));
+    final createDepartmentButton = find.byKey(
+      const ValueKey('create-department-button'),
+    );
     await tester.scrollUntilVisible(
       createDepartmentButton,
       -300,
@@ -266,23 +271,22 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(
       find
-          .text('Answer Owner With A Long Display Name · '
-              'a-very-long-answer-owner-address@example.test')
+          .text(
+            'Answer Owner With A Long Display Name · '
+            'a-very-long-answer-owner-address@example.test',
+          )
           .last,
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(
       find.descendant(
-        of: find.byKey(
-          const ValueKey('department-answer-owner-selector'),
-        ),
+        of: find.byKey(const ValueKey('department-answer-owner-selector')),
         matching: find.text('Answer Owner With A Long Display Name'),
       ),
       findsOneWidget,
     );
-    final assignOwnerButton =
-        find.widgetWithText(FilledButton, 'Assign owner');
+    final assignOwnerButton = find.widgetWithText(FilledButton, 'Assign owner');
     await tester.scrollUntilVisible(
       assignOwnerButton,
       300,
@@ -292,10 +296,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.tap(assignOwnerButton);
     await tester.pumpAndSettle();
-    expect(
-      governanceRepository.assignedDepartmentId,
-      'created-department-1',
-    );
+    expect(governanceRepository.assignedDepartmentId, 'created-department-1');
     expect(governanceRepository.assignedOwnerId, answerOwnerMember.id);
 
     expect(find.text('Teams'), findsOneWidget);
@@ -312,8 +313,9 @@ void main() {
     );
     await tester.tap(find.text('Payroll'));
     await tester.pumpAndSettle();
-    final payrollSelector =
-        find.byKey(const ValueKey('team-member-selector-team-1'));
+    final payrollSelector = find.byKey(
+      const ValueKey('team-member-selector-team-1'),
+    );
     await tester.ensureVisible(payrollSelector);
     expect(find.text('User ID'), findsNothing);
     expect(
@@ -326,9 +328,10 @@ void main() {
     await tester.tap(payrollSelector);
     await tester.pumpAndSettle();
     await tester.tap(
-      find
-          .text('Answer Owner With A Long Display Name · '
-              'a-very-long-answer-owner-address@example.test'),
+      find.text(
+        'Answer Owner With A Long Display Name · '
+        'a-very-long-answer-owner-address@example.test',
+      ),
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
