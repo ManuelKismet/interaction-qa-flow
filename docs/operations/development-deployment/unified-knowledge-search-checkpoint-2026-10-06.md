@@ -1,5 +1,46 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Replacement completed; mailbox delivery pending — 2026-10-07
+
+Authorised replacement taskb8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0 completed
+and opened [draft PR19](https://github.com/ManuelKismet/interaction-qa-flow/pull/19)
+from copilot/replacement-ask-parity-20261007 into
+fix/unified-search-dev-20261006. This is NOT the quarantined old PR13 attempt.
+Published source head `adee30e53a92b6e51fa3ee2472216db1b7beeb20`.
+Independent GitHub parent-chain inspection confirmed exact sequence:
+e9e3cc804e8dbb45033e637304fd34c21cd14b2f →
+90529c13aee44c1b18e66b9c4e62a20c0d447f2f →
+f5c5f68878bbc9af5dcd9f9d58f3843703b2cfb8 →
+adee30e53a92b6e51fa3ee2472216db1b7beeb20.
+Only five Flutter application/test files changed, no backend/schema changes.
+
+Copilot completion reports cumulative patch SHA256
+`6c6fad4468b55603024c070d55355d6f15179329810ceaf1b2e29dbc18dafd72`,
+but source tree has NO .patch file and no published artifact commit/path.
+Do not treat that hash alone as a downloadable artifact or reconstruct old
+patches. [ONE delivery-only follow-up](https://github.com/ManuelKismet/interaction-qa-flow/pull/19#issuecomment-6033042310)
+requests the unchanged existing three source commits as one format-patch mailbox
+with declared e9e3cc8 base, source/artifact SHAs, path and exact-byte checksum.
+No new app/test code changes or competing task requested. Await this same
+replacement delivery before unchanged isolated application and independent tests.
+
+Copilot tool logs confirm Flutter test/analyzer/Dart formatter each unavailable
+(exit127). Its outer shell exit0 is NOT a test pass. Parallel review model could
+not initialize and CodeQL did not analyze Dart. Only Copilot-reported diff/secret
+checks passed; Codex has NOT run new independent compile/backend/PostgreSQL/
+Flutter/analyzer/release checks on adee30e5, applied it, or deployed it.
+Static controller inspection begun; unused question_models import removed and
+scope identity now includes UID/membership state/organisation, but acceptance
+still requires actual independent runtime tests. No unexecuted passes claimed.
+
+Old request6026870639/task8c57d37e remains superseded/quarantined. Reject its late
+artifacts; only replacement PR19 provenance may enter review. DEV remains
+review105a528100%/schema0014/Hosting4eb839685c6f21c7. Codespace and temporary
+PostgreSQL remain stopped; no new application/migration/traffic/Hosting/security
+change. Preserve four dirty main docs. Existing rollback/data/privacy boundaries,
+fake-provider quality and authenticated-import gaps, and deferred organisation
+work remain unchanged. Monitoring remains cancelled; no automation created.
+
 ## Active replacement and old-output quarantine — 2026-10-07
 
 Founder explicitly authorised a NEW SEPARATE Copilot session after both browser
