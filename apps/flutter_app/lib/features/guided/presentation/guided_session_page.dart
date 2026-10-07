@@ -82,9 +82,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     } catch (error) {
       if (mounted && _isCurrent(repository, sessionId)) {
         setState(() => _saveState = GuidedSaveState.failed);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Not saved: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Not saved: $error')));
         if (error is GuidedConflict) _refresh();
       }
     }
@@ -123,10 +123,12 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     final detail = ref.watch(guidedSessionProvider(_query));
     final membershipState = ref.watch(currentMembershipProvider);
     final membership = membershipState.isLoading || membershipState.hasError
-        ? null : membershipState.value;
+        ? null
+        : membershipState.value;
     final authorityState = ref.watch(organisationProfileProvider);
     final authority = authorityState.isLoading || authorityState.hasError
-        ? null : authorityState.value;
+        ? null
+        : authorityState.value;
     return detail.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
@@ -140,8 +142,10 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         ),
       ),
       data: (session) {
-        final canEditSession = session.status != 'archived' &&
-            authority != null && membership != null &&
+        final canEditSession =
+            session.status != 'archived' &&
+            authority != null &&
+            membership != null &&
             authority.userId == membership.userId &&
             authority.organisationId == membership.organisationId &&
             (membership.userId == session.createdById ||
@@ -158,9 +162,12 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
           _saveState = GuidedSaveState.idle;
         }
         _drafts = drafts;
-        drafts?.reconcile(session,
-          complete: _query.participantId == null &&
-              _query.viewMode == GuidedViewMode.allRelevant);
+        drafts?.reconcile(
+          session,
+          complete:
+              _query.participantId == null &&
+              _query.viewMode == GuidedViewMode.allRelevant,
+        );
         if (drafts != null) {
           ref.listen(guidedPendingEditsProvider(session.id), (_, next) {
             if (next.state == GuidedSaveState.saved && mounted) _refresh();
@@ -176,13 +183,18 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
           transition = () => _transition('complete');
         }
         if ((_participantId == null ||
-                !session.participants.any((item) => item.id == _participantId)) &&
+                !session.participants.any(
+                  (item) => item.id == _participantId,
+                )) &&
             session.participants.isNotEmpty &&
             !_allParticipantsReport) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && widget.sessionId == session.id &&
+            if (mounted &&
+                widget.sessionId == session.id &&
                 (_participantId == null ||
-                    !session.participants.any((item) => item.id == _participantId))) {
+                    !session.participants.any(
+                      (item) => item.id == _participantId,
+                    ))) {
               setState(() => _participantId = session.participants.first.id);
             }
           });
@@ -195,7 +207,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
           children: [
             _SessionHeader(
               session: session,
-              saveState: _saveState == GuidedSaveState.saving ||
+              saveState:
+                  _saveState == GuidedSaveState.saving ||
                       _saveState == GuidedSaveState.failed ||
                       drafts?.state == GuidedSaveState.idle
                   ? _saveState
@@ -235,10 +248,12 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                     ),
                     if (drafts.conflict)
                       TextButton(
-                        onPressed: drafts.isBusy ? null : () {
-                          drafts.useServerVersion();
-                          _refresh();
-                        },
+                        onPressed: drafts.isBusy
+                            ? null
+                            : () {
+                                drafts.useServerVersion();
+                                _refresh();
+                              },
                         child: const Text('Use server version'),
                       ),
                   ],
@@ -353,16 +368,21 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                           drafts?.question(question, value) ?? Future.value(),
                       onSaveAnswer: (question, answer, value) =>
                           drafts != null && participantId != null
-                          ? drafts.answer(question, answer, participantId, value)
+                          ? drafts.answer(
+                              question,
+                              answer,
+                              participantId,
+                              value,
+                            )
                           : Future.value(),
                       onAddFollowUp: _addFollowUp,
                       onToggleBranch: (answer) => _save(
-                        () => repository!
-                            .updateAnswer(
-                              answer.id,
-                              branchesCollapsed: !answer.branchesCollapsed,
-                              expectedRevision: drafts?.revision ?? session.revision,
-                            ),
+                        () => repository!.updateAnswer(
+                          answer.id,
+                          branchesCollapsed: !answer.branchesCollapsed,
+                          expectedRevision:
+                              drafts?.revision ?? session.revision,
+                        ),
                       ),
                       onDelete: _deleteQuestion,
                       onKnowledgeSearch: _knowledgeSearch,
@@ -438,13 +458,12 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     );
     if (text == null || !_isCurrent(repository, sessionId)) return;
     await _save(
-      () => repository
-          .addQuestion(
-            sessionId,
-            text,
-            scope: scope,
-            participantId: scope == 'participant' ? participantId : null,
-          ),
+      () => repository.addQuestion(
+        sessionId,
+        text,
+        scope: scope,
+        participantId: scope == 'participant' ? participantId : null,
+      ),
     );
   }
 
@@ -453,9 +472,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     final sessionId = widget.sessionId;
     final text = await _textDialog('Add follow-up', 'Question');
     if (text == null || !_isCurrent(repository, sessionId)) return;
-    await _save(
-      () => repository.addFollowUp(answer.id, text),
-    );
+    await _save(() => repository.addFollowUp(answer.id, text));
   }
 
   Future<void> _deleteQuestion(GuidedQuestion question) async {
@@ -466,7 +483,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     await _save(() => repository.setQuestionDeleted(question.id, true));
     if (!mounted ||
         !_isCurrent(repository, sessionId) ||
-        _saveState != GuidedSaveState.saved) return;
+        _saveState != GuidedSaveState.saved)
+      return;
     _refresh();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -479,7 +497,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
           label: 'Undo',
           onPressed: () async {
             if (!_isCurrent(repository, sessionId)) return;
-            await _save(() => repository.setQuestionDeleted(question.id, false));
+            await _save(
+              () => repository.setQuestionDeleted(question.id, false),
+            );
             if (_isCurrent(repository, sessionId)) _refresh();
           },
         ),
@@ -490,9 +510,13 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   Future<void> _knowledgeSearch(GuidedQuestion question) async {
     final repository = ref.read(guidedRepositoryProvider);
     final sessionId = widget.sessionId;
-    final results = await _readCurrent(repository, sessionId,
-      () => repository.searchKnowledge(question.id));
-    if (!mounted || results == null || !_isCurrent(repository, sessionId)) return;
+    final results = await _readCurrent(
+      repository,
+      sessionId,
+      () => repository.searchKnowledge(question.id),
+    );
+    if (!mounted || results == null || !_isCurrent(repository, sessionId))
+      return;
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
@@ -549,9 +573,13 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
 
   Future<void> _export(GuidedSessionDetail session, String format) async {
     final repository = ref.read(guidedRepositoryProvider);
-    final contents = await _readCurrent(repository, session.id,
-      () => repository.exportSession(session.id, format));
-    if (!mounted || contents == null || !_isCurrent(repository, session.id)) return;
+    final contents = await _readCurrent(
+      repository,
+      session.id,
+      () => repository.exportSession(session.id, format),
+    );
+    if (!mounted || contents == null || !_isCurrent(repository, session.id))
+      return;
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
@@ -581,9 +609,13 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   Future<void> _history() async {
     final repository = ref.read(guidedRepositoryProvider);
     final sessionId = widget.sessionId;
-    final revisions = await _readCurrent(repository, sessionId,
-      () => repository.revisions(sessionId));
-    if (!mounted || revisions == null || !_isCurrent(repository, sessionId)) return;
+    final revisions = await _readCurrent(
+      repository,
+      sessionId,
+      () => repository.revisions(sessionId),
+    );
+    if (!mounted || revisions == null || !_isCurrent(repository, sessionId))
+      return;
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
@@ -826,8 +858,7 @@ class GuidedFlowView extends StatelessWidget {
         ),
       );
       final answer = question.answerFor(participantId);
-      if (question.followUps.isEmpty ||
-          (answer?.branchesCollapsed ?? false)) {
+      if (question.followUps.isEmpty || (answer?.branchesCollapsed ?? false)) {
         return;
       }
       for (final (index, followUp) in question.followUps.indexed) {
@@ -1008,7 +1039,11 @@ class GuidedQuestionNode extends StatelessWidget {
                   else
                     _DebouncedField(
                       key: ValueKey('question-${question.id}'),
-                      initialValue: pendingValues[GuidedPendingEdits.questionKey(question.id)] ?? question.text,
+                      initialValue:
+                          pendingValues[GuidedPendingEdits.questionKey(
+                            question.id,
+                          )] ??
+                          question.text,
                       managedDebounce: managedDebounce,
                       minLines: 1,
                       style: Theme.of(context).textTheme.titleMedium,
@@ -1028,10 +1063,14 @@ class GuidedQuestionNode extends StatelessWidget {
                     )
                   else
                     _DebouncedField(
-                      key: ValueKey(
-                        'answer-${question.id}-$participantId',
-                      ),
-                      initialValue: pendingValues[GuidedPendingEdits.answerKey(question.id, participantId)] ?? answer?.body ?? '',
+                      key: ValueKey('answer-${question.id}-$participantId'),
+                      initialValue:
+                          pendingValues[GuidedPendingEdits.answerKey(
+                            question.id,
+                            participantId,
+                          )] ??
+                          answer?.body ??
+                          '',
                       managedDebounce: managedDebounce,
                       allowBlank: true,
                       minLines: 2,
@@ -1118,17 +1157,17 @@ class _CappedBranchIndent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-        builder: (context, constraints) {
-          final cap = constraints.maxWidth.isFinite
-              ? (constraints.maxWidth * 0.02).clamp(0.0, 8.0)
-              : 8.0;
-          final indent = (depth * 4.0).clamp(0.0, cap).toDouble();
-          return Padding(
-            padding: EdgeInsets.only(left: indent),
-            child: child,
-          );
-        },
+    builder: (context, constraints) {
+      final cap = constraints.maxWidth.isFinite
+          ? (constraints.maxWidth * 0.02).clamp(0.0, 8.0)
+          : 8.0;
+      final indent = (depth * 4.0).clamp(0.0, cap).toDouble();
+      return Padding(
+        padding: EdgeInsets.only(left: indent),
+        child: child,
       );
+    },
+  );
 }
 
 class _DebouncedField extends StatefulWidget {
@@ -1230,7 +1269,11 @@ class _DebouncedFieldState extends State<_DebouncedField> {
       minLines: widget.minLines,
       maxLines: null,
       style: widget.style,
-      decoration: InputDecoration(hintText: widget.hintText, isDense: true, errorText: _error),
+      decoration: InputDecoration(
+        hintText: widget.hintText,
+        isDense: true,
+        errorText: _error,
+      ),
       onChanged: _changed,
     );
   }

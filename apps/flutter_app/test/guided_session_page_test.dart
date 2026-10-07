@@ -79,7 +79,9 @@ void main() {
       ProviderScope(
         retry: (_, _) => null,
         overrides: [
-          organisationProfileProvider.overrideWith((ref) async => guidedProfile()),
+          organisationProfileProvider.overrideWith(
+            (ref) async => guidedProfile(),
+          ),
           guidedSessionProvider(
             noParticipantQuery,
           ).overrideWith((ref) => loadSession()),
@@ -120,79 +122,84 @@ void main() {
     );
   });
 
-  testWidgets('non-owner employee sees session read-only but can report/export', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    tester.view.physicalSize = const Size(360, 800);
-    addTearDown(tester.view.resetPhysicalSize);
-    final noParticipantQuery = (
-      sessionId: _session.id,
-      participantId: null,
-      viewMode: GuidedViewMode.allRelevant,
-    );
-    final participantQuery = (
-      sessionId: _session.id,
-      participantId: 'participant-1',
-      viewMode: GuidedViewMode.allRelevant,
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          organisationProfileProvider.overrideWith((ref) async => guidedProfile()),
-          guidedSessionProvider(
-            noParticipantQuery,
-          ).overrideWith((ref) async => _session),
-          guidedSessionProvider(
-            participantQuery,
-          ).overrideWith((ref) async => _session),
-          currentMembershipProvider.overrideWith(
-            (ref) async => const ActiveMembership(
-              userId: 'employee-1',
-              organisationId: 'organisation-1',
-              email: 'employee@example.invalid',
-              displayName: 'Employee',
-              role: 'employee',
+  testWidgets(
+    'non-owner employee sees session read-only but can report/export',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.view.physicalSize = const Size(360, 800);
+      addTearDown(tester.view.resetPhysicalSize);
+      final noParticipantQuery = (
+        sessionId: _session.id,
+        participantId: null,
+        viewMode: GuidedViewMode.allRelevant,
+      );
+      final participantQuery = (
+        sessionId: _session.id,
+        participantId: 'participant-1',
+        viewMode: GuidedViewMode.allRelevant,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            organisationProfileProvider.overrideWith(
+              (ref) async => guidedProfile(),
             ),
+            guidedSessionProvider(
+              noParticipantQuery,
+            ).overrideWith((ref) async => _session),
+            guidedSessionProvider(
+              participantQuery,
+            ).overrideWith((ref) async => _session),
+            currentMembershipProvider.overrideWith(
+              (ref) async => const ActiveMembership(
+                userId: 'employee-1',
+                organisationId: 'organisation-1',
+                email: 'employee@example.invalid',
+                displayName: 'Employee',
+                role: 'employee',
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: GuidedSessionPage(sessionId: 'session-1')),
           ),
-        ],
-        child: const MaterialApp(
-          home: Scaffold(body: GuidedSessionPage(sessionId: 'session-1')),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
 
-    expect(
-      find.byKey(const ValueKey('guided-session-read-only-notice')),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('Private sessions can only be edited by their creator.'),
-      findsOneWidget,
-    );
-    expect(find.text('Add participant'), findsNothing);
-    expect(find.text('Shared question'), findsNothing);
-    expect(find.text('Participant question'), findsNothing);
-    expect(find.text('Start'), findsNothing);
-    expect(find.text('What happened?'), findsOneWidget);
-    expect(find.text('The shipment arrived.'), findsOneWidget);
-    expect(find.byType(TextField), findsNothing);
-    expect(find.byTooltip('Active participant report'), findsOneWidget);
-    expect(find.byTooltip('All participants report'), findsOneWidget);
-    expect(find.byTooltip('Export'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('guided-session-read-only-notice')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'Private sessions can only be edited by their creator.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Add participant'), findsNothing);
+      expect(find.text('Shared question'), findsNothing);
+      expect(find.text('Participant question'), findsNothing);
+      expect(find.text('Start'), findsNothing);
+      expect(find.text('What happened?'), findsOneWidget);
+      expect(find.text('The shipment arrived.'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byTooltip('Active participant report'), findsOneWidget);
+      expect(find.byTooltip('All participants report'), findsOneWidget);
+      expect(find.byTooltip('Export'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Active participant report'));
-    await tester.pumpAndSettle();
-    expect(find.text('What happened?'), findsOneWidget);
+      await tester.tap(find.byTooltip('Active participant report'));
+      await tester.pumpAndSettle();
+      expect(find.text('What happened?'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Export'));
-    await tester.pumpAndSettle();
-    expect(find.text('JSON'), findsOneWidget);
-    expect(find.text('CSV'), findsOneWidget);
-  });
+      await tester.tap(find.byTooltip('Export'));
+      await tester.pumpAndSettle();
+      expect(find.text('JSON'), findsOneWidget);
+      expect(find.text('CSV'), findsOneWidget);
+    },
+  );
 
   testWidgets('session owner retains editing controls', (tester) async {
     tester.view.devicePixelRatio = 1;
@@ -212,7 +219,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          organisationProfileProvider.overrideWith((ref) async => guidedProfile()),
+          organisationProfileProvider.overrideWith(
+            (ref) async => guidedProfile(),
+          ),
           guidedRepositoryProvider.overrideWithValue(GuidedRepository(Dio())),
           guidedSessionProvider(
             noParticipantQuery,

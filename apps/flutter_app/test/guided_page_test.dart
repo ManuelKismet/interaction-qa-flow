@@ -80,8 +80,12 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
-          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'template-owner')),
+          authStateProvider.overrideWith(
+            (ref) => Stream.value(GuidedTestUser('uid-a')),
+          ),
+          organisationProfileProvider.overrideWith(
+            (ref) async => guidedProfile(userId: 'template-owner'),
+          ),
           currentMembershipProvider.overrideWith(
             (ref) async => _membership('template-owner', 'employee'),
           ),
@@ -99,76 +103,81 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('new template version uses edited draft and preserves snapshots', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1400, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'new template version uses edited draft and preserves snapshots',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    const originalQuestion = GuidedTemplateQuestion(
-      id: 'question-1',
-      text: 'Original template question',
-      scope: 'shared',
-      orderIndex: 0,
-    );
-    const template = GuidedTemplate(
-      id: 'template-1',
-      createdById: 'template-owner',
-      name: 'Template',
-      status: 'active',
-      currentVersion: 1,
-      questions: [originalQuestion],
-    );
-    final repository = _TemplateTestRepository()..addTemplate(template);
-    final existingSessionSnapshot = const GuidedQuestion(
-      id: 'session-question-1',
-      text: 'Original template question',
-      scope: 'shared',
-      source: 'manual',
-      answers: [],
-      followUps: [],
-    );
+      const originalQuestion = GuidedTemplateQuestion(
+        id: 'question-1',
+        text: 'Original template question',
+        scope: 'shared',
+        orderIndex: 0,
+      );
+      const template = GuidedTemplate(
+        id: 'template-1',
+        createdById: 'template-owner',
+        name: 'Template',
+        status: 'active',
+        currentVersion: 1,
+        questions: [originalQuestion],
+      );
+      final repository = _TemplateTestRepository()..addTemplate(template);
+      final existingSessionSnapshot = const GuidedQuestion(
+        id: 'session-question-1',
+        text: 'Original template question',
+        scope: 'shared',
+        source: 'manual',
+        answers: [],
+        followUps: [],
+      );
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
-          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'template-owner')),
-          currentMembershipProvider.overrideWith(
-            (ref) async => _membership('template-owner', 'employee'),
-          ),
-          guidedRepositoryProvider.overrideWithValue(repository),
-        ],
-        child: const MaterialApp(home: Scaffold(body: GuidedPage())),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Templates'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.getSize(find.byType(ListView).first).width,
-      lessThanOrEqualTo(1040),
-    );
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Save as new version'));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith(
+              (ref) => Stream.value(GuidedTestUser('uid-a')),
+            ),
+            organisationProfileProvider.overrideWith(
+              (ref) async => guidedProfile(userId: 'template-owner'),
+            ),
+            currentMembershipProvider.overrideWith(
+              (ref) async => _membership('template-owner', 'employee'),
+            ),
+            guidedRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: const MaterialApp(home: Scaffold(body: GuidedPage())),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Templates'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byType(ListView).first).width,
+        lessThanOrEqualTo(1040),
+      );
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save as new version'));
+      await tester.pumpAndSettle();
 
-    final questionField = find.byKey(
-      const ValueKey('template-question-question-1'),
-    );
-    await tester.enterText(questionField, 'Updated template question');
-    await tester.tap(find.text('Save new version'));
-    await tester.pumpAndSettle();
+      final questionField = find.byKey(
+        const ValueKey('template-question-question-1'),
+      );
+      await tester.enterText(questionField, 'Updated template question');
+      await tester.tap(find.text('Save new version'));
+      await tester.pumpAndSettle();
 
-    expect(repository.savedVersion, hasLength(1));
-    expect(repository.savedVersion!.single.text, 'Updated template question');
-    expect(repository.savedVersion!.single.orderIndex, 0);
-    expect(template.questions.single.text, 'Original template question');
-    expect(existingSessionSnapshot.text, 'Original template question');
-  });
+      expect(repository.savedVersion, hasLength(1));
+      expect(repository.savedVersion!.single.text, 'Updated template question');
+      expect(repository.savedVersion!.single.orderIndex, 0);
+      expect(template.questions.single.text, 'Original template question');
+      expect(existingSessionSnapshot.text, 'Original template question');
+    },
+  );
 
   testWidgets('archived templates can be restored without changing versions', (
     tester,
@@ -198,8 +207,12 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
-          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'template-owner')),
+          authStateProvider.overrideWith(
+            (ref) => Stream.value(GuidedTestUser('uid-a')),
+          ),
+          organisationProfileProvider.overrideWith(
+            (ref) async => guidedProfile(userId: 'template-owner'),
+          ),
           currentMembershipProvider.overrideWith(
             (ref) async => _membership('template-owner', 'employee'),
           ),
@@ -251,8 +264,12 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
-          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'employee-2')),
+          authStateProvider.overrideWith(
+            (ref) => Stream.value(GuidedTestUser('uid-a')),
+          ),
+          organisationProfileProvider.overrideWith(
+            (ref) async => guidedProfile(userId: 'employee-2'),
+          ),
           currentMembershipProvider.overrideWith(
             (ref) async => _membership('employee-2', 'employee'),
           ),
@@ -275,47 +292,55 @@ void main() {
     expect(find.byType(PopupMenuButton<String>), findsNothing);
   });
 
-  testWidgets('legacy grant holder can manage templates and restore failures are visible', (
-    tester,
-  ) async {
-    const template = GuidedTemplate(
-      id: 'archived-template',
-      createdById: 'template-owner',
-      name: 'Archived template',
-      status: 'archived',
-      currentVersion: 1,
-      questions: [],
-    );
-    final repository = _TemplateTestRepository()
-      ..addTemplate(template)
-      ..failRestore = true;
+  testWidgets(
+    'legacy grant holder can manage templates and restore failures are visible',
+    (tester) async {
+      const template = GuidedTemplate(
+        id: 'archived-template',
+        createdById: 'template-owner',
+        name: 'Archived template',
+        status: 'archived',
+        currentVersion: 1,
+        questions: [],
+      );
+      final repository = _TemplateTestRepository()
+        ..addTemplate(template)
+        ..failRestore = true;
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
-          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'admin-1', permissions: {'legacy_admin'})),
-          currentMembershipProvider.overrideWith(
-            (ref) async => _membership('admin-1', 'employee'),
-          ),
-          guidedRepositoryProvider.overrideWithValue(repository),
-        ],
-        child: const MaterialApp(home: Scaffold(body: GuidedPage())),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Templates'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await tester.pumpAndSettle();
-    expect(find.text('Restore'), findsOneWidget);
-    await tester.tap(find.text('Restore'));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith(
+              (ref) => Stream.value(GuidedTestUser('uid-a')),
+            ),
+            organisationProfileProvider.overrideWith(
+              (ref) async => guidedProfile(
+                userId: 'admin-1',
+                permissions: {'legacy_admin'},
+              ),
+            ),
+            currentMembershipProvider.overrideWith(
+              (ref) async => _membership('admin-1', 'employee'),
+            ),
+            guidedRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: const MaterialApp(home: Scaffold(body: GuidedPage())),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Templates'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      expect(find.text('Restore'), findsOneWidget);
+      await tester.tap(find.text('Restore'));
+      await tester.pumpAndSettle();
 
-    expect(
-      find.text('Could not update this template. Please try again.'),
-      findsOneWidget,
-    );
-    expect(repository.templates.single.status, 'archived');
-  });
+      expect(
+        find.text('Could not update this template. Please try again.'),
+        findsOneWidget,
+      );
+      expect(repository.templates.single.status, 'archived');
+    },
+  );
 }

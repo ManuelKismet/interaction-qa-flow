@@ -39,13 +39,19 @@ class GuidedPage extends ConsumerWidget {
                   message: 'Import legacy Interact JSON',
                   child: IconButton(
                     icon: const Icon(Icons.upload_file_outlined),
-                    onPressed: () => _guidedAction(context, () => _importLegacy(context, ref)),
+                    onPressed: () => _guidedAction(
+                      context,
+                      () => _importLegacy(context, ref),
+                    ),
                   ),
                 ),
                 FilledButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('New session'),
-                  onPressed: () => _guidedAction(context, () => _createSession(context, ref)),
+                  onPressed: () => _guidedAction(
+                    context,
+                    () => _createSession(context, ref),
+                  ),
                 ),
               ],
             ),
@@ -97,20 +103,43 @@ class GuidedPage extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(controller: title, decoration: const InputDecoration(labelText: 'Session title')),
+                  TextField(
+                    controller: title,
+                    decoration: const InputDecoration(
+                      labelText: 'Session title',
+                    ),
+                  ),
                   const SizedBox(height: 12),
-                  TextField(controller: owner, decoration: const InputDecoration(labelText: 'Owner (optional)')),
+                  TextField(
+                    controller: owner,
+                    decoration: const InputDecoration(
+                      labelText: 'Owner (optional)',
+                    ),
+                  ),
                   const SizedBox(height: 12),
-                  TextField(controller: reference, decoration: const InputDecoration(labelText: 'Context / reference')),
+                  TextField(
+                    controller: reference,
+                    decoration: const InputDecoration(
+                      labelText: 'Context / reference',
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
                     initialValue: templateId,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Start'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('Blank session')),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Blank session'),
+                      ),
                       for (final template in templates)
-                        DropdownMenuItem(value: template.id, child: Text('${template.name} · v${template.currentVersion}')),
+                        DropdownMenuItem(
+                          value: template.id,
+                          child: Text(
+                            '${template.name} · v${template.currentVersion}',
+                          ),
+                        ),
                     ],
                     onChanged: (value) => setState(() => templateId = value),
                   ),
@@ -119,8 +148,15 @@ class GuidedPage extends ConsumerWidget {
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Department'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('No department')),
-                      for (final item in departments) DropdownMenuItem(value: item.id, child: Text(item.name)),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('No department'),
+                      ),
+                      for (final item in departments)
+                        DropdownMenuItem(
+                          value: item.id,
+                          child: Text(item.name),
+                        ),
                     ],
                     onChanged: (value) => setState(() => departmentId = value),
                   ),
@@ -129,8 +165,15 @@ class GuidedPage extends ConsumerWidget {
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Team'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('No team')),
-                      for (final item in teams) DropdownMenuItem(value: item.id, child: Text(item.name)),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('No team'),
+                      ),
+                      for (final item in teams)
+                        DropdownMenuItem(
+                          value: item.id,
+                          child: Text(item.name),
+                        ),
                     ],
                     onChanged: (value) => setState(() => teamId = value),
                   ),
@@ -139,34 +182,52 @@ class GuidedPage extends ConsumerWidget {
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Visibility'),
                     items: const [
-                      DropdownMenuItem(value: 'private', child: Text('Private')),
-                      DropdownMenuItem(value: 'department', child: Text('Department')),
+                      DropdownMenuItem(
+                        value: 'private',
+                        child: Text('Private'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'department',
+                        child: Text('Department'),
+                      ),
                       DropdownMenuItem(value: 'team', child: Text('Team')),
-                      DropdownMenuItem(value: 'organisation', child: Text('Organisation')),
+                      DropdownMenuItem(
+                        value: 'organisation',
+                        child: Text('Organisation'),
+                      ),
                     ],
-                    onChanged: (value) => setState(() => visibility = value ?? 'private'),
+                    onChanged: (value) =>
+                        setState(() => visibility = value ?? 'private'),
                   ),
                 ],
               ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Create'),
+            ),
           ],
         ),
       ),
     );
     if (create != true || title.text.trim().isEmpty || !context.mounted) return;
     final session = await repository.createSession(
-          title: title.text.trim(),
-          owner: owner.text.trim().isEmpty ? null : owner.text.trim(),
-          contextReference: reference.text.trim().isEmpty ? null : reference.text.trim(),
-          departmentId: departmentId,
-          teamId: teamId,
-          visibility: visibility,
-          templateId: templateId,
-        );
+      title: title.text.trim(),
+      owner: owner.text.trim().isEmpty ? null : owner.text.trim(),
+      contextReference: reference.text.trim().isEmpty
+          ? null
+          : reference.text.trim(),
+      departmentId: departmentId,
+      teamId: teamId,
+      visibility: visibility,
+      templateId: templateId,
+    );
     if (context.mounted) {
       invalidateGuidedLists(ref);
       repository.ensureCurrent();
@@ -192,12 +253,19 @@ class GuidedPage extends ConsumerWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Import')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Import'),
+          ),
         ],
       ),
     );
-    if (submit != true || payload.text.trim().isEmpty || !context.mounted) return;
+    if (submit != true || payload.text.trim().isEmpty || !context.mounted)
+      return;
     var imported = false;
     try {
       final result = await repository.importLegacy(payload.text);
@@ -254,10 +322,15 @@ class _SessionsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loading = groups.any((group) => group.isLoading);
-    final sessions = groups.expand((group) => group.value ?? const <GuidedSessionSummary>[]).toList()
-      ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
-    if (loading && sessions.isEmpty) return const Center(child: CircularProgressIndicator());
-    if (sessions.isEmpty) return const Center(child: Text('No sessions here yet.'));
+    final sessions =
+        groups
+            .expand((group) => group.value ?? const <GuidedSessionSummary>[])
+            .toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    if (loading && sessions.isEmpty)
+      return const Center(child: CircularProgressIndicator());
+    if (sessions.isEmpty)
+      return const Center(child: Text('No sessions here yet.'));
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -274,12 +347,14 @@ class _SessionsList extends StatelessWidget {
                 vertical: 8,
               ),
               title: Text(session.title),
-              subtitle: Text([
-                session.status,
-                session.visibility,
-                if (session.contextReference?.isNotEmpty == true)
-                  session.contextReference!,
-              ].join(' · ')),
+              subtitle: Text(
+                [
+                  session.status,
+                  session.visibility,
+                  if (session.contextReference?.isNotEmpty == true)
+                    session.contextReference!,
+                ].join(' · '),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.go('/guided/sessions/${session.id}'),
             );
@@ -298,10 +373,12 @@ class _TemplatesList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final membershipState = ref.watch(currentMembershipProvider);
     final membership = membershipState.isLoading || membershipState.hasError
-        ? null : membershipState.value;
+        ? null
+        : membershipState.value;
     final authorityState = ref.watch(organisationProfileProvider);
     final authority = authorityState.isLoading || authorityState.hasError
-        ? null : authorityState.value;
+        ? null
+        : authorityState.value;
     return templates.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const Center(child: Text('Unable to load templates.')),
@@ -320,17 +397,20 @@ class _TemplatesList extends ConsumerWidget {
                     OutlinedButton.icon(
                       icon: const Icon(Icons.add),
                       label: const Text('Create template'),
-                      onPressed: () => _guidedAction(context, () => _create(context, ref)),
+                      onPressed: () =>
+                          _guidedAction(context, () => _create(context, ref)),
                     ),
                     IconButton(
                       tooltip: 'Import templates',
                       icon: const Icon(Icons.upload_file_outlined),
-                      onPressed: () => _guidedAction(context, () => _import(context, ref)),
+                      onPressed: () =>
+                          _guidedAction(context, () => _import(context, ref)),
                     ),
                     IconButton(
                       tooltip: 'Export templates',
                       icon: const Icon(Icons.download_outlined),
-                      onPressed: () => _guidedAction(context, () => _export(context, ref)),
+                      onPressed: () =>
+                          _guidedAction(context, () => _export(context, ref)),
                     ),
                   ],
                 ),
@@ -343,7 +423,8 @@ class _TemplatesList extends ConsumerWidget {
                   ref,
                   item,
                   canManage:
-                      membership != null && authority != null &&
+                      membership != null &&
+                      authority != null &&
                       authority.userId == membership.userId &&
                       authority.organisationId == membership.organisationId &&
                       (membership.userId == item.createdById ||
@@ -426,11 +507,12 @@ class _TemplatesList extends ConsumerWidget {
     GuidedTemplate template,
   ) async {
     final repository = ref.read(guidedRepositoryProvider);
-    final questions = await showGuidedScopedDialog<List<GuidedTemplateQuestion>>(
-      context: context,
-      repository: repository,
-      builder: (_) => _TemplateVersionDialog(template: template),
-    );
+    final questions =
+        await showGuidedScopedDialog<List<GuidedTemplateQuestion>>(
+          context: context,
+          repository: repository,
+          builder: (_) => _TemplateVersionDialog(template: template),
+        );
     if (questions == null || !context.mounted) return;
     await repository.versionTemplate(template.id, questions);
     if (context.mounted) ref.invalidate(guidedTemplatesProvider);
@@ -447,34 +529,59 @@ class _TemplatesList extends ConsumerWidget {
         title: const Text('Create template'),
         content: SizedBox(
           width: 520,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Template name')),
-            const SizedBox(height: 12),
-            TextField(
-              controller: questions,
-              minLines: 5,
-              maxLines: 10,
-              decoration: const InputDecoration(labelText: 'Shared questions · one per line'),
-            ),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Template name'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: questions,
+                minLines: 5,
+                maxLines: 10,
+                decoration: const InputDecoration(
+                  labelText: 'Shared questions · one per line',
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create'),
+          ),
         ],
       ),
     );
-    final lines = questions.text.split('\n').map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
-    if (submit != true || name.text.trim().isEmpty || lines.isEmpty || !context.mounted) return;
+    final lines = questions.text
+        .split('\n')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (submit != true ||
+        name.text.trim().isEmpty ||
+        lines.isEmpty ||
+        !context.mounted)
+      return;
     await repository.createTemplate(name.text.trim(), lines);
     if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }
 
-  Future<void> _start(BuildContext context, WidgetRef ref, GuidedTemplate template) async {
-    final session = await ref.read(guidedRepositoryProvider).createSession(
-          title: template.name,
-          templateId: template.id,
-        );
+  Future<void> _start(
+    BuildContext context,
+    WidgetRef ref,
+    GuidedTemplate template,
+  ) async {
+    final session = await ref
+        .read(guidedRepositoryProvider)
+        .createSession(title: template.name, templateId: template.id);
     if (context.mounted) {
       invalidateGuidedLists(ref);
       context.go('/guided/sessions/${session.id}');
@@ -499,12 +606,19 @@ class _TemplatesList extends ConsumerWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Import')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Import'),
+          ),
         ],
       ),
     );
-    if (submit != true || payload.text.trim().isEmpty || !context.mounted) return;
+    if (submit != true || payload.text.trim().isEmpty || !context.mounted)
+      return;
     await repository.importTemplates(payload.text);
     if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }
@@ -529,7 +643,10 @@ class _TemplatesList extends ConsumerWidget {
             label: const Text('Copy'),
             onPressed: () => Clipboard.setData(ClipboardData(text: contents)),
           ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
@@ -545,7 +662,9 @@ Future<void> _guidedAction(
   } catch (error) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not complete this Interact action: $error')),
+        SnackBar(
+          content: Text('Could not complete this Interact action: $error'),
+        ),
       );
     }
   }

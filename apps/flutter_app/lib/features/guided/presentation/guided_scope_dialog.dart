@@ -14,10 +14,21 @@ Future<T?> showGuidedScopedDialog<T>({
   builder: (context) => Consumer(
     builder: (context, ref, _) {
       final current = ref.watch(guidedRepositoryProvider);
-      ref.watch(authStateProvider.select((state) => (state.isLoading, state.hasError)));
-      ref.watch(currentMembershipProvider.select((state) => (state.isLoading, state.hasError)));
-      ref.watch(organisationProfileProvider.select((state) => (state.isLoading, state.hasError)));
-      var allowed = identical(current, repository) && (isCurrent?.call() ?? true);
+      ref.watch(
+        authStateProvider.select((state) => (state.isLoading, state.hasError)),
+      );
+      ref.watch(
+        currentMembershipProvider.select(
+          (state) => (state.isLoading, state.hasError),
+        ),
+      );
+      ref.watch(
+        organisationProfileProvider.select(
+          (state) => (state.isLoading, state.hasError),
+        ),
+      );
+      var allowed =
+          identical(current, repository) && (isCurrent?.call() ?? true);
       try {
         repository.ensureCurrent();
       } catch (_) {

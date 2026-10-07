@@ -70,11 +70,7 @@ class GuestWorkspaceData {
         const ['id', 'label'],
         requiredStringFields: const ['id'],
       );
-      _validateQuestions(
-        template['questions'],
-        template: true,
-        required: true,
-      );
+      _validateQuestions(template['questions'], template: true, required: true);
     }
     return GuestWorkspaceData(
       knowledge: knowledge,
@@ -82,8 +78,12 @@ class GuestWorkspaceData {
       templates: templates,
       additionalFields: {
         for (final entry in json.entries)
-          if (!const ['schema_version', 'knowledge', 'sessions', 'templates']
-              .contains(entry.key))
+          if (!const [
+            'schema_version',
+            'knowledge',
+            'sessions',
+            'templates',
+          ].contains(entry.key))
             entry.key: entry.value,
       },
     );
@@ -168,16 +168,21 @@ class GuestWorkspaceData {
     bool template = false,
     String? answerOwner,
   }) {
-    final targetField =
-        template ? 'target_participant_slot' : 'target_participant_id';
+    final targetField = template
+        ? 'target_participant_slot'
+        : 'target_participant_id';
     final ownerField = template ? 'participant_slot' : 'participant_id';
     for (final question in _maps(value)) {
       final id = question['id'] as String;
       if (id.trim().isEmpty || !questionIds.add(id)) {
-        throw const FormatException('Local backup question IDs must be unique.');
+        throw const FormatException(
+          'Local backup question IDs must be unique.',
+        );
       }
       if ((question['text'] as String).trim().isEmpty) {
-        throw const FormatException('Local backup question titles cannot be blank.');
+        throw const FormatException(
+          'Local backup question titles cannot be blank.',
+        );
       }
       final scope = question['scope'];
       if (scope != null && scope != 'shared' && scope != 'participant') {
@@ -204,7 +209,9 @@ class GuestWorkspaceData {
             !owners.add(owner) ||
             (answerOwner != null && owner != answerOwner) ||
             (scope == 'participant' && target != null && owner != target)) {
-          throw const FormatException('Local backup answer ownership is invalid.');
+          throw const FormatException(
+            'Local backup answer ownership is invalid.',
+          );
         }
         _validateReferences(
           answer['follow_ups'],
@@ -235,7 +242,9 @@ class GuestWorkspaceData {
     }
     return [
       for (final item in value)
-        if (item is Map<String, dynamic>) item else
+        if (item is Map<String, dynamic>)
+          item
+        else
           throw const FormatException('Guest backup entries must be objects.'),
     ];
   }
@@ -274,11 +283,7 @@ class GuestWorkspaceData {
       );
     }
     for (final entry in value.cast<Map<String, dynamic>>()) {
-      _validateStrings(
-        entry,
-        stringFields,
-        required: requiredStringFields,
-      );
+      _validateStrings(entry, stringFields, required: requiredStringFields);
     }
   }
 
@@ -315,11 +320,11 @@ class GuestWorkspaceData {
         if (answer is! Map<String, dynamic>) {
           throw const FormatException('Guest answers must contain objects.');
         }
-        _validateStrings(answer, const [
-          'participant_id',
-          'participant_slot',
-          'body',
-        ], required: [template ? 'participant_slot' : 'participant_id']);
+        _validateStrings(
+          answer,
+          const ['participant_id', 'participant_slot', 'body'],
+          required: [template ? 'participant_slot' : 'participant_id'],
+        );
         final branchesCollapsed = answer['branches_collapsed'];
         if (branchesCollapsed != null && branchesCollapsed is! bool) {
           throw const FormatException(
@@ -386,12 +391,16 @@ bool _guestWordsOneEditApart(String left, String right) {
   for (var row = 1; row <= left.length; row++) {
     final current = <int>[row];
     for (var column = 1; column <= right.length; column++) {
-      current.add([
-        current.last + 1,
-        previous[column] + 1,
-        previous[column - 1] +
-            (left.codeUnitAt(row - 1) == right.codeUnitAt(column - 1) ? 0 : 1),
-      ].reduce((a, b) => a < b ? a : b));
+      current.add(
+        [
+          current.last + 1,
+          previous[column] + 1,
+          previous[column - 1] +
+              (left.codeUnitAt(row - 1) == right.codeUnitAt(column - 1)
+                  ? 0
+                  : 1),
+        ].reduce((a, b) => a < b ? a : b),
+      );
     }
     if (current.reduce((a, b) => a < b ? a : b) > 1) return false;
     previous = current;
@@ -405,7 +414,10 @@ List<Map<String, dynamic>> mergeSelectedGuestItems({
   required Set<String> selectedIds,
 }) {
   final merged = [...existing];
-  final knownIds = existing.map((item) => item['id']).whereType<String>().toSet();
+  final knownIds = existing
+      .map((item) => item['id'])
+      .whereType<String>()
+      .toSet();
   for (final item in imported) {
     final id = item['id'];
     if (id is String && selectedIds.contains(id) && knownIds.add(id)) {

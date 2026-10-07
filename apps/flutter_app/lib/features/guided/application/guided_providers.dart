@@ -20,15 +20,24 @@ Future<T> _loadGuided<T>(
 }
 
 final activeGuidedSessionsProvider = FutureProvider.autoDispose((ref) {
-  return _loadGuided(ref, (repository) => repository.listSessions(status: 'active'));
+  return _loadGuided(
+    ref,
+    (repository) => repository.listSessions(status: 'active'),
+  );
 });
 
 final draftGuidedSessionsProvider = FutureProvider.autoDispose((ref) {
-  return _loadGuided(ref, (repository) => repository.listSessions(status: 'draft'));
+  return _loadGuided(
+    ref,
+    (repository) => repository.listSessions(status: 'draft'),
+  );
 });
 
 final completedGuidedSessionsProvider = FutureProvider.autoDispose((ref) {
-  return _loadGuided(ref, (repository) => repository.listSessions(status: 'completed'));
+  return _loadGuided(
+    ref,
+    (repository) => repository.listSessions(status: 'completed'),
+  );
 });
 
 final guidedTemplatesProvider = FutureProvider.autoDispose((ref) {
@@ -47,12 +56,15 @@ typedef GuidedSessionQuery = ({
 
 final guidedSessionProvider = FutureProvider.autoDispose
     .family<GuidedSessionDetail, GuidedSessionQuery>((ref, query) {
-  return _loadGuided(ref, (repository) => repository.getSession(
-        query.sessionId,
-        participantId: query.participantId,
-        mode: query.viewMode,
-      ));
-});
+      return _loadGuided(
+        ref,
+        (repository) => repository.getSession(
+          query.sessionId,
+          participantId: query.participantId,
+          mode: query.viewMode,
+        ),
+      );
+    });
 
 void invalidateGuidedLists(WidgetRef ref) {
   ref.invalidate(activeGuidedSessionsProvider);
