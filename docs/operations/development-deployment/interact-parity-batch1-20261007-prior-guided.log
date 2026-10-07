@@ -1,0 +1,215 @@
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 93.0.0 (108.0.0 available)
+  analyzer 10.0.1 (14.4.0 available)
+  archive 4.0.9 (4.3.0 available)
+  clock 1.1.2 (1.1.3 available)
+  code_assets 1.2.1 (2.1.0 available)
+  cross_file 0.3.5+5 (0.4.0 available)
+  cupertino_icons 1.0.9 (2.0.0 available)
+  flutter_riverpod 3.3.2 (3.4.3 available)
+  frontend_server_client 4.0.0 (4.1.0 available)
+  go_router 17.5.0 (18.0.2 available)
+  hooks 2.0.2 (2.2.0 available)
+  jni_flutter 1.0.3 (1.0.4+1 available)
+  matcher 0.12.19 (0.12.20 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  meta 1.17.0 (1.19.0 available)
+  objective_c 9.5.0 (9.6.2 available)
+  package_config 2.2.0 (3.0.0 available)
+  pdf 3.12.0 (3.13.1 available)
+  petitparser 7.0.2 (7.1.0 available)
+  platform 3.1.6 (3.2.0 available)
+  qr 3.0.2 (4.0.0 available)
+  record_use 0.6.0 (1.1.1 available)
+  riverpod 3.3.2 (3.4.3 available)
+  share_plus 12.0.2 (13.3.1 available)
+  share_plus_platform_interface 6.1.0 (7.2.0 available)
+  stack_trace 1.12.1 (1.12.2 available)
+  test 1.30.0 (1.32.0 available)
+  test_api 0.7.10 (0.7.14 available)
+  test_core 0.6.16 (0.6.20 available)
+  vector_math 2.2.0 (2.4.3 available)
+  win32 5.15.0 (6.4.0 available)
+  xml 6.6.1 (7.1.0 available)
+Got dependencies!
+32 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading /workspaces/intqaflow-batch1-formatter/apps/flutter_app/test/guided_safety_test.dart
+00:00 +0: real guided provider rejects delayed read after uid change
+00:00 +1: real guided provider rejects delayed read after organisation change
+00:00 +2: real guided provider rejects delayed read after user change
+00:00 +3: real guided provider rejects delayed read after permission change
+00:00 +4: real repository binds delayed mutation token acquisition to original UID
+00:00 +5: real repository preserves import warnings and rejects 409 as conflict
+00:00 +6: retains question draft on disappeared or re-owned target (complete=true)
+00:00 +7: retains question draft on disappeared or re-owned target (complete=false)
+00:00 +8: retains answer draft on disappeared or re-owned target (complete=true)
+00:00 +9: retains answer draft on disappeared or re-owned target (complete=false)
+00:00 +10: retains participant draft on disappeared or re-owned target (complete=true)
+00:00 +11: retains participant draft on disappeared or re-owned target (complete=false)
+00:00 +12: retains follow-up draft on disappeared or re-owned target (complete=true)
+00:00 +13: retains follow-up draft on disappeared or re-owned target (complete=false)
+00:00 +14: blank answer persists, reloads blank, but blank question remains unsaved
+00:01 +15: clearing an existing collapsed answer uses PATCH and preserves its recursive branch
+00:02 +16: retry of failed new blank answer must create a real answer before reporting Saved
+00:02 +17: rapid route disposal flushes original session and preserves a failed edit for retry
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: an object with length of <1>
+  Actual: [Instance of 'RequestOptions', Instance of 'RequestOptions']
+   Which: has length of <2>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///workspaces/intqaflow-batch1-formatter/apps/flutter_app/test/guided_safety_test.dart:344:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1682:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///workspaces/intqaflow-batch1-formatter/apps/flutter_app/test/guided_safety_test.dart line 344
+The test description was:
+  rapid route disposal flushes original session and preserves a failed edit for retry
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +17 -1: rapid route disposal flushes original session and preserves a failed edit for retry [E]
+  Test failed. See exception logs above.
+  The test description was: rapid route disposal flushes original session and preserves a failed edit for retry
+  
+00:02 +17 -1: concurrent refresh retains local edit and explicit conflict does not overwrite server
+00:03 +18 -1: clean external refresh reconciles stable text controllers
+00:03 +19 -1: ambiguous failed save is reconciled without replaying an acknowledged edit
+00:03 +20 -1: multiple dirty fields serialize expected revisions and report Saved only after all writes
+00:04 +21 -1: queued edits use the actual server session revision acknowledgement
+00:04 +22 -1: typing during an in-flight save retains the newest value and revision
+00:04 +23 -1: participant switch cannot redirect a pending answer to the newly selected participant
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: a value greater than <2>
+  Actual: <2>
+   Which: is not a value greater than <2>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///workspaces/intqaflow-batch1-formatter/apps/flutter_app/test/guided_safety_test.dart:549:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1682:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///workspaces/intqaflow-batch1-formatter/apps/flutter_app/test/guided_safety_test.dart line 549
+The test description was:
+  participant switch cannot redirect a pending answer to the newly selected participant
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:05 +23 -2: participant switch cannot redirect a pending answer to the newly selected participant [E]
+  Test failed. See exception logs above.
+  The test description was: participant switch cannot redirect a pending answer to the newly selected participant
+  
+00:05 +23 -2: permission change cancels pending debounce and does not transfer drafts
+00:05 +24 -2: equivalent same-UID authority refresh preserves pending edits
+00:05 +25 -2: delayed same-identity authority refresh pauses saves but retains a visible retry draft
+00:05 +26 -2: session visibility revocation stops pending timers without a mutation
+00:06 +27 -2: new session route saves pending text to original session only
+00:06 +28 -2: delayed write acknowledgement cannot publish Saved under another UID
+00:06 +29 -2: open session export clears on identity change
+00:06 +30 -2: late export (200) cannot open a dialog or snackbar after navigating to /guided
+00:07 +31 -2: late export (503) cannot open a dialog or snackbar after navigating to /guided
+00:07 +32 -2: late session read cannot render after navigating to /guided
+Pending timers:
+Timer (duration: 0:00:10.000000, periodic: false), created:
+#0      new FakeTimer._ (package:fake_async/fake_async.dart:342:62)
+#1      FakeAsync._createTimer (package:fake_async/fake_async.dart:260:29)
+#2      FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:185:15)
+#5      handleResponseStream.watchReceiveTimeout (package:dio/src/response/response_stream_handler.dart:60:20)
+#6      handleResponseStream (package:dio/src/response/response_stream_handler.dart:75:3)
+#7      DioMixin._dispatchRequest (package:dio/src/dio_mixin.dart:635:31)
+<asynchronous suspension>
+#8      DioMixin.fetch.<anonymous closure> (package:dio/src/dio_mixin.dart:554:25)
+<asynchronous suspension>
+#9      _observeInterceptorCallback.<anonymous closure> (package:dio/src/interceptor.dart:60:5)
+<asynchronous suspension>
+(elided 2 frames from dart:async)
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A Timer is still pending even after the widget tree was disposed.
+'package:flutter_test/src/binding.dart':
+Failed assertion: line 2242 pos 12: '!timersPending'
+
+When the exception was thrown, this was the stack:
+#2      AutomatedTestWidgetsFlutterBinding._verifyInvariants (package:flutter_test/src/binding.dart:2242:12)
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1703:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from class _AssertionError and package:stack_trace)
+
+The test description was:
+  late session read cannot render after navigating to /guided
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:07 +32 -3: late session read cannot render after navigating to /guided [E]
+  Test failed. See exception logs above.
+  The test description was: late session read cannot render after navigating to /guided
+  
+00:07 +32 -3: late export (200) cannot open a dialog or snackbar after navigating to /guided/sessions/session-2
+00:07 +33 -3: late export (503) cannot open a dialog or snackbar after navigating to /guided/sessions/session-2
+00:08 +34 -3: late session read cannot render after navigating to /guided/sessions/session-2
+Pending timers:
+Timer (duration: 0:00:10.000000, periodic: false), created:
+#0      new FakeTimer._ (package:fake_async/fake_async.dart:342:62)
+#1      FakeAsync._createTimer (package:fake_async/fake_async.dart:260:29)
+#2      FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:185:15)
+#5      handleResponseStream.watchReceiveTimeout (package:dio/src/response/response_stream_handler.dart:60:20)
+#6      handleResponseStream (package:dio/src/response/response_stream_handler.dart:75:3)
+#7      DioMixin._dispatchRequest (package:dio/src/dio_mixin.dart:635:31)
+<asynchronous suspension>
+#8      DioMixin.fetch.<anonymous closure> (package:dio/src/dio_mixin.dart:554:25)
+<asynchronous suspension>
+#9      _observeInterceptorCallback.<anonymous closure> (package:dio/src/interceptor.dart:60:5)
+<asynchronous suspension>
+(elided 2 frames from dart:async)
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A Timer is still pending even after the widget tree was disposed.
+'package:flutter_test/src/binding.dart':
+Failed assertion: line 2242 pos 12: '!timersPending'
+
+When the exception was thrown, this was the stack:
+#2      AutomatedTestWidgetsFlutterBinding._verifyInvariants (package:flutter_test/src/binding.dart:2242:12)
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1703:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from class _AssertionError and package:stack_trace)
+
+The test description was:
+  late session read cannot render after navigating to /guided/sessions/session-2
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:08 +34 -4: late session read cannot render after navigating to /guided/sessions/session-2 [E]
+  Test failed. See exception logs above.
+  The test description was: late session read cannot render after navigating to /guided/sessions/session-2
+  
+00:08 +34 -4: dialog opened by original user cannot mutate after identity switch
+00:08 +35 -4: owner authority on organisation session matches backend
+00:08 +36 -4: owner authority on private session matches backend
+00:09 +37 -4: owner template management uses grants, not role labels
+00:09 +38 -4: legacy authority on organisation session matches backend
+00:09 +39 -4: legacy authority on private session matches backend
+00:09 +40 -4: legacy template management uses grants, not role labels
+00:09 +41 -4: role-only authority on organisation session matches backend
+00:09 +42 -4: role-only authority on private session matches backend
+00:10 +43 -4: role-only template management uses grants, not role labels
+00:10 +44 -4: delegate authority on organisation session matches backend
+00:10 +45 -4: delegate authority on private session matches backend
+00:10 +46 -4: delegate template management uses grants, not role labels
+00:10 +47 -4: creator authority on organisation session matches backend
+00:10 +48 -4: creator authority on private session matches backend
+00:10 +49 -4: creator template management uses grants, not role labels
+00:10 +50 -4: organisation import warnings remain visible before opening imported session
+00:11 +51 -4: unsupported guest backup import has a visible failure and no navigation
+00:11 +52 -4: Some tests failed.

@@ -1,0 +1,165 @@
+diff --git a/apps/flutter_app/test/guided_safety_test.dart b/apps/flutter_app/test/guided_safety_test.dart
+index 8e63c04..9e69235 100644
+--- a/apps/flutter_app/test/guided_safety_test.dart
++++ b/apps/flutter_app/test/guided_safety_test.dart
+@@ -240,50 +240,53 @@ void main() {
+     expect(pending.state, GuidedSaveState.saved);
+   });
+ 
+-  test('concurrent full-read flushes retain the original participant', () async {
+-    final h = _Harness();
+-    h.adapter.filterToActiveParticipant = true;
+-    addTearDown(h.close);
+-    await h.ready();
+-    final repository = h.container.read(guidedRepositoryProvider);
+-    final pending = GuidedPendingEdits(
+-      repository: repository,
+-      sessionId: 'session-1',
+-      onChanged: () {},
+-    );
+-    addTearDown(pending.close);
+-    final session = await repository.getSession('session-1');
+-    pending.reconcile(session);
+-    await pending.answer(
+-      session.questions.first,
+-      session.questions.first.answerFor('participant-1'),
+-      'participant-1',
+-      'Alice retained draft',
+-    );
+-    pending.reconcile(
+-      await repository.getSession('session-1', participantId: 'bob'),
+-      complete: false,
+-    );
+-    h.adapter.holdReads = true;
+-    final readsBeforeFlush = h.adapter.reads.length;
+-    final drain = Future.wait([pending.flush(), pending.flush()]);
+-    final rawRead = repository.getSession('session-1');
+-    await _waitFor(
+-      () => h.adapter.reads.length == readsBeforeFlush + 2,
+-      reason: 'The drain and independent read must both wait on the gate.',
+-    );
+-    expect(h.adapter.writes, isEmpty);
+-    h.adapter.holdReads = false;
+-    h.adapter.readGate!.complete(_response(h.adapter.session()));
+-    await drain;
+-    expect((await rawRead).id, 'session-1');
+-    expect(h.adapter.writes, hasLength(1));
+-    expect(h.adapter.writes.single.path, '/api/v1/guided/answers/answer-1');
+-    expect(h.adapter.writes.single.data['expected_revision'], 1);
+-    expect(h.adapter.body, 'Alice retained draft');
+-    expect(h.adapter.bobBody, 'Bob original answer');
+-    expect(pending.state, GuidedSaveState.saved);
+-  });
++  test(
++    'concurrent full-read flushes retain the original participant',
++    () async {
++      final h = _Harness();
++      h.adapter.filterToActiveParticipant = true;
++      addTearDown(h.close);
++      await h.ready();
++      final repository = h.container.read(guidedRepositoryProvider);
++      final pending = GuidedPendingEdits(
++        repository: repository,
++        sessionId: 'session-1',
++        onChanged: () {},
++      );
++      addTearDown(pending.close);
++      final session = await repository.getSession('session-1');
++      pending.reconcile(session);
++      await pending.answer(
++        session.questions.first,
++        session.questions.first.answerFor('participant-1'),
++        'participant-1',
++        'Alice retained draft',
++      );
++      pending.reconcile(
++        await repository.getSession('session-1', participantId: 'bob'),
++        complete: false,
++      );
++      h.adapter.holdReads = true;
++      final readsBeforeFlush = h.adapter.reads.length;
++      final drain = Future.wait([pending.flush(), pending.flush()]);
++      final rawRead = repository.getSession('session-1');
++      await _waitFor(
++        () => h.adapter.reads.length == readsBeforeFlush + 2,
++        reason: 'The drain and independent read must both wait on the gate.',
++      );
++      expect(h.adapter.writes, isEmpty);
++      h.adapter.holdReads = false;
++      h.adapter.readGate!.complete(_response(h.adapter.session()));
++      await drain;
++      expect((await rawRead).id, 'session-1');
++      expect(h.adapter.writes, hasLength(1));
++      expect(h.adapter.writes.single.path, '/api/v1/guided/answers/answer-1');
++      expect(h.adapter.writes.single.data['expected_revision'], 1);
++      expect(h.adapter.body, 'Alice retained draft');
++      expect(h.adapter.bobBody, 'Bob original answer');
++      expect(pending.state, GuidedSaveState.saved);
++    },
++  );
+ 
+   testWidgets(
+     'blank answer persists, reloads blank, but blank question remains unsaved',
+@@ -619,25 +622,29 @@ void main() {
+       await tester.pump(const Duration(milliseconds: 100));
+       await tester.tap(find.text('Bob').last);
+       await tester.pump(const Duration(milliseconds: 100));
+-      await _pumpUntil(tester, () {
+-        final detail = h.container.read(
+-          guidedSessionProvider((
+-            sessionId: 'session-1',
+-            participantId: 'bob',
+-            viewMode: GuidedViewMode.allRelevant,
+-          )),
+-        );
+-        return !detail.isLoading &&
+-            !detail.hasError &&
+-            detail.hasValue &&
+-            detail.requireValue.questions.first.answerFor('participant-1') ==
+-                null &&
+-            detail.requireValue.questions.first.answerFor('bob') != null &&
+-            find
+-                .byKey(const ValueKey('answer-question-1-bob'))
+-                .evaluate()
+-                .isNotEmpty;
+-      }, reason: 'Bob’s filtered view must reconcile before debounce expires.');
++      await _pumpUntil(
++        tester,
++        () {
++          final detail = h.container.read(
++            guidedSessionProvider((
++              sessionId: 'session-1',
++              participantId: 'bob',
++              viewMode: GuidedViewMode.allRelevant,
++            )),
++          );
++          return !detail.isLoading &&
++              !detail.hasError &&
++              detail.hasValue &&
++              detail.requireValue.questions.first.answerFor('participant-1') ==
++                  null &&
++              detail.requireValue.questions.first.answerFor('bob') != null &&
++              find
++                  .byKey(const ValueKey('answer-question-1-bob'))
++                  .evaluate()
++                  .isNotEmpty;
++        },
++        reason: 'Bob’s filtered view must reconcile before debounce expires.',
++      );
+       await tester.pump();
+       expect(h.adapter.writes, isEmpty);
+       await tester.pump(const Duration(milliseconds: 651));
+@@ -1401,10 +1408,9 @@ class _Adapter implements HttpClientAdapter {
+     if (options.path == '/api/v1/guided/import/legacy') {
+       final payload = options.data['payload'] as Map;
+       if (payload.containsKey('sessions'))
+-        return _response(
+-          {'detail': 'Unsupported guest backup'},
+-          status: 409,
+-        ).open();
++        return _response({
++          'detail': 'Unsupported guest backup',
++        }, status: 409).open();
+       return _response({
+         'session': session(),
+         'warnings': ['Missing legacy participant name was replaced.'],
