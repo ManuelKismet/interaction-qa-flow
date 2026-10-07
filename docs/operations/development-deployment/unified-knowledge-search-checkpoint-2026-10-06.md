@@ -1,5 +1,70 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Latest correction independently tested — single navigation assertion pending, 2026-10-07
+
+Completion6033431915 published source `380a6fa87d3b63bef4b100c844a2e4146ed62cc0`
+and artifact-only commit `298e2c707e8c7b6176f927a7d322920ab6e24b16`.
+Mailbox `docs/operations/development-deployment/unified-knowledge-ask-parity-correction-20261007.patch`,
+exact SHA256 `fa70afe9be73bf5bed6e99cf2f0bec8038c082cd8ff3249a40d47798e67f638b`,
+declared base6514b7e50c38520449b114853f9f11d1c74db136 verified.
+Applied UNCHANGED with git am in the isolated worktree, complete source
+**`8b675e20133ee713416c162896851d308d615881`**.
+Pushed fix/unified-search-dev-20261006; exact GitHub readback verified.
+Flutter application tree diff against source380a6fa is empty; diff --check passed.
+Three Flutter files changed; no backend/schema changes. Isolated tree clean,
+main worktree four dirty docs preserved. No Codex app/test edits.
+
+| Independent executed check on8b675e2 | Result |
+|---|---|
+| Python compile / Alembic heads |exit0 / single0014,exit0|
+| Full backend |111PASS4SKIP10warnings24.04s,exit0|
+| Fresh real PostgreSQL16 |4PASS2.49s,exit0|
+| Separate isolated migrationDB |0014→0013→0014,current0014 PASS,exit0|
+| Full Flutter |179PASS1FAIL89s,exit1|
+| Analyzer |0errors0warnings13existing infos15.0s,exit1 due infos|
+| Configured DEV web release build |PASS99.1s,exit0|
+| Non-mutating format check |5touched files would change,exit1; no modifications|
+
+Stale-scope/UID and exact manual-submission regressions now pass. Remaining
+test 'Ask suggestions show unified source badges and open source' fails at
+ask_page_test.dart:348: exact answer-only Text 'Keep account passwords unique.'
+found0 after real Private navigation; Saved Q&A and exact selected title pass.
+Static evidence: real saved-item ListTile.subtitle combines body, answer and
+storage status into one Text joined by blank lines (guest_workspace_page.dart
+around2811–2826); answer-only exact matcher cannot match combined subtitle.
+Following Local assertion line356 has same latent issue and was NOT reached,
+so do not claim Local destination answer assertion passed.
+ONE focused same-replacement follow-up
+[6033551477](https://github.com/ManuelKismet/interaction-qa-flow/pull/19#issuecomment-6033551477)
+requests selected-original-Card/ListTile scoped subtitle/content/storage assertions,
+not broad global text matcher/dummy destination/removed assertions/renderer change
+merely to satisfy test. Also outstanding requested Dart formatting.
+Complete baseline8b675e2; incremental mailbox/source/artifact/checksum requested.
+Prior correction6033327274 completed before this follow-up; no competing task.
+Await new completed artifact before unchanged apply/retest; no retry loop.
+Copilot Flutter/Dart unavailable exit127, no such Copilot passes claimed.
+
+Logs and exit receipts retained under
+/home/vscode/.local/share/intqaflow/ask-validation-8b675e2.
+Initial nested-shell backend startup was malformed/interrupted by autoactivation;
+not counted as pass. Corrected isolated runner executed all recorded checks.
+Its newly generated main nohup.out moved intact to private startup-nohup.out;
+four original dirty docs preserved and no user data removed.
+Fresh local DBs ask_pr19_tests_8b675e2/ask_pr19_migrate_8b675e2 retained.
+PostgreSQL stopped with server-stopped confirmation; no proxy started.
+Codespace stopped via GitHub, stopped banner confirmed. All files preserved.
+
+DEV **UNCHANGED / rollout HELD**: reviewed105a528 /
+intqaflow-dev-api-review105a528100%, schema0014,
+Hostingrelease1791323636722000/version4eb839685c6f21c7.
+Retain reviewed rollback/additive schema/private data; never live downgrade/purge.
+Old PR13 task8c57d37e output remains quarantined, not confirmed cancelled.
+Only replacement PR19/taskb8a0e4a5 authorised. Fake-provider semantic quality,
+authenticated personal-import E2E/F04/F08/F09 remain unverified.
+Organisation/admin/Teams/join-request improvements DEFERRED.
+No production, merge, IAM/AppCheck weakening, secrets disclosure or automatic
+local-content upload. Monitoring cancelled; no automation created.
+
 ## Latest independent replacement review — correction pending, 2026-10-07
 
 Replacement PR19 delivery completed in artifact commit
