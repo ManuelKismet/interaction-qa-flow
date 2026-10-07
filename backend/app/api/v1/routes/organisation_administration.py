@@ -13,6 +13,7 @@ from app.schemas.organisation_administration import (
     OrganisationJoinRequestResponse,
     OrganisationPermissionCreate,
     OrganisationPermissionResponse,
+    OrganisationOwnerSummary,
     OrganisationProfile,
     OwnerAppointment,
 )
@@ -39,6 +40,16 @@ async def list_permissions(
     session: AsyncSession = Depends(get_session),
 ) -> list[OrganisationPermissionGrant]:
     return await OrganisationAdministrationService(session).list_grants(
+        identity.organisation_id, identity.user_id
+    )
+
+
+@router.get("/owners", response_model=list[OrganisationOwnerSummary])
+async def list_owners(
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> list[OrganisationOwnerSummary]:
+    return await OrganisationAdministrationService(session).list_owners(
         identity.organisation_id, identity.user_id
     )
 

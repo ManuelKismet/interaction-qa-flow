@@ -14,6 +14,6 @@ def test_provision_organisation_admin_help_starts_without_provisioning() -> None
         timeout=30,
     )
 
-    assert "Provision an organisation and its first verified admin." in result.stdout
+    assert "Provision an organisation and its first verified owner." in result.stdout
     assert "--admin-email" in result.stdout
     assert "--confirm-operator-provisioning" in result.stdout

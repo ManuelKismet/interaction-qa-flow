@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 
 from app.models.answer_reaction import AnswerReaction
 from app.models.organisation import Organisation
+from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.user import User, UserRole
 
 
@@ -34,6 +35,16 @@ async def seed_users(session_factory):
             display_name="Outsider",
         )
         session.add_all([author, contributor, admin, outsider])
+        await session.flush()
+        session.add(
+            OrganisationPermissionGrant(
+                organisation_id=organisation.id,
+                user_id=admin.id,
+                permission="legacy_admin",
+                scope_type="organisation",
+                granted_by=admin.id,
+            )
+        )
         await session.commit()
         return {
             "organisation_id": organisation.id,

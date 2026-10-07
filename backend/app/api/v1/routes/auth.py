@@ -48,7 +48,11 @@ async def list_organisation_members(
         identity.user_id,
         identity.organisation_id,
     )
-    await PermissionService(UserRepository(session)).require_admin(actor)
+    permissions = PermissionService(UserRepository(session))
+    if not await permissions.is_organisation_admin(
+        actor
+    ) and not await permissions.has_any_permission(actor, "team_membership"):
+        await permissions.require_admin(actor)
     return await OrganisationMemberService(session).list_members(
         identity.organisation_id
     )

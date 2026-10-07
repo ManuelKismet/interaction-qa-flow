@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 import 'package:int_qa_flow/shared/models/app_destination.dart';
 import 'package:int_qa_flow/shared/utils/responsive.dart';
 
@@ -18,6 +19,9 @@ class AppShell extends ConsumerWidget {
   List<AppDestination> _destinations(
     String role, {
     required bool showGroups,
+    required bool showOrganisation,
+    required bool showAdmin,
+    required bool showReview,
   }) => [
     AppDestination(
       label: 'Knowledge',
@@ -31,6 +35,13 @@ class AppShell extends ConsumerWidget {
       icon: Icons.account_tree_outlined,
       selectedIcon: Icons.account_tree,
     ),
+    if (showOrganisation)
+      AppDestination(
+        label: 'My organisation',
+        path: '/organisation',
+        icon: Icons.business_outlined,
+        selectedIcon: Icons.business,
+      ),
     if (showGroups)
       AppDestination(
         label: 'Groups',
@@ -38,13 +49,14 @@ class AppShell extends ConsumerWidget {
         icon: Icons.group_outlined,
         selectedIcon: Icons.groups,
       ),
-    AppDestination(
-      label: 'Review',
-      path: '/review-queue',
-      icon: Icons.fact_check_outlined,
-      selectedIcon: Icons.fact_check,
-    ),
-    if (role == 'admin')
+    if (showReview)
+      AppDestination(
+        label: 'Review',
+        path: '/review-queue',
+        icon: Icons.fact_check_outlined,
+        selectedIcon: Icons.fact_check,
+      ),
+    if (showAdmin)
       AppDestination(
         label: 'Admin',
         path: '/admin',
@@ -53,17 +65,14 @@ class AppShell extends ConsumerWidget {
       ),
   ];
 
-  int _selectedIndex(List<AppDestination> destinations, String role) {
+  int _selectedIndex(List<AppDestination> destinations) {
     final selectedPath = switch (currentPath) {
       final path when path.startsWith('/questions') => '/',
       final path when path.startsWith('/guided') => '/guided',
       final path when path.startsWith('/guest') => '/guest/groups',
+      final path when path.startsWith('/organisation') => '/organisation',
       _ => currentPath,
     };
-    if (currentPath == '/review-queue' &&
-        !{'admin', 'answer_owner'}.contains(role)) {
-      return 0;
-    }
     final index = destinations.indexWhere(
       (destination) => destination.path == selectedPath,
     );
@@ -140,15 +149,28 @@ class AppShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final membership = ref.watch(currentMembershipProvider).value;
     final role = membership?.role ?? '';
+    final organisation = ref.watch(organisationProfileProvider).value;
     final user =
         ref.watch(authStateProvider).value ??
         ref.watch(firebaseAuthProvider).currentUser;
     final destinations = _destinations(
       role,
       showGroups: isVerifiedRegisteredFirebaseUser(user),
+      showOrganisation: membership != null,
+      showAdmin:
+          organisation?.isOwner == true ||
+          organisation?.permissions.contains('legacy_admin') == true ||
+          organisation?.can('team_create') == true ||
+          organisation?.can('team_membership') == true,
+      showReview:
+          role == 'answer_owner' ||
+          organisation?.can('review') == true ||
+          organisation?.can('answer_approval') == true,
     ).where((destination) {
       return destination.path != '/review-queue' ||
-          {'admin', 'answer_owner'}.contains(role);
+          role == 'answer_owner' ||
+          organisation?.can('review') == true ||
+          organisation?.can('answer_approval') == true;
     }).toList();
     final isWide = MediaQuery.sizeOf(context).width >=
         Responsive.navigationRailBreakpoint;
@@ -168,7 +190,7 @@ class AppShell extends ConsumerWidget {
         children: [
           if (isWide)
             NavigationRail(
-              selectedIndex: _selectedIndex(destinations, role),
+              selectedIndex: _selectedIndex(destinations),
               onDestinationSelected: (index) =>
                   _navigate(context, index, destinations),
               extended: MediaQuery.sizeOf(context).width >= 1100,
@@ -202,7 +224,7 @@ class AppShell extends ConsumerWidget {
       bottomNavigationBar: isWide
           ? null
           : NavigationBar(
-              selectedIndex: _selectedIndex(destinations, role),
+              selectedIndex: _selectedIndex(destinations),
               onDestinationSelected: (index) =>
                   _navigate(context, index, destinations),
               destinations: [

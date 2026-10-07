@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
-import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
 import 'package:int_qa_flow/features/governance/data/governance_repository.dart';
 import 'package:int_qa_flow/features/governance/domain/governance_models.dart';
 import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 
 class AdminPage extends ConsumerStatefulWidget {
   const AdminPage({super.key});
@@ -35,15 +35,32 @@ class _AdminPageState extends ConsumerState<AdminPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin =
-        ref.watch(currentMembershipProvider).value?.role == 'admin';
-    if (!isAdmin) {
-      return const Center(child: Text('Administrator access is required.'));
+    final profile = ref.watch(organisationProfileProvider);
+    if (profile.isLoading) {
+      return const Center(child: CircularProgressIndicator());
     }
-    final owners = ref.watch(departmentOwnersProvider);
+    if (profile.hasError || !profile.hasValue) {
+      return const Center(child: Text('Organisation permissions are unavailable.'));
+    }
+    final organisation = profile.requireValue;
+    final isAdmin =
+        organisation.isOwner ||
+        organisation.permissions.contains('legacy_admin');
+    final canManageTeams = organisation.can('team_create') ||
+        organisation.can('team_membership');
+    if (!isAdmin && !canManageTeams) {
+      return const Center(
+        child: Text('No organisation administration permission is assigned.'),
+      );
+    }
+    final owners = isAdmin
+        ? ref.watch(departmentOwnersProvider)
+        : const AsyncData<List<DepartmentAnswerOwner>>([]);
     final departments = ref.watch(departmentsProvider);
     final teams = ref.watch(teamsProvider);
-    final members = ref.watch(organisationMembersProvider);
+    final members = isAdmin || canManageTeams
+        ? ref.watch(organisationMembersProvider)
+        : const AsyncData<List<OrganisationMember>>([]);
     return ListView(
       padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 16 : 32),
       children: [
@@ -51,6 +68,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
         const SizedBox(height: 8),
         const Text('Assign departmental responsibility for verified answers.'),
         const SizedBox(height: 24),
+        if (isAdmin) ...[
         Text('Members', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         const Text(
@@ -65,6 +83,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                 : () => _addMember(
                     departments,
                     members.value ?? const [],
+                    allowAdminRole: organisation.isOwner,
                   ),
             icon: const Icon(Icons.person_add_alt_1),
             label: const Text('Add organisation member'),
@@ -86,16 +105,22 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                         trailing: TextButton(
                           onPressed: _busy
                               ? null
-                              : () => _editMember(member, departments),
+                              : () => _editMember(
+                                  member,
+                                  departments,
+                                  allowAdminRole: organisation.isOwner,
+                                ),
                           child: const Text('Manage'),
                         ),
                       ),
-                  ],
+                      ],
                 ),
           loading: () => const LinearProgressIndicator(),
           error: (_, _) => const Text('Organisation members unavailable.'),
         ),
         const SizedBox(height: 24),
+        ],
+        if (isAdmin) ...[
         Text('Departments', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         Wrap(
@@ -136,6 +161,8 @@ class _AdminPageState extends ConsumerState<AdminPage> {
           error: (_, _) => const Text('Departments unavailable'),
         ),
         const SizedBox(height: 32),
+        ],
+        if (canManageTeams || isAdmin) ...[
         Text('Teams', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
         Wrap(
@@ -176,7 +203,16 @@ class _AdminPageState extends ConsumerState<AdminPage> {
               ),
             ),
             FilledButton.icon(
-              onPressed: _busy ? null : _createTeam,
+              onPressed: _busy ||
+                      !organisation.can(
+                        'team_create',
+                        scopeType: _teamDepartmentId == null
+                            ? 'organisation'
+                            : 'department',
+                        scopeId: _teamDepartmentId,
+                      )
+                  ? null
+                  : _createTeam,
               icon: const Icon(Icons.group_add_outlined),
               label: const Text('Create team'),
             ),
@@ -192,6 +228,18 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                       _TeamAdminTile(
                         team: team,
                         organisationMembers: members,
+                        canManageMembership: isAdmin ||
+                            organisation.can(
+                              'team_membership',
+                              scopeType: 'team',
+                              scopeId: team.id,
+                            ) ||
+                            (team.departmentId != null &&
+                                organisation.can(
+                                  'team_membership',
+                                  scopeType: 'department',
+                                  scopeId: team.departmentId,
+                                )),
                       ),
                   ],
                 ),
@@ -199,6 +247,8 @@ class _AdminPageState extends ConsumerState<AdminPage> {
           error: (_, _) => const Text('Unable to load teams.'),
         ),
         const SizedBox(height: 36),
+        ],
+        if (isAdmin) ...[
         Text('Department answer owners', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
         Wrap(
@@ -388,6 +438,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (_, _) => const Text('Unable to load department owners.'),
         ),
+        ],
       ],
     );
   }
@@ -416,13 +467,15 @@ class _AdminPageState extends ConsumerState<AdminPage> {
 
   Future<void> _addMember(
     AsyncValue<List<DepartmentSummary>> departments,
-    List<OrganisationMember> members,
-  ) async {
+    List<OrganisationMember> members, {
+    required bool allowAdminRole,
+  }) async {
     final values = await _showMemberEditor(
       title: 'Add organisation member',
       departments: departments.value ?? const [],
       initialRole: 'employee',
       includeEmail: true,
+      allowAdminRole: allowAdminRole,
     );
     if (values == null || !mounted) return;
     final existing = members
@@ -451,8 +504,8 @@ class _AdminPageState extends ConsumerState<AdminPage> {
               '${existing.departmentName ?? 'None'} → '
               '${departmentName ?? 'None'}',
         if (grantsAdmin)
-          'Organisation admins can manage members and administrative review '
-              'tools. Private content remains owner-only.',
+          'The admin title does not grant permissions. The owner must grant '
+              'each organisation capability separately.',
       ].join('\n');
       final confirmed = await showDialog<bool>(
         context: context,
@@ -478,9 +531,8 @@ class _AdminPageState extends ConsumerState<AdminPage> {
         builder: (context) => AlertDialog(
           title: const Text('Add an organisation admin?'),
           content: Text(
-            '${values['email']} will be able to manage organisation members '
-                'and access administrative review tools. Private content '
-                'remains owner-only.',
+            '${values['email']} will receive the admin title only. The owner '
+                'must separately grant administrative permissions.',
           ),
           actions: [
             TextButton(
@@ -507,14 +559,16 @@ class _AdminPageState extends ConsumerState<AdminPage> {
 
   Future<void> _editMember(
     OrganisationMember member,
-    AsyncValue<List<DepartmentSummary>> departments,
-  ) async {
+    AsyncValue<List<DepartmentSummary>> departments, {
+    required bool allowAdminRole,
+  }) async {
     final values = await _showMemberEditor(
       title: 'Manage ${member.displayName}',
       departments: departments.value ?? const [],
       initialRole: member.role,
       initialDepartmentId: member.departmentId,
       includeEmail: false,
+      allowAdminRole: allowAdminRole,
     );
     if (values == null || !mounted) return;
     final confirmAdmin = values['role'] == 'admin' && member.role != 'admin';
@@ -524,9 +578,8 @@ class _AdminPageState extends ConsumerState<AdminPage> {
         builder: (context) => AlertDialog(
           title: const Text('Grant organisation admin?'),
           content: Text(
-            '${member.displayName} will be able to manage organisation '
-                'members and access administrative review tools. Private '
-                'content remains owner-only.',
+            '${member.displayName} will receive the admin title only. The '
+                'owner must separately grant administrative permissions.',
           ),
           actions: [
             TextButton(
@@ -557,6 +610,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
     required List<DepartmentSummary> departments,
     required String initialRole,
     required bool includeEmail,
+    required bool allowAdminRole,
     String? initialDepartmentId,
   }) =>
       showDialog<Map<String, dynamic>>(
@@ -567,6 +621,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
           initialRole: initialRole,
           initialDepartmentId: initialDepartmentId,
           includeEmail: includeEmail,
+          allowAdminRole: allowAdminRole,
         ),
       );
 
@@ -617,6 +672,7 @@ class _OrganisationMemberEditorDialog extends StatefulWidget {
     required this.initialRole,
     required this.initialDepartmentId,
     required this.includeEmail,
+    required this.allowAdminRole,
   });
 
   final String title;
@@ -624,6 +680,7 @@ class _OrganisationMemberEditorDialog extends StatefulWidget {
   final String initialRole;
   final String? initialDepartmentId;
   final bool includeEmail;
+  final bool allowAdminRole;
 
   @override
   State<_OrganisationMemberEditorDialog> createState() =>
@@ -672,7 +729,8 @@ class _OrganisationMemberEditorDialogState
                 value: 'answer_owner',
                 child: Text('Department answer owner'),
               ),
-              DropdownMenuItem(value: 'admin', child: Text('Admin')),
+              if (widget.allowAdminRole || widget.initialRole == 'admin')
+                DropdownMenuItem(value: 'admin', child: Text('Admin')),
             ],
             onChanged: (value) => setState(() => _role = value ?? _role),
           ),
@@ -740,10 +798,12 @@ class _TeamAdminTile extends ConsumerStatefulWidget {
   const _TeamAdminTile({
     required this.team,
     required this.organisationMembers,
+    required this.canManageMembership,
   });
 
   final TeamSummary team;
   final AsyncValue<List<OrganisationMember>> organisationMembers;
+  final bool canManageMembership;
 
   @override
   ConsumerState<_TeamAdminTile> createState() => _TeamAdminTileState();
@@ -755,6 +815,19 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.canManageMembership) {
+      return ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        title: Text(widget.team.name),
+        subtitle: Text(widget.team.department?.name ?? 'Cross-functional'),
+        children: const [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Team membership is not delegated in this scope.'),
+          ),
+        ],
+      );
+    }
     final members = ref.watch(teamMembersProvider(widget.team.id));
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,

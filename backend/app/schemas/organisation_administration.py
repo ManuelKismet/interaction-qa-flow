@@ -64,6 +64,12 @@ class OwnerAppointment(BaseModel):
     user_id: UUID
 
 
+class OrganisationCapability(BaseModel):
+    permission: str
+    scope_type: str
+    scope_id: UUID | None
+
+
 class OrganisationProfile(BaseModel):
     organisation_id: UUID
     organisation_name: str
@@ -73,4 +79,12 @@ class OrganisationProfile(BaseModel):
     teams: list[str]
     is_owner: bool
     permissions: list[str]
+    permission_scopes: list[OrganisationCapability]
     assignment_managers: list[str]
+
+
+class OrganisationOwnerSummary(BaseModel):
+    user_id: UUID
+    display_name: str
+    email: str
+    active: bool

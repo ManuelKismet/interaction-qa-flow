@@ -1,7 +1,7 @@
 """Add owners, scoped grants, and organisation join requests."""
 
 from collections.abc import Sequence
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import sqlalchemy as sa
 from alembic import op
@@ -151,11 +151,16 @@ def upgrade() -> None:
         sa.column("scope_id", sa.Uuid()),
         sa.column("granted_by", sa.Uuid()),
     )
-    for user_id, organisation_id in connection.execute(
-        sa.text(
-            "SELECT id, organisation_id FROM users WHERE role = 'admin'"
+    existing_admins = list(
+        connection.execute(
+            sa.text("SELECT id, organisation_id FROM users WHERE role = 'admin'")
         )
-    ):
+    )
+    for user_id, organisation_id in existing_admins:
+        if isinstance(user_id, str):
+            user_id = UUID(user_id)
+        if isinstance(organisation_id, str):
+            organisation_id = UUID(organisation_id)
         connection.execute(
             sa.insert(grants).values(
                 id=uuid4(),

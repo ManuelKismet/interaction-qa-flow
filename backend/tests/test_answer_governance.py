@@ -407,8 +407,7 @@ async def test_review_queue_and_cross_tenant_access(app_client) -> None:
         "/api/v1/audit-events",
         headers=headers(ids, "outsider", "other_organisation"),
     )
-    assert foreign_audit.status_code == 200
-    assert foreign_audit.json() == []
+    assert foreign_audit.status_code == 403
 
 
 @pytest.mark.asyncio

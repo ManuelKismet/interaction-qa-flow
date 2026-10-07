@@ -405,6 +405,9 @@ class GovernanceService:
         can_review_anywhere = await self.permissions.has_any_permission(
             actor, "review"
         )
+        can_approve_anywhere = await self.permissions.has_any_permission(
+            actor, "answer_approval"
+        )
         if actor.role == UserRole.ANSWER_OWNER:
             department_ids = await self.governance.owned_department_ids(
                 organisation_id, actor.id
@@ -413,7 +416,7 @@ class GovernanceService:
                 department_ids = (
                     [department_id] if department_id in department_ids else []
                 )
-        elif can_review_anywhere:
+        elif can_review_anywhere or can_approve_anywhere:
             department_ids = None if department_id is None else [department_id]
         else:
             raise PermissionDeniedError("You do not have access to the review queue")
@@ -439,7 +442,7 @@ class GovernanceService:
                 organisation_id, department_ids, suggestion_status
             )
         )
-        async def may_review(question: Question) -> bool:
+        async def may_access(question: Question, permission: str) -> bool:
             if not self.permissions.can_view_question(actor, question):
                 return False
             department_id = question.department_id
@@ -449,7 +452,7 @@ class GovernanceService:
                 )
             if await self.permissions.has_permission(
                 actor,
-                "review",
+                permission,
                 department_id=department_id,
                 team_id=question.team_id,
             ):
@@ -463,16 +466,21 @@ class GovernanceService:
             )
 
         challenges = [
-            row for row in challenges if await may_review(row[2])
+            row for row in challenges if await may_access(row[2], "review")
         ]
-        due_answers = [row for row in due_answers if await may_review(row[1])]
+        due_answers = [
+            row for row in due_answers if await may_access(row[1], "review")
+        ]
         community_answers = [
-            row for row in community_answers if await may_review(row[1])
+            row
+            for row in community_answers
+            if await may_access(row[1], "answer_approval")
         ]
         suggestion_rows = [
             row
             for row in suggestion_rows
-            if await may_review(row[1]) and await may_review(row[2])
+            if await may_access(row[1], "review")
+            and await may_access(row[2], "review")
         ]
         items: list[ReviewQueueItem] = []
         if item_type in (None, ReviewQueueType.CHALLENGE):

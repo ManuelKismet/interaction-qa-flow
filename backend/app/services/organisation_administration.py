@@ -19,6 +19,8 @@ from app.schemas.organisation_administration import (
     OrganisationJoinRequestCreate,
     OrganisationJoinRequestDecision,
     OrganisationPermissionCreate,
+    OrganisationOwnerSummary,
+    OrganisationCapability,
 )
 from app.services.permissions import PermissionService
 from app.repositories.user import UserRepository
@@ -67,9 +69,30 @@ class OrganisationAdministrationService:
             )
         )
         managed = {grant.permission for grant in grants}
+        permission_scopes = [
+            OrganisationCapability(
+                permission=grant.permission,
+                scope_type=grant.scope_type,
+                scope_id=grant.scope_id,
+            )
+            for grant in grants
+        ]
         if is_owner:
             managed.update(
                 {"team_create", "team_membership", "review", "answer_approval"}
+            )
+            permission_scopes.extend(
+                OrganisationCapability(
+                    permission=permission,
+                    scope_type="organisation",
+                    scope_id=None,
+                )
+                for permission in (
+                    "team_create",
+                    "team_membership",
+                    "review",
+                    "answer_approval",
+                )
             )
         assignment_managers = list(
             await self.session.scalars(
@@ -85,25 +108,25 @@ class OrganisationAdministrationService:
                 .order_by(User.display_name)
             )
         )
-        if not assignment_managers:
-            assignment_managers = list(
-                await self.session.scalars(
-                    select(User.display_name)
-                    .join(
-                        OrganisationPermissionGrant,
-                        OrganisationPermissionGrant.user_id == User.id,
-                    )
-                    .where(
-                        OrganisationPermissionGrant.organisation_id
-                        == organisation_id,
-                        OrganisationPermissionGrant.permission == "legacy_admin",
-                        OrganisationPermissionGrant.revoked_at.is_(None),
-                        User.status == "active",
-                    )
-                    .distinct()
-                    .order_by(User.display_name)
+        assignment_managers.extend(
+            await self.session.scalars(
+                select(User.display_name)
+                .join(
+                    OrganisationPermissionGrant,
+                    OrganisationPermissionGrant.user_id == User.id,
                 )
+                .where(
+                    OrganisationPermissionGrant.organisation_id == organisation_id,
+                    OrganisationPermissionGrant.permission.in_(
+                        ["legacy_admin", "team_membership"]
+                    ),
+                    OrganisationPermissionGrant.revoked_at.is_(None),
+                    User.status == "active",
+                )
+                .distinct()
+                .order_by(User.display_name)
             )
+        )
         return {
             "organisation_id": organisation_id,
             "organisation_name": organisation.name if organisation else "",
@@ -113,8 +136,32 @@ class OrganisationAdministrationService:
             "teams": team_names,
             "is_owner": is_owner,
             "permissions": sorted(managed),
-            "assignment_managers": assignment_managers,
+            "permission_scopes": [
+                item.model_dump(mode="json") for item in permission_scopes
+            ],
+            "assignment_managers": sorted(set(assignment_managers)),
         }
+
+    async def list_owners(
+        self, organisation_id: UUID, user_id: UUID
+    ) -> list[OrganisationOwnerSummary]:
+        actor = await self.permissions.actor(user_id, organisation_id)
+        await self.permissions.require_admin(actor)
+        result = await self.session.execute(
+            select(OrganisationOwner, User)
+            .join(User, User.id == OrganisationOwner.user_id)
+            .where(OrganisationOwner.organisation_id == organisation_id)
+            .order_by(User.display_name, User.id)
+        )
+        return [
+            OrganisationOwnerSummary(
+                user_id=user.id,
+                display_name=user.display_name,
+                email=user.email,
+                active=user.status == "active",
+            )
+            for _, user in result.all()
+        ]
 
     async def list_grants(self, organisation_id: UUID, user_id: UUID) -> list:
         actor = await self.permissions.actor(user_id, organisation_id)
@@ -144,6 +191,11 @@ class OrganisationAdministrationService:
             raise HTTPException(status_code=403, detail="Organisation owner required")
         target = await self._active_member(data.user_id, organisation_id)
         self._validate_scope_shape(data.scope_type, data.scope_id)
+        if data.permission == "team_create" and data.scope_type == "team":
+            raise HTTPException(
+                status_code=422,
+                detail="Team creation may be scoped to an organisation or department",
+            )
         if data.scope_type == "department":
             await self._department(data.scope_id, organisation_id)
         elif data.scope_type == "team":
@@ -245,7 +297,16 @@ class OrganisationAdministrationService:
         actor = await self.permissions.actor(actor_id, organisation_id)
         if not await self.permissions.is_owner(actor):
             raise HTTPException(status_code=403, detail="Organisation owner required")
-        target = await self._active_member(target_id, organisation_id)
+        target = await self.session.scalar(
+            select(User)
+            .where(
+                User.id == target_id,
+                User.organisation_id == organisation_id,
+            )
+            .with_for_update()
+        )
+        if target is None:
+            raise HTTPException(status_code=404, detail="Organisation owner not found")
         existing = await self.session.scalar(
             select(OrganisationOwner).where(
                 OrganisationOwner.organisation_id == organisation_id,
@@ -482,9 +543,38 @@ class OrganisationAdministrationService:
                         user_id=requester.id,
                     )
                 )
+                self._audit(
+                    organisation_id,
+                    actor.id,
+                    AuditAction.TEAM_MEMBER_ADDED,
+                    request.id,
+                    {
+                        "team_id": str(team.id),
+                        "user_id": str(requester.id),
+                        "source": "approved_join_request",
+                        "outcome": "added",
+                    },
+                )
             else:
                 department = await self._department(request.target_id, organisation_id)
+                previous_department_id = requester.department_id
                 requester.department_id = department.id
+                self._audit(
+                    organisation_id,
+                    actor.id,
+                    AuditAction.USER_PRIMARY_DEPARTMENT_CHANGED,
+                    requester.id,
+                    {
+                        "old_department_id": (
+                            str(previous_department_id)
+                            if previous_department_id
+                            else None
+                        ),
+                        "new_department_id": str(department.id),
+                        "source": "approved_join_request",
+                        "outcome": "changed",
+                    },
+                )
         request.status = "approved" if data.decision == "approve" else "declined"
         request.reviewed_by = actor.id
         request.reviewer_note = data.reviewer_note

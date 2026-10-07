@@ -120,11 +120,6 @@ class OrganisationMemberService:
 
         await self._lock_organisation(organisation_id)
         actor_is_owner = await self._is_owner(organisation_id, actor_id)
-        if ("role" in fields_set or "status" in fields_set) and not actor_is_owner:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only an organisation owner can appoint admins or change membership status",
-            )
         member = await self.session.scalar(
             select(User)
             .where(
@@ -137,6 +132,11 @@ class OrganisationMemberService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Active organisation member not found",
+            )
+        if ("role" in fields_set or "status" in fields_set) and not actor_is_owner:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only an organisation owner can appoint admins or change membership status",
             )
 
         if "role" in fields_set:
@@ -333,6 +333,13 @@ class OrganisationMemberService:
                 )
             member = existing
             if member.role != update.role:
+                if (
+                    member.role == UserRole.ADMIN or update.role == UserRole.ADMIN
+                ) and not actor_is_owner:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Only an organisation owner can appoint or remove admins",
+                    )
                 old_role = member.role.value
                 self.session.add(
                     AuditEvent(
