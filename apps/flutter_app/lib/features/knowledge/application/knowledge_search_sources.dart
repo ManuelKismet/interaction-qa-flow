@@ -89,8 +89,8 @@ double localKnowledgeRelevance(String query, Map<String, dynamic> item) {
     item['answer'],
     item['body'],
   ].whereType<String>().join(' ').toLowerCase();
-  if (answerAndBody.contains(foldedQuery)) return 1.3;
+  if (answerAndBody.contains(foldedQuery)) return 2.5;
   final terms = foldedQuery.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
-  if (terms.isNotEmpty && terms.every(answerAndBody.contains)) return 1.2;
+  if (terms.isNotEmpty && terms.every(answerAndBody.contains)) return 1.6;
   return 0.9;
 }

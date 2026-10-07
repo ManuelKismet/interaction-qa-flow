@@ -61,11 +61,12 @@ class _AskPageState extends ConsumerState<AskPage> {
                 ),
                 _SuggestionList(
                   suggestions: suggestions,
-                  onRetry: _questionChanged,
+                  onRetry: ref.read(askSuggestionsProvider.notifier).retry,
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _detailController,
+                  textInputAction: TextInputAction.newline,
                   minLines: 3,
                   maxLines: 6,
                   decoration: const InputDecoration(
@@ -270,11 +271,16 @@ class _SuggestionList extends StatelessWidget {
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       TextButton(
-                        onPressed: onRetry,
+                        onPressed: items.isRefreshing ? null : onRetry,
                         child: const Text('Retry search'),
                       ),
                     ],
                   ),
+                ),
+              if (items.isRefreshing)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: LinearProgressIndicator(),
                 ),
               if (items.hits.isEmpty &&
                   items.failedSources.isEmpty &&
