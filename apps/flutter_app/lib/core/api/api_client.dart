@@ -48,10 +48,7 @@ class _FirebaseTokenSource implements ApiTokenSource {
   Future<void> signOut() => auth.signOut();
 }
 
-Dio createApiClient(
-  ApiTokenSource tokenSource, {
-  HttpClientAdapter? adapter,
-}) {
+Dio createApiClient(ApiTokenSource tokenSource, {HttpClientAdapter? adapter}) {
   final client = Dio(
     BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
@@ -79,14 +76,17 @@ Dio createApiClient(
         }
       },
       onResponse: (response, handler) {
-        final expectedUid = response.requestOptions.extra['expectedFirebaseUid'];
+        final expectedUid =
+            response.requestOptions.extra['expectedFirebaseUid'];
         if (expectedUid is String && tokenSource.currentUid != expectedUid) {
           handler.reject(
             DioException(
               requestOptions: response.requestOptions,
               response: response,
               type: DioExceptionType.cancel,
-              error: StateError('The signed-in account changed during the request.'),
+              error: StateError(
+                'The signed-in account changed during the request.',
+              ),
             ),
           );
           return;
@@ -100,15 +100,13 @@ Dio createApiClient(
         if (error.response?.statusCode != 401 ||
             options.extra['authRetried'] == true ||
             detail.contains('app check') ||
-            (expectedUid is String &&
-                tokenSource.currentUid != expectedUid)) {
+            (expectedUid is String && tokenSource.currentUid != expectedUid)) {
           handler.next(error);
           return;
         }
         try {
           final idToken = await tokenSource.idToken(forceRefresh: true);
-          if (expectedUid is String &&
-              tokenSource.currentUid != expectedUid) {
+          if (expectedUid is String && tokenSource.currentUid != expectedUid) {
             handler.next(error);
             return;
           }
@@ -157,6 +155,9 @@ Future<void> _attachTokens(
     throw StateError('The signed-in account changed before the request.');
   }
   final appCheckToken = await tokenSource.appCheckToken();
+  if (expectedUid is String && tokenSource.currentUid != expectedUid) {
+    throw StateError('The signed-in account changed before the request.');
+  }
   if (currentIdToken == null ||
       currentIdToken.isEmpty ||
       appCheckToken == null ||

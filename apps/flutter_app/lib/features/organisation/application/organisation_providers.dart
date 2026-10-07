@@ -26,9 +26,10 @@ final organisationDataScopeProvider =
         throw StateError('Sign in to view organisation information.');
       }
       final membership = await ref.watch(currentMembershipProvider.future);
-      if (!ref.mounted ||
-          ref.read(authStateProvider).value?.uid != user.uid) {
-        throw StateError('The signed-in account changed while loading membership.');
+      if (!ref.mounted || ref.read(authStateProvider).value?.uid != user.uid) {
+        throw StateError(
+          'The signed-in account changed while loading membership.',
+        );
       }
       return OrganisationDataScope(
         firebaseUid: user.uid,
@@ -38,28 +39,30 @@ final organisationDataScopeProvider =
       );
     });
 
-bool isCurrentOrganisationDataScope(
-  Ref ref,
-  OrganisationDataScope scope,
-) {
-  if (!ref.mounted ||
-      ref.read(authStateProvider).value?.uid != scope.firebaseUid) {
-    return false;
-  }
-  final membership = ref.read(currentMembershipProvider);
-  return membership.hasValue &&
-      membership.requireValue.userId == scope.userId &&
-      membership.requireValue.organisationId == scope.organisationId &&
-      membership.requireValue.role == scope.role;
-}
+bool isCurrentOrganisationDataScope(Ref ref, OrganisationDataScope scope) =>
+    isOrganisationDataScopeCurrent(
+      mounted: ref.mounted,
+      firebaseUid: ref.read(authStateProvider).value?.uid,
+      membership: ref.read(currentMembershipProvider),
+      scope: scope,
+    );
+
+bool isOrganisationDataScopeCurrent({
+  required bool mounted,
+  required String? firebaseUid,
+  required AsyncValue<ActiveMembership> membership,
+  required OrganisationDataScope scope,
+}) =>
+    mounted &&
+    firebaseUid == scope.firebaseUid &&
+    membership.hasValue &&
+    membership.requireValue.userId == scope.userId &&
+    membership.requireValue.organisationId == scope.organisationId &&
+    membership.requireValue.role == scope.role;
 
 Future<T> _loadInOrganisationScope<T>(
   Ref ref,
-  Future<T> Function(
-    OrganisationDataScope scope,
-    CancelToken cancelToken,
-  )
-  load,
+  Future<T> Function(OrganisationDataScope scope, CancelToken cancelToken) load,
 ) async {
   final scope = await ref.watch(organisationDataScopeProvider.future);
   final cancelToken = CancelToken();
@@ -115,10 +118,10 @@ final myOrganisationJoinRequestsProvider =
       return _loadInOrganisationScope(
         ref,
         (scope, cancelToken) => repository.joinRequests(
-              scope.firebaseUid,
-              mine: true,
-              cancelToken: cancelToken,
-            ),
+          scope.firebaseUid,
+          mine: true,
+          cancelToken: cancelToken,
+        ),
       );
     });
 
@@ -128,9 +131,9 @@ final pendingOrganisationJoinRequestsProvider =
       return _loadInOrganisationScope(
         ref,
         (scope, cancelToken) => repository.joinRequests(
-              scope.firebaseUid,
-              mine: false,
-              cancelToken: cancelToken,
-            ),
+          scope.firebaseUid,
+          mine: false,
+          cancelToken: cancelToken,
+        ),
       );
     });

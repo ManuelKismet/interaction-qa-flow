@@ -10,151 +10,193 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
+import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
 import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 import 'package:int_qa_flow/features/organisation/presentation/organisation_page.dart';
-import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
-import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 void main() {
-  test('organisation list providers discard late responses after UID switch', () async {
-    final auth = _TestAuth(_TestUser('user-a'));
-    final events = StreamController<User?>.broadcast();
-    final adapter = _OrganisationAdapter()..holdListsForUid = 'user-a';
-    final client = createApiClient(_TestTokens(auth), adapter: adapter);
-    final container = ProviderContainer(
-      overrides: [
-        firebaseAuthProvider.overrideWithValue(auth),
-        authStateProvider.overrideWith((ref) => _authEvents(auth, events)),
-        apiClientProvider.overrideWithValue(client),
-      ],
-    );
-    addTearDown(container.dispose);
-    addTearDown(events.close);
+  test(
+    'organisation list providers discard late responses after UID switch',
+    () async {
+      final auth = _TestAuth(_TestUser('user-a'));
+      final events = StreamController<User?>.broadcast();
+      final adapter = _OrganisationAdapter()..holdListsForUid = 'user-a';
+      final client = createApiClient(_TestTokens(auth), adapter: adapter);
+      final container = ProviderContainer(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(auth),
+          authStateProvider.overrideWith((ref) => _authEvents(auth, events)),
+          apiClientProvider.overrideWithValue(client),
+        ],
+      );
+      addTearDown(container.dispose);
+      addTearDown(events.close);
 
-    final subscriptions = [
-      container.listen(organisationPermissionsProvider, (_, _) {}),
-      container.listen(organisationOwnersProvider, (_, _) {}),
-      container.listen(myOrganisationJoinRequestsProvider, (_, _) {}),
-      container.listen(pendingOrganisationJoinRequestsProvider, (_, _) {}),
-    ];
-    addTearDown(() {
-      for (final subscription in subscriptions) {
-        subscription.close();
+      final deliveredResponses = <String>[];
+      final subscriptions = [
+        container.listen(organisationPermissionsProvider, (_, next) {
+          if (next.hasValue) {
+            deliveredResponses.add(next.requireValue.toString());
+          }
+        }),
+        container.listen(organisationOwnersProvider, (_, next) {
+          if (next.hasValue) {
+            deliveredResponses.add(next.requireValue.toString());
+          }
+        }),
+        container.listen(myOrganisationJoinRequestsProvider, (_, next) {
+          if (next.hasValue) {
+            deliveredResponses.add(next.requireValue.toString());
+          }
+        }),
+        container.listen(pendingOrganisationJoinRequestsProvider, (_, next) {
+          if (next.hasValue) {
+            deliveredResponses.add(next.requireValue.toString());
+          }
+        }),
+      ];
+      addTearDown(() {
+        for (final subscription in subscriptions) {
+          subscription.close();
+        }
+      });
+      final providers = [
+        organisationPermissionsProvider,
+        organisationOwnersProvider,
+        myOrganisationJoinRequestsProvider,
+        pendingOrganisationJoinRequestsProvider,
+      ];
+      final oldResults = [
+        for (final provider in providers)
+          container
+              .read(provider.future)
+              .then<Object?>((value) => value, onError: (Object _) => null),
+      ];
+      await _waitFor(() => adapter.heldResponses.length == 4);
+
+      final userB = _TestUser('user-b');
+      auth.user = userB;
+      events.add(userB);
+      await _waitFor(
+        () =>
+            adapter.requests
+                .where(
+                  (request) =>
+                      request.uid == 'user-b' &&
+                      _OrganisationAdapter.listPaths.contains(request.path),
+                )
+                .length ==
+            4,
+      );
+      await Future.wait([
+        for (final provider in providers) container.read(provider.future),
+      ]);
+
+      for (final response in adapter.heldResponses.values) {
+        response.completer.complete(
+          adapter.responseFor(response.uid, response.path),
+        );
       }
-    });
-    final providers = [
-      organisationPermissionsProvider,
-      organisationOwnersProvider,
-      myOrganisationJoinRequestsProvider,
-      pendingOrganisationJoinRequestsProvider,
-    ];
-    final oldResults = [
-      for (final provider in providers)
-        container.read(provider.future).then<Object?>(
-          (value) => value,
-          onError: (Object _) => null,
-        ),
-    ];
-    await _waitFor(() => adapter.heldResponses.length == 4);
+      await Future.wait(oldResults);
+      expect(
+        await Future.wait([
+          for (final provider in providers) container.read(provider.future),
+        ]),
+        everyElement(isEmpty),
+      );
+      expect(deliveredResponses.join(), isNot(contains('grant-a')));
+      expect(
+        deliveredResponses.join(),
+        isNot(contains('Owner marker for user A')),
+      );
+      expect(deliveredResponses.join(), isNot(contains('pending-target-a')));
+      expect(
+        container.read(organisationDataScopeProvider).requireValue.firebaseUid,
+        'user-b',
+      );
+      expect(
+        adapter.requests.where((request) => request.uid == 'user-b'),
+        isNotEmpty,
+      );
+      expect(
+        adapter.requests.where((request) => request.uid == 'user-a'),
+        isNotEmpty,
+      );
+    },
+  );
 
-    final userB = _TestUser('user-b');
-    auth.user = userB;
-    events.add(userB);
-    await _waitFor(
-      () => adapter.requests
-              .where(
-                (request) =>
-                    request.uid == 'user-b' &&
-                    _OrganisationAdapter.listPaths.contains(request.path),
-              )
-              .length ==
-          4,
-    );
-    await Future.wait([
-      for (final provider in providers) container.read(provider.future),
-    ]);
+  testWidgets(
+    'routed page refreshes revoked review capability and retries list errors',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    for (final response in adapter.heldResponses.values) {
-      response.complete(adapter.responseFor(response.uid, response.path));
-    }
-    await Future.wait(oldResults);
-    expect(container.read(organisationDataScopeProvider).requireValue.firebaseUid,
-        'user-b');
-    expect(
-      adapter.requests.where((request) => request.uid == 'user-b'),
-      isNotEmpty,
-    );
-    expect(
-      adapter.requests.where((request) => request.uid == 'user-a'),
-      isNotEmpty,
-    );
-  });
+      final adapter = _OrganisationAdapter()
+        ..reviewerUids.add('user-a')
+        ..failMyRequestsOnce = true;
+      final mounted = await _mountRoutedPage(tester, adapter: adapter);
 
-  testWidgets('routed page refreshes revoked review capability and retries list errors',
-      (tester) async {
-    tester.view.physicalSize = const Size(900, 1800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpAndSettle();
+      expect(find.text('Requests could not be loaded.'), findsOneWidget);
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('No pending or recent requests.'), findsOneWidget);
+      expect(find.textContaining('Requests you can review'), findsOneWidget);
 
-    final adapter = _OrganisationAdapter()
-      ..reviewerUids.add('user-a')
-      ..failMyRequestsOnce = true;
-    final mounted = await _mountRoutedPage(tester, adapter: adapter);
+      adapter.reviewerUids.remove('user-a');
+      adapter.rejectJoinDecisions = true;
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Requests you can review'), findsNothing);
+      expect(find.text('Review requests and proposals'), findsOneWidget);
+      expect(find.text('Not granted'), findsWidgets);
+      mounted.close();
+    },
+  );
 
-    await tester.pumpAndSettle();
-    expect(find.text('Requests could not be loaded.'), findsOneWidget);
-    await tester.tap(find.text('Retry'));
-    await tester.pumpAndSettle();
-    expect(find.text('No pending or recent requests.'), findsOneWidget);
-    expect(find.textContaining('Requests you can review'), findsOneWidget);
+  testWidgets(
+    'routed organisation page clears owner data on role, UID and signout',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    adapter.reviewerUids.remove('user-a');
-    adapter.rejectJoinDecisions = true;
-    await tester.tap(find.text('Approve'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Requests you can review'), findsNothing);
-    expect(find.text('Review requests and proposals'), findsOneWidget);
-    expect(find.text('Not granted'), findsWidgets);
-    mounted.close();
-  });
+      final adapter = _OrganisationAdapter()..ownerUids.add('user-a');
+      final mounted = await _mountRoutedPage(tester, adapter: adapter);
+      await tester.pumpAndSettle();
+      expect(find.text('Owner administration'), findsOneWidget);
+      expect(find.text('Owner marker for user A'), findsOneWidget);
 
-  testWidgets('routed organisation page clears owner data on role, UID and signout',
-      (tester) async {
-    tester.view.physicalSize = const Size(900, 1800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+      adapter.ownerUids.remove('user-a');
+      adapter.roleByUid['user-a'] = 'employee';
+      mounted.auth.user = _TestUser('user-a');
+      mounted.events.add(mounted.auth.user);
+      await tester.pumpAndSettle();
+      expect(find.text('Owner administration'), findsNothing);
+      expect(find.text('Owner marker for user A'), findsNothing);
 
-    final adapter = _OrganisationAdapter()..ownerUids.add('user-a');
-    final mounted = await _mountRoutedPage(tester, adapter: adapter);
-    await tester.pumpAndSettle();
-    expect(find.text('Owner administration'), findsOneWidget);
-    expect(find.text('Owner marker for user A'), findsOneWidget);
+      mounted.auth.user = _TestUser('user-b');
+      mounted.events.add(mounted.auth.user);
+      await tester.pumpAndSettle();
+      expect(find.text('Organisation user-b'), findsOneWidget);
+      expect(find.text('Owner marker for user A'), findsNothing);
+      expect(find.text('grant-a'), findsNothing);
 
-    adapter.ownerUids.remove('user-a');
-    adapter.roleByUid['user-a'] = 'employee';
-    mounted.auth.user = _TestUser('user-a');
-    mounted.events.add(mounted.auth.user);
-    await tester.pumpAndSettle();
-    expect(find.text('Owner administration'), findsNothing);
-    expect(find.text('Owner marker for user A'), findsNothing);
-
-    mounted.auth.user = _TestUser('user-b');
-    mounted.events.add(mounted.auth.user);
-    await tester.pumpAndSettle();
-    expect(find.text('Organisation user-b'), findsOneWidget);
-    expect(find.text('Owner marker for user A'), findsNothing);
-    expect(find.text('grant-a'), findsNothing);
-
-    mounted.auth.user = null;
-    mounted.events.add(null);
-    await tester.pumpAndSettle();
-    expect(find.text('Organisation user-b'), findsNothing);
-    expect(find.text('Organisation membership is unavailable.'), findsOneWidget);
-    mounted.close();
-  });
+      mounted.auth.user = null;
+      mounted.events.add(null);
+      await tester.pumpAndSettle();
+      expect(find.text('Organisation user-b'), findsNothing);
+      expect(
+        find.text('Organisation membership is unavailable.'),
+        findsOneWidget,
+      );
+      mounted.close();
+    },
+  );
 }
 
 Future<_MountedPage> _mountRoutedPage(
@@ -175,6 +217,7 @@ Future<_MountedPage> _mountRoutedPage(
   );
   await tester.pumpWidget(
     ProviderScope(
+      retry: (_, _) => null,
       overrides: [
         firebaseAuthProvider.overrideWithValue(auth),
         authStateProvider.overrideWith((ref) => _authEvents(auth, events)),
@@ -204,18 +247,16 @@ class _MountedPage {
   }
 }
 
-Stream<User?> _authEvents(
-  _TestAuth auth,
-  StreamController<User?> events,
-) => Stream<User?>.multi((controller) {
-  controller.add(auth.currentUser);
-  final subscription = events.stream.listen(
-    controller.add,
-    onError: controller.addError,
-    onDone: controller.close,
-  );
-  controller.onCancel = subscription.cancel;
-});
+Stream<User?> _authEvents(_TestAuth auth, StreamController<User?> events) =>
+    Stream<User?>.multi((controller) {
+      controller.add(auth.currentUser);
+      final subscription = events.stream.listen(
+        controller.add,
+        onError: controller.addError,
+        onDone: controller.close,
+      );
+      controller.onCancel = subscription.cancel;
+    });
 
 Future<void> _waitFor(bool Function() condition) async {
   for (var attempt = 0; attempt < 100 && !condition(); attempt++) {
@@ -314,32 +355,27 @@ class _OrganisationAdapter implements HttpClientAdapter {
     final authorization = options.headers['Authorization'] as String;
     final uid = authorization.replaceFirst('Bearer ', '');
     final path = options.uri.path;
+    final mine = options.queryParameters['mine']?.toString() == 'true';
     requests.add(_RequestRecord(uid, path));
-    final key = '$uid:$path:${options.queryParameters['mine']}';
+    final key = '$uid:$path:$mine';
     _attempts[key] = (_attempts[key] ?? 0) + 1;
 
     if (path == '/api/v1/organisation/join-requests/request-a/decision' &&
         rejectJoinDecisions) {
-      return _response(
-        {'detail': 'Permission was revoked'},
-        statusCode: 403,
-      );
+      return _response({'detail': 'Permission was revoked'}, statusCode: 403);
     }
     if (path == '/api/v1/organisation/join-requests' &&
-        options.queryParameters['mine'] == true &&
+        mine &&
         failMyRequestsOnce &&
         (_attempts[key] ?? 0) == 1) {
-      return _response(
-        {'detail': 'Temporary failure'},
-        statusCode: 503,
-      );
+      return _response({'detail': 'Temporary failure'}, statusCode: 503);
     }
     if (uid == holdListsForUid && listPaths.contains(path)) {
       final completer = Completer<ResponseBody>();
       heldResponses[key] = _HeldResponse(uid, path, completer);
       return completer.future;
     }
-    return responseFor(uid, path, options.queryParameters['mine']);
+    return responseFor(uid, path, mine);
   }
 
   ResponseBody responseFor(String uid, String path, [Object? mine]) {
@@ -376,45 +412,48 @@ class _OrganisationAdapter implements HttpClientAdapter {
             : <Map<String, Object?>>[],
         'assignment_managers': <String>[],
       },
-      '/api/v1/organisation/permissions' => uid == 'user-a'
-          ? [
-              {
-                'id': 'grant-a',
-                'user_id': userId,
-                'permission': 'review',
-                'scope_type': 'department',
-                'scope_id': 'department-a',
-              },
-            ]
-          : <Map<String, Object?>>[],
-      '/api/v1/organisation/owners' => uid == 'user-a'
-          ? [
-              {
-                'user_id': userId,
-                'display_name': 'Owner marker for user A',
-                'email': 'owner-a@example.test',
-                'active': true,
-              },
-            ]
-          : <Map<String, Object?>>[],
-      '/api/v1/organisation/join-requests' => mine == true
-          ? <Map<String, Object?>>[]
-          : isReviewer
-          ? [
-              {
-                'id': 'request-a',
-                'requester_id': 'db-requester',
-                'request_type': 'department',
-                'target_id': 'pending-target-a',
-                'status': 'pending',
-                'reason': null,
-                'reviewed_by': null,
-                'reviewer_note': null,
-                'created_at': '2026-10-07T00:00:00Z',
-                'reviewed_at': null,
-              },
-            ]
-          : <Map<String, Object?>>[],
+      '/api/v1/organisation/permissions' =>
+        uid == 'user-a'
+            ? [
+                {
+                  'id': 'grant-a',
+                  'user_id': userId,
+                  'permission': 'review',
+                  'scope_type': 'department',
+                  'scope_id': 'department-a',
+                },
+              ]
+            : <Map<String, Object?>>[],
+      '/api/v1/organisation/owners' =>
+        uid == 'user-a'
+            ? [
+                {
+                  'user_id': userId,
+                  'display_name': 'Owner marker for user A',
+                  'email': 'owner-a@example.test',
+                  'active': true,
+                },
+              ]
+            : <Map<String, Object?>>[],
+      '/api/v1/organisation/join-requests' =>
+        mine == true
+            ? <Map<String, Object?>>[]
+            : isReviewer
+            ? [
+                {
+                  'id': 'request-a',
+                  'requester_id': 'db-requester',
+                  'request_type': 'department',
+                  'target_id': 'pending-target-a',
+                  'status': 'pending',
+                  'reason': null,
+                  'reviewed_by': null,
+                  'reviewer_note': null,
+                  'created_at': '2026-10-07T00:00:00Z',
+                  'reviewed_at': null,
+                },
+              ]
+            : <Map<String, Object?>>[],
       _ => <String, Object?>{},
     };
     return _response(value);

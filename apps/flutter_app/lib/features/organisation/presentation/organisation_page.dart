@@ -10,27 +10,41 @@ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 OrganisationDataScope? _currentOrganisationScope(
   WidgetRef ref,
-  OrganisationProfile profile,
-) {
+  OrganisationProfile profile, {
+  required bool mounted,
+}) {
   final value = ref.read(organisationDataScopeProvider);
   if (!value.hasValue) return null;
   final scope = value.requireValue;
   if (scope.userId != profile.userId ||
       scope.organisationId != profile.organisationId ||
-      !isCurrentOrganisationDataScope(ref, scope)) {
+      !_isScopeCurrent(ref, scope, mounted: mounted)) {
     return null;
   }
   return scope;
 }
 
+bool _isScopeCurrent(
+  WidgetRef ref,
+  OrganisationDataScope scope, {
+  required bool mounted,
+}) => isOrganisationDataScopeCurrent(
+  mounted: mounted,
+  firebaseUid: ref.read(authStateProvider).value?.uid,
+  membership: ref.read(currentMembershipProvider),
+  scope: scope,
+);
+
 bool _isCurrentOrganisationScope(
   WidgetRef ref,
   OrganisationDataScope scope,
-  OrganisationProfile profile,
-) =>
+  OrganisationProfile profile, {
+  required bool mounted,
+}) =>
     profile.userId == scope.userId &&
     profile.organisationId == scope.organisationId &&
-    isCurrentOrganisationDataScope(ref, scope);
+    profile.role == scope.role &&
+    _isScopeCurrent(ref, scope, mounted: mounted);
 
 class OrganisationPage extends ConsumerStatefulWidget {
   const OrganisationPage({super.key});
@@ -46,7 +60,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
   String? _scopeKey;
 
   OrganisationDataScope? _currentScope(OrganisationProfile profile) =>
-      _currentOrganisationScope(ref, profile);
+      _currentOrganisationScope(ref, profile, mounted: mounted);
 
   Future<void> _request(OrganisationProfile profile) async {
     final scope = _currentScope(profile);
@@ -408,7 +422,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
   bool _isCurrentScope(
     OrganisationDataScope scope,
     OrganisationProfile profile,
-  ) => _isCurrentOrganisationScope(ref, scope, profile);
+  ) => _isCurrentOrganisationScope(ref, scope, profile, mounted: mounted);
 
   void _invalidateOrganisationLists() {
     ref.invalidate(organisationProfileProvider);
@@ -464,7 +478,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
 }
 
 class _OwnerAdministration extends ConsumerStatefulWidget {
-  const _OwnerAdministration({required this.profile});
+  const _OwnerAdministration({super.key, required this.profile});
 
   final OrganisationProfile profile;
 
@@ -488,7 +502,11 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
   bool _busy = false;
 
   Future<void> _withAction(Future<void> Function(String uid) action) async {
-    final scope = _currentOrganisationScope(ref, widget.profile);
+    final scope = _currentOrganisationScope(
+      ref,
+      widget.profile,
+      mounted: mounted,
+    );
     if (scope == null) return;
     setState(() => _busy = true);
     try {
@@ -507,7 +525,7 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
   }
 
   bool _isCurrentScope(OrganisationDataScope scope) =>
-      _isCurrentOrganisationScope(ref, scope, widget.profile);
+      _isCurrentOrganisationScope(ref, scope, widget.profile, mounted: mounted);
 
   void _invalidateOrganisationData() {
     ref.invalidate(organisationPermissionsProvider);
