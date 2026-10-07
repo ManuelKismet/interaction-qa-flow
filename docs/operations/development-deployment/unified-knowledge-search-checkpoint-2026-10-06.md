@@ -1,45 +1,67 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
-## Replacement completed; mailbox delivery pending — 2026-10-07
+## Latest independent replacement review — correction pending, 2026-10-07
 
-Authorised replacement taskb8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0 completed
-and opened [draft PR19](https://github.com/ManuelKismet/interaction-qa-flow/pull/19)
-from copilot/replacement-ask-parity-20261007 into
-fix/unified-search-dev-20261006. This is NOT the quarantined old PR13 attempt.
-Published source head `adee30e53a92b6e51fa3ee2472216db1b7beeb20`.
-Independent GitHub parent-chain inspection confirmed exact sequence:
-e9e3cc804e8dbb45033e637304fd34c21cd14b2f →
-90529c13aee44c1b18e66b9c4e62a20c0d447f2f →
-f5c5f68878bbc9af5dcd9f9d58f3843703b2cfb8 →
-adee30e53a92b6e51fa3ee2472216db1b7beeb20.
-Only five Flutter application/test files changed, no backend/schema changes.
+Replacement PR19 delivery completed in artifact commit
+`20f6a89c8f35a2b077298b029d10abf17c815642`, parent adee30e5.
+Mailbox path `docs/operations/development-deployment/unified-knowledge-ask-parity-replacement-20261007.patch`;
+exact-byte SHA256 `d49ac604aa73037ce7e6de56fcc01d3544cd688a8463fa1e1f424c5ac4ffb630`.
+Declared base e9e3cc804e8dbb45033e637304fd34c21cd14b2f verified.
+Applied UNCHANGED via git am in /workspaces/intqaflow-unified-search-dev-20261006.
+Complete review source **`6514b7e50c38520449b114853f9f11d1c74db136`**, pushed to
+fix/unified-search-dev-20261006 and exact GitHub readback verified.
+Independent entire-tree diff against authored adee30e53a92b6e51fa3ee2472216db1b7beeb20
+is empty; diff --check passed. Five Flutter files only; no backend/schema changes.
+Isolated tree clean and four dirty main docs preserved. No Codex app/test edits.
 
-Copilot completion reports cumulative patch SHA256
-`6c6fad4468b55603024c070d55355d6f15179329810ceaf1b2e29dbc18dafd72`,
-but source tree has NO .patch file and no published artifact commit/path.
-Do not treat that hash alone as a downloadable artifact or reconstruct old
-patches. [ONE delivery-only follow-up](https://github.com/ManuelKismet/interaction-qa-flow/pull/19#issuecomment-6033042310)
-requests the unchanged existing three source commits as one format-patch mailbox
-with declared e9e3cc8 base, source/artifact SHAs, path and exact-byte checksum.
-No new app/test code changes or competing task requested. Await this same
-replacement delivery before unchanged isolated application and independent tests.
+| Executed independent check on6514b7e | Result |
+|---|---|
+| Python compile / Alembic heads | exit0 / single0014, exit0 |
+| Full backend |111 passed,4 skipped,10 warnings,22.07s,exit0|
+| Fresh real PostgreSQL16 |4 passed,1.53s,exit0,asyncpg|
+| Separate isolated migration database |0014→0013→0014 and current0014 PASS,exit0|
+| Full Flutter |177 passed,3 failed,about80s,exit1|
+| Analyzer |0 errors,0 warnings,13 existing infos,16.3s,exit1 due infos|
+| Configured DEV release web build |PASS,105.5s,exit0|
+| Non-mutating Dart format check |all5touched files would change,exit1; no modifications|
 
-Copilot tool logs confirm Flutter test/analyzer/Dart formatter each unavailable
-(exit127). Its outer shell exit0 is NOT a test pass. Parallel review model could
-not initialize and CodeQL did not analyze Dart. Only Copilot-reported diff/secret
-checks passed; Codex has NOT run new independent compile/backend/PostgreSQL/
-Flutter/analyzer/release checks on adee30e5, applied it, or deployed it.
-Static controller inspection begun; unused question_models import removed and
-scope identity now includes UID/membership state/organisation, but acceptance
-still requires actual independent runtime tests. No unexecuted passes claimed.
+Initial PostgreSQL/migration attempt used unavailable psycopg driver and failed
+ModuleNotFoundError; corrected executions used installed asyncpg on fresh local
+databases ask_pr19_tests_6514b7e / ask_pr19_migrate_6514b7e, host127.0.0.1:55442.
+Do not report initial attempt as a code failure or hide it. No hosted DB touched.
+Logs/exit receipts retained in /home/vscode/.local/share/intqaflow/ask-validation-6514b7e.
 
-Old request6026870639/task8c57d37e remains superseded/quarantined. Reject its late
-artifacts; only replacement PR19 provenance may enter review. DEV remains
-review105a528100%/schema0014/Hosting4eb839685c6f21c7. Codespace and temporary
-PostgreSQL remain stopped; no new application/migration/traffic/Hosting/security
-change. Preserve four dirty main docs. Existing rollback/data/privacy boundaries,
-fake-provider quality and authenticated-import gaps, and deferred organisation
-work remain unchanged. Monitoring remains cancelled; no automation created.
+**ONE targeted incremental correction** sent on same authorised
+[PR19 comment6033327274](https://github.com/ManuelKismet/interaction-qa-flow/pull/19#issuecomment-6033327274),
+complete baseline6514b7e, no competing task:
+- controller test 'drops stale results after identity and membership changes':
+expected three password calls, actual four; diagnose legitimate transition refresh
+vs redundant/unscoped request, retain scope/privacy rejection assertions.
+- actual GuestWorkspacePage navigation harness raises [core/no-app] Firebase default
+app missing through firebaseAuthProvider, followed by Saved Q&A missing at
+ask_page_test.dart:328. Faithful deterministic provider overrides required;
+do not replace real destination with dummy text/suppress exceptions.
+- manual-only submission test StateError 'No element' at ask_page_test.dart:436;
+fix finder/harness/control behaviour while retaining exact manual payload and
+no retrieved/local/private-content upload assertions.
+- Copilot to format touched Dart files. Preserve all previous parity acceptance.
+Await completion/mailbox declaring baseline6514b7e and exact checksum before
+UNCHANGED application and independent rerun. Copilot's original Flutter tools
+were unavailable exit127; its outer shell0 was not a pass.
+
+DEV rollout **HELD**, unchanged complete reviewed105a528 /
+intqaflow-dev-api-review105a528100%, schema0014 /
+Hostingrelease1791323636722000/version4eb839685c6f21c7.
+Keep reviewed rollback and additive schema/private data; no live downgrade/purge.
+Temporary PostgreSQL stopped (pg_ctl confirmed server stopped), no proxy started.
+Codespace bookish-happiness-w974vpwgq7j3g95v stopped, GitHub banner confirmed.
+All source/log/database files retained. Main four dirty docs preserved.
+Old PR13 task8c57d37e remains quarantined (not confirmed cancelled); reject late
+outputs. Replacement identity remains b8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0.
+Fake-provider semantic quality and authenticated personal-import E2E/F04/F08/F09
+remain unverified. Organisation improvements DEFERRED. No production, merge,
+security/IAM/AppCheck weakening, secrets disclosure or automatic upload.
+Monitoring remains cancelled; no automation created.
 
 ## Active replacement and old-output quarantine — 2026-10-07
 
