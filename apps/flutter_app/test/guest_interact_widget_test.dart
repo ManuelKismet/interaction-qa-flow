@@ -1403,7 +1403,7 @@ class _MemoryGuestStorage implements GuestStorage {
 }
 
 class _DelayedFirstSaveStore extends GuestWorkspaceStore {
-  _DelayedFirstSaveStore(GuestStorage storage) : super(storage);
+  _DelayedFirstSaveStore(super.storage);
 
   final firstWriteStarted = Completer<void>();
   final _firstWriteGate = Completer<void>();

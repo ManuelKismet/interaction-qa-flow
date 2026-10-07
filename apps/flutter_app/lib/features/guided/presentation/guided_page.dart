@@ -264,8 +264,9 @@ class GuidedPage extends ConsumerWidget {
         ],
       ),
     );
-    if (submit != true || payload.text.trim().isEmpty || !context.mounted)
+    if (submit != true || payload.text.trim().isEmpty || !context.mounted) {
       return;
+    }
     var imported = false;
     try {
       final result = await repository.importLegacy(payload.text);
@@ -327,10 +328,12 @@ class _SessionsList extends StatelessWidget {
             .expand((group) => group.value ?? const <GuidedSessionSummary>[])
             .toList()
           ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
-    if (loading && sessions.isEmpty)
+    if (loading && sessions.isEmpty) {
       return const Center(child: CircularProgressIndicator());
-    if (sessions.isEmpty)
+    }
+    if (sessions.isEmpty) {
       return const Center(child: Text('No sessions here yet.'));
+    }
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -568,8 +571,9 @@ class _TemplatesList extends ConsumerWidget {
     if (submit != true ||
         name.text.trim().isEmpty ||
         lines.isEmpty ||
-        !context.mounted)
+        !context.mounted) {
       return;
+    }
     await repository.createTemplate(name.text.trim(), lines);
     if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }
@@ -617,8 +621,9 @@ class _TemplatesList extends ConsumerWidget {
         ],
       ),
     );
-    if (submit != true || payload.text.trim().isEmpty || !context.mounted)
+    if (submit != true || payload.text.trim().isEmpty || !context.mounted) {
       return;
+    }
     await repository.importTemplates(payload.text);
     if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }

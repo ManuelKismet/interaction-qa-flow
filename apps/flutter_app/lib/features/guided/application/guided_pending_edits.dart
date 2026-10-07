@@ -230,8 +230,9 @@ class GuidedPendingEdits {
     onChanged();
     try {
       repository.ensureCurrent();
-      if (_revision == null)
+      if (_revision == null) {
         throw StateError('Reload this session before saving.');
+      }
       if (_needsFullRead) {
         final session = await repository.getSession(sessionId);
         if (_closed) return;

@@ -1407,10 +1407,11 @@ class _Adapter implements HttpClientAdapter {
   ) async {
     if (options.path == '/api/v1/guided/import/legacy') {
       final payload = options.data['payload'] as Map;
-      if (payload.containsKey('sessions'))
+      if (payload.containsKey('sessions')) {
         return _response({
           'detail': 'Unsupported guest backup',
         }, status: 409).open();
+      }
       return _response({
         'session': session(),
         'warnings': ['Missing legacy participant name was replaced.'],
@@ -1420,8 +1421,9 @@ class _Adapter implements HttpClientAdapter {
       writes.add(options);
       if (failWrites) return _response({}, status: 503).open();
       final expected = options.data['expected_revision'];
-      if (expected != null && expected != revision)
+      if (expected != null && expected != revision) {
         return _response({}, status: 409).open();
+      }
       if (options.method == 'POST' && options.path.endsWith('/answers')) {
         removeAnswer = false;
       }
@@ -1548,8 +1550,9 @@ class _Adapter implements HttpClientAdapter {
       write.complete(_response({'session_revision': revision}));
     }
     final export = exportGate;
-    if (export != null && !export.isCompleted)
+    if (export != null && !export.isCompleted) {
       export.complete(_response(session()));
+    }
   }
 
   @override
