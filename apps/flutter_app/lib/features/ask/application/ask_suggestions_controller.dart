@@ -128,14 +128,18 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
   Timer? _debounce;
   String _latestQuery = '';
   int _queryGeneration = 0;
+  String? _lastSearchQuery;
+  AskSearchIdentity? _lastSearchIdentity;
 
   @override
   Future<AskSuggestions> build() async {
     ref.listen(askSearchIdentityProvider, (previous, next) {
       if (previous != null &&
           !previous.sameScopeAs(next) &&
-          _latestQuery.isNotEmpty) {
-        queryChanged(_latestQuery);
+          _latestQuery.isNotEmpty &&
+          (_lastSearchQuery != _latestQuery ||
+              _lastSearchIdentity?.sameScopeAs(next) != true)) {
+        _scheduleQuery(_latestQuery, preserveResults: false);
       }
     });
     ref.onDispose(() {
@@ -146,6 +150,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
   }
 
   void queryChanged(String query) {
+    _lastSearchQuery = null;
     _scheduleQuery(query, preserveResults: false);
   }
 
@@ -194,6 +199,8 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
     AskSuggestions? previousResults,
   }) async {
     final identity = ref.read(askSearchIdentityProvider);
+    _lastSearchQuery = query;
+    _lastSearchIdentity = identity;
     GuestWorkspaceData local;
     var localFailed = false;
     try {
