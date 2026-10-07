@@ -41,7 +41,16 @@ not broad global text matcher/dummy destination/removed assertions/renderer chan
 merely to satisfy test. Also outstanding requested Dart formatting.
 Complete baseline8b675e2; incremental mailbox/source/artifact/checksum requested.
 Prior correction6033327274 completed before this follow-up; no competing task.
-Await new completed artifact before unchanged apply/retest; no retry loop.
+GitHub responded to6033551477 by automatically creating stacked draft PR20,
+not an additional Codex request. Carrier copilot/replacement-ask-parity-20261007-again
+into copilot/replacement-ask-parity-20261007 at298e2c7; initial-plan head
+c3beccc01e49d271211d33cfdde61513e2a0e677. PR20 body explicitly links triggering
+comment6033551477 and exact complete requested baseline8b675e2. UI confirms
+started-work session `4d8fe812-a649-4297-b24f-c1b702432414`.
+This is the sole continuation of the registered replacement, NOT old PR13.
+No completed new artifact yet; preserve baseline8b675e2 and require declared
+mailbox base/app-tree equivalence before apply. Do not merge/rebase stack or send
+another task. Await completed PR20 correction artifact; no retry loop.
 Copilot Flutter/Dart unavailable exit127, no such Copilot passes claimed.
 
 Logs and exit receipts retained under
