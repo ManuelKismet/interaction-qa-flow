@@ -1,5 +1,116 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Unified Ask/search rollout completed — 2026-10-07
+
+Founder authorised next steps after the completed Copilot correction.
+Sole replacement task b8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0 continued through
+PR19 comment6033551477 and GitHub-created stacked PR20, session
+4d8fe812-a649-4297-b24f-c1b702432414. Actions run37590320973/job112689985974
+completed SUCCESS at2026-10-07T07:59:41Z. Backend workflow action_required is
+NOT a test pass. Copilot Flutter/Dart remained unavailable127; no Copilot
+Flutter pass claimed. No additional or competing correction request sent.
+
+Authored navigation correction source
+`d35440f932085a8d30d8cf6071b212fdc0ab3997`;
+artifact-only `6843474ab45ae164dd144731c2612a365fd264ff`.
+Mailbox `docs/operations/development-deployment/unified-knowledge-ask-parity-navigation-20261007.patch`,
+2593 bytes, exact SHA256
+`47cbf574fad15970cbea7b54aa99915445dea179161155b13e56369bc492f9dc`.
+Declared complete base8b675e20133ee713416c162896851d308d615881 verified.
+Applied UNCHANGED with git am in /workspaces/intqaflow-unified-search-dev-20261006,
+producing complete reviewed source **`f662a6cff70526f287fb521bea25ec24860d8f4a`**.
+Pushed fix/unified-search-dev-20261006 and exact GitHub ref readback verified.
+Flutter tree equivalent to authored d35440f; diff --check PASS, tree clean.
+Final patch changes only the navigation assertion helper: exact original title's
+ancestor ListTile, then descendant subtitle answer and storage-status assertions
+for both Private and Local. Real destination retained, no dummy/global matcher,
+no application changes merely to satisfy tests. Codex made no app/test edits.
+
+| Independent executed check onf662a6c | Result |
+|---|---|
+| Python compile / Alembic heads |exit0 / single0014,exit0|
+| Full backend |111PASS4SKIP10warnings24.99s,exit0|
+| Fresh actual PostgreSQL16 |4PASS3.47s,exit0|
+| Separate isolated migrationDB |0014→0013→0014,current0014 PASS,exit0|
+| Full Flutter |180PASS81s,exit0|
+| Analyzer |0errors0warnings13existing infos19.5s,exit1 solely infos|
+| Configured DEV web release |PASS77.4s,exit0|
+| Non-mutating Dart format |7of7Dart files changed since105a528 would change,exit1; advisory outstanding, no files modified|
+
+The initial format invocation used four incorrect paths and checked only
+ask_page_test.dart; not a full format pass. Corrected exact git-diff file-list
+check above covers all7 changed Dart files. Formatting was requested but not
+delivered by Copilot because tools unavailable. Record this nonfunctional debt;
+do not label format PASS or alter Copilot application/test patches.
+All specified functional release gates passed, including stale-response,
+scope/UID transitions, partial-failure, badges, actual Private/Local navigation
+and manual-only submission regressions. Automated scope tests do not establish
+hosted registered-account acceptance or fake-provider semantic quality.
+
+### Confirmed intqaflow-dev-only runtime
+
+Verified at2026-10-07T08:16:56Z, before final resource shutdown:
+- Complete source f662a6cff70526f287fb521bea25ec24860d8f4a.
+- Backend unchanged byte-for-byte against prior reviewed105a528; reused its
+  reviewed immutable image, no redundant rebuild:
+  `europe-west2-docker.pkg.dev/intqaflow-dev/cloud-run-source-deploy/intqaflow-dev-api@sha256:31d1eb5487847352ff25e9b10de2711e8afca3a1f30d758f26cf28adee61be34`.
+- New Cloud Run revision **intqaflow-dev-api-reviewf662a6c**, initially0traffic.
+  Independent old/new spec comparison excluding image PASS; identity,
+  Cloud SQL/VPC/egress/execution/CPU settings retained; service ingress and
+  invoker security settings unchanged. Staged /health and /ready200 before
+  switch; then100%traffic, public health/ready200.
+- Cloud SQL intqaflow-dev-pg/europe-west2 schema already0014.
+  Read-only schema0014→0014 check verified unchanged existing-data counts,
+  runtime CRUD/new-column privileges, vector/pg_trgm extensions and trigram
+  indexes. Only alembic current executed on hosted DB; no migration, grants,
+  live downgrade or purge.
+- Firebase Hosting release **1791360928018000**, version **3e8209ddae71b73b**,
+ 36 files, publisherexit0.
+- Both https://intqaflow-dev.web.app/ and
+  https://intqaflow-dev.firebaseapp.com/ independently matched exact tested
+  index/bootstrap/main bytes; verificationexit0.
+- Missing identity on /api/v1/personal/items/search returns401.
+
+| Exact bundle on BOTH origins | Bytes | SHA256 |
+|---|---:|---|
+|index.html|1531|`a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858`|
+|flutter_bootstrap.js|9975|`dcce93a9b8f46ed31af333f1f0f00388708cac604a6e3931ba5a6fe27901437b`|
+|main.dart.js|4508459|`68e41529159ff413ed29eed8ccd1b5bf872ec4674320acde618a84c7c7a54a34`|
+
+Live guest smoke after reloading new frontend: existing browser-local items
+retained, query needle retrieved answer-only matches with Local badge and
+local-storage/source explanation. Selecting first result opened real Saved Q&A
+with exact original title, answer and Local on this device; screenshot and
+fresh accessibility state confirmed. No content created/imported/uploaded.
+This resolves prior guest local search/navigation smoke uncertainty for this
+specific flow, not registered Ask/account/group/organisation hosted acceptance.
+
+### Rollback, gaps and cleanup
+
+Rollback to reviewed **intqaflow-dev-api-review105a528** and Hosting version
+**4eb839685c6f21c7** (release1791323636722000). Retain additive schema0014 and
+all private data; never live DB downgrade/purge.
+Remaining: real semantic-provider quality in fake-provider DEV;
+hosted ordinary registered-account Ask/search source/scope acceptance;
+authenticated personal import/edit/multi-device E2E/F04/F08/F09; formatting
+advisory. Do not close these without actual evidence.
+Organisation owner/delegated-admin/Teams/join-request improvements DEFERRED.
+
+Logs/exit receipts retained under
+/home/vscode/.local/share/intqaflow/ask-validation-f662a6c;
+runtime/deployment JSON receipts under /home/vscode/.local/share/intqaflow.
+Fresh local DBs ask_pr20_tests_f662a6c/ask_pr20_migrate_f662a6c retained.
+Temporary PostgreSQL stopped (pg_ctl no server running); hosted-check proxy
+terminated by helper, no listeners55439/55442. Codespace bookish happiness
+stopped via GitHub with stopped banner confirmation. All files preserved.
+Main worktree's exact four dirty docs preserved; isolated worktree clean.
+Old PR13 task8c57d37e-831d-4101-8af0-5c25a6aa65da remains superseded/quarantined
+and NOT confirmed cancelled; reject any late output. Do not apply old artifacts.
+No production, merge, IAM/AppCheck weakening, secret disclosure or automatic
+local-content upload. Monitoring already cancelled; no automation created.
+This completed snapshot supersedes pending/current-runtime statements below;
+historical evidence remains intact.
+
 ## Latest correction independently tested — single navigation assertion pending, 2026-10-07
 
 Completion6033431915 published source `380a6fa87d3b63bef4b100c844a2e4146ed62cc0`
