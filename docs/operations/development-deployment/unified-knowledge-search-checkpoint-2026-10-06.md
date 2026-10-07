@@ -45,6 +45,8 @@ do not replace real destination with dummy text/suppress exceptions.
 fix finder/harness/control behaviour while retaining exact manual payload and
 no retrieved/local/private-content upload assertions.
 - Copilot to format touched Dart files. Preserve all previous parity acceptance.
+GitHub PR19 visibly confirms Copilot started work on this correction in session
+`304923b9-6663-40b3-8825-91aae08e35ab`; no corrected artifact published yet.
 Await completion/mailbox declaring baseline6514b7e and exact checksum before
 UNCHANGED application and independent rerun. Copilot's original Flutter tools
 were unavailable exit127; its outer shell0 was not a pass.
