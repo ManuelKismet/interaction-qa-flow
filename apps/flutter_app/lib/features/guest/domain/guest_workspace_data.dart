@@ -26,6 +26,7 @@ class GuestWorkspaceData {
     this.knowledge = const [],
     this.sessions = const [],
     this.templates = const [],
+    this.additionalFields = const {},
   });
 
   factory GuestWorkspaceData.fromJson(Map<String, dynamic> json) {
@@ -79,14 +80,22 @@ class GuestWorkspaceData {
       knowledge: knowledge,
       sessions: sessions,
       templates: templates,
+      additionalFields: {
+        for (final entry in json.entries)
+          if (!const ['schema_version', 'knowledge', 'sessions', 'templates']
+              .contains(entry.key))
+            entry.key: entry.value,
+      },
     );
   }
 
   final List<Map<String, dynamic>> knowledge;
   final List<Map<String, dynamic>> sessions;
   final List<Map<String, dynamic>> templates;
+  final Map<String, dynamic> additionalFields;
 
   Map<String, dynamic> toJson() => {
+    ...additionalFields,
     'schema_version': 1,
     'knowledge': knowledge,
     'sessions': sessions,
@@ -100,7 +109,112 @@ class GuestWorkspaceData {
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('Guest backup must contain a JSON object.');
     }
-    return GuestWorkspaceData.fromJson(decoded);
+    if (decoded['schema_version'] is! int || decoded['schema_version'] != 1) {
+      throw const FormatException('Unsupported guest backup version.');
+    }
+    for (final field in const ['knowledge', 'sessions', 'templates']) {
+      if (decoded[field] is! List) {
+        throw FormatException('Local backup must include a "$field" list.');
+      }
+    }
+    final data = GuestWorkspaceData.fromJson(decoded);
+    data.validateImport();
+    return data;
+  }
+
+  void validateImport() {
+    _uniqueIds(knowledge, 'Knowledge');
+    _uniqueIds(sessions, 'sessions');
+    _uniqueIds(templates, 'templates');
+    for (final session in sessions) {
+      final participants = _maps(session['participants']);
+      final ids = _uniqueIds(participants, 'participants');
+      _validateReferences(session['questions'], ids, <String>{});
+    }
+    for (final template in templates) {
+      final slots = _uniqueIds(
+        _maps(template['participant_slots']),
+        'participant slots',
+      );
+      _validateReferences(
+        template['questions'],
+        slots,
+        <String>{},
+        template: true,
+      );
+    }
+  }
+
+  static Set<String> _uniqueIds(
+    List<Map<String, dynamic>> items,
+    String collection,
+  ) {
+    final ids = <String>{};
+    for (final item in items) {
+      final id = item['id'];
+      if (id is! String || id.trim().isEmpty || !ids.add(id)) {
+        throw FormatException(
+          'Local backup $collection must have unique, non-empty IDs.',
+        );
+      }
+    }
+    return ids;
+  }
+
+  static void _validateReferences(
+    Object? value,
+    Set<String> participants,
+    Set<String> questionIds, {
+    bool template = false,
+    String? answerOwner,
+  }) {
+    final targetField =
+        template ? 'target_participant_slot' : 'target_participant_id';
+    final ownerField = template ? 'participant_slot' : 'participant_id';
+    for (final question in _maps(value)) {
+      final id = question['id'] as String;
+      if (id.trim().isEmpty || !questionIds.add(id)) {
+        throw const FormatException('Local backup question IDs must be unique.');
+      }
+      if ((question['text'] as String).trim().isEmpty) {
+        throw const FormatException('Local backup question titles cannot be blank.');
+      }
+      final scope = question['scope'];
+      if (scope != null && scope != 'shared' && scope != 'participant') {
+        throw const FormatException('Unsupported local question scope.');
+      }
+      final target = question[targetField];
+      if ((target != null && !participants.contains(target)) ||
+          (scope == 'shared' && target != null) ||
+          (scope == 'participant' && target == null && answerOwner == null) ||
+          (answerOwner != null && target != null && target != answerOwner)) {
+        throw const FormatException('Local backup question target is invalid.');
+      }
+      _validateReferences(
+        question['follow_ups'],
+        participants,
+        questionIds,
+        template: template,
+        answerOwner: answerOwner,
+      );
+      final owners = <String>{};
+      for (final answer in _maps(question['answers'])) {
+        final owner = answer[ownerField] as String;
+        if (!participants.contains(owner) ||
+            !owners.add(owner) ||
+            (answerOwner != null && owner != answerOwner) ||
+            (scope == 'participant' && target != null && owner != target)) {
+          throw const FormatException('Local backup answer ownership is invalid.');
+        }
+        _validateReferences(
+          answer['follow_ups'],
+          participants,
+          questionIds,
+          template: template,
+          answerOwner: owner,
+        );
+      }
+    }
   }
 
   GuestWorkspaceData copyWith({
@@ -111,6 +225,7 @@ class GuestWorkspaceData {
     knowledge: knowledge ?? this.knowledge,
     sessions: sessions ?? this.sessions,
     templates: templates ?? this.templates,
+    additionalFields: additionalFields,
   );
 
   static List<Map<String, dynamic>> _maps(Object? value) {

@@ -7,6 +7,8 @@ import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
+import 'package:int_qa_flow/features/guided/presentation/guided_scope_dialog.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 
 class GuidedPage extends ConsumerWidget {
   const GuidedPage({super.key});
@@ -37,13 +39,13 @@ class GuidedPage extends ConsumerWidget {
                   message: 'Import legacy Interact JSON',
                   child: IconButton(
                     icon: const Icon(Icons.upload_file_outlined),
-                    onPressed: () => _importLegacy(context, ref),
+                    onPressed: () => _guidedAction(context, () => _importLegacy(context, ref)),
                   ),
                 ),
                 FilledButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('New session'),
-                  onPressed: () => _createSession(context, ref),
+                  onPressed: () => _guidedAction(context, () => _createSession(context, ref)),
                 ),
               ],
             ),
@@ -71,6 +73,7 @@ class GuidedPage extends ConsumerWidget {
   }
 
   Future<void> _createSession(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(guidedRepositoryProvider);
     final title = TextEditingController();
     final owner = TextEditingController();
     final reference = TextEditingController();
@@ -82,8 +85,9 @@ class GuidedPage extends ConsumerWidget {
     final departments = await ref.read(departmentsProvider.future);
     final teams = await ref.read(teamsProvider.future);
     if (!context.mounted) return;
-    final create = await showDialog<bool>(
+    final create = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: const Text('New Interact session'),
@@ -153,8 +157,8 @@ class GuidedPage extends ConsumerWidget {
         ),
       ),
     );
-    if (create != true || title.text.trim().isEmpty) return;
-    final session = await ref.read(guidedRepositoryProvider).createSession(
+    if (create != true || title.text.trim().isEmpty || !context.mounted) return;
+    final session = await repository.createSession(
           title: title.text.trim(),
           owner: owner.text.trim().isEmpty ? null : owner.text.trim(),
           contextReference: reference.text.trim().isEmpty ? null : reference.text.trim(),
@@ -163,14 +167,19 @@ class GuidedPage extends ConsumerWidget {
           visibility: visibility,
           templateId: templateId,
         );
-    invalidateGuidedLists(ref);
-    if (context.mounted) context.go('/guided/sessions/${session.id}');
+    if (context.mounted) {
+      invalidateGuidedLists(ref);
+      repository.ensureCurrent();
+      context.go('/guided/sessions/${session.id}');
+    }
   }
 
   Future<void> _importLegacy(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(guidedRepositoryProvider);
     final payload = TextEditingController();
-    final submit = await showDialog<bool>(
+    final submit = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
       builder: (context) => AlertDialog(
         title: const Text('Import legacy Interact JSON'),
         content: SizedBox(
@@ -188,10 +197,53 @@ class GuidedPage extends ConsumerWidget {
         ],
       ),
     );
-    if (submit != true || payload.text.trim().isEmpty) return;
-    final session = await ref.read(guidedRepositoryProvider).importLegacy(payload.text);
-    invalidateGuidedLists(ref);
-    if (context.mounted) context.go('/guided/sessions/${session.id}');
+    if (submit != true || payload.text.trim().isEmpty || !context.mounted) return;
+    var imported = false;
+    try {
+      final result = await repository.importLegacy(payload.text);
+      imported = true;
+      if (!context.mounted) return;
+      invalidateGuidedLists(ref);
+      if (result.warnings.isNotEmpty) {
+        await showGuidedScopedDialog<void>(
+          context: context,
+          repository: repository,
+          builder: (context) => AlertDialog(
+            title: const Text('Imported with warnings'),
+            content: SingleChildScrollView(
+              child: SelectableText(result.warnings.join('\n')),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Review session'),
+              ),
+            ],
+          ),
+        );
+      }
+      repository.ensureCurrent();
+      if (context.mounted) context.go('/guided/sessions/${result.session.id}');
+    } catch (error) {
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Import failed'),
+          content: Text(
+            imported
+                ? 'The session was imported, but the view changed. Reopen Interact to review it.\n$error'
+                : 'No session was imported. Use an organisation session export or supported legacy JSON, not a guest workspace backup.\n$error',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
 
@@ -244,7 +296,12 @@ class _TemplatesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final membership = ref.watch(currentMembershipProvider).value;
+    final membershipState = ref.watch(currentMembershipProvider);
+    final membership = membershipState.isLoading || membershipState.hasError
+        ? null : membershipState.value;
+    final authorityState = ref.watch(organisationProfileProvider);
+    final authority = authorityState.isLoading || authorityState.hasError
+        ? null : authorityState.value;
     return templates.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const Center(child: Text('Unable to load templates.')),
@@ -263,17 +320,17 @@ class _TemplatesList extends ConsumerWidget {
                     OutlinedButton.icon(
                       icon: const Icon(Icons.add),
                       label: const Text('Create template'),
-                      onPressed: () => _create(context, ref),
+                      onPressed: () => _guidedAction(context, () => _create(context, ref)),
                     ),
                     IconButton(
                       tooltip: 'Import templates',
                       icon: const Icon(Icons.upload_file_outlined),
-                      onPressed: () => _import(context, ref),
+                      onPressed: () => _guidedAction(context, () => _import(context, ref)),
                     ),
                     IconButton(
                       tooltip: 'Export templates',
                       icon: const Icon(Icons.download_outlined),
-                      onPressed: () => _export(context, ref),
+                      onPressed: () => _guidedAction(context, () => _export(context, ref)),
                     ),
                   ],
                 ),
@@ -286,9 +343,12 @@ class _TemplatesList extends ConsumerWidget {
                   ref,
                   item,
                   canManage:
-                      membership != null &&
+                      membership != null && authority != null &&
+                      authority.userId == membership.userId &&
+                      authority.organisationId == membership.organisationId &&
                       (membership.userId == item.createdById ||
-                          membership.role == 'admin'),
+                          authority.isOwner ||
+                          authority.permissions.contains('legacy_admin')),
                 ),
             ],
           ),
@@ -326,7 +386,7 @@ class _TemplatesList extends ConsumerWidget {
                 if (action == 'restore') {
                   await repository.restoreTemplate(template.id);
                 }
-                ref.invalidate(guidedTemplatesProvider);
+                if (context.mounted) ref.invalidate(guidedTemplatesProvider);
               } catch (_) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context)
@@ -356,7 +416,7 @@ class _TemplatesList extends ConsumerWidget {
           )
         : null,
     onTap: template.status == 'active'
-        ? () => _start(context, ref, template)
+        ? () => _guidedAction(context, () => _start(context, ref, template))
         : null,
   );
 
@@ -365,22 +425,24 @@ class _TemplatesList extends ConsumerWidget {
     WidgetRef ref,
     GuidedTemplate template,
   ) async {
-    final questions = await showDialog<List<GuidedTemplateQuestion>>(
+    final repository = ref.read(guidedRepositoryProvider);
+    final questions = await showGuidedScopedDialog<List<GuidedTemplateQuestion>>(
       context: context,
+      repository: repository,
       builder: (_) => _TemplateVersionDialog(template: template),
     );
-    if (questions == null) return;
-    await ref
-        .read(guidedRepositoryProvider)
-        .versionTemplate(template.id, questions);
-    ref.invalidate(guidedTemplatesProvider);
+    if (questions == null || !context.mounted) return;
+    await repository.versionTemplate(template.id, questions);
+    if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }
 
   Future<void> _create(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(guidedRepositoryProvider);
     final name = TextEditingController();
     final questions = TextEditingController();
-    final submit = await showDialog<bool>(
+    final submit = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
       builder: (context) => AlertDialog(
         title: const Text('Create template'),
         content: SizedBox(
@@ -403,9 +465,9 @@ class _TemplatesList extends ConsumerWidget {
       ),
     );
     final lines = questions.text.split('\n').map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
-    if (submit != true || name.text.trim().isEmpty || lines.isEmpty) return;
-    await ref.read(guidedRepositoryProvider).createTemplate(name.text.trim(), lines);
-    ref.invalidate(guidedTemplatesProvider);
+    if (submit != true || name.text.trim().isEmpty || lines.isEmpty || !context.mounted) return;
+    await repository.createTemplate(name.text.trim(), lines);
+    if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }
 
   Future<void> _start(BuildContext context, WidgetRef ref, GuidedTemplate template) async {
@@ -413,14 +475,18 @@ class _TemplatesList extends ConsumerWidget {
           title: template.name,
           templateId: template.id,
         );
-    invalidateGuidedLists(ref);
-    if (context.mounted) context.go('/guided/sessions/${session.id}');
+    if (context.mounted) {
+      invalidateGuidedLists(ref);
+      context.go('/guided/sessions/${session.id}');
+    }
   }
 
   Future<void> _import(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(guidedRepositoryProvider);
     final payload = TextEditingController();
-    final submit = await showDialog<bool>(
+    final submit = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
       builder: (context) => AlertDialog(
         title: const Text('Import templates'),
         content: SizedBox(
@@ -438,16 +504,18 @@ class _TemplatesList extends ConsumerWidget {
         ],
       ),
     );
-    if (submit != true || payload.text.trim().isEmpty) return;
-    await ref.read(guidedRepositoryProvider).importTemplates(payload.text);
-    ref.invalidate(guidedTemplatesProvider);
+    if (submit != true || payload.text.trim().isEmpty || !context.mounted) return;
+    await repository.importTemplates(payload.text);
+    if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }
 
   Future<void> _export(BuildContext context, WidgetRef ref) async {
-    final contents = await ref.read(guidedRepositoryProvider).exportTemplates();
+    final repository = ref.read(guidedRepositoryProvider);
+    final contents = await repository.exportTemplates();
     if (!context.mounted) return;
-    await showDialog<void>(
+    await showGuidedScopedDialog<void>(
       context: context,
+      repository: repository,
       builder: (context) => AlertDialog(
         title: const Text('Template JSON export'),
         content: SizedBox(
@@ -465,6 +533,21 @@ class _TemplatesList extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+Future<void> _guidedAction(
+  BuildContext context,
+  Future<void> Function() action,
+) async {
+  try {
+    await action();
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not complete this Interact action: $error')),
+      );
+    }
   }
 }
 

@@ -129,14 +129,14 @@ void main() {
     expect(find.text('I received a phone call.'), findsNothing);
     await scrollToListItem(
       tester,
-      find.byKey(const ValueKey('question-follow-Who sent the email?')),
+      find.byKey(const ValueKey('question-follow')),
       listKey: 'guided-flow-list',
     );
     expect(find.text('Who sent the email?'), findsOneWidget);
     expect(find.textContaining('Return to parent'), findsOneWidget);
     await scrollToListItem(
       tester,
-      find.byKey(const ValueKey('question-nested-Which Finance employee?')),
+      find.byKey(const ValueKey('question-nested')),
       listKey: 'guided-flow-list',
     );
     expect(find.text('Which Finance employee?'), findsOneWidget);
@@ -213,7 +213,7 @@ void main() {
           await tester.pumpWidget(flow(question: root));
 
           final deepQuestion = find.byKey(
-            ValueKey('question-deep-$depth-${rootTextAtDepth(depth)}'),
+            ValueKey('question-deep-$depth'),
           );
           await scrollToListItem(
             tester,

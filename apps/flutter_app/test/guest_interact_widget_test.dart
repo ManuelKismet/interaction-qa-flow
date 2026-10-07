@@ -661,6 +661,40 @@ void main() {
     ]);
   });
 
+  testWidgets('incompatible backup shows diagnostics without import success', (
+    tester,
+  ) async {
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await store.save(const GuestWorkspaceData(
+      knowledge: [{'id': 'original', 'title': 'Keep original'}],
+    ));
+    final original = await store.load();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local JSON backup'));
+    await tester.pumpAndSettle();
+    await tester.enterText(_field('Paste backup JSON'), '{"schema_version":1}');
+    await tester.tap(find.text('Preview import'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Local backup must include a "knowledge" list.'),
+      findsOneWidget,
+    );
+    expect(find.text('Preview local backup import'), findsNothing);
+    expect(find.text('Selected backup items imported locally.'), findsNothing);
+    expect((await store.load()).toJson(), original.toJson());
+  });
+
   testWidgets('failed local save preserves the latest work for explicit retry', (
     tester,
   ) async {

@@ -59,6 +59,7 @@ from app.schemas.guided import (
     GuidedViewMode,
     LegacyImportResponse,
 )
+from app.services.guided_interchange import normalize_import
 from app.services.permissions import PermissionService
 
 
@@ -170,6 +171,8 @@ class GuidedService:
         user_id: UUID,
         participant_id: UUID | None = None,
         view_mode: GuidedViewMode = GuidedViewMode.ALL_RELEVANT,
+        *,
+        include_deleted: bool = False,
     ) -> GuidedSessionResponse:
         actor = await self.permissions.actor(user_id, organisation_id)
         session = await self._session(session_id, organisation_id)
@@ -177,9 +180,9 @@ class GuidedService:
         participants = await self.guided.participants(session.id, organisation_id)
         if participant_id and not any(item.id == participant_id for item in participants):
             raise NotFoundError("Participant not found in this session")
-        questions = await self.guided.questions(session.id, organisation_id)
+        questions = await self.guided.questions(session.id, organisation_id, include_deleted=include_deleted)
         answers = await self.guided.answers(session.id, organisation_id)
-        flow = self._build_flow(questions, answers, participant_id, view_mode)
+        flow = self._build_flow(questions, answers, participant_id, view_mode, session.revision)
         return GuidedSessionResponse.model_validate(
             {
                 **session.__dict__,
@@ -384,7 +387,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(question)
-        return GuidedQuestionResponse.model_validate(question)
+        return GuidedQuestionResponse.model_validate(
+            {**question.__dict__, "session_revision": session.revision}
+        )
 
     async def add_follow_up(
         self,
@@ -426,7 +431,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(question)
-        return GuidedQuestionResponse.model_validate(question)
+        return GuidedQuestionResponse.model_validate(
+            {**question.__dict__, "session_revision": session.revision}
+        )
 
     async def update_question(
         self,
@@ -437,7 +444,8 @@ class GuidedService:
     ) -> GuidedQuestionResponse:
         question = await self._question(question_id, organisation_id)
         session = await self._owned_session(question.session_id, organisation_id, user_id)
-        changes = data.model_dump(exclude_unset=True)
+        self._check_revision(session, data.expected_revision)
+        changes = data.model_dump(exclude_unset=True, exclude={"expected_revision"})
         if changes.get("knowledge_question_id") and not await self.questions.get_for_organisation(
             changes["knowledge_question_id"], organisation_id
         ):
@@ -455,7 +463,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(question)
-        return GuidedQuestionResponse.model_validate(question)
+        return GuidedQuestionResponse.model_validate(
+            {**question.__dict__, "session_revision": session.revision}
+        )
 
     async def set_question_deleted(
         self,
@@ -479,7 +489,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(question)
-        return GuidedQuestionResponse.model_validate(question)
+        return GuidedQuestionResponse.model_validate(
+            {**question.__dict__, "session_revision": session.revision}
+        )
 
     async def upsert_answer(
         self,
@@ -490,6 +502,7 @@ class GuidedService:
     ) -> GuidedAnswerResponse:
         question = await self._question(question_id, organisation_id)
         session = await self._owned_session(question.session_id, organisation_id, user_id)
+        self._check_revision(session, data.expected_revision)
         participant = await self._participant(data.participant_id, organisation_id)
         if participant.session_id != session.id:
             raise NotFoundError("Participant not found in this session")
@@ -534,7 +547,9 @@ class GuidedService:
             await self.session.rollback()
             raise ConflictError("Answer was updated by another request") from error
         await self.session.refresh(answer)
-        return GuidedAnswerResponse.model_validate(answer)
+        return GuidedAnswerResponse.model_validate(
+            {**answer.__dict__, "session_revision": session.revision}
+        )
 
     async def update_answer(
         self,
@@ -545,7 +560,8 @@ class GuidedService:
     ) -> GuidedAnswerResponse:
         answer = await self._answer(answer_id, organisation_id)
         session = await self._owned_session(answer.session_id, organisation_id, user_id)
-        for field, value in data.model_dump(exclude_unset=True).items():
+        self._check_revision(session, data.expected_revision)
+        for field, value in data.model_dump(exclude_unset=True, exclude={"expected_revision"}).items():
             setattr(answer, field, value)
         answer.answered_by_user_id = user_id
         await self._save_revision(session, user_id, "Answer saved")
@@ -559,7 +575,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(answer)
-        return GuidedAnswerResponse.model_validate(answer)
+        return GuidedAnswerResponse.model_validate(
+            {**answer.__dict__, "session_revision": session.revision}
+        )
 
     async def revisions(
         self, session_id: UUID, organisation_id: UUID, user_id: UUID
@@ -575,7 +593,9 @@ class GuidedService:
     async def export_json(
         self, session_id: UUID, organisation_id: UUID, user_id: UUID
     ) -> dict[str, Any]:
-        detail = await self.get_session(session_id, organisation_id, user_id)
+        detail = await self.get_session(
+            session_id, organisation_id, user_id, include_deleted=True
+        )
         return {
             "kind": "intqaflow-guided-session",
             "version": 1,
@@ -629,50 +649,32 @@ class GuidedService:
         payload: dict[str, Any] | list[Any],
     ) -> LegacyImportResponse:
         await self.permissions.actor(user_id, organisation_id)
-        warnings: list[str] = []
-        source = {"flow": payload} if isinstance(payload, list) else payload
-        meta = source.get("meta") if isinstance(source.get("meta"), dict) else {}
+        values, participants_payload, flow, warnings = normalize_import(payload)
         session = GuidedSession(
             organisation_id=organisation_id,
             created_by=user_id,
-            title=str(meta.get("caseTitle") or "Imported Interaction QA Flow"),
-            owner_text=str(meta.get("interviewer") or "") or None,
-            context_reference=str(meta.get("interviewee") or "") or None,
+            **values,
             visibility=GuidedSessionVisibility.PRIVATE,
             status=GuidedSessionStatus.DRAFT,
             revision=1,
         )
         await self.guided.add(session)
-        participants_payload = source.get("participants")
-        if not isinstance(participants_payload, list) or not participants_payload:
-            participants_payload = [{"id": "participant-1", "name": "Participant 1"}]
-            warnings.append("No participant list was present; Participant 1 was created.")
         participant_map: dict[str, GuidedParticipant] = {}
-        for index, item in enumerate(participants_payload):
-            if not isinstance(item, dict):
-                warnings.append(f"Participant {index + 1} was not an object and was skipped.")
-                continue
+        for item in participants_payload:
             participant = GuidedParticipant(
                 organisation_id=organisation_id,
                 session_id=session.id,
-                name=str(item.get("name") or f"Participant {index + 1}"),
-                sort_order=index,
+                name=item["name"],
+                role_label=item["role_label"],
+                notes=item["notes"],
+                sort_order=item["sort_order"],
             )
             await self.guided.add(participant)
-            participant_map[str(item.get("id") or f"participant-{index + 1}")] = participant
-        if not participant_map:
-            raise ConflictError("Legacy flow did not contain any usable participants")
-        flow = source.get("flow")
-        if not isinstance(flow, list):
-            flow = []
-            warnings.append("No flow array was present.")
+            participant_map[item["id"]] = participant
         for index, node in enumerate(flow):
-            if isinstance(node, dict):
-                await self._import_legacy_node(
-                    session, node, participant_map, user_id, index, None, warnings
-                )
-            else:
-                warnings.append(f"Flow item {index + 1} was not an object and was skipped.")
+            await self._import_legacy_node(
+                session, node, participant_map, user_id, index, None, warnings
+            )
         await self._audit(
             organisation_id,
             user_id,
@@ -1150,61 +1152,44 @@ class GuidedService:
             target = next(
                 item for item in participants.values() if item.id == triggering_answer.participant_id
             )
-        if scope == GuidedQuestionScope.PARTICIPANT and target is None:
-            target = next(iter(participants.values()))
-            warnings.append(f"Question '{node.get('question', 'Untitled')}' had an unknown participant; it was assigned to {target.name}.")
         question = GuidedQuestion(
             organisation_id=session.organisation_id,
             session_id=session.id,
             created_by=user_id,
-            text=str(node.get("question") or "Untitled question"),
+            text=node["question"],
             scope=scope,
             target_participant_id=target.id if target else None,
-            source=GuidedQuestionSource.FOLLOW_UP if triggering_answer else GuidedQuestionSource.MANUAL,
-            main_order_index=None if triggering_answer else order,
-            branch_order_index=order if triggering_answer else None,
+            source=node.get("source", GuidedQuestionSource.FOLLOW_UP if triggering_answer else GuidedQuestionSource.MANUAL),
+            main_order_index=None if triggering_answer else node.get("order", order),
+            branch_order_index=node.get("order", order) if triggering_answer else None,
             triggering_answer_id=triggering_answer.id if triggering_answer else None,
+            deleted_at=node.get("deleted_at"),
         )
         await self.guided.add(question)
-        raw_answers = node.get("answers") if isinstance(node.get("answers"), dict) else None
-        if raw_answers is None:
-            participant_key = str(node.get("participantId") or next(iter(participants)))
-            raw_answers = {
-                participant_key: {
-                    "answer": node.get("answer", ""),
-                    "branches": node.get("branches", []),
-                    "branchesCollapsed": node.get("branchesCollapsed", False),
-                }
-            }
+        raw_answers = node["answers"]
         for participant_key, record in raw_answers.items():
             participant = participants.get(str(participant_key))
-            if not participant or not isinstance(record, dict):
-                warnings.append(f"An answer for '{question.text}' had an unknown participant and was skipped.")
-                continue
-            if target and participant.id != target.id:
-                continue
             answer = GuidedAnswer(
                 organisation_id=session.organisation_id,
                 session_id=session.id,
                 question_id=question.id,
                 participant_id=participant.id,
                 answered_by_user_id=user_id,
-                body=str(record.get("answer") or ""),
-                branches_collapsed=bool(record.get("branchesCollapsed")),
+                body=record["answer"],
+                branches_collapsed=record["branchesCollapsed"],
             )
             await self.guided.add(answer)
-            branches = record.get("branches") if isinstance(record.get("branches"), list) else []
+            branches = record["branches"]
             for branch_order, branch in enumerate(branches):
-                if isinstance(branch, dict):
-                    await self._import_legacy_node(
-                        session,
-                        branch,
-                        participants,
-                        user_id,
-                        branch_order,
-                        answer,
-                        warnings,
-                    )
+                await self._import_legacy_node(
+                    session,
+                    branch,
+                    participants,
+                    user_id,
+                    branch_order,
+                    answer,
+                    warnings,
+                )
 
     def _build_flow(
         self,
@@ -1212,6 +1197,7 @@ class GuidedService:
         answers: list[GuidedAnswer],
         participant_id: UUID | None,
         view_mode: GuidedViewMode,
+        session_revision: int | None = None,
     ) -> list[GuidedFlowQuestion]:
         answers_by_question: dict[UUID, list[GuidedAnswer]] = {}
         for answer in answers:
@@ -1244,7 +1230,13 @@ class GuidedService:
             return GuidedFlowQuestion.model_validate(
                 {
                     **question.__dict__,
-                    "answers": [GuidedAnswerResponse.model_validate(item) for item in question_answers],
+                    "session_revision": session_revision,
+                    "answers": [
+                        GuidedAnswerResponse.model_validate(
+                            {**item.__dict__, "session_revision": session_revision}
+                        )
+                        for item in question_answers
+                    ],
                     "follow_ups": follow_ups,
                 }
             )
@@ -1273,8 +1265,10 @@ class GuidedService:
             if team.department_id and department_id and team.department_id != department_id:
                 raise ConflictError("Team does not belong to the selected department")
 
-    async def _session(self, session_id: UUID, organisation_id: UUID) -> GuidedSession:
-        session = await self.guided.guided_session(session_id, organisation_id)
+    async def _session(
+        self, session_id: UUID, organisation_id: UUID, *, for_update: bool = False
+    ) -> GuidedSession:
+        session = await self.guided.guided_session(session_id, organisation_id, for_update=for_update)
         if not session:
             raise NotFoundError("Guided session not found")
         return session
@@ -1283,13 +1277,18 @@ class GuidedService:
         self, session_id: UUID, organisation_id: UUID, user_id: UUID
     ) -> GuidedSession:
         actor = await self.permissions.actor(user_id, organisation_id)
-        session = await self._session(session_id, organisation_id)
+        session = await self._session(session_id, organisation_id, for_update=True)
         if actor.id != session.created_by and (
             session.visibility == GuidedSessionVisibility.PRIVATE
             or not await self.permissions.is_organisation_admin(actor)
         ):
             raise PermissionDeniedError("Only the session owner can change a private session")
         return session
+
+    @staticmethod
+    def _check_revision(session: GuidedSession, expected_revision: int | None) -> None:
+        if expected_revision is not None and expected_revision != session.revision:
+            raise ConflictError("Session changed since it was loaded")
 
     async def _require_view(self, actor, session: GuidedSession) -> None:
         if actor.id == session.created_by:

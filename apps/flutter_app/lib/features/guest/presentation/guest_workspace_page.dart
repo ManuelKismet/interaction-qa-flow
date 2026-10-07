@@ -1255,10 +1255,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       late final GuestWorkspaceData imported;
       try {
         imported = GuestWorkspaceData.decodeBackup(controller.text);
-      } on Object {
+      } on FormatException catch (error) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('This is not a valid IntQAFlow local JSON backup.'),
+          SnackBar(
+            content: Text(
+              'This is not a valid IntQAFlow local JSON backup. ${error.message}',
+            ),
           ),
         );
         return;

@@ -26,13 +26,16 @@ class GuidedRepository:
         self.session.add(entity)
         await self.session.flush()
 
-    async def guided_session(self, entity_id: UUID, organisation_id: UUID) -> GuidedSession | None:
-        return await self.session.scalar(
-            select(GuidedSession).where(
-                GuidedSession.id == entity_id,
-                GuidedSession.organisation_id == organisation_id,
-            )
+    async def guided_session(
+        self, entity_id: UUID, organisation_id: UUID, *, for_update: bool = False
+    ) -> GuidedSession | None:
+        statement = select(GuidedSession).where(
+            GuidedSession.id == entity_id,
+            GuidedSession.organisation_id == organisation_id,
         )
+        if for_update:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        return await self.session.scalar(statement)
 
     async def visible_sessions(
         self,

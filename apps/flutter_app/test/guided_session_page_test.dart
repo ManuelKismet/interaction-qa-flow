@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
+import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_session_page.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
+
+import 'guided_test_support.dart';
 
 final _session = GuidedSessionDetail(
   id: 'session-1',
@@ -74,6 +79,7 @@ void main() {
       ProviderScope(
         retry: (_, _) => null,
         overrides: [
+          organisationProfileProvider.overrideWith((ref) async => guidedProfile()),
           guidedSessionProvider(
             noParticipantQuery,
           ).overrideWith((ref) => loadSession()),
@@ -134,6 +140,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          organisationProfileProvider.overrideWith((ref) async => guidedProfile()),
           guidedSessionProvider(
             noParticipantQuery,
           ).overrideWith((ref) async => _session),
@@ -163,7 +170,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Only the owner or an administrator can make changes.'),
+      find.textContaining('Private sessions can only be edited by their creator.'),
       findsOneWidget,
     );
     expect(find.text('Add participant'), findsNothing);
@@ -205,6 +212,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          organisationProfileProvider.overrideWith((ref) async => guidedProfile()),
+          guidedRepositoryProvider.overrideWithValue(GuidedRepository(Dio())),
           guidedSessionProvider(
             noParticipantQuery,
           ).overrideWith((ref) async => _session),

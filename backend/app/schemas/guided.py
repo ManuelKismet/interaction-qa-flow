@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.guided import (
     GuidedQuestionScope,
@@ -138,6 +138,13 @@ class GuidedQuestionCreate(BaseModel):
     main_order_index: int | None = Field(default=None, ge=0)
     knowledge_question_id: UUID | None = None
 
+    @field_validator("text")
+    @classmethod
+    def nonblank_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Question text cannot be blank")
+        return value
+
     @model_validator(mode="after")
     def validate_target(self):
         if self.scope == GuidedQuestionScope.PARTICIPANT and self.target_participant_id is None:
@@ -151,26 +158,46 @@ class GuidedFollowUpCreate(BaseModel):
     text: str = Field(min_length=1)
     branch_order_index: int | None = Field(default=None, ge=0)
 
+    _nonblank_text = field_validator("text")(GuidedQuestionCreate.nonblank_text.__func__)
+
 
 class GuidedQuestionUpdate(BaseModel):
     text: str | None = Field(default=None, min_length=1)
     main_order_index: int | None = Field(default=None, ge=0)
     branch_order_index: int | None = Field(default=None, ge=0)
     knowledge_question_id: UUID | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
+
+    @field_validator("text")
+    @classmethod
+    def nonblank_text(cls, value: str | None) -> str:
+        if value is None or not value.strip():
+            raise ValueError("Question text cannot be blank")
+        return value
 
 
 class GuidedAnswerUpsert(BaseModel):
     participant_id: UUID
     body: str = ""
     branches_collapsed: bool = False
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class GuidedAnswerUpdate(BaseModel):
     body: str | None = None
     branches_collapsed: bool | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
+
+    @field_validator("body", "branches_collapsed")
+    @classmethod
+    def nonnull_update(cls, value):
+        if value is None:
+            raise ValueError("Answer fields cannot be null")
+        return value
 
 
 class GuidedQuestionResponse(EntityResponse):
+    session_revision: int | None = None
     organisation_id: UUID
     session_id: UUID
     template_question_id: UUID | None
@@ -187,6 +214,7 @@ class GuidedQuestionResponse(EntityResponse):
 
 
 class GuidedAnswerResponse(EntityResponse):
+    session_revision: int | None = None
     organisation_id: UUID
     session_id: UUID
     question_id: UUID
