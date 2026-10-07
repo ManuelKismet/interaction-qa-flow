@@ -6,6 +6,9 @@ import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_page.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
+
+import 'guided_test_support.dart';
 
 class _TemplateTestRepository extends GuidedRepository {
   _TemplateTestRepository() : super(Dio());
@@ -77,6 +80,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
+          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'template-owner')),
           currentMembershipProvider.overrideWith(
             (ref) async => _membership('template-owner', 'employee'),
           ),
@@ -129,6 +134,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
+          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'template-owner')),
           currentMembershipProvider.overrideWith(
             (ref) async => _membership('template-owner', 'employee'),
           ),
@@ -191,6 +198,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
+          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'template-owner')),
           currentMembershipProvider.overrideWith(
             (ref) async => _membership('template-owner', 'employee'),
           ),
@@ -242,6 +251,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
+          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'employee-2')),
           currentMembershipProvider.overrideWith(
             (ref) async => _membership('employee-2', 'employee'),
           ),
@@ -264,7 +275,7 @@ void main() {
     expect(find.byType(PopupMenuButton<String>), findsNothing);
   });
 
-  testWidgets('admin can manage templates and restore failures are visible', (
+  testWidgets('legacy grant holder can manage templates and restore failures are visible', (
     tester,
   ) async {
     const template = GuidedTemplate(
@@ -282,8 +293,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          authStateProvider.overrideWith((ref) => Stream.value(GuidedTestUser('uid-a'))),
+          organisationProfileProvider.overrideWith((ref) async => guidedProfile(userId: 'admin-1', permissions: {'legacy_admin'})),
           currentMembershipProvider.overrideWith(
-            (ref) async => _membership('admin-1', 'admin'),
+            (ref) async => _membership('admin-1', 'employee'),
           ),
           guidedRepositoryProvider.overrideWithValue(repository),
         ],

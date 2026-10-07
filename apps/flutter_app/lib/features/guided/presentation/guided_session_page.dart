@@ -7,9 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
+import 'package:int_qa_flow/features/guided/application/guided_pending_edits.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_report_document.dart';
+import 'package:int_qa_flow/features/guided/presentation/guided_scope_dialog.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 
 class GuidedSessionPage extends ConsumerStatefulWidget {
   const GuidedSessionPage({required this.sessionId, super.key});
@@ -25,6 +28,28 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   GuidedSaveState _saveState = GuidedSaveState.idle;
   bool _reportMode = false;
   bool _allParticipantsReport = false;
+  GuidedPendingEdits? _drafts;
+
+  @override
+  void didUpdateWidget(covariant GuidedSessionPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sessionId != widget.sessionId) {
+      final drafts = _drafts;
+      if (drafts != null) unawaited(Future<void>.microtask(drafts.flush));
+      _drafts = null;
+      _participantId = null;
+      _saveState = GuidedSaveState.idle;
+      _reportMode = false;
+      _allParticipantsReport = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    final drafts = _drafts;
+    if (drafts != null) unawaited(Future<void>.microtask(drafts.flush));
+    super.dispose();
+  }
 
   GuidedSessionQuery get _query => (
     sessionId: widget.sessionId,
@@ -39,21 +64,69 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   }
 
   Future<void> _save(Future<void> Function() operation) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
     if (mounted) setState(() => _saveState = GuidedSaveState.saving);
     try {
+      await _drafts?.flush();
+      if (!_isCurrent(repository, sessionId)) return;
+      if (_drafts?.error != null || _drafts?.isBusy == true) {
+        setState(() => _saveState = GuidedSaveState.failed);
+        return;
+      }
       await operation();
-      if (mounted) setState(() => _saveState = GuidedSaveState.saved);
-      _refresh();
+      if (_isCurrent(repository, sessionId)) {
+        setState(() => _saveState = GuidedSaveState.saved);
+        _refresh();
+      }
+    } catch (error) {
+      if (_isCurrent(repository, sessionId)) {
+        setState(() => _saveState = GuidedSaveState.failed);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Not saved: $error')),
+        );
+        if (error is GuidedConflict) _refresh();
+      }
+    }
+  }
+
+  bool _isCurrent(GuidedRepository repository, String sessionId) {
+    if (!mounted || widget.sessionId != sessionId) return false;
+    try {
+      repository.ensureCurrent();
+      return true;
     } catch (_) {
-      if (mounted) setState(() => _saveState = GuidedSaveState.failed);
-      rethrow;
+      return false;
+    }
+  }
+
+  Future<T?> _readCurrent<T>(
+    GuidedRepository repository,
+    String sessionId,
+    Future<T> Function() read,
+  ) async {
+    try {
+      final result = await read();
+      return _isCurrent(repository, sessionId) ? result : null;
+    } catch (error) {
+      if (_isCurrent(repository, sessionId)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load this session action: $error')),
+        );
+      }
+      return null;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final detail = ref.watch(guidedSessionProvider(_query));
-    final membership = ref.watch(currentMembershipProvider).value;
+    final membershipState = ref.watch(currentMembershipProvider);
+    final membership = membershipState.isLoading || membershipState.hasError
+        ? null : membershipState.value;
+    final authorityState = ref.watch(organisationProfileProvider);
+    final authority = authorityState.isLoading || authorityState.hasError
+        ? null : authorityState.value;
     return detail.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
@@ -67,10 +140,34 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         ),
       ),
       data: (session) {
-        final canEditSession = membership != null &&
+        final canEditSession = session.status != 'archived' &&
+            authority != null && membership != null &&
+            authority.userId == membership.userId &&
+            authority.organisationId == membership.organisationId &&
             (membership.userId == session.createdById ||
-                (membership.role == 'admin' &&
+                ((authority.isOwner ||
+                        authority.permissions.contains('legacy_admin')) &&
                     session.visibility != 'private'));
+        final drafts = canEditSession
+            ? ref.watch(guidedPendingEditsProvider(session.id))
+            : null;
+        if (!canEditSession && authority != null && membership != null) {
+          _drafts?.suspend();
+        }
+        if (_drafts != null && !identical(_drafts, drafts)) {
+          _saveState = GuidedSaveState.idle;
+        }
+        _drafts = drafts;
+        drafts?.reconcile(session,
+          complete: _query.participantId == null &&
+              _query.viewMode == GuidedViewMode.allRelevant);
+        if (drafts != null) {
+          ref.listen(guidedPendingEditsProvider(session.id), (_, next) {
+            if (next.state == GuidedSaveState.saved && mounted) _refresh();
+          });
+        }
+        final participantId = _participantId;
+        final repository = drafts?.repository;
         final readOnly = !canEditSession;
         VoidCallback? transition;
         if (canEditSession && session.status == 'draft') {
@@ -78,11 +175,14 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         } else if (canEditSession && session.status == 'active') {
           transition = () => _transition('complete');
         }
-        if (_participantId == null &&
+        if ((_participantId == null ||
+                !session.participants.any((item) => item.id == _participantId)) &&
             session.participants.isNotEmpty &&
             !_allParticipantsReport) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _participantId == null) {
+            if (mounted && widget.sessionId == session.id &&
+                (_participantId == null ||
+                    !session.participants.any((item) => item.id == _participantId))) {
               setState(() => _participantId = session.participants.first.id);
             }
           });
@@ -95,7 +195,11 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
           children: [
             _SessionHeader(
               session: session,
-              saveState: _saveState,
+              saveState: _saveState == GuidedSaveState.saving ||
+                      _saveState == GuidedSaveState.failed ||
+                      drafts?.state == GuidedSaveState.idle
+                  ? _saveState
+                  : drafts?.state ?? _saveState,
               reportMode: _reportMode,
               allParticipantsReport: _allParticipantsReport,
               onBack: () => context.go('/guided'),
@@ -117,13 +221,36 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                   : null,
               onTransition: transition,
             ),
+            if (drafts != null && drafts.error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Wrap(
+                  spacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text('Not saved: ${drafts.error}'),
+                    TextButton(
+                      onPressed: drafts.isBusy ? null : drafts.retry,
+                      child: const Text('Review and retry'),
+                    ),
+                    if (drafts.conflict)
+                      TextButton(
+                        onPressed: drafts.isBusy ? null : () {
+                          drafts.useServerVersion();
+                          _refresh();
+                        },
+                        child: const Text('Use server version'),
+                      ),
+                  ],
+                ),
+              ),
             if (readOnly)
               const Padding(
                 padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'View-only session. Only the owner or an administrator can make changes.',
+                    'View-only session. Private sessions can only be edited by their creator. Other sessions allow their creator, an organisation owner or a legacy administrator.',
                     key: ValueKey('guided-session-read-only-notice'),
                   ),
                 ),
@@ -214,38 +341,27 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                       allParticipants: _allParticipantsReport,
                     )
                   : GuidedFlowView(
+                      key: ValueKey((session.id, repository)),
                       questions: session.questions,
                       participantId: _participantId,
                       participantName: activeParticipant?.name,
                       readOnly: readOnly,
+                      managedDebounce: drafts != null,
+                      pendingValues: drafts?.values ?? const {},
                       onEditing: _editing,
-                      onSaveQuestion: (question, value) => _save(
-                        () => ref
-                            .read(guidedRepositoryProvider)
-                            .updateQuestion(question.id, value),
-                      ),
-                      onSaveAnswer: (question, answer, value) => _save(() {
-                        if (_participantId == null) return Future.value();
-                        if (answer == null) {
-                          return ref
-                              .read(guidedRepositoryProvider)
-                              .saveAnswer(
-                                questionId: question.id,
-                                participantId: _participantId!,
-                                body: value,
-                              );
-                        }
-                        return ref
-                            .read(guidedRepositoryProvider)
-                            .updateAnswer(answer.id, body: value);
-                      }),
+                      onSaveQuestion: (question, value) =>
+                          drafts?.question(question, value) ?? Future.value(),
+                      onSaveAnswer: (question, answer, value) =>
+                          drafts != null && participantId != null
+                          ? drafts.answer(question, answer, participantId, value)
+                          : Future.value(),
                       onAddFollowUp: _addFollowUp,
                       onToggleBranch: (answer) => _save(
-                        () => ref
-                            .read(guidedRepositoryProvider)
+                        () => repository!
                             .updateAnswer(
                               answer.id,
                               branchesCollapsed: !answer.branchesCollapsed,
+                              expectedRevision: drafts?.revision ?? session.revision,
                             ),
                       ),
                       onDelete: _deleteQuestion,
@@ -269,9 +385,13 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   }
 
   Future<String?> _textDialog(String title, String label) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
     final controller = TextEditingController();
-    final submit = await showDialog<bool>(
+    final submit = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
+      isCurrent: () => _isCurrent(repository, sessionId),
       builder: (context) => AlertDialog(
         title: Text(title),
         content: TextField(
@@ -296,46 +416,55 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   }
 
   Future<void> _addParticipant() async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
     final name = await _textDialog('Add participant', 'Name');
-    if (name == null) return;
-    final participant = await ref
-        .read(guidedRepositoryProvider)
-        .addParticipant(widget.sessionId, name);
-    _refresh();
-    setState(() => _participantId = participant.id);
+    if (name == null || !_isCurrent(repository, sessionId)) return;
+    await _save(() async {
+      final participant = await repository.addParticipant(sessionId, name);
+      if (_isCurrent(repository, sessionId)) {
+        setState(() => _participantId = participant.id);
+      }
+    });
   }
 
   Future<void> _addQuestion(String scope) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final participantId = _participantId;
     final text = await _textDialog(
       scope == 'shared' ? 'Add shared question' : 'Add participant question',
       'Question',
     );
-    if (text == null) return;
+    if (text == null || !_isCurrent(repository, sessionId)) return;
     await _save(
-      () => ref
-          .read(guidedRepositoryProvider)
+      () => repository
           .addQuestion(
-            widget.sessionId,
+            sessionId,
             text,
             scope: scope,
-            participantId: scope == 'participant' ? _participantId : null,
+            participantId: scope == 'participant' ? participantId : null,
           ),
     );
   }
 
   Future<void> _addFollowUp(GuidedAnswer answer) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
     final text = await _textDialog('Add follow-up', 'Question');
-    if (text == null) return;
+    if (text == null || !_isCurrent(repository, sessionId)) return;
     await _save(
-      () => ref.read(guidedRepositoryProvider).addFollowUp(answer.id, text),
+      () => repository.addFollowUp(answer.id, text),
     );
   }
 
   Future<void> _deleteQuestion(GuidedQuestion question) async {
-    await ref
-        .read(guidedRepositoryProvider)
-        .setQuestionDeleted(question.id, true);
-    if (!mounted) return;
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    await _drafts?.flush();
+    if (!_isCurrent(repository, sessionId) || _drafts?.error != null) return;
+    await _save(() => repository.setQuestionDeleted(question.id, true));
+    if (!_isCurrent(repository, sessionId) || _saveState != GuidedSaveState.saved) return;
     _refresh();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -347,10 +476,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {
-            await ref
-                .read(guidedRepositoryProvider)
-                .setQuestionDeleted(question.id, false);
-            if (mounted) _refresh();
+            if (!_isCurrent(repository, sessionId)) return;
+            await _save(() => repository.setQuestionDeleted(question.id, false));
+            if (_isCurrent(repository, sessionId)) _refresh();
           },
         ),
       ),
@@ -358,12 +486,15 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   }
 
   Future<void> _knowledgeSearch(GuidedQuestion question) async {
-    final results = await ref
-        .read(guidedRepositoryProvider)
-        .searchKnowledge(question.id);
-    if (!mounted) return;
-    await showDialog<void>(
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final results = await _readCurrent(repository, sessionId,
+      () => repository.searchKnowledge(question.id));
+    if (results == null || !_isCurrent(repository, sessionId)) return;
+    await showGuidedScopedDialog<void>(
       context: context,
+      repository: repository,
+      isCurrent: () => _isCurrent(repository, sessionId),
       builder: (context) => AlertDialog(
         title: const Text('IntQAFlow Knowledge'),
         content: SizedBox(
@@ -395,8 +526,10 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   }
 
   Future<void> _propose(GuidedQuestion question, GuidedAnswer answer) async {
-    await ref.read(guidedRepositoryProvider).proposeKnowledge(question, answer);
-    if (mounted) {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    await _save(() => repository.proposeKnowledge(question, answer));
+    if (_isCurrent(repository, sessionId) && _saveState == GuidedSaveState.saved) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sent to Knowledge review.')),
       );
@@ -404,20 +537,21 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   }
 
   Future<void> _transition(String action) async {
-    await ref
-        .read(guidedRepositoryProvider)
-        .transition(widget.sessionId, action);
-    invalidateGuidedLists(ref);
-    _refresh();
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    await _save(() => repository.transition(sessionId, action));
+    if (_isCurrent(repository, sessionId)) invalidateGuidedLists(ref);
   }
 
   Future<void> _export(GuidedSessionDetail session, String format) async {
-    final contents = await ref
-        .read(guidedRepositoryProvider)
-        .exportSession(session.id, format);
-    if (!mounted) return;
-    await showDialog<void>(
+    final repository = ref.read(guidedRepositoryProvider);
+    final contents = await _readCurrent(repository, session.id,
+      () => repository.exportSession(session.id, format));
+    if (contents == null || !_isCurrent(repository, session.id)) return;
+    await showGuidedScopedDialog<void>(
       context: context,
+      repository: repository,
+      isCurrent: () => _isCurrent(repository, session.id),
       builder: (context) => AlertDialog(
         title: Text('${format.toUpperCase()} export'),
         content: SizedBox(
@@ -441,12 +575,15 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   }
 
   Future<void> _history() async {
-    final revisions = await ref
-        .read(guidedRepositoryProvider)
-        .revisions(widget.sessionId);
-    if (!mounted) return;
-    await showDialog<void>(
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final revisions = await _readCurrent(repository, sessionId,
+      () => repository.revisions(sessionId));
+    if (revisions == null || !_isCurrent(repository, sessionId)) return;
+    await showGuidedScopedDialog<void>(
       context: context,
+      repository: repository,
+      isCurrent: () => _isCurrent(repository, sessionId),
       builder: (context) => AlertDialog(
         title: const Text('Save history'),
         content: SizedBox(
@@ -632,6 +769,8 @@ class GuidedFlowView extends StatelessWidget {
     required this.participantId,
     required this.participantName,
     this.readOnly = false,
+    this.managedDebounce = false,
+    this.pendingValues = const {},
     required this.onEditing,
     required this.onSaveQuestion,
     required this.onSaveAnswer,
@@ -647,6 +786,8 @@ class GuidedFlowView extends StatelessWidget {
   final String? participantId;
   final String? participantName;
   final bool readOnly;
+  final bool managedDebounce;
+  final Map<String, String> pendingValues;
   final VoidCallback onEditing;
   final Future<void> Function(GuidedQuestion, String) onSaveQuestion;
   final Future<void> Function(GuidedQuestion, GuidedAnswer?, String)
@@ -711,6 +852,8 @@ class GuidedFlowView extends StatelessWidget {
                 participantId: participantId!,
                 participantName: participantName ?? 'Participant',
                 readOnly: readOnly,
+                managedDebounce: managedDebounce,
+                pendingValues: pendingValues,
                 depth: visible.depth,
                 path: visible.path,
                 parentText: visible.parentText,
@@ -750,6 +893,8 @@ class GuidedQuestionNode extends StatelessWidget {
     required this.participantId,
     required this.participantName,
     this.readOnly = false,
+    this.managedDebounce = false,
+    this.pendingValues = const {},
     required this.depth,
     required this.path,
     required this.parentText,
@@ -768,6 +913,8 @@ class GuidedQuestionNode extends StatelessWidget {
   final String participantId;
   final String participantName;
   final bool readOnly;
+  final bool managedDebounce;
+  final Map<String, String> pendingValues;
   final int depth;
   final List<int> path;
   final String? parentText;
@@ -856,8 +1003,9 @@ class GuidedQuestionNode extends StatelessWidget {
                     )
                   else
                     _DebouncedField(
-                      key: ValueKey('question-${question.id}-${question.text}'),
-                      initialValue: question.text,
+                      key: ValueKey('question-${question.id}'),
+                      initialValue: pendingValues[GuidedPendingEdits.questionKey(question.id)] ?? question.text,
+                      managedDebounce: managedDebounce,
                       minLines: 1,
                       style: Theme.of(context).textTheme.titleMedium,
                       onEditing: onEditing,
@@ -877,9 +1025,11 @@ class GuidedQuestionNode extends StatelessWidget {
                   else
                     _DebouncedField(
                       key: ValueKey(
-                        'answer-${answer?.id ?? question.id}-${answer?.body ?? ''}',
+                        'answer-${question.id}-$participantId',
                       ),
-                      initialValue: answer?.body ?? '',
+                      initialValue: pendingValues[GuidedPendingEdits.answerKey(question.id, participantId)] ?? answer?.body ?? '',
+                      managedDebounce: managedDebounce,
+                      allowBlank: true,
                       minLines: 2,
                       hintText: 'Record $participantName’s answer...',
                       onEditing: onEditing,
@@ -985,6 +1135,8 @@ class _DebouncedField extends StatefulWidget {
     required this.minLines,
     this.hintText,
     this.style,
+    this.allowBlank = false,
+    this.managedDebounce = false,
     super.key,
   });
 
@@ -994,6 +1146,8 @@ class _DebouncedField extends StatefulWidget {
   final int minLines;
   final String? hintText;
   final TextStyle? style;
+  final bool allowBlank;
+  final bool managedDebounce;
 
   @override
   State<_DebouncedField> createState() => _DebouncedFieldState();
@@ -1001,6 +1155,9 @@ class _DebouncedField extends StatefulWidget {
 
 class _DebouncedFieldState extends State<_DebouncedField> {
   Timer? _timer;
+  String? _pending;
+  String? _error;
+  bool _saving = false;
   late final TextEditingController _controller = TextEditingController(
     text: widget.initialValue,
   );
@@ -1008,18 +1165,58 @@ class _DebouncedFieldState extends State<_DebouncedField> {
   @override
   void dispose() {
     _timer?.cancel();
+    if (!widget.managedDebounce && _pending != null) {
+      unawaited(_savePending());
+    }
     _controller.dispose();
     super.dispose();
   }
 
   void _changed(String value) {
     widget.onEditing();
+    _pending = value;
+    setState(() => _error = null);
     _timer?.cancel();
-    _timer = Timer(const Duration(milliseconds: 650), () {
-      if (value != widget.initialValue && value.trim().isNotEmpty) {
-        widget.onSave(value.trim());
+    if (widget.managedDebounce) {
+      unawaited(widget.onSave(value));
+    } else {
+      _timer = Timer(const Duration(milliseconds: 650), _savePending);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _DebouncedField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialValue == _controller.text) {
+      _pending = null;
+    } else if (_pending == null && !_saving) {
+      _controller.text = widget.initialValue;
+    } else if (oldWidget.initialValue != widget.initialValue) {
+      _error = 'Changed on the server. Your edit is retained.';
+      _timer?.cancel();
+    }
+  }
+
+  Future<void> _savePending() async {
+    final value = _pending;
+    if (value == null || _saving) return;
+    if (!widget.allowBlank && value.trim().isEmpty) {
+      if (mounted) setState(() => _error = 'Question title cannot be blank.');
+      return;
+    }
+    final save = widget.onSave;
+    _saving = true;
+    try {
+      await save(value);
+      if (_pending == value) _pending = null;
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Not saved. Please retry.');
+    } finally {
+      _saving = false;
+      if (mounted && _pending != null && _error == null) {
+        _timer = Timer(const Duration(milliseconds: 650), _savePending);
       }
-    });
+    }
   }
 
   @override
@@ -1029,7 +1226,7 @@ class _DebouncedFieldState extends State<_DebouncedField> {
       minLines: widget.minLines,
       maxLines: null,
       style: widget.style,
-      decoration: InputDecoration(hintText: widget.hintText, isDense: true),
+      decoration: InputDecoration(hintText: widget.hintText, isDense: true, errorText: _error),
       onChanged: _changed,
     );
   }

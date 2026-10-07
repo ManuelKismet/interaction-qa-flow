@@ -41,6 +41,7 @@ class GuestWorkspaceStore {
     required Set<String> sessionIds,
     required Set<String> templateIds,
   }) async {
+    GuestWorkspaceData.fromJson(imported.toJson()).validateImport();
     final existing = await load();
     final result = GuestWorkspaceData(
       knowledge: mergeSelectedGuestItems(
@@ -58,6 +59,7 @@ class GuestWorkspaceStore {
         imported: imported.templates,
         selectedIds: templateIds,
       ),
+      additionalFields: existing.additionalFields,
     );
     await save(result);
     return result;
