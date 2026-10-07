@@ -75,3 +75,37 @@ No application/test edits, Copilot request, new task/session, deployment, merge,
 F04/F08/F09 and hosted personal/organisation-role acceptance remain open. Existing founder-authorised organisation implementation and its rollout are not revoked or marked failed by this audit; this adds an Interact assessment, not a new implementation scope. Real semantic provider work remains deferred until first customer; fake embeddings do not prove meaning matching. Monitoring remains cancelled.
 
 Next implementation work requires founder authorisation. When authorised, prioritise IP01–IP04, consolidate exact-baseline requests to Copilot, then independently verify changes before any separately authorised DEV rollout.
+
+## Founder additions and consolidated final-review register — 2026-10-07
+
+Founder requested preservation of IP01–IP12, added IP13–IP23, and authorised work after final review, with regression protection and no repetitive implementation. These additions broaden scope into workspace navigation and personal Knowledge. User-observed symptoms below are not automatically reproduced defects.
+
+| ID | Evidence / proposed outcome |
+|---|---|
+| IP13 | Groups belongs under Personal workspace rather than a global main navigation destination. Preserve guest Group access and organisation members' separate personal access; moving navigation must not require registration for existing shared-guest usage. |
+| IP14 | Review separate Group search; use existing unified search with an explicit current-group filter where needed, preserving membership enforcement. Do not remove a useful scope filter or rebuild retrieval. |
+| IP15 | Move secondary explanatory text behind accessible info icons; essential instructions, errors, privacy and save status remain visible. Inventory actual pages before edits. |
+| IP16 | Workspace-aware navigation: personal Knowledge/Interact/Groups versus organisation Knowledge/Interact/governance; clear switcher and destination. Consolidate with IP10/IP13. |
+| IP17 | New registered personal work defaults to private account storage; guest originals stay local and selected imports remain explicit. Preserve account conflict recovery, identity isolation, sign-out behavior and existing data. |
+| IP18 | Personal Knowledge adopts Ask & search / Questions and private-by-default creation using existing unified search. Preserve source navigation and explicit sharing; guests remain local. Consolidate with IP14/IP17. |
+| IP19 | Dedicated session editor across workspaces rather than expanding personal sessions inline. Organisation already has a dedicated route: reuse its established navigation behavior. |
+| IP20 | Natural flow: add participants, select active participant, add shared/participant questions, then answers/follow-ups. Remove mandatory prepared-question step/terminology, not underlying question semantics or optional templates. |
+| IP21 | Keep shared/participant question actions reachable during scrolling; clearly display active participant and avoid covering editor/keyboard. |
+| IP22 | Full phone responsive review: navigation, narrow dialogs, touch controls, keyboard, scrolling, reports and deep branches. Consolidate with IP12 and existing responsive work. |
+| IP23 | User reports questions not editable. SOURCE final review: guest/personal _GuestQuestionEditor renders question title as Text with deletion, but no title-edit control; organisation _QuestionCard already uses _DebouncedField for question.text when editable. Implement missing guest/personal editing; diagnose organisation permissions/discoverability/save behavior before adding duplicate controls. Preserve answers, targets and branches. |
+
+### Final-review progress and implementation grouping
+
+GitHub recheck confirms current complete development source remains 7aac21fad638570cf6f60a5dad478b776278c603; original IP01–IP12 audit therefore remains applicable. Documentation branch is separate. Existing rollout evidence is 126 backend / 190 Flutter passing; this turn has not rerun tests or hosted acceptance.
+
+Read current app_shell.dart, app_router.dart, guided_session_page.dart and guest_workspace_page.dart. Groups remains a global destination for verified registered users; organisation question editing exists; personal question title editing is missing. Open PR13/19/20 and older chained PRs are historical carriers, not proof of active pending jobs; use checkpoint/source provenance, not open state, before assignment. Do not restart quarantined PR13.
+
+Implementation batches, retaining all IDs:
+1. Persistence, permission and interchange safety: IP01–IP04, IP11 and the relevant IP12 regressions.
+2. Workspace shell, registered storage and Knowledge: IP10, IP13–IP18; establish private creation/storage before navigation redesign.
+3. Interact editor consistency: IP06–IP09, IP19–IP23; one coordinated editor pass rather than repeated layout rewrites.
+4. Group sharing product decision and final cross-role/device/accessibility acceptance: IP05, remaining IP12/IP22.
+
+Before application handoff, finish targeted source/hosted review of new observations and record exact acceptance criteria. Scope safety tests to real permissions, blank saves, navigation/disposal, schema round-trips, stale identity, privacy/no implicit uploads, existing templates/reports/branches and account conflicts. Run affected checks then full backend/Flutter/analyzer/configured release gates for coherent batches; maintain rollback and data-preserving additive migrations. No full test run per small cosmetic change.
+
+No new application edit, Copilot message/task, deployment or merge in this checkpoint update. Source review is in progress, not complete implementation or live validation. Real semantics remains first-customer deferred.
