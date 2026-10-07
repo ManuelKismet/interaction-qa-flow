@@ -1,0 +1,462 @@
+From ac0346ee83ab9be25dc52aa992030ecf26f1f631 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 21:02:40 +0000
+Subject: [PATCH] Correct guided async mounted guards and delayed-read
+ regression lifecycle
+
+Retain original identity/session scope guards while adding explicit mounted checks. Keep real guided provider dependencies active, observe original repository cancellation separately from provider rebuilds, bound readiness and clean pending gates before teardown. Add delayed read/export navigation and disposal regressions.
+
+Flutter/analyzer/release unavailable in this sandbox (SDK absent); independent Codespace validation remains required. Backend and schema0015 unchanged.
+---
+ .../presentation/guided_session_page.dart     |  18 +-
+ apps/flutter_app/test/guided_safety_test.dart | 243 ++++++++++++++++--
+ 2 files changed, 234 insertions(+), 27 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guided/presentation/guided_session_page.dart b/apps/flutter_app/lib/features/guided/presentation/guided_session_page.dart
+index bcf588745a5aa86cb0a2c5dbc9b27f6a388ada36..87850f1af4d17238969b9129957b8539d18878e4 100644
+--- a/apps/flutter_app/lib/features/guided/presentation/guided_session_page.dart
++++ b/apps/flutter_app/lib/features/guided/presentation/guided_session_page.dart
+@@ -80,7 +80,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
+         _refresh();
+       }
+     } catch (error) {
+-      if (_isCurrent(repository, sessionId)) {
++      if (mounted && _isCurrent(repository, sessionId)) {
+         setState(() => _saveState = GuidedSaveState.failed);
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Not saved: $error')),
+@@ -109,7 +109,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
+       final result = await read();
+       return _isCurrent(repository, sessionId) ? result : null;
+     } catch (error) {
+-      if (_isCurrent(repository, sessionId)) {
++      if (mounted && _isCurrent(repository, sessionId)) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Could not load this session action: $error')),
+         );
+@@ -464,7 +464,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
+     await _drafts?.flush();
+     if (!_isCurrent(repository, sessionId) || _drafts?.error != null) return;
+     await _save(() => repository.setQuestionDeleted(question.id, true));
+-    if (!_isCurrent(repository, sessionId) || _saveState != GuidedSaveState.saved) return;
++    if (!mounted ||
++        !_isCurrent(repository, sessionId) ||
++        _saveState != GuidedSaveState.saved) return;
+     _refresh();
+     ScaffoldMessenger.of(context).showSnackBar(
+       SnackBar(
+@@ -490,7 +492,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
+     final sessionId = widget.sessionId;
+     final results = await _readCurrent(repository, sessionId,
+       () => repository.searchKnowledge(question.id));
+-    if (results == null || !_isCurrent(repository, sessionId)) return;
++    if (!mounted || results == null || !_isCurrent(repository, sessionId)) return;
+     await showGuidedScopedDialog<void>(
+       context: context,
+       repository: repository,
+@@ -529,7 +531,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
+     final repository = ref.read(guidedRepositoryProvider);
+     final sessionId = widget.sessionId;
+     await _save(() => repository.proposeKnowledge(question, answer));
+-    if (_isCurrent(repository, sessionId) && _saveState == GuidedSaveState.saved) {
++    if (mounted &&
++        _isCurrent(repository, sessionId) &&
++        _saveState == GuidedSaveState.saved) {
+       ScaffoldMessenger.of(context).showSnackBar(
+         const SnackBar(content: Text('Sent to Knowledge review.')),
+       );
+@@ -547,7 +551,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
+     final repository = ref.read(guidedRepositoryProvider);
+     final contents = await _readCurrent(repository, session.id,
+       () => repository.exportSession(session.id, format));
+-    if (contents == null || !_isCurrent(repository, session.id)) return;
++    if (!mounted || contents == null || !_isCurrent(repository, session.id)) return;
+     await showGuidedScopedDialog<void>(
+       context: context,
+       repository: repository,
+@@ -579,7 +583,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
+     final sessionId = widget.sessionId;
+     final revisions = await _readCurrent(repository, sessionId,
+       () => repository.revisions(sessionId));
+-    if (revisions == null || !_isCurrent(repository, sessionId)) return;
++    if (!mounted || revisions == null || !_isCurrent(repository, sessionId)) return;
+     await showGuidedScopedDialog<void>(
+       context: context,
+       repository: repository,
+diff --git a/apps/flutter_app/test/guided_safety_test.dart b/apps/flutter_app/test/guided_safety_test.dart
+index aec6eb56cf8047fea7d4ca2b9c7c7e39dbbd6876..f710f49c7f7e06a108075458df9c512c7bd8184a 100644
+--- a/apps/flutter_app/test/guided_safety_test.dart
++++ b/apps/flutter_app/test/guided_safety_test.dart
+@@ -4,6 +4,7 @@ import 'dart:typed_data';
+ 
+ import 'package:dio/dio.dart';
+ import 'package:firebase_auth/firebase_auth.dart';
++import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:flutter_test/flutter_test.dart';
+@@ -45,19 +46,36 @@ void main() {
+         },
+       );
+       addTearDown(subscription.close);
++      final originalRepository = h.container.read(guidedRepositoryProvider);
+       final old = h.container.read(guidedSessionProvider(query).future);
+       final checked = old.then<Object?>(
+         (value) => value.title,
+         onError: (Object error) => error,
+       );
+-      await _waitFor(() => h.adapter.readGate != null);
+-      final originalRepository = h.container.read(guidedRepositoryProvider);
++      // A provider's .future can follow a rebuild; observe the original request too.
++      final originalRead = expectLater(
++        originalRepository.getSession('session-1'),
++        throwsStateError,
++      );
++      await _waitFor(
++        () => h.adapter.reads.length == 2 && h.adapter.readGate != null,
++        reason: 'Both original-scope reads must reach the delayed adapter.',
++      );
++      final oldGate = h.adapter.readGate!;
+       h.adapter.holdReads = false;
+       h.change(transition);
+       await h.ready();
+-      h.adapter.readGate!.complete(_response(h.adapter.session(title: 'Old private marker')));
+-      expect(await checked, isNot('Old private marker'));
+-      final current = await h.container.read(guidedSessionProvider(query).future);
++      expect(originalRepository.cancelToken!.isCancelled, isTrue);
++      await _waitFor(
++        () => h.adapter.cancelledReads.length == 2,
++        reason: 'Both original-scope reads must be cancelled on $transition change.',
++      );
++      oldGate.complete(_response(h.adapter.session(title: 'Old private marker')));
++      await originalRead.timeout(const Duration(seconds: 2));
++      expect(await checked.timeout(const Duration(seconds: 2)), isNot('Old private marker'));
++      final current = await h.container
++          .read(guidedSessionProvider(query).future)
++          .timeout(const Duration(seconds: 2));
+       expect(current.title, 'Organisation session');
+       expect(renderedTitles, isNot(contains('Old private marker')));
+       await expectLater(
+@@ -75,11 +93,12 @@ void main() {
+     final repository = h.container.read(guidedRepositoryProvider);
+     h.tokens.tokenGate = Completer<String?>();
+     final write = repository.updateAnswer('answer-1', body: 'A private edit', expectedRevision: 1);
+-    final checked = expectLater(write, throwsA(anything));
++    final checked = expectLater(write, throwsStateError);
+     await _waitFor(() => h.tokens.tokenWaits == 1);
+     h.change('uid');
++    await h.ready();
+     h.tokens.tokenGate!.complete('uid-a');
+-    await checked;
++    await checked.timeout(const Duration(seconds: 2));
+     expect(h.adapter.writes, isEmpty);
+   });
+ 
+@@ -512,6 +531,90 @@ void main() {
+     expect(tester.takeException(), isNull);
+   });
+ 
++  for (final destination in ['/guided', '/guided/sessions/session-2']) {
++    for (final status in [200, 503]) {
++      testWidgets('late export ($status) cannot open a dialog or snackbar after navigating to $destination', (tester) async {
++        final h = _Harness();
++        addTearDown(h.close);
++        final router = await _mount(tester, h);
++        final originalPage = tester.state(find.byType(GuidedSessionPage));
++        final repository = h.container.read(guidedRepositoryProvider);
++        h.adapter.holdExports = true;
++        await tester.tap(find.byTooltip('Export'));
++        await tester.pumpAndSettle();
++        await tester.tap(find.text('JSON'));
++        await tester.pumpAndSettle();
++        expect(h.adapter.exports.single.path,
++            '/api/v1/guided/sessions/session-1/export/json');
++        expect(h.adapter.exportGate, isNotNull);
++        final gate = h.adapter.exportGate!;
++
++        router.go(destination);
++        await tester.pumpAndSettle();
++        if (destination == '/guided') {
++          expect(originalPage.mounted, isFalse);
++          expect(find.text('Session list'), findsOneWidget);
++        } else {
++          expect(find.text('Second session'), findsOneWidget);
++        }
++        // Navigation must exercise the page guards, not repository cancellation.
++        expect(identical(h.container.read(guidedRepositoryProvider), repository), isTrue);
++        expect(repository.cancelToken!.isCancelled, isFalse);
++        gate.complete(_response(
++          {'title': 'Old private export marker'},
++          status: status,
++        ));
++        await tester.pumpAndSettle();
++        expect(find.text(destination == '/guided' ? 'Session list' : 'Second session'),
++            findsOneWidget);
++        expect(find.text('Organisation session'), findsNothing);
++        expect(find.text('JSON export'), findsNothing);
++        expect(find.textContaining('Old private export marker'), findsNothing);
++        expect(find.byType(AlertDialog), findsNothing);
++        expect(find.byType(SnackBar), findsNothing);
++        expect(h.adapter.writes, isEmpty);
++        expect(tester.takeException(), isNull);
++      });
++    }
++
++    testWidgets('late session read cannot render after navigating to $destination', (tester) async {
++      final h = _Harness();
++      addTearDown(h.close);
++      final router = await _mount(tester, h);
++      final originalPage = tester.state(find.byType(GuidedSessionPage));
++      final repository = h.container.read(guidedRepositoryProvider);
++      final originalReads = h.adapter.reads.length;
++      h.adapter.holdReads = true;
++      h.container.invalidate(guidedSessionProvider);
++      final rawResults = <Object>[];
++      unawaited(repository.getSession('session-1').then<void>(
++        (session) => rawResults.add(session.title),
++        onError: (Object error) => rawResults.add(error),
++      ));
++      await _pumpUntil(tester, () => h.adapter.reads.length == originalReads + 2);
++      expect(h.adapter.readGate, isNotNull);
++      final gate = h.adapter.readGate!;
++      h.adapter.holdReads = false;
++      router.go(destination);
++      await tester.pumpAndSettle();
++      if (destination == '/guided') expect(originalPage.mounted, isFalse);
++      expect(repository.cancelToken!.isCancelled, isFalse);
++      gate.complete(_response(h.adapter.session(title: 'Old private read marker')));
++      await _pumpUntil(tester, () => rawResults.isNotEmpty);
++      await tester.pumpAndSettle();
++      // The original raw read really arrived; only its abandoned view is stale.
++      expect(rawResults, ['Old private read marker']);
++      expect(find.text(destination == '/guided' ? 'Session list' : 'Second session'),
++          findsOneWidget);
++      expect(find.text('Organisation session'), findsNothing);
++      expect(find.text('Old private read marker'), findsNothing);
++      expect(find.byType(AlertDialog), findsNothing);
++      expect(find.byType(SnackBar), findsNothing);
++      expect(h.adapter.writes, isEmpty);
++      expect(tester.takeException(), isNull);
++    });
++  }
++
+   testWidgets('dialog opened by original user cannot mutate after identity switch', (tester) async {
+     final h = _Harness();
+     addTearDown(h.close);
+@@ -641,6 +744,11 @@ Future<GoRouter> _mount(WidgetTester tester, _Harness h) async {
+     ],
+   );
+   addTearDown(router.dispose);
++  addTearDown(() async {
++    await tester.pumpWidget(const SizedBox.shrink());
++    h.releaseGates();
++    await tester.pumpAndSettle();
++  });
+   await tester.pumpWidget(UncontrolledProviderScope(
+     container: h.container,
+     child: MaterialApp.router(routerConfig: router),
+@@ -659,11 +767,18 @@ class _Harness {
+         apiClientProvider.overrideWithValue(client),
+         authStateProvider.overrideWith((ref) => Stream<User?>.multi((controller) {
+           controller.add(GuidedTestUser(uid));
+-          final subscription = events.stream.listen(controller.add);
++          final subscription = events.stream.listen(
++            controller.add,
++            onError: controller.addError,
++            onDone: controller.close,
++          );
+           controller.onCancel = subscription.cancel;
+         })),
+         currentMembershipProvider.overrideWith((ref) async {
+-          await ref.watch(authStateProvider.future);
++          final auth = ref.watch(authStateProvider);
++          if (!auth.hasValue || auth.isLoading) {
++            await ref.watch(authStateProvider.future);
++          }
+           return ActiveMembership(
+             userId: userId,
+             organisationId: organisationId,
+@@ -693,6 +808,12 @@ class _Harness {
+         }),
+       ],
+     );
++    // Keep streams active and autoDispose authority alive across read/await gaps.
++    authoritySubscriptions = [
++      container.listen(authStateProvider, (_, _) {}),
++      container.listen(currentMembershipProvider, (_, _) {}),
++      container.listen(organisationProfileProvider, (_, _) {}),
++    ];
+   }
+ 
+   String uid = 'uid-a';
+@@ -707,11 +828,30 @@ class _Harness {
+   late final _Tokens tokens;
+   late final Dio client;
+   late final ProviderContainer container;
++  late final List<ProviderSubscription<dynamic>> authoritySubscriptions;
+ 
+   Future<void> ready() async {
+-    await container.read(authStateProvider.future);
+-    await container.read(currentMembershipProvider.future);
+-    await container.read(organisationProfileProvider.future);
++    await _waitFor(
++      () {
++        final auth = container.read(authStateProvider);
++        final membership = container.read(currentMembershipProvider);
++        final authority = container.read(organisationProfileProvider);
++        return !auth.isLoading &&
++            !auth.hasError &&
++            auth.value?.uid == uid &&
++            !membership.isLoading &&
++            !membership.hasError &&
++            membership.value?.userId == userId &&
++            membership.value?.organisationId == organisationId &&
++            !authority.isLoading &&
++            !authority.hasError &&
++            authority.value?.userId == userId &&
++            authority.value?.organisationId == organisationId &&
++            authority.value?.isOwner == isOwner &&
++            setEquals(authority.value?.permissions, permissions);
++      },
++      reason: 'Authority must settle for $uid / $userId / $organisationId.',
++    );
+     container.read(guidedRepositoryProvider);
+     await container.pump();
+   }
+@@ -734,10 +874,22 @@ class _Harness {
+     }
+   }
+ 
+-  void close() {
++  void releaseGates() {
++    final authority = authorityGate;
++    if (authority != null && !authority.isCompleted) authority.complete();
++    final tokenGate = tokens.tokenGate;
++    if (tokenGate != null && !tokenGate.isCompleted) tokenGate.complete(uid);
++    adapter.releaseGates();
++  }
++
++  Future<void> close() async {
++    for (final subscription in authoritySubscriptions.reversed) {
++      subscription.close();
++    }
+     container.dispose();
+-    client.close();
+-    events.close();
++    releaseGates();
++    client.close(force: true);
++    await events.close();
+   }
+ }
+ 
+@@ -765,7 +917,10 @@ class _Tokens implements ApiTokenSource {
+ class _Adapter implements HttpClientAdapter {
+   final List<RequestOptions> writes = [];
+   final List<RequestOptions> reads = [];
++  final List<RequestOptions> cancelledReads = [];
++  final List<RequestOptions> exports = [];
+   bool holdReads = false;
++  bool holdExports = false;
+   bool failWrites = false;
+   bool failAfterWrite = false;
+   bool holdWrites = false;
+@@ -779,6 +934,7 @@ class _Adapter implements HttpClientAdapter {
+   String followUpOwner = 'participant-1';
+   Completer<ResponseBody>? readGate;
+   Completer<ResponseBody>? writeGate;
++  Completer<ResponseBody>? exportGate;
+   String body = 'Original answer';
+   String title = 'What happened?';
+   String visibility = 'organisation';
+@@ -876,15 +1032,23 @@ class _Adapter implements HttpClientAdapter {
+       }
+       if (holdWrites) {
+         writeGate ??= Completer<ResponseBody>();
+-        return writeGate!.future;
++        return _heldResponse(writeGate!, options, cancelFuture);
+       }
+       return _response({'session_revision': revision});
+     }
++    if (options.path.contains('/sessions/') && options.path.contains('/export/')) {
++      exports.add(options);
++      if (holdExports) {
++        exportGate ??= Completer<ResponseBody>();
++        return _heldResponse(exportGate!, options, cancelFuture);
++      }
++      return _response(session());
++    }
+     if (options.path.contains('/sessions/session-')) {
+       reads.add(options);
+       if (holdReads) {
+         readGate ??= Completer<ResponseBody>();
+-        return readGate!.future;
++        return _heldResponse(readGate!, options, cancelFuture);
+       }
+       final id = options.path.split('/').last;
+       final detail = session(
+@@ -925,8 +1089,40 @@ class _Adapter implements HttpClientAdapter {
+     return _response([]);
+   }
+ 
++  Future<ResponseBody> _heldResponse(
++    Completer<ResponseBody> gate,
++    RequestOptions options,
++    Future<void>? cancelFuture,
++  ) {
++    if (cancelFuture == null) return gate.future;
++    return Future.any([
++      gate.future,
++      cancelFuture.then<ResponseBody>((_) {
++        if (options.method == 'GET') cancelledReads.add(options);
++        throw DioException.requestCancelled(
++          requestOptions: options,
++          reason: 'Interact authority changed.',
++        );
++      }),
++    ]);
++  }
++
++  void releaseGates() {
++    holdReads = false;
++    holdWrites = false;
++    holdExports = false;
++    final read = readGate;
++    if (read != null && !read.isCompleted) read.complete(_response(session()));
++    final write = writeGate;
++    if (write != null && !write.isCompleted) {
++      write.complete(_response({'session_revision': revision}));
++    }
++    final export = exportGate;
++    if (export != null && !export.isCompleted) export.complete(_response(session()));
++  }
++
+   @override
+-  void close({bool force = false}) {}
++  void close({bool force = false}) => releaseGates();
+ }
+ 
+ ResponseBody _response(Object? data, {int status = 200}) => ResponseBody.fromString(
+@@ -935,9 +1131,16 @@ ResponseBody _response(Object? data, {int status = 200}) => ResponseBody.fromStr
+   headers: {Headers.contentTypeHeader: ['application/json']},
+ );
+ 
+-Future<void> _waitFor(bool Function() condition) async {
++Future<void> _waitFor(bool Function() condition, {String? reason}) async {
+   for (var attempt = 0; attempt < 200 && !condition(); attempt++) {
+     await Future<void>.delayed(const Duration(milliseconds: 1));
+   }
+-  expect(condition(), isTrue);
++
++  Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
++    for (var attempt = 0; attempt < 200 && !condition(); attempt++) {
++      await tester.pump(const Duration(milliseconds: 1));
++    }
++    expect(condition(), isTrue);
++  }
++  expect(condition(), isTrue, reason: reason);
+ }
+
+base-commit: f0f38823f3b519ca5701c7e1aad811b76fe7893c
+-- 
+2.55.0
+
