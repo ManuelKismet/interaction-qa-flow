@@ -1,0 +1,227 @@
+From 6db1e2db337f3ed2db2d333bde53b859c78b6152 Mon Sep 17 00:00:00 2001
+From: Copilot Task Agent <copilot-task-agent@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 07:46:01 +0000
+Subject: [PATCH] Correct Ask search lifecycle and regression harness
+
+REPLACEMENT-ASK-PARITY-20261007
+
+Base-commit: 6514b7e50c38520449b114853f9f11d1c74db136
+
+Source-commit: 380a6fa87d3b63bef4b100c844a2e4146ed62cc0
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+
+diff --git a/apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart b/apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart
+index 3803fcb..e738a57 100644
+--- a/apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart
++++ b/apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart
+@@ -128,14 +128,18 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
+   Timer? _debounce;
+   String _latestQuery = '';
+   int _queryGeneration = 0;
++  String? _lastSearchQuery;
++  AskSearchIdentity? _lastSearchIdentity;
+ 
+   @override
+   Future<AskSuggestions> build() async {
+     ref.listen(askSearchIdentityProvider, (previous, next) {
+       if (previous != null &&
+           !previous.sameScopeAs(next) &&
+-          _latestQuery.isNotEmpty) {
+-        queryChanged(_latestQuery);
++          _latestQuery.isNotEmpty &&
++          (_lastSearchQuery != _latestQuery ||
++              _lastSearchIdentity?.sameScopeAs(next) != true)) {
++        _scheduleQuery(_latestQuery, preserveResults: false);
+       }
+     });
+     ref.onDispose(() {
+@@ -146,6 +150,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
+   }
+ 
+   void queryChanged(String query) {
++    _lastSearchQuery = null;
+     _scheduleQuery(query, preserveResults: false);
+   }
+ 
+@@ -194,6 +199,8 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
+     AskSuggestions? previousResults,
+   }) async {
+     final identity = ref.read(askSearchIdentityProvider);
++    _lastSearchQuery = query;
++    _lastSearchIdentity = identity;
+     GuestWorkspaceData local;
+     var localFailed = false;
+     try {
+diff --git a/apps/flutter_app/test/ask_page_test.dart b/apps/flutter_app/test/ask_page_test.dart
+index 87feef8..faeed36 100644
+--- a/apps/flutter_app/test/ask_page_test.dart
++++ b/apps/flutter_app/test/ask_page_test.dart
+@@ -169,6 +169,18 @@ class _VerifiedUser extends Fake implements User {
+   bool get isAnonymous => false;
+ }
+ 
++class _TestFirebaseAuth extends Fake implements FirebaseAuth {
++  _TestFirebaseAuth(this.user);
++
++  final User user;
++
++  @override
++  User get currentUser => user;
++
++  @override
++  Stream<User?> authStateChanges() => Stream.value(user);
++}
++
+ class _GroupRepository extends GuestGroupRepository {
+   _GroupRepository() : super(Dio());
+ 
+@@ -185,6 +197,9 @@ class _GroupRepository extends GuestGroupRepository {
+     },
+   ];
+ 
++  @override
++  Future<List<Map<String, dynamic>>> listGroups() async => const [];
++
+   @override
+   Future<Map<String, dynamic>> searchKnowledge(String query) async => {
+     'partial': false,
+@@ -210,6 +225,7 @@ void main() {
+     final questions = _QuestionsRepository();
+     final personal = _PersonalRepository();
+     final groups = _GroupRepository();
++    final user = _VerifiedUser();
+     await GuestWorkspaceStore(storage).save(
+       const GuestWorkspaceData(
+         knowledge: [
+@@ -233,7 +249,7 @@ void main() {
+           builder: (_, state) => GuestWorkspacePage(
+             firebaseReady: true,
+             personalWorkspaceEnabled: true,
+-            accountUser: _VerifiedUser(),
++            accountUser: user,
+             membershipStatus: AccountMembershipStatus.active,
+             initialKnowledgeItemId:
+                 (state.extra as Map?)?['knowledgeItemId'] as String?,
+@@ -255,6 +271,8 @@ void main() {
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          authStateProvider.overrideWith((ref) => Stream.value(user)),
+           questionsRepositoryProvider.overrideWithValue(questions),
+           departmentsProvider.overrideWith((ref) async => [_department()]),
+           teamsProvider.overrideWith((ref) async => [_team()]),
+@@ -433,7 +451,7 @@ void main() {
+       await tester.ensureVisible(find.text('Team (optional)'));
+       await tester.tap(find.text('No team'));
+       await tester.pumpAndSettle();
+-      await tester.tap(find.text('Identity').last);
++      await tester.tap(find.text('Security · Identity').last);
+       await tester.pumpAndSettle();
+       await tester.ensureVisible(find.text('Ask as new question'));
+       await tester.tap(find.text('Ask as new question'));
+diff --git a/apps/flutter_app/test/ask_suggestions_controller_test.dart b/apps/flutter_app/test/ask_suggestions_controller_test.dart
+index 28780ed..68e51b1 100644
+--- a/apps/flutter_app/test/ask_suggestions_controller_test.dart
++++ b/apps/flutter_app/test/ask_suggestions_controller_test.dart
+@@ -31,6 +31,7 @@ class _QuestionsRepository extends QuestionsRepository {
+   final List<SemanticSearchResult> results;
+   final requests = <String>[];
+   final pending = <Completer<List<SemanticSearchResult>>>[];
++  void Function()? onSearch;
+ 
+   @override
+   Future<List<SemanticSearchResult>> searchQuestions(
+@@ -38,6 +39,7 @@ class _QuestionsRepository extends QuestionsRepository {
+     int limit = 5,
+   }) {
+     requests.add(query);
++    onSearch?.call();
+     if (pending.isNotEmpty) return pending.removeAt(0).future;
+     return Future.value(results);
+   }
+@@ -48,6 +50,7 @@ class _PersonalRepository extends PersonalWorkspaceRepository {
+ 
+   final List<Map<String, dynamic>> results;
+   final requests = <String>[];
++  final requestedUids = <String>[];
+   String? expectedUid;
+   bool failSearch = false;
+ 
+@@ -58,6 +61,7 @@ class _PersonalRepository extends PersonalWorkspaceRepository {
+   }) async {
+     requests.add(query);
+     this.expectedUid = expectedUid;
++    requestedUids.add(expectedUid);
+     if (failSearch) throw StateError('Private source unavailable');
+     return {'results': results, 'partial': false};
+   }
+@@ -591,6 +595,10 @@ void main() {
+       ],
+     );
+     addTearDown(container.dispose);
++    final requestedScopes = <AskSearchIdentity>[];
++    questions.onSearch = () => requestedScopes.add(
++      container.read(_testAskIdentityProvider),
++    );
+     container.listen(askSuggestionsProvider, (_, _) {});
+     final controller = container.read(askSuggestionsProvider.notifier);
+     final identityController = container.read(
+@@ -633,6 +641,12 @@ void main() {
+       container.read(askSuggestionsProvider).value!.hits.map((hit) => hit.id),
+       ['local-hit'],
+     );
++    expect(questions.requests, ['password', 'password']);
++    expect(personal.requestedUids, [
++      'verified-uid',
++      'verified-uid',
++      'verified-uid',
++    ]);
+ 
+     identityController.setIdentity(
+       const AskSearchIdentity(
+@@ -643,6 +657,7 @@ void main() {
+     );
+     await Future<void>.delayed(const Duration(milliseconds: 380));
+     expect(personal.expectedUid, 'next-uid');
++    expect(questions.requests, ['password', 'password', 'password']);
+     identityController.setIdentity(const AskSearchIdentity());
+     await Future<void>.delayed(const Duration(milliseconds: 380));
+     third.complete([_organisationResult(id: 'signed-out-hit', relevance: 1)]);
+@@ -650,6 +665,29 @@ void main() {
+     final signedOut = container.read(askSuggestionsProvider).value!;
+     expect(signedOut.hits.map((hit) => hit.id), ['local-hit']);
+     expect(questions.requests, ['password', 'password', 'password']);
+-    expect(personal.requests, ['password', 'password', 'password']);
++    expect(requestedScopes, [
++      const AskSearchIdentity(
++        verifiedUid: 'verified-uid',
++        membershipState: 'active',
++        organisationId: 'first-organisation',
++      ),
++      const AskSearchIdentity(
++        verifiedUid: 'verified-uid',
++        membershipState: 'active',
++        organisationId: 'second-organisation',
++      ),
++      const AskSearchIdentity(
++        verifiedUid: 'next-uid',
++        membershipState: 'active',
++        organisationId: 'second-organisation',
++      ),
++    ]);
++    expect(personal.requests, ['password', 'password', 'password', 'password']);
++    expect(personal.requestedUids, [
++      'verified-uid',
++      'verified-uid',
++      'verified-uid',
++      'next-uid',
++    ]);
+   });
+ }
+
+base-commit: 6514b7e50c38520449b114853f9f11d1c74db136
+-- 
+2.55.0
+
