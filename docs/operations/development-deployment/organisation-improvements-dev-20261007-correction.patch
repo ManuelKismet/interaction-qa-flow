@@ -1,0 +1,1271 @@
+From 21834f765be55c01cb16a6a1c91cd94449af7d62 Mon Sep 17 00:00:00 2001
+From: Copilot Task Agent <copilot-task-agent@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 10:28:12 +0000
+Subject: [PATCH] Fix organisation self-approval and stale identity data
+
+Reject approving ones own Team or department join request, including concurrent decisions. Bind organisation data and actions to the current Firebase UID, backend membership, organisation and role; cancel stale reads and reject late successful responses.
+---
+ apps/flutter_app/lib/core/api/api_client.dart |  34 +-
+ .../lib/core/auth/auth_providers.dart         |  53 +-
+ .../application/organisation_providers.dart   | 137 ++++-
+ .../presentation/organisation_page.dart       | 132 ++++-
+ apps/flutter_app/test/api_client_test.dart    |  51 +-
+ .../test/organisation_scope_test.dart         | 473 ++++++++++++++++++
+ .../services/organisation_administration.py   |   4 +
+ .../tests/test_organisation_administration.py |  52 ++
+ ...st_organisation_administration_postgres.py |  59 +++
+ 9 files changed, 919 insertions(+), 76 deletions(-)
+ create mode 100644 apps/flutter_app/test/organisation_scope_test.dart
+
+diff --git a/apps/flutter_app/lib/core/api/api_client.dart b/apps/flutter_app/lib/core/api/api_client.dart
+index 5b357d77dd311e6adde958697f014aff47498b21..ce0ced995177248888adc55df1fd0761875f9ee2 100644
+--- a/apps/flutter_app/lib/core/api/api_client.dart
++++ b/apps/flutter_app/lib/core/api/api_client.dart
+@@ -48,10 +48,7 @@ class _FirebaseTokenSource implements ApiTokenSource {
+   Future<void> signOut() => auth.signOut();
+ }
+ 
+-Dio createApiClient(
+-  ApiTokenSource tokenSource, {
+-  HttpClientAdapter? adapter,
+-}) {
++Dio createApiClient(ApiTokenSource tokenSource, {HttpClientAdapter? adapter}) {
+   final client = Dio(
+     BaseOptions(
+       baseUrl: AppConfig.apiBaseUrl,
+@@ -78,6 +75,24 @@ Dio createApiClient(
+           );
+         }
+       },
++      onResponse: (response, handler) {
++        final expectedUid =
++            response.requestOptions.extra['expectedFirebaseUid'];
++        if (expectedUid is String && tokenSource.currentUid != expectedUid) {
++          handler.reject(
++            DioException(
++              requestOptions: response.requestOptions,
++              response: response,
++              type: DioExceptionType.cancel,
++              error: StateError(
++                'The signed-in account changed during the request.',
++              ),
++            ),
++          );
++          return;
++        }
++        handler.next(response);
++      },
+       onError: (error, handler) async {
+         final options = error.requestOptions;
+         final detail = jsonEncode(error.response?.data ?? '').toLowerCase();
+@@ -85,15 +100,13 @@ Dio createApiClient(
+         if (error.response?.statusCode != 401 ||
+             options.extra['authRetried'] == true ||
+             detail.contains('app check') ||
+-            (expectedUid is String &&
+-                tokenSource.currentUid != expectedUid)) {
++            (expectedUid is String && tokenSource.currentUid != expectedUid)) {
+           handler.next(error);
+           return;
+         }
+         try {
+           final idToken = await tokenSource.idToken(forceRefresh: true);
+-          if (expectedUid is String &&
+-              tokenSource.currentUid != expectedUid) {
++          if (expectedUid is String && tokenSource.currentUid != expectedUid) {
+             handler.next(error);
+             return;
+           }
+@@ -142,6 +155,9 @@ Future<void> _attachTokens(
+     throw StateError('The signed-in account changed before the request.');
+   }
+   final appCheckToken = await tokenSource.appCheckToken();
++  if (expectedUid is String && tokenSource.currentUid != expectedUid) {
++    throw StateError('The signed-in account changed before the request.');
++  }
+   if (currentIdToken == null ||
+       currentIdToken.isEmpty ||
+       appCheckToken == null ||
+@@ -151,4 +167,4 @@ Future<void> _attachTokens(
+   options
+     ..headers['Authorization'] = '$_authorizationScheme $currentIdToken'
+     ..headers['X-Firebase-AppCheck'] = appCheckToken;
+-}
+\ No newline at end of file
++}
+diff --git a/apps/flutter_app/lib/core/auth/auth_providers.dart b/apps/flutter_app/lib/core/auth/auth_providers.dart
+index 3f37fe3115abd77167ad5aed1733ac90a9a81094..2060de787e8a4bffd985f7f13080d10b9e5f610d 100644
+--- a/apps/flutter_app/lib/core/auth/auth_providers.dart
++++ b/apps/flutter_app/lib/core/auth/auth_providers.dart
+@@ -1,3 +1,4 @@
++import 'package:dio/dio.dart';
+ import 'package:firebase_auth/firebase_auth.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:int_qa_flow/core/api/api_client.dart';
+@@ -13,23 +14,28 @@ final authStateProvider = StreamProvider<User?>(
+   (ref) => ref.watch(firebaseAuthProvider).authStateChanges(),
+ );
+ 
+-final currentMembershipProvider = FutureProvider.autoDispose<ActiveMembership>(
+-  (ref) async {
+-    final user = ref.watch(authStateProvider).value;
+-    if (user == null) throw StateError('No authenticated user');
+-    final response = await ref
+-        .watch(apiClientProvider)
+-        .get<Map<String, dynamic>>('/api/v1/auth/me');
+-    return ActiveMembership.fromJson(response.data!);
+-  },
+-);
++final currentMembershipProvider = FutureProvider.autoDispose<ActiveMembership>((
++  ref,
++) async {
++  final user = ref.watch(authStateProvider).value;
++  if (user == null) throw StateError('No authenticated user');
++  final expectedUid = user.uid;
++  final cancelToken = CancelToken();
++  ref.onDispose(cancelToken.cancel);
++  final response = await ref
++      .watch(apiClientProvider)
++      .get<Map<String, dynamic>>(
++        '/api/v1/auth/me',
++        options: Options(extra: {'expectedFirebaseUid': expectedUid}),
++        cancelToken: cancelToken,
++      );
++  if (!ref.mounted || ref.read(authStateProvider).value?.uid != expectedUid) {
++    throw StateError('The signed-in account changed while loading membership.');
++  }
++  return ActiveMembership.fromJson(response.data!);
++});
+ 
+-enum AccountMembershipStatus {
+-  active,
+-  noMembership,
+-  inactive,
+-  unavailable,
+-}
++enum AccountMembershipStatus { active, noMembership, inactive, unavailable }
+ 
+ final accountMembershipStatusProvider =
+     FutureProvider.autoDispose<AccountMembershipStatus>((ref) async {
+@@ -37,9 +43,22 @@ final accountMembershipStatusProvider =
+       if (user == null || user.isAnonymous) {
+         throw StateError('A registered Firebase identity is required.');
+       }
++      final expectedUid = user.uid;
++      final cancelToken = CancelToken();
++      ref.onDispose(cancelToken.cancel);
+       final response = await ref
+           .watch(apiClientProvider)
+-          .get<Map<String, dynamic>>('/api/v1/account/state');
++          .get<Map<String, dynamic>>(
++            '/api/v1/account/state',
++            options: Options(extra: {'expectedFirebaseUid': expectedUid}),
++            cancelToken: cancelToken,
++          );
++      if (!ref.mounted ||
++          ref.read(authStateProvider).value?.uid != expectedUid) {
++        throw StateError(
++          'The signed-in account changed while checking membership.',
++        );
++      }
+       return switch (response.data?['status']) {
+         'active' => AccountMembershipStatus.active,
+         'no_membership' => AccountMembershipStatus.noMembership,
+diff --git a/apps/flutter_app/lib/features/organisation/application/organisation_providers.dart b/apps/flutter_app/lib/features/organisation/application/organisation_providers.dart
+index 12043bcab35ab950af868334f9fb3a39f0c67c9f..3828eab1e7348133adf1a01141a4003065697f3a 100644
+--- a/apps/flutter_app/lib/features/organisation/application/organisation_providers.dart
++++ b/apps/flutter_app/lib/features/organisation/application/organisation_providers.dart
+@@ -4,20 +4,89 @@ import 'package:int_qa_flow/core/auth/auth_providers.dart';
+ import 'package:int_qa_flow/features/organisation/data/organisation_repository.dart';
+ import 'package:int_qa_flow/features/organisation/domain/organisation_models.dart';
+ 
++class OrganisationDataScope {
++  const OrganisationDataScope({
++    required this.firebaseUid,
++    required this.userId,
++    required this.organisationId,
++    required this.role,
++  });
++
++  final String firebaseUid;
++  final String userId;
++  final String organisationId;
++  final String role;
++}
++
++final organisationDataScopeProvider =
++    FutureProvider.autoDispose<OrganisationDataScope>((ref) async {
++      final authState = ref.watch(authStateProvider);
++      final user = authState.value;
++      if (user == null || user.isAnonymous) {
++        throw StateError('Sign in to view organisation information.');
++      }
++      final membership = await ref.watch(currentMembershipProvider.future);
++      if (!ref.mounted || ref.read(authStateProvider).value?.uid != user.uid) {
++        throw StateError(
++          'The signed-in account changed while loading membership.',
++        );
++      }
++      return OrganisationDataScope(
++        firebaseUid: user.uid,
++        userId: membership.userId,
++        organisationId: membership.organisationId,
++        role: membership.role,
++      );
++    });
++
++bool isCurrentOrganisationDataScope(Ref ref, OrganisationDataScope scope) =>
++    isOrganisationDataScopeCurrent(
++      mounted: ref.mounted,
++      firebaseUid: ref.read(authStateProvider).value?.uid,
++      membership: ref.read(currentMembershipProvider),
++      scope: scope,
++    );
++
++bool isOrganisationDataScopeCurrent({
++  required bool mounted,
++  required String? firebaseUid,
++  required AsyncValue<ActiveMembership> membership,
++  required OrganisationDataScope scope,
++}) =>
++    mounted &&
++    firebaseUid == scope.firebaseUid &&
++    membership.hasValue &&
++    membership.requireValue.userId == scope.userId &&
++    membership.requireValue.organisationId == scope.organisationId &&
++    membership.requireValue.role == scope.role;
++
++Future<T> _loadInOrganisationScope<T>(
++  Ref ref,
++  Future<T> Function(OrganisationDataScope scope, CancelToken cancelToken) load,
++) async {
++  final scope = await ref.watch(organisationDataScopeProvider.future);
++  final cancelToken = CancelToken();
++  ref.onDispose(() => cancelToken.cancel('Organisation scope changed.'));
++  final value = await load(scope, cancelToken);
++  if (!isCurrentOrganisationDataScope(ref, scope)) {
++    throw StateError('Organisation changed while this view was loading.');
++  }
++  return value;
++}
++
+ final organisationProfileProvider =
+     FutureProvider.autoDispose<OrganisationProfile>((ref) async {
+-      final membership = await ref.watch(currentMembershipProvider.future);
+-      final user = ref.watch(firebaseAuthProvider).currentUser;
+-      if (user == null) throw StateError('Sign in to view your organisation.');
+-      final expectedUid = user.uid;
++      final repository = ref.watch(organisationRepositoryProvider);
++      final scope = await ref.watch(organisationDataScopeProvider.future);
+       final cancelToken = CancelToken();
+-      ref.onDispose(cancelToken.cancel);
+-      final profile = await ref
+-          .watch(organisationRepositoryProvider)
+-          .profile(expectedUid, cancelToken: cancelToken);
+-      if (ref.watch(firebaseAuthProvider).currentUser?.uid != expectedUid ||
+-          membership.organisationId != profile.organisationId ||
+-          membership.userId != profile.userId) {
++      ref.onDispose(() => cancelToken.cancel('Organisation scope changed.'));
++      final profile = await repository.profile(
++        scope.firebaseUid,
++        cancelToken: cancelToken,
++      );
++      if (!isCurrentOrganisationDataScope(ref, scope) ||
++          profile.organisationId != scope.organisationId ||
++          profile.userId != scope.userId) {
+         throw StateError('Organisation changed while this view was loading.');
+       }
+       return profile;
+@@ -25,32 +94,46 @@ final organisationProfileProvider =
+ 
+ final organisationPermissionsProvider =
+     FutureProvider.autoDispose<List<OrganisationPermissionGrant>>((ref) async {
+-      final user = ref.watch(firebaseAuthProvider).currentUser;
+-      if (user == null) throw StateError('Sign in to manage permissions.');
+-      return ref.watch(organisationRepositoryProvider).permissions(user.uid);
++      final repository = ref.watch(organisationRepositoryProvider);
++      return _loadInOrganisationScope(
++        ref,
++        (scope, cancelToken) =>
++            repository.permissions(scope.firebaseUid, cancelToken: cancelToken),
++      );
+     });
+ 
+ final organisationOwnersProvider =
+     FutureProvider.autoDispose<List<OrganisationOwner>>((ref) async {
+-      final user = ref.watch(firebaseAuthProvider).currentUser;
+-      if (user == null) throw StateError('Sign in to view owners.');
+-      return ref.watch(organisationRepositoryProvider).owners(user.uid);
++      final repository = ref.watch(organisationRepositoryProvider);
++      return _loadInOrganisationScope(
++        ref,
++        (scope, cancelToken) =>
++            repository.owners(scope.firebaseUid, cancelToken: cancelToken),
++      );
+     });
+ 
+ final myOrganisationJoinRequestsProvider =
+     FutureProvider.autoDispose<List<OrganisationJoinRequest>>((ref) async {
+-      final user = ref.watch(firebaseAuthProvider).currentUser;
+-      if (user == null) throw StateError('Sign in to view requests.');
+-      return ref
+-          .watch(organisationRepositoryProvider)
+-          .joinRequests(user.uid, mine: true);
++      final repository = ref.watch(organisationRepositoryProvider);
++      return _loadInOrganisationScope(
++        ref,
++        (scope, cancelToken) => repository.joinRequests(
++          scope.firebaseUid,
++          mine: true,
++          cancelToken: cancelToken,
++        ),
++      );
+     });
+ 
+ final pendingOrganisationJoinRequestsProvider =
+     FutureProvider.autoDispose<List<OrganisationJoinRequest>>((ref) async {
+-      final user = ref.watch(firebaseAuthProvider).currentUser;
+-      if (user == null) throw StateError('Sign in to review requests.');
+-      return ref
+-          .watch(organisationRepositoryProvider)
+-          .joinRequests(user.uid, mine: false);
++      final repository = ref.watch(organisationRepositoryProvider);
++      return _loadInOrganisationScope(
++        ref,
++        (scope, cancelToken) => repository.joinRequests(
++          scope.firebaseUid,
++          mine: false,
++          cancelToken: cancelToken,
++        ),
++      );
+     });
+diff --git a/apps/flutter_app/lib/features/organisation/presentation/organisation_page.dart b/apps/flutter_app/lib/features/organisation/presentation/organisation_page.dart
+index 58ce4b2941b61c033bffa88abd8684c66ad7c58f..e3d2af583fbd05fcc1f7b373756ae423708f16fd 100644
+--- a/apps/flutter_app/lib/features/organisation/presentation/organisation_page.dart
++++ b/apps/flutter_app/lib/features/organisation/presentation/organisation_page.dart
+@@ -8,6 +8,44 @@ import 'package:int_qa_flow/features/organisation/data/organisation_repository.d
+ import 'package:int_qa_flow/features/organisation/domain/organisation_models.dart';
+ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+ 
++OrganisationDataScope? _currentOrganisationScope(
++  WidgetRef ref,
++  OrganisationProfile profile, {
++  required bool mounted,
++}) {
++  final value = ref.read(organisationDataScopeProvider);
++  if (!value.hasValue) return null;
++  final scope = value.requireValue;
++  if (scope.userId != profile.userId ||
++      scope.organisationId != profile.organisationId ||
++      !_isScopeCurrent(ref, scope, mounted: mounted)) {
++    return null;
++  }
++  return scope;
++}
++
++bool _isScopeCurrent(
++  WidgetRef ref,
++  OrganisationDataScope scope, {
++  required bool mounted,
++}) => isOrganisationDataScopeCurrent(
++  mounted: mounted,
++  firebaseUid: ref.read(authStateProvider).value?.uid,
++  membership: ref.read(currentMembershipProvider),
++  scope: scope,
++);
++
++bool _isCurrentOrganisationScope(
++  WidgetRef ref,
++  OrganisationDataScope scope,
++  OrganisationProfile profile, {
++  required bool mounted,
++}) =>
++    profile.userId == scope.userId &&
++    profile.organisationId == scope.organisationId &&
++    profile.role == scope.role &&
++    _isScopeCurrent(ref, scope, mounted: mounted);
++
+ class OrganisationPage extends ConsumerStatefulWidget {
+   const OrganisationPage({super.key});
+ 
+@@ -19,27 +57,32 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
+   String _requestType = 'team';
+   String? _targetId;
+   bool _busy = false;
++  String? _scopeKey;
++
++  OrganisationDataScope? _currentScope(OrganisationProfile profile) =>
++      _currentOrganisationScope(ref, profile, mounted: mounted);
+ 
+   Future<void> _request(OrganisationProfile profile) async {
+-    final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
+-    if (uid == null || _targetId == null) return;
++    final scope = _currentScope(profile);
++    if (scope == null || _targetId == null) return;
+     setState(() => _busy = true);
+     try {
+       await ref
+           .read(organisationRepositoryProvider)
+           .requestMembership(
+-            uid,
++            scope.firebaseUid,
+             requestType: _requestType,
+             targetId: _targetId!,
+           );
+-      ref.invalidate(myOrganisationJoinRequestsProvider);
+-      if (mounted) {
++      if (mounted && _isCurrentScope(scope, profile)) {
++        ref.invalidate(myOrganisationJoinRequestsProvider);
+         ScaffoldMessenger.of(context).showSnackBar(
+           const SnackBar(content: Text('Membership request saved.')),
+         );
+       }
+     } on Object catch (error) {
+-      if (mounted) {
++      if (mounted && _isCurrentScope(scope, profile)) {
++        _invalidateOrganisationLists();
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Request could not be saved: $error')),
+         );
+@@ -97,6 +140,16 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
+   }
+ 
+   Widget _profile(OrganisationProfile profile) {
++    final scope = _currentScope(profile);
++    final nextScopeKey = scope == null
++        ? '${profile.userId}:${profile.organisationId}:${profile.role}'
++        : '${scope.firebaseUid}:${scope.userId}:${scope.organisationId}:${scope.role}';
++    if (_scopeKey != nextScopeKey) {
++      _scopeKey = nextScopeKey;
++      _requestType = 'team';
++      _targetId = null;
++      _busy = false;
++    }
+     final departments = ref.watch(departmentsProvider);
+     final teams = ref.watch(teamsProvider);
+     final myRequests = ref.watch(myOrganisationJoinRequestsProvider);
+@@ -291,7 +344,12 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
+         ],
+         if (profile.isOwner) ...[
+           const SizedBox(height: 24),
+-          _OwnerAdministration(profile: profile),
++          _OwnerAdministration(
++            key: ValueKey(
++              '${scope?.firebaseUid}:${profile.userId}:${profile.organisationId}:${profile.role}',
++            ),
++            profile: profile,
++          ),
+         ],
+       ],
+     );
+@@ -335,27 +393,45 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
+       );
+ 
+   Future<void> _decide(OrganisationJoinRequest request, bool approve) async {
+-    final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
+-    if (uid == null) return;
++    final profileState = ref.read(organisationProfileProvider);
++    if (!profileState.hasValue) return;
++    final profile = profileState.requireValue;
++    final scope = _currentScope(profile);
++    if (scope == null) return;
+     setState(() => _busy = true);
+     try {
+       await ref
+           .read(organisationRepositoryProvider)
+-          .decideJoinRequest(uid, request.id, approve: approve);
+-      ref.invalidate(pendingOrganisationJoinRequestsProvider);
+-      ref.invalidate(myOrganisationJoinRequestsProvider);
++          .decideJoinRequest(scope.firebaseUid, request.id, approve: approve);
++      if (_isCurrentScope(scope, profile)) {
++        ref.invalidate(pendingOrganisationJoinRequestsProvider);
++        ref.invalidate(myOrganisationJoinRequestsProvider);
++      }
+     } on Object catch (error) {
+-      if (mounted) {
++      if (mounted && _isCurrentScope(scope, profile)) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Decision was not saved: $error')),
+         );
++        _invalidateOrganisationLists();
+       }
+-      ref.invalidate(pendingOrganisationJoinRequestsProvider);
+     } finally {
+       if (mounted) setState(() => _busy = false);
+     }
+   }
+ 
++  bool _isCurrentScope(
++    OrganisationDataScope scope,
++    OrganisationProfile profile,
++  ) => _isCurrentOrganisationScope(ref, scope, profile, mounted: mounted);
++
++  void _invalidateOrganisationLists() {
++    ref.invalidate(organisationProfileProvider);
++    ref.invalidate(organisationPermissionsProvider);
++    ref.invalidate(organisationOwnersProvider);
++    ref.invalidate(myOrganisationJoinRequestsProvider);
++    ref.invalidate(pendingOrganisationJoinRequestsProvider);
++  }
++
+   String _permissionScopes(OrganisationProfile profile, String permission) {
+     if (profile.isOwner || profile.permissions.contains('legacy_admin')) {
+       return 'Organisation-wide';
+@@ -402,7 +478,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
+ }
+ 
+ class _OwnerAdministration extends ConsumerStatefulWidget {
+-  const _OwnerAdministration({required this.profile});
++  const _OwnerAdministration({super.key, required this.profile});
+ 
+   final OrganisationProfile profile;
+ 
+@@ -426,16 +502,19 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
+   bool _busy = false;
+ 
+   Future<void> _withAction(Future<void> Function(String uid) action) async {
+-    final uid = ref.read(firebaseAuthProvider).currentUser?.uid;
+-    if (uid == null) return;
++    final scope = _currentOrganisationScope(
++      ref,
++      widget.profile,
++      mounted: mounted,
++    );
++    if (scope == null) return;
+     setState(() => _busy = true);
+     try {
+-      await action(uid);
+-      ref.invalidate(organisationPermissionsProvider);
+-      ref.invalidate(organisationOwnersProvider);
+-      ref.invalidate(organisationProfileProvider);
++      await action(scope.firebaseUid);
++      if (_isCurrentScope(scope)) _invalidateOrganisationData();
+     } on Object catch (error) {
+-      if (mounted) {
++      if (mounted && _isCurrentScope(scope)) {
++        _invalidateOrganisationData();
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Organisation change failed: $error')),
+         );
+@@ -445,6 +524,15 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
+     }
+   }
+ 
++  bool _isCurrentScope(OrganisationDataScope scope) =>
++      _isCurrentOrganisationScope(ref, scope, widget.profile, mounted: mounted);
++
++  void _invalidateOrganisationData() {
++    ref.invalidate(organisationPermissionsProvider);
++    ref.invalidate(organisationOwnersProvider);
++    ref.invalidate(organisationProfileProvider);
++  }
++
+   @override
+   Widget build(BuildContext context) {
+     final members = ref.watch(organisationMembersProvider);
+diff --git a/apps/flutter_app/test/api_client_test.dart b/apps/flutter_app/test/api_client_test.dart
+index 8dcb1a603bed094b68205d86e5ac0bbb02b1475a..c16307cee718e10d5b6b28b6dafc860de4210cf2 100644
+--- a/apps/flutter_app/test/api_client_test.dart
++++ b/apps/flutter_app/test/api_client_test.dart
+@@ -115,6 +115,51 @@ void main() {
+     client.close();
+   });
+ 
++  test('rejects a successful response after the Firebase UID changes', () async {
++    final tokens = _FakeTokenSource()..currentUid = 'owner-a';
++    final adapter = _RecordingAdapter((_) {
++      tokens.currentUid = 'owner-b';
++      return _okList();
++    });
++    final client = createApiClient(tokens, adapter: adapter);
++
++    await expectLater(
++      client.get<List<dynamic>>(
++        '/api/v1/organisation/permissions',
++        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
++      ),
++      throwsA(
++        isA<DioException>().having(
++          (error) => error.type,
++          'type',
++          DioExceptionType.cancel,
++        ),
++      ),
++    );
++
++    expect(adapter.requests, hasLength(1));
++    client.close();
++  });
++
++  test('does not dispatch after identity changes while loading App Check', () async {
++    final tokens = _FakeTokenSource()
++      ..currentUid = 'owner-a'
++      ..uidAfterAppCheck = 'owner-b';
++    final adapter = _RecordingAdapter((_) => _ok());
++    final client = createApiClient(tokens, adapter: adapter);
++
++    await expectLater(
++      client.get<void>(
++        '/api/v1/organisation/permissions',
++        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
++      ),
++      throwsA(isA<DioException>()),
++    );
++
++    expect(adapter.requests, isEmpty);
++    client.close();
++  });
++
+   test('keeps a linked guest identity after organisation membership lookup returns 401', () async {
+     final tokens = _FakeTokenSource();
+     final adapter = _RecordingAdapter((_) => _unauthorized());
+@@ -153,6 +198,7 @@ class _FakeTokenSource implements ApiTokenSource {
+   String? currentUid = 'test-uid';
+ 
+   String currentToken = 'current-id-token';
++  String? uidAfterAppCheck;
+   int forceRefreshCount = 0;
+   bool signedOut = false;
+ 
+@@ -166,7 +212,10 @@ class _FakeTokenSource implements ApiTokenSource {
+   }
+ 
+   @override
+-  Future<String?> appCheckToken() async => 'current-app-check-token';
++  Future<String?> appCheckToken() async {
++    if (uidAfterAppCheck != null) currentUid = uidAfterAppCheck;
++    return 'current-app-check-token';
++  }
+ 
+   @override
+   Future<void> signOut() async => signedOut = true;
+diff --git a/apps/flutter_app/test/organisation_scope_test.dart b/apps/flutter_app/test/organisation_scope_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..12da309399f3767a4a170b325aa754d8b77d1c97
+--- /dev/null
++++ b/apps/flutter_app/test/organisation_scope_test.dart
+@@ -0,0 +1,473 @@
++import 'dart:async';
++import 'dart:convert';
++import 'dart:typed_data';
++
++import 'package:dio/dio.dart';
++import 'package:firebase_auth/firebase_auth.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:go_router/go_router.dart';
++import 'package:int_qa_flow/core/api/api_client.dart';
++import 'package:int_qa_flow/core/auth/auth_providers.dart';
++import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
++import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
++import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
++import 'package:int_qa_flow/features/organisation/presentation/organisation_page.dart';
++
++void main() {
++  test(
++    'organisation list providers discard late responses after UID switch',
++    () async {
++      final auth = _TestAuth(_TestUser('user-a'));
++      final events = StreamController<User?>.broadcast();
++      final adapter = _OrganisationAdapter()..holdListsForUid = 'user-a';
++      final client = createApiClient(_TestTokens(auth), adapter: adapter);
++      final container = ProviderContainer(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(auth),
++          authStateProvider.overrideWith((ref) => _authEvents(auth, events)),
++          apiClientProvider.overrideWithValue(client),
++        ],
++      );
++      addTearDown(container.dispose);
++      addTearDown(events.close);
++
++      final deliveredResponses = <String>[];
++      final subscriptions = [
++        container.listen(organisationPermissionsProvider, (_, next) {
++          if (next.hasValue) {
++            deliveredResponses.add(next.requireValue.toString());
++          }
++        }),
++        container.listen(organisationOwnersProvider, (_, next) {
++          if (next.hasValue) {
++            deliveredResponses.add(next.requireValue.toString());
++          }
++        }),
++        container.listen(myOrganisationJoinRequestsProvider, (_, next) {
++          if (next.hasValue) {
++            deliveredResponses.add(next.requireValue.toString());
++          }
++        }),
++        container.listen(pendingOrganisationJoinRequestsProvider, (_, next) {
++          if (next.hasValue) {
++            deliveredResponses.add(next.requireValue.toString());
++          }
++        }),
++      ];
++      addTearDown(() {
++        for (final subscription in subscriptions) {
++          subscription.close();
++        }
++      });
++      final providers = [
++        organisationPermissionsProvider,
++        organisationOwnersProvider,
++        myOrganisationJoinRequestsProvider,
++        pendingOrganisationJoinRequestsProvider,
++      ];
++      final oldResults = [
++        for (final provider in providers)
++          container
++              .read(provider.future)
++              .then<Object?>((value) => value, onError: (Object _) => null),
++      ];
++      await _waitFor(() => adapter.heldResponses.length == 4);
++
++      final userB = _TestUser('user-b');
++      auth.user = userB;
++      events.add(userB);
++      await _waitFor(
++        () =>
++            adapter.requests
++                .where(
++                  (request) =>
++                      request.uid == 'user-b' &&
++                      _OrganisationAdapter.listPaths.contains(request.path),
++                )
++                .length ==
++            4,
++      );
++      await Future.wait([
++        for (final provider in providers) container.read(provider.future),
++      ]);
++
++      for (final response in adapter.heldResponses.values) {
++        response.completer.complete(
++          adapter.responseFor(response.uid, response.path),
++        );
++      }
++      await Future.wait(oldResults);
++      expect(
++        await Future.wait([
++          for (final provider in providers) container.read(provider.future),
++        ]),
++        everyElement(isEmpty),
++      );
++      expect(deliveredResponses.join(), isNot(contains('grant-a')));
++      expect(
++        deliveredResponses.join(),
++        isNot(contains('Owner marker for user A')),
++      );
++      expect(deliveredResponses.join(), isNot(contains('pending-target-a')));
++      expect(
++        container.read(organisationDataScopeProvider).requireValue.firebaseUid,
++        'user-b',
++      );
++      expect(
++        adapter.requests.where((request) => request.uid == 'user-b'),
++        isNotEmpty,
++      );
++      expect(
++        adapter.requests.where((request) => request.uid == 'user-a'),
++        isNotEmpty,
++      );
++    },
++  );
++
++  testWidgets(
++    'routed page refreshes revoked review capability and retries list errors',
++    (tester) async {
++      tester.view.physicalSize = const Size(900, 1800);
++      tester.view.devicePixelRatio = 1;
++      addTearDown(tester.view.resetPhysicalSize);
++      addTearDown(tester.view.resetDevicePixelRatio);
++
++      final adapter = _OrganisationAdapter()
++        ..reviewerUids.add('user-a')
++        ..failMyRequestsOnce = true;
++      final mounted = await _mountRoutedPage(tester, adapter: adapter);
++
++      await tester.pumpAndSettle();
++      expect(find.text('Requests could not be loaded.'), findsOneWidget);
++      await tester.tap(find.text('Retry'));
++      await tester.pumpAndSettle();
++      expect(find.text('No pending or recent requests.'), findsOneWidget);
++      expect(find.textContaining('Requests you can review'), findsOneWidget);
++
++      adapter.reviewerUids.remove('user-a');
++      adapter.rejectJoinDecisions = true;
++      await tester.tap(find.text('Approve'));
++      await tester.pumpAndSettle();
++      expect(find.textContaining('Requests you can review'), findsNothing);
++      expect(find.text('Review requests and proposals'), findsOneWidget);
++      expect(find.text('Not granted'), findsWidgets);
++      mounted.close();
++    },
++  );
++
++  testWidgets(
++    'routed organisation page clears owner data on role, UID and signout',
++    (tester) async {
++      tester.view.physicalSize = const Size(900, 1800);
++      tester.view.devicePixelRatio = 1;
++      addTearDown(tester.view.resetPhysicalSize);
++      addTearDown(tester.view.resetDevicePixelRatio);
++
++      final adapter = _OrganisationAdapter()..ownerUids.add('user-a');
++      final mounted = await _mountRoutedPage(tester, adapter: adapter);
++      await tester.pumpAndSettle();
++      expect(find.text('Owner administration'), findsOneWidget);
++      expect(find.text('Owner marker for user A'), findsOneWidget);
++
++      adapter.ownerUids.remove('user-a');
++      adapter.roleByUid['user-a'] = 'employee';
++      mounted.auth.user = _TestUser('user-a');
++      mounted.events.add(mounted.auth.user);
++      await tester.pumpAndSettle();
++      expect(find.text('Owner administration'), findsNothing);
++      expect(find.text('Owner marker for user A'), findsNothing);
++
++      mounted.auth.user = _TestUser('user-b');
++      mounted.events.add(mounted.auth.user);
++      await tester.pumpAndSettle();
++      expect(find.text('Organisation user-b'), findsOneWidget);
++      expect(find.text('Owner marker for user A'), findsNothing);
++      expect(find.text('grant-a'), findsNothing);
++
++      mounted.auth.user = null;
++      mounted.events.add(null);
++      await tester.pumpAndSettle();
++      expect(find.text('Organisation user-b'), findsNothing);
++      expect(
++        find.text('Organisation membership is unavailable.'),
++        findsOneWidget,
++      );
++      mounted.close();
++    },
++  );
++}
++
++Future<_MountedPage> _mountRoutedPage(
++  WidgetTester tester, {
++  required _OrganisationAdapter adapter,
++}) async {
++  final auth = _TestAuth(_TestUser('user-a'));
++  final events = StreamController<User?>.broadcast();
++  final client = createApiClient(_TestTokens(auth), adapter: adapter);
++  final router = GoRouter(
++    initialLocation: '/organisation',
++    routes: [
++      GoRoute(
++        path: '/organisation',
++        builder: (context, state) => const Scaffold(body: OrganisationPage()),
++      ),
++    ],
++  );
++  await tester.pumpWidget(
++    ProviderScope(
++      retry: (_, _) => null,
++      overrides: [
++        firebaseAuthProvider.overrideWithValue(auth),
++        authStateProvider.overrideWith((ref) => _authEvents(auth, events)),
++        apiClientProvider.overrideWithValue(client),
++        departmentsProvider.overrideWith((ref) async => const []),
++        teamsProvider.overrideWith((ref) async => const []),
++        organisationMembersProvider.overrideWith((ref) async => const []),
++      ],
++      child: MaterialApp.router(routerConfig: router),
++    ),
++  );
++  return _MountedPage(auth, events, client, router);
++}
++
++class _MountedPage {
++  const _MountedPage(this.auth, this.events, this.client, this.router);
++
++  final _TestAuth auth;
++  final StreamController<User?> events;
++  final Dio client;
++  final GoRouter router;
++
++  void close() {
++    events.close();
++    client.close();
++    router.dispose();
++  }
++}
++
++Stream<User?> _authEvents(_TestAuth auth, StreamController<User?> events) =>
++    Stream<User?>.multi((controller) {
++      controller.add(auth.currentUser);
++      final subscription = events.stream.listen(
++        controller.add,
++        onError: controller.addError,
++        onDone: controller.close,
++      );
++      controller.onCancel = subscription.cancel;
++    });
++
++Future<void> _waitFor(bool Function() condition) async {
++  for (var attempt = 0; attempt < 100 && !condition(); attempt++) {
++    await Future<void>.delayed(const Duration(milliseconds: 1));
++  }
++  expect(condition(), isTrue, reason: 'Timed out waiting for requests.');
++}
++
++class _TestAuth implements FirebaseAuth {
++  _TestAuth(this.user);
++
++  User? user;
++
++  @override
++  User? get currentUser => user;
++
++  @override
++  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
++}
++
++class _TestUser implements User {
++  _TestUser(this.uid);
++
++  @override
++  final String uid;
++
++  @override
++  bool get isAnonymous => false;
++
++  @override
++  bool get emailVerified => true;
++
++  @override
++  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
++}
++
++class _TestTokens implements ApiTokenSource {
++  _TestTokens(this.auth);
++
++  final _TestAuth auth;
++
++  @override
++  String? get currentUid => auth.currentUser?.uid;
++
++  @override
++  Future<String?> idToken({bool forceRefresh = false}) async => currentUid;
++
++  @override
++  Future<String?> appCheckToken() async => 'test-app-check';
++
++  @override
++  Future<void> signOut() async => auth.user = null;
++}
++
++class _HeldResponse {
++  _HeldResponse(this.uid, this.path, this.completer);
++
++  final String uid;
++  final String path;
++  final Completer<ResponseBody> completer;
++}
++
++class _RequestRecord {
++  const _RequestRecord(this.uid, this.path);
++
++  final String uid;
++  final String path;
++}
++
++class _OrganisationAdapter implements HttpClientAdapter {
++  static const listPaths = {
++    '/api/v1/organisation/permissions',
++    '/api/v1/organisation/owners',
++    '/api/v1/organisation/join-requests',
++  };
++
++  String? holdListsForUid;
++  bool failMyRequestsOnce = false;
++  bool rejectJoinDecisions = false;
++  final reviewerUids = <String>{};
++  final ownerUids = <String>{};
++  final roleByUid = <String, String>{
++    'user-a': 'employee',
++    'user-b': 'employee',
++  };
++  final requests = <_RequestRecord>[];
++  final heldResponses = <String, _HeldResponse>{};
++  final _attempts = <String, int>{};
++
++  @override
++  Future<ResponseBody> fetch(
++    RequestOptions options,
++    Stream<Uint8List>? requestStream,
++    Future<void>? cancelFuture,
++  ) async {
++    final authorization = options.headers['Authorization'] as String;
++    final uid = authorization.replaceFirst('Bearer ', '');
++    final path = options.uri.path;
++    final mine = options.queryParameters['mine']?.toString() == 'true';
++    requests.add(_RequestRecord(uid, path));
++    final key = '$uid:$path:$mine';
++    _attempts[key] = (_attempts[key] ?? 0) + 1;
++
++    if (path == '/api/v1/organisation/join-requests/request-a/decision' &&
++        rejectJoinDecisions) {
++      return _response({'detail': 'Permission was revoked'}, statusCode: 403);
++    }
++    if (path == '/api/v1/organisation/join-requests' &&
++        mine &&
++        failMyRequestsOnce &&
++        (_attempts[key] ?? 0) == 1) {
++      return _response({'detail': 'Temporary failure'}, statusCode: 503);
++    }
++    if (uid == holdListsForUid && listPaths.contains(path)) {
++      final completer = Completer<ResponseBody>();
++      heldResponses[key] = _HeldResponse(uid, path, completer);
++      return completer.future;
++    }
++    return responseFor(uid, path, mine);
++  }
++
++  ResponseBody responseFor(String uid, String path, [Object? mine]) {
++    final userId = uid == 'user-a' ? 'db-user-a' : 'db-user-b';
++    final organisationId = uid == 'user-a' ? 'org-a' : 'org-b';
++    final isOwner = ownerUids.contains(uid);
++    final isReviewer = reviewerUids.contains(uid);
++    final value = switch (path) {
++      '/api/v1/account/state' => {'status': 'active'},
++      '/api/v1/auth/me' => {
++        'user_id': userId,
++        'organisation_id': organisationId,
++        'email': '$uid@example.test',
++        'display_name': uid,
++        'role': roleByUid[uid] ?? 'employee',
++      },
++      '/api/v1/organisation/me' => {
++        'organisation_id': organisationId,
++        'organisation_name': 'Organisation $uid',
++        'user_id': userId,
++        'role': roleByUid[uid] ?? 'employee',
++        'primary_department': null,
++        'teams': <String>[],
++        'is_owner': isOwner,
++        'permissions': isReviewer ? ['review'] : <String>[],
++        'permission_scopes': isReviewer
++            ? [
++                {
++                  'permission': 'review',
++                  'scope_type': 'department',
++                  'scope_id': 'department-$uid',
++                },
++              ]
++            : <Map<String, Object?>>[],
++        'assignment_managers': <String>[],
++      },
++      '/api/v1/organisation/permissions' =>
++        uid == 'user-a'
++            ? [
++                {
++                  'id': 'grant-a',
++                  'user_id': userId,
++                  'permission': 'review',
++                  'scope_type': 'department',
++                  'scope_id': 'department-a',
++                },
++              ]
++            : <Map<String, Object?>>[],
++      '/api/v1/organisation/owners' =>
++        uid == 'user-a'
++            ? [
++                {
++                  'user_id': userId,
++                  'display_name': 'Owner marker for user A',
++                  'email': 'owner-a@example.test',
++                  'active': true,
++                },
++              ]
++            : <Map<String, Object?>>[],
++      '/api/v1/organisation/join-requests' =>
++        mine == true
++            ? <Map<String, Object?>>[]
++            : isReviewer
++            ? [
++                {
++                  'id': 'request-a',
++                  'requester_id': 'db-requester',
++                  'request_type': 'department',
++                  'target_id': 'pending-target-a',
++                  'status': 'pending',
++                  'reason': null,
++                  'reviewed_by': null,
++                  'reviewer_note': null,
++                  'created_at': '2026-10-07T00:00:00Z',
++                  'reviewed_at': null,
++                },
++              ]
++            : <Map<String, Object?>>[],
++      _ => <String, Object?>{},
++    };
++    return _response(value);
++  }
++
++  @override
++  void close({bool force = false}) {}
++}
++
++ResponseBody _response(Object? value, {int statusCode = 200}) =>
++    ResponseBody.fromString(
++      jsonEncode(value),
++      statusCode,
++      headers: {
++        Headers.contentTypeHeader: ['application/json'],
++      },
++    );
+diff --git a/backend/app/services/organisation_administration.py b/backend/app/services/organisation_administration.py
+index 84d5427ce35afc73940da31ab31e5f71054ed43c..9f7ef4e4f9423b6ecd3d514dd0fb96658a0b57fe 100644
+--- a/backend/app/services/organisation_administration.py
++++ b/backend/app/services/organisation_administration.py
+@@ -523,6 +523,10 @@ class OrganisationAdministrationService:
+             department_id=department_id,
+             team_id=team_id,
+         )
++        if data.decision == "approve" and actor.id == requester.id:
++            raise HTTPException(
++                status_code=403, detail="You cannot approve your own join request"
++            )
+         if data.decision == "approve":
+             if request.request_type == "team":
+                 team = await self._team(request.target_id, organisation_id)
+diff --git a/backend/tests/test_organisation_administration.py b/backend/tests/test_organisation_administration.py
+index 7f1c93ea8b9b34e1f06aeb85d866dbeb13de1cf6..24348bbe44c7fb4457a18100ccd04696fff214f7 100644
+--- a/backend/tests/test_organisation_administration.py
++++ b/backend/tests/test_organisation_administration.py
+@@ -362,6 +362,58 @@ async def test_department_change_request_requires_scoped_review_approval(
+         assert requester.department_id == ids["department"]
+ 
+ 
++@pytest.mark.asyncio
++async def test_department_requester_cannot_approve_their_own_scoped_request(
++    app_client,
++) -> None:
++    client, session_factory = app_client
++    ids = await seed_administration(session_factory)
++    for user in ("requester", "manager"):
++        grant = await client.post(
++            "/api/v1/organisation/permissions",
++            headers=headers(ids),
++            json={
++                "user_id": str(ids[user]),
++                "permission": "review",
++                "scope_type": "department",
++                "scope_id": str(ids["other_department"]),
++            },
++        )
++        assert grant.status_code == 201
++    request = await client.post(
++        "/api/v1/organisation/join-requests",
++        headers=headers(ids, "requester"),
++        json={
++            "request_type": "department",
++            "target_id": str(ids["other_department"]),
++        },
++    )
++    assert request.status_code == 201
++
++    self_approval = await client.post(
++        f"/api/v1/organisation/join-requests/{request.json()['id']}/decision",
++        headers=headers(ids, "requester"),
++        json={"decision": "approve"},
++    )
++    assert self_approval.status_code == 403
++    async with session_factory() as session:
++        requester = await session.get(User, ids["requester"])
++        pending = await session.get(OrganisationJoinRequest, UUID(request.json()["id"]))
++        assert requester is not None and requester.department_id is None
++        assert pending is not None and pending.status == "pending"
++
++    other_reviewer = await client.post(
++        f"/api/v1/organisation/join-requests/{request.json()['id']}/decision",
++        headers=headers(ids, "manager"),
++        json={"decision": "approve"},
++    )
++    assert other_reviewer.status_code == 200
++    async with session_factory() as session:
++        requester = await session.get(User, ids["requester"])
++        assert requester is not None
++        assert requester.department_id == ids["other_department"]
++
++
+ @pytest.mark.asyncio
+ async def test_last_owner_guard_and_permission_revocation_take_effect_immediately(
+     app_client,
+diff --git a/backend/tests/test_organisation_administration_postgres.py b/backend/tests/test_organisation_administration_postgres.py
+index 21c8652aa25d58c601d005b5564d7c7873c9d074..c49147b991f9bf8f72827be5b02198b35801eb24 100644
+--- a/backend/tests/test_organisation_administration_postgres.py
++++ b/backend/tests/test_organisation_administration_postgres.py
+@@ -303,6 +303,65 @@ async def test_postgres_duplicate_requests_and_concurrent_decisions_are_serializ
+         assert request is not None and request.status == "approved"
+ 
+ 
++@pytest.mark.asyncio
++async def test_postgres_self_approval_race_allows_only_separate_reviewer(
++    postgres_sessions,
++):
++    ids = await seed_postgres(postgres_sessions)
++    async with postgres_sessions() as session:
++        session.add(
++            OrganisationPermissionGrant(
++                organisation_id=ids["organisation_id"],
++                user_id=ids["requester"],
++                permission="review",
++                scope_type="department",
++                scope_id=ids["department_id"],
++                granted_by=ids["owner_a"],
++            )
++        )
++        await session.commit()
++        request = await OrganisationAdministrationService(
++            session
++        ).request_membership(
++            ids["organisation_id"],
++            ids["requester"],
++            OrganisationJoinRequestCreate(
++                request_type="department",
++                target_id=ids["department_id"],
++                reason="Requester's own department change",
++            ),
++        )
++        request_id = request.id
++
++    async def decide(actor_id):
++        async with postgres_sessions() as session:
++            try:
++                await OrganisationAdministrationService(session).decide_request(
++                    ids["organisation_id"],
++                    actor_id,
++                    request_id,
++                    OrganisationJoinRequestDecision(decision="approve"),
++                )
++                return 200
++            except (HTTPException, PermissionDeniedError) as error:
++                await session.rollback()
++                return getattr(error, "status_code", 403)
++
++    outcomes = await asyncio.gather(
++        decide(ids["requester"]),
++        decide(ids["owner_a"]),
++    )
++    assert sorted(outcomes) == [200, 403]
++    async with postgres_sessions() as session:
++        requester = await session.get(User, ids["requester"])
++        request = await session.get(OrganisationJoinRequest, request_id)
++        assert requester is not None
++        assert requester.department_id == ids["department_id"]
++        assert request is not None
++        assert request.status == "approved"
++        assert request.reviewed_by == ids["owner_a"]
++
++
+ @pytest.mark.asyncio
+ async def test_postgres_grant_revocation_serializes_against_team_action(
+     postgres_sessions,
+-- 
+2.55.0
+
