@@ -377,7 +377,7 @@ void main() {
     );
   });
 
-  test('keeps answer phrase matches above semantic-only organisation hits', () async {
+  test('local phrase beats semantic-only hits', () async {
     final storage = _MemoryGuestStorage();
     await GuestWorkspaceStore(storage).save(
       const GuestWorkspaceData(
@@ -433,7 +433,7 @@ void main() {
     expect(hits.last.id, 'semantic-only');
   });
 
-  test('scopes deduplication and rejects other-owner or inaccessible hits', () async {
+  test('scope dedup excludes inaccessible or other-owner hits', () async {
     final questions = _QuestionsRepository([
       _organisationResult(id: 'same-id', relevance: 0.8),
     ]);
@@ -500,13 +500,15 @@ void main() {
     expect(hits.any((hit) => hit.title == 'Inaccessible result'), isFalse);
     expect(hits.any((hit) => hit.title == 'Duplicate private result'), isFalse);
     expect(
-      hits.map((hit) => '${hit.destination}:${hit.groupId ?? ''}:${hit.id}').toSet(),
+      hits
+          .map((hit) => '${hit.destination}:${hit.groupId ?? ''}:${hit.id}')
+          .toSet(),
       hasLength(hits.length),
     );
     expect(personal.expectedUid, 'verified-uid');
   });
 
-  test('partial retry keeps the query and successful results while refreshing', () async {
+  test('partial retry retains query and successful results', () async {
     final questions = _QuestionsRepository([
       _organisationResult(id: 'organisation-hit', relevance: 1.4),
     ]);
@@ -556,7 +558,7 @@ void main() {
     expect(questions.requests, ['password', 'password']);
   });
 
-  test('discards old results across account, membership, and organisation changes', () async {
+  test('drops stale results after identity and membership changes', () async {
     final questions = _QuestionsRepository([]);
     final first = Completer<List<SemanticSearchResult>>();
     final second = Completer<List<SemanticSearchResult>>();

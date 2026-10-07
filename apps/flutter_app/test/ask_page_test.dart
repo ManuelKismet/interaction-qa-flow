@@ -340,7 +340,7 @@ void main() {
   });
 
   testWidgets(
-    'Ask submits only deliberately entered content when local and private hits exist',
+    'Ask submits only entered fields when local and private hits exist',
     (tester) async {
       final storage = _MemoryGuestStorage();
       final questions = _QuestionsRepository();
