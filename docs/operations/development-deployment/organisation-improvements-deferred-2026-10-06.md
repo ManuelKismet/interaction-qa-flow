@@ -1,5 +1,18 @@
 # Organisation improvements — deferred proposal, 2026-10-06
 
+### Same-task documentation clarification — 2026-10-07
+
+Initial sessionaea65059 stopped before implementation: it incorrectly searched
+for the docs branch as a local directory and reported required docs missing.
+No code/artifact/tests produced. Codex clarified in SAME task8a480ce0:
+git fetch origin docs/user-admin-e2e-checkpoint-20261004 then git show FETCH_HEAD
+for the three required files, or GitHub MCP with explicit branch ref. No merge,
+checkout or app-tree mutation; baselinef662a6c must remain pinned.
+Follow-up accepted; UI shows Queued / 2 sessions. This is a continuation of
+the same authorised task, not a duplicate or competing task. Await implementation
+artifact; do not call initial session completion implementation success.
+DEV unchanged, no resources restarted. Real semantics still deferred.
+
 ## Active organisation implementation — 2026-10-07
 
 Founder authorised the nine-point organisation scope after search rollout.
