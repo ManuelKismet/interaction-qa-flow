@@ -8,7 +8,6 @@ import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.da
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/knowledge/application/knowledge_search_sources.dart';
 import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
-import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 final askSuggestionsProvider =
     AsyncNotifierProvider.autoDispose<AskSuggestionsController, AskSuggestions>(
@@ -48,6 +47,7 @@ class AskSuggestions {
     this.partialSources = const {},
     this.hasSearched = false,
     this.notice,
+    this.isRefreshing = false,
   });
 
   final List<AskKnowledgeHit> hits;
@@ -55,21 +55,69 @@ class AskSuggestions {
   final Set<String> partialSources;
   final bool hasSearched;
   final String? notice;
+  final bool isRefreshing;
 }
 
 class AskSearchIdentity {
-  const AskSearchIdentity({this.verifiedUid});
+  const AskSearchIdentity({
+    this.verifiedUid,
+    this.membershipState,
+    this.organisationId,
+  });
 
   final String? verifiedUid;
+  final String? membershipState;
+  final String? organisationId;
+
+  bool sameScopeAs(AskSearchIdentity other) =>
+      verifiedUid == other.verifiedUid &&
+      membershipState == other.membershipState &&
+      organisationId == other.organisationId;
 }
 
 final askSearchIdentityProvider = Provider<AskSearchIdentity>((ref) {
   try {
-    final user =
-        ref.watch(authStateProvider).value ??
-        ref.watch(firebaseAuthProvider).currentUser;
+    final authState = ref.watch(authStateProvider);
+    final user = authState.hasValue
+        ? authState.requireValue
+        : ref.watch(firebaseAuthProvider).currentUser;
+    if (!isVerifiedRegisteredFirebaseUser(user)) {
+      return const AskSearchIdentity();
+    }
+    final uid = user!.uid;
+    final membershipStatus = ref.watch(accountMembershipStatusProvider);
+    if (membershipStatus.isLoading) {
+      return AskSearchIdentity(verifiedUid: uid, membershipState: 'checking');
+    }
+    if (membershipStatus.hasError || !membershipStatus.hasValue) {
+      return AskSearchIdentity(
+        verifiedUid: uid,
+        membershipState: 'unavailable',
+      );
+    }
+    final status = membershipStatus.requireValue;
+    if (status != AccountMembershipStatus.active) {
+      return AskSearchIdentity(
+        verifiedUid: uid,
+        membershipState: status.name,
+      );
+    }
+    final membership = ref.watch(currentMembershipProvider);
+    if (membership.isLoading) {
+      return AskSearchIdentity(verifiedUid: uid, membershipState: 'checking');
+    }
+    if (membership.hasError ||
+        !membership.hasValue ||
+        membership.requireValue.userId != uid) {
+      return AskSearchIdentity(
+        verifiedUid: uid,
+        membershipState: 'unavailable',
+      );
+    }
     return AskSearchIdentity(
-      verifiedUid: isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null,
+      verifiedUid: uid,
+      membershipState: status.name,
+      organisationId: membership.requireValue.organisationId,
     );
   } on Object {
     return const AskSearchIdentity();
@@ -84,7 +132,8 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
   @override
   Future<AskSuggestions> build() async {
     ref.listen(askSearchIdentityProvider, (previous, next) {
-      if (previous?.verifiedUid != next.verifiedUid &&
+      if (previous != null &&
+          !previous.sameScopeAs(next) &&
           _latestQuery.isNotEmpty) {
         queryChanged(_latestQuery);
       }
@@ -97,6 +146,16 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
   }
 
   void queryChanged(String query) {
+    _scheduleQuery(query, preserveResults: false);
+  }
+
+  void retry() {
+    final previous = state.value;
+    if (previous == null || _latestQuery.length < 2) return;
+    _scheduleQuery(_latestQuery, preserveResults: true);
+  }
+
+  void _scheduleQuery(String query, {required bool preserveResults}) {
     _debounce?.cancel();
     final generation = ++_queryGeneration;
     _latestQuery = query.trim();
@@ -105,15 +164,35 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
       return;
     }
 
-    state = const AsyncLoading();
+    final previous = preserveResults ? state.value : null;
+    state = preserveResults && previous != null
+        ? AsyncData(
+            AskSuggestions(
+              hits: previous.hits,
+              failedSources: previous.failedSources,
+              partialSources: previous.partialSources,
+              hasSearched: previous.hasSearched,
+              notice: previous.notice,
+              isRefreshing: true,
+            ),
+          )
+        : const AsyncLoading();
     final requestedQuery = _latestQuery;
     _debounce = Timer(
       const Duration(milliseconds: 350),
-      () => _search(requestedQuery, generation),
+      () => _search(
+        requestedQuery,
+        generation,
+        previousResults: previous,
+      ),
     );
   }
 
-  Future<void> _search(String query, int generation) async {
+  Future<void> _search(
+    String query,
+    int generation, {
+    AskSuggestions? previousResults,
+  }) async {
     final identity = ref.read(askSearchIdentityProvider);
     GuestWorkspaceData local;
     var localFailed = false;
@@ -126,15 +205,14 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
 
     if (_queryGeneration != generation ||
         _latestQuery != query ||
-        ref.read(askSearchIdentityProvider).verifiedUid !=
-            identity.verifiedUid) {
+        !_sameCurrentScope(identity)) {
       return;
     }
     final sources = query.length > 100
         ? const KnowledgeSearchSources()
         : await searchKnowledgeSources(
             query,
-            searchOrganisation: identity.verifiedUid == null
+            searchOrganisation: identity.organisationId == null
                 ? null
                 : (value) => ref
                       .read(questionsRepositoryProvider)
@@ -155,15 +233,16 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
           );
     if (_queryGeneration != generation ||
         _latestQuery != query ||
-        ref.read(askSearchIdentityProvider).verifiedUid !=
-            identity.verifiedUid) {
+        !_sameCurrentScope(identity)) {
       return;
     }
 
     final hits = <AskKnowledgeHit>[];
     final privateById = {
       for (final item in sources.privateAccount)
-        if (item['source_id'] is String)
+        if (item['source_id'] is String &&
+            (item['owner_uid'] == null ||
+                item['owner_uid'] == identity.verifiedUid))
           item['source_id'] as String: item,
     };
     final localIds = <String>{};
@@ -208,6 +287,10 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
     for (final result in sources.privateAccount) {
       final id = result['source_id'] as String? ?? '';
       if (id.isEmpty || localIds.contains(id)) continue;
+      if (result['owner_uid'] != null &&
+          result['owner_uid'] != identity.verifiedUid) {
+        continue;
+      }
       final data = result['data'] is Map
           ? Map<String, dynamic>.from(result['data'] as Map)
           : const <String, dynamic>{};
@@ -216,7 +299,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
           id: id,
           title: result['title'] as String? ?? '',
           source: 'Private',
-          attribution: const [],
+          attribution: _attribution(result),
           matchMethod: _matchMethod(result['match_method'] as String?),
           relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
           snippet: _snippet(query, [
@@ -233,6 +316,9 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
       final id = result['id'] as String? ?? '';
       final groupId = result['group_id'] as String?;
       if (id.isEmpty || groupId == null) continue;
+      if (result['accessible'] == false || result['is_accessible'] == false) {
+        continue;
+      }
       final data = result['data'] is Map
           ? Map<String, dynamic>.from(result['data'] as Map)
           : const <String, dynamic>{};
@@ -241,7 +327,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
           id: id,
           title: result['title'] as String? ?? '',
           source: 'Group: ${result['group_name'] as String? ?? 'Group'}',
-          attribution: const [],
+          attribution: _attribution(result),
           matchMethod: _matchMethod(result['match_method'] as String?),
           relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
           snippet: _snippet(query, [
@@ -282,6 +368,26 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
         ),
       );
     }
+    final errors = {...sources.failedSources};
+    if (localFailed) errors.add('Local');
+    if (previousResults != null) {
+      for (final source in errors) {
+        for (final oldHit in previousResults.hits.where(
+          (hit) => _sourceName(hit.source) == source,
+        )) {
+          if (!hits.any((hit) => _scopeKey(hit) == _scopeKey(oldHit))) {
+            hits.add(oldHit);
+          }
+        }
+      }
+    }
+    final uniqueHits = <String, AskKnowledgeHit>{};
+    for (final hit in hits) {
+      uniqueHits.putIfAbsent(_scopeKey(hit), () => hit);
+    }
+    hits
+      ..clear()
+      ..addAll(uniqueHits.values);
     hits.sort((left, right) {
       final byScore = right.relevance.compareTo(left.relevance);
       if (byScore != 0) return byScore;
@@ -292,14 +398,13 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
       final byId = left.id.compareTo(right.id);
       return byId != 0 ? byId : left.source.compareTo(right.source);
     });
-    final errors = {...sources.failedSources};
-    if (localFailed) errors.add('Local');
     state = AsyncData(
       AskSuggestions(
         hits: hits.take(10).toList(),
         failedSources: errors,
         partialSources: sources.partialSources,
         hasSearched: true,
+        isRefreshing: false,
         notice: query.length > 100
             ? 'Shorten the query to 100 characters to search other accessible '
                 'Knowledge sources. Local Knowledge was searched.'
@@ -307,6 +412,26 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
       ),
     );
   }
+
+  bool _sameCurrentScope(AskSearchIdentity identity) =>
+      identity.sameScopeAs(ref.read(askSearchIdentityProvider));
+
+  static String _sourceName(String source) {
+    if (source.startsWith('Organisation:')) return 'Organisation';
+    if (source.startsWith('Group:')) return 'Groups';
+    return source;
+  }
+
+  static String _scopeKey(AskKnowledgeHit hit) =>
+      '${_sourceName(hit.source)}:${hit.groupId ?? ''}:${hit.id}';
+
+  static List<String> _attribution(Map<String, dynamic> result) => [
+    if (result['department'] is Map &&
+        (result['department'] as Map)['name'] is String)
+      'Department: ${(result['department'] as Map)['name']}',
+    if (result['team'] is Map && (result['team'] as Map)['name'] is String)
+      'Team: ${(result['team'] as Map)['name']}',
+  ];
 
   static String _matchMethod(String? method) => switch (method) {
     'semantic' => 'Meaning-based match',
