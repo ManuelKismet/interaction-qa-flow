@@ -1,5 +1,94 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+### Organisation DEV rollout independently completed — 2026-10-07 11:24Z / 12:24 BST
+
+Copilot same-task fifth session completed (5m28s); no competing request.
+Artifact814fcc7350f500504774cc4baa97e703ee6457db published correction-only mailbox
+organisation-improvements-dev-20261007-race-test-correction.patch,
+10115 bytes, SHA256 e06da64e9ad16f5de7d544a8e6dc66c8b4ed39b53a7ce113485eeb4c022aba19.
+Exact complete base019097f72c0f6ef678d5ebe96ac852268aa737dc verified.
+Mailbox correction source4573c4021c70dd7f7405151bdf3fa74790d94dd4;
+task-branch test source2a38adcc5d2ae3263c2445c1c380fb4abf2fc098.
+Applied UNCHANGED in isolated worktree as **7aac21fad638570cf6f60a5dad478b776278c603**.
+Exact tree48a205f417aad95cb34197dc7737c24924ba57d2 equals declared mailbox target.
+Only backend/tests/test_organisation_administration_postgres.py changed since019097f.
+Both ordered decision outcomes preserve exact pending/duplicate, 200/409,
+reviewer/status/membership and audit assertions using independent sessions/row locks.
+No application change to force approval-first. Clean source pushed
+fix/unified-search-dev-20261006; GitHub commit readback verified parent/tree/file.
+No old mailbox reconstruction. Copilot owns application/tests; Codex changed only
+external validation/deployment scripts and repository operations checkpoint.
+
+Independent FINAL source checks:
+- Python compile exit0; Alembic single0015 head exit0.
+- Full backend with BOTH real PostgreSQL test URLs: **126PASS0FAIL0SKIP,
+  10warnings,23.54s,exit0** on fresh org_7aac21f_tests.
+- Separate org_7aac21f_migrate:0014→0015 exact-two-user preservation,
+  zero owners/one explicit legacy grant; isolated0015→0014→0015 PASS exit0.
+- Extra self-approval probe PASS exit0: HTTPException, department unchanged.
+- Prior independent delayed UID-switch real-provider/repository/client probe
+  remains PASS on019097f; application/Flutter code unchanged, not rerun this turn.
+- FULL Flutter final source **190PASS89s exit0**.
+- Analyzer **0errors0warnings13existinginfos14.1s**, exit1 solely infos.
+- FULL configured DEV web release **53.0s PASS exit0**, existing Firebase/AppCheck
+  public defines; AUTH_DIAGNOSTICS=true/no-wasm-dry-run/pwa-strategy=none.
+No unexecuted check claimed passed. Initial local PG start lacked explicit port/socket
+and failed before tests; corrected to loopback55443/private socket before fresh DB creation.
+External deployment-helper preparation had quoting/indentation syntax errors; corrected
+and compiled before execution. These were harness/setup errors, not app failures.
+
+Confirmed DEV-only rollout (publication verification exit0 before cleanup):
+- Source **7aac21fad638570cf6f60a5dad478b776278c603**.
+- New immutable backend image
+  europe-west2-docker.pkg.dev/intqaflow-dev/cloud-run-source-deploy/intqaflow-dev-api@sha256:475fe1f999e5c428bceecb3fb0d1d0c6a7b0ad7f39fac977b55bed58d334f15a.
+- Cloud Run **intqaflow-dev-api-review7aac21f**, built/staged0traffic first.
+  Old/new runtime spec equal excluding image; Cloud SQL/VPC/service identity,
+  ingress/invoker/security config preserved. Tagged staged health/ready200 before
+  switch; then **100%traffic**, public health/ready200.
+- CloudSQL intqaflow-dev-pg/europe-west2/projectintqaflow-dev:
+  additive hosted **0014→0015** upgrade PASS. All35 pre-existing public tables'
+  counts AND complete row hashes unchanged. Runtime schema usage and CRUD/read
+  privileges for existing and three new organisation tables passed.
+  **Zero owners appointed**, zero join requests; exactlyone explicit legacy_admin
+  grant matches existing admin, with scope/grantor validation. No arbitrary owner mapping.
+  Existing runtime credentials handled internally only; no IAM/security changes.
+  Temporary Cloud SQL proxy terminated in helper finally.
+- Firebase Hosting **release1791372154776000/version8dc80b67398948f1**,36files,exit0.
+- BOTH https://intqaflow-dev.web.app/ and https://intqaflow-dev.firebaseapp.com/
+  independently match exact tested bundle bytes. Missing identity private search401.
+
+| Exact bundle on BOTH origins | Bytes | SHA256 |
+|---|---:|---|
+|index.html|1531|a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858|
+|flutter_bootstrap.js|9805|0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67|
+|main.dart.js|4551199|c2a596e7e26a481bdd05f51d21b73bca45fce5f8f397197f68af613810b1227c|
+
+Hosted guest workspace opens after final publication with Knowledge/Interact,
+Groups and local-save boundaries visible. No content created/imported/uploaded.
+This is page-load smoke only: typed needle did not yield a visible result in this
+browser state, so no new hosted search-result acceptance is asserted.
+
+Rollback: reviewed **intqaflow-dev-api-reviewf662a6c** and Hosting
+**version3e8209ddae71b73b/release1791360928018000**, sourcef662a6c, retained.
+If reverting app runtime, retain additive0015 and all private data; NEVER live
+DB downgrade/purge. No production/repository merge/live appointments/provider activation.
+
+Remaining handoff gaps: live owner provisioning requires explicit chosen organisation/user
+authorisation; no owner was assigned merely by implementing this scope. Hosted registered
+owner/delegated-admin/member role/scope acceptance and registered unified Ask/search
+acceptance remain separate from automated proofs. Authenticated personal-import
+F04/F08/F09 remain open. Real semantics/provider quality deferred until first customer;
+fake embeddings do not prove meaning matching. Existing search formatting advisory retained.
+Internal organisation Teams are not Microsoft Teams integration/browser extension.
+
+Evidence /home/vscode/.local/share/intqaflow/org-validation-7aac21f and
+org-7aac21f-* deployment receipts/scripts retained outside repo.
+Fresh databases/logs/files preserved. Temporary PostgreSQL stopped at11:23:34Z;
+ss showed no listeners55443/55439. GitHub UI confirms Codespace “bookish happiness”
+stopped. Isolated source clean7aac21f; main four dirty docs preserved exactly.
+Old PR13 task quarantined, late output rejected. Founder already cancelled monitoring;
+no automation recreated. This completed entry supersedes earlier pending/runtime states.
+
 ### Independent incremental correction review — 2026-10-07 10:49Z / 11:49 BST
 
 Artifact087548b0a410b9cb4a9fa925e0fa230d5798ce27 correction mailbox SHA256
