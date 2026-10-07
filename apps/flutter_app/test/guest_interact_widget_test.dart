@@ -21,9 +21,23 @@ void main() {
     expect(matchesGuestKeywordOrPrefix('intrxctoin', item), isFalse);
   });
 
+  test('missing backup collections reports the exact knowledge diagnostic', () {
+    expect(
+      () => GuestWorkspaceData.decodeBackup('{"schema_version":1}'),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          'Local backup must include a "knowledge" list.',
+        ),
+      ),
+    );
+  });
+
   testWidgets(
     'Saved Q&A search edits and removes local entries and returns to the form',
     (tester) async {
+      _registerGuestCleanup(tester);
       final storage = _MemoryGuestStorage();
       final store = GuestWorkspaceStore(storage);
       await store.save(
@@ -219,10 +233,9 @@ void main() {
   testWidgets('long labels and nested branches fit a narrow guest layout', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
 
     final store = GuestWorkspaceStore(_MemoryGuestStorage());
     await store.save(
@@ -304,6 +317,7 @@ void main() {
   testWidgets('legacy duplicate participant IDs are preserved and not editable', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     final session = <String, dynamic>{
       'id': 'legacy-collision',
       'title': 'Legacy session',
@@ -365,10 +379,9 @@ void main() {
   testWidgets('desktop guest Knowledge and Interact forms stay readable width', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     tester.view.physicalSize = const Size(1280, 1000);
     tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
 
     final store = GuestWorkspaceStore(_MemoryGuestStorage());
     await store.save(
@@ -434,10 +447,9 @@ void main() {
   testWidgets(
     'switching active participants keeps answers and targeted branches after reload',
     (tester) async {
+      _registerGuestCleanup(tester);
       tester.view.physicalSize = const Size(1200, 1200);
       tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
 
       final storage = _MemoryGuestStorage();
       final store = GuestWorkspaceStore(storage);
@@ -515,10 +527,9 @@ void main() {
   testWidgets('PDF report preview uses the active participant scope', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     tester.view.physicalSize = const Size(1200, 1200);
     tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
 
     final store = GuestWorkspaceStore(_MemoryGuestStorage());
     await store.save(GuestWorkspaceData(sessions: [_twoParticipantSession()]));
@@ -594,10 +605,9 @@ void main() {
   testWidgets('local JSON backup import previews and merges selected items', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     tester.view.physicalSize = const Size(1000, 1000);
     tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
 
     final store = GuestWorkspaceStore(_MemoryGuestStorage());
     await store.save(
@@ -664,6 +674,7 @@ void main() {
   testWidgets('incompatible backup shows diagnostics without import success', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     final storage = _MemoryGuestStorage();
     final store = GuestWorkspaceStore(storage);
     await store.save(const GuestWorkspaceData(
@@ -684,20 +695,50 @@ void main() {
     await tester.tap(find.text('Import local JSON backup'));
     await tester.pumpAndSettle();
     await tester.enterText(_field('Paste backup JSON'), '{"schema_version":1}');
+    expect(
+      tester.widget<TextField>(_field('Paste backup JSON')).controller!.text,
+      '{"schema_version":1}',
+    );
     await tester.tap(find.text('Preview import'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
     await tester.pumpAndSettle();
     expect(
       find.textContaining('Local backup must include a "knowledge" list.'),
       findsOneWidget,
     );
+    expect(
+      find.widgetWithText(
+        SnackBar,
+        'This is not a valid IntQAFlow local JSON backup. '
+        'Local backup must include a "knowledge" list.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('Preview local backup import'), findsNothing);
     expect(find.text('Selected backup items imported locally.'), findsNothing);
     expect((await store.load()).toJson(), original.toJson());
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local JSON backup'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(_field('Paste backup JSON')).controller!.text,
+      '{"schema_version":1}',
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect((await store.load()).toJson(), original.toJson());
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('failed local save preserves the latest work for explicit retry', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     final storage = _MemoryGuestStorage()..failWrites = true;
     final store = GuestWorkspaceStore(storage);
     await tester.pumpWidget(
@@ -724,23 +765,46 @@ void main() {
     expect(find.textContaining('secret-password'), findsNothing);
     expect((await store.load()).knowledge, isEmpty);
     expect(storage.value, isNull);
+    expect(
+      tester.widget<TextField>(_field('Question')).focusNode!.hasFocus,
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.enterText(_field('Question'), 'Latest work after failure');
+    await tester.ensureVisible(saveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(storage.value, isNull);
+    expect(
+      find.text('Your changes are not saved. Keep this page open and retry.'),
+      findsOneWidget,
+    );
 
     storage.failWrites = false;
     await tester.tap(find.text('Retry saving'));
     await tester.pumpAndSettle();
 
-    expect((await store.load()).knowledge.single['title'], 'Kept after failure');
+    expect(
+      (await store.load()).knowledge.map((item) => item['title']),
+      ['Latest work after failure', 'Kept after failure'],
+    );
     expect(
       find.text('Your changes are not saved. Keep this page open and retry.'),
       findsNothing,
     );
     expect(find.textContaining('Saved on this device'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('queued local work is persisted when the page is disposed', (
     tester,
   ) async {
-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    _registerGuestCleanup(tester);
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
@@ -755,6 +819,8 @@ void main() {
     await tester.ensureVisible(saveButton);
     await tester.pumpAndSettle();
     await tester.tap(saveButton);
+    expect(storage.value, isNull);
+    expect(storage.writeAttempts, 0);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
 
@@ -762,11 +828,14 @@ void main() {
       (await store.load()).knowledge.single['title'],
       'Saved while leaving',
     );
+    expect(storage.writeAttempts, 1);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('in-flight local save completes after the page is disposed', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     final storage = _MemoryGuestStorage();
     await GuestWorkspaceStore(storage).save(const GuestWorkspaceData());
     final store = _DelayedFirstSaveStore(storage);
@@ -796,6 +865,7 @@ void main() {
   testWidgets(
     'failed local save still allows backup copy with accurate status',
     (tester) async {
+      _registerGuestCleanup(tester);
       final storage = _MemoryGuestStorage()..failWrites = true;
       final store = GuestWorkspaceStore(storage);
       String? copiedText;
@@ -885,10 +955,9 @@ void main() {
   testWidgets('failed backup import preserves source and current local data', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     tester.view.physicalSize = const Size(1000, 1000);
     tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
     final storage = _MemoryGuestStorage();
     final store = GuestWorkspaceStore(storage);
     await store.save(
@@ -920,6 +989,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(_field('Paste backup JSON'), backup);
     await tester.tap(find.text('Preview import'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Import selected locally'));
     await tester.pumpAndSettle();
@@ -932,19 +1003,78 @@ void main() {
     );
     expect(storage.value, existingStoredValue);
     expect((await store.load()).knowledge.single['title'], 'Existing local item');
+    expect(find.text('Selected backup items imported locally.'), findsNothing);
+    expect(find.textContaining('secret-password'), findsNothing);
+    await tester.drag(find.byType(SnackBar), const Offset(0, 100));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Unable to import the selected backup. Your current work was kept.',
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
+    expect(find.text('Existing local item'), findsOneWidget);
+    expect(find.text('New backup item'), findsNothing);
 
     await tester.tap(find.byTooltip('Guest workspace options'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Import local JSON backup'));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextField>(_field('Paste backup JSON')).controller!.text, backup);
-    await tester.tap(find.text('Cancel'));
+    expect(
+      tester.widget<TextField>(_field('Paste backup JSON')).controller!.text,
+      backup,
+    );
+    storage.failWrites = false;
+    await tester.tap(find.text('Preview import'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Import selected locally'));
+    await tester.pumpAndSettle();
+    expect(
+      (await store.load()).knowledge.map((item) => item['title']),
+      ['Existing local item', 'New backup item'],
+    );
+    expect(find.text('Existing local item'), findsOneWidget);
+    expect(find.text('New backup item'), findsOneWidget);
+    expect(find.text('Selected backup items imported locally.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('backup input can close and unmount during its reverse transition', (
+    tester,
+  ) async {
+    _registerGuestCleanup(tester);
+    final storage = _MemoryGuestStorage();
+    final store = GuestWorkspaceStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import local JSON backup'));
+    await tester.pumpAndSettle();
+    await tester.enterText(_field('Paste backup JSON'), '{"schema_version":1}');
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(storage.value, isNull);
+    expect(storage.writeAttempts, 0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a stale save completion never reports newer edits as saved', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     final storage = _MemoryGuestStorage();
     await GuestWorkspaceStore(storage).save(const GuestWorkspaceData());
     final store = _DelayedFirstSaveStore(storage);
@@ -985,6 +1115,7 @@ void main() {
   testWidgets('corrupt local data is preserved and the initial load can retry', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     final storage = _MemoryGuestStorage();
     final store = GuestWorkspaceStore(storage);
     await store.save(
@@ -1022,6 +1153,7 @@ void main() {
   testWidgets('local read failure retains storage and exposes retry', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     final storage = _MemoryGuestStorage();
     final store = GuestWorkspaceStore(storage);
     await store.save(
@@ -1059,6 +1191,7 @@ void main() {
   testWidgets('required Knowledge and session fields show inline errors', (
     tester,
   ) async {
+    _registerGuestCleanup(tester);
     final store = GuestWorkspaceStore(_MemoryGuestStorage());
     await tester.pumpWidget(
       ProviderScope(
@@ -1099,6 +1232,18 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 300));
     expect((await store.load()).sessions.single['title'], 'Interview');
+  });
+}
+
+void _registerGuestCleanup(WidgetTester tester) {
+  addTearDown(() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    // Reset view metrics only after MediaQuery and editable fields unmount.
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
   });
 }
 
@@ -1222,6 +1367,7 @@ class _MemoryGuestStorage implements GuestStorage {
   String? value;
   bool failWrites = false;
   bool failReads = false;
+  int writeAttempts = 0;
 
   @override
   void remove() => value = null;
@@ -1234,6 +1380,7 @@ class _MemoryGuestStorage implements GuestStorage {
 
   @override
   void write(String value) {
+    writeAttempts++;
     if (failWrites) throw StateError('secret-password storage failure');
     this.value = value;
   }

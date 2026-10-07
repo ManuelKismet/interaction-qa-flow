@@ -1219,42 +1219,18 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }
 
   Future<void> _importLocalBackup() async {
-    final controller = TextEditingController(text: _pendingImportJson ?? '');
     try {
-      final submit = await showDialog<bool>(
+      final source = await showDialog<String>(
         context: context,
-        builder: (context) => AlertDialog(
-          scrollable: true,
-          title: const Text('Import local JSON backup'),
-          content: SizedBox(
-            width: 560,
-            child: TextField(
-              controller: controller,
-              minLines: 4,
-              maxLines: 12,
-              onChanged: (value) => _pendingImportJson = value,
-              decoration: const InputDecoration(
-                labelText: 'Paste backup JSON',
-                alignLabelWithHint: true,
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Preview import'),
-            ),
-          ],
+        builder: (context) => _GuestBackupInputDialog(
+          initialJson: _pendingImportJson ?? '',
+          onChanged: (value) => _pendingImportJson = value,
         ),
       );
-      if (submit != true || !mounted) return;
+      if (source == null || !mounted) return;
       late final GuestWorkspaceData imported;
       try {
-        imported = GuestWorkspaceData.decodeBackup(controller.text);
+        imported = GuestWorkspaceData.decodeBackup(source);
       } on FormatException catch (error) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1334,8 +1310,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           ),
         );
       }
-    } finally {
-      controller.dispose();
     }
   }
 
@@ -2698,6 +2672,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
       return;
     }
     final title = _title.text.trim();
+    FocusScope.of(context).unfocus();
     widget.onCreate({
       'id': newGuestItemId(),
       'title': title,
@@ -2905,6 +2880,69 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
       ),
     );
   }
+}
+
+class _GuestBackupInputDialog extends StatefulWidget {
+  const _GuestBackupInputDialog({
+    required this.initialJson,
+    required this.onChanged,
+  });
+
+  final String initialJson;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_GuestBackupInputDialog> createState() => _GuestBackupInputDialogState();
+}
+
+class _GuestBackupInputDialogState extends State<_GuestBackupInputDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialJson);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close({required bool preview}) {
+    FocusScope.of(context).unfocus();
+    Navigator.pop(context, preview ? _controller.text : null);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('Import local JSON backup'),
+    content: SizedBox(
+      width: 560,
+      child: TextField(
+        controller: _controller,
+        minLines: 4,
+        maxLines: 12,
+        onChanged: widget.onChanged,
+        decoration: const InputDecoration(
+          labelText: 'Paste backup JSON',
+          alignLabelWithHint: true,
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => _close(preview: false),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => _close(preview: true),
+        child: const Text('Preview import'),
+      ),
+    ],
+  );
 }
 
 class _EditGuestKnowledgeDialog extends StatefulWidget {
