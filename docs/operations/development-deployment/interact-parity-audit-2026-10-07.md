@@ -83,7 +83,7 @@ Founder requested preservation of IP01–IP12, added IP13–IP23, and authorised
 | ID | Evidence / proposed outcome |
 |---|---|
 | IP13 | Groups belongs under Personal workspace rather than a global main navigation destination. Preserve guest Group access and organisation members' separate personal access; moving navigation must not require registration for existing shared-guest usage. |
-| IP14 | Review separate Group search; use existing unified search with an explicit current-group filter where needed, preserving membership enforcement. Do not remove a useful scope filter or rebuild retrieval. |
+| IP14 | Remove the separate Groups search field; existing unified Ask & search covers accessible Group Knowledge. Preserve Group source labels, membership enforcement and navigation; reuse retrieval. |
 | IP15 | Move secondary explanatory text behind accessible info icons; essential instructions, errors, privacy and save status remain visible. Inventory actual pages before edits. |
 | IP16 | Workspace-aware navigation: personal Knowledge/Interact/Groups versus organisation Knowledge/Interact/governance; clear switcher and destination. Consolidate with IP10/IP13. |
 | IP17 | New registered personal work defaults to private account storage; guest originals stay local and selected imports remain explicit. Preserve account conflict recovery, identity isolation, sign-out behavior and existing data. |
@@ -109,3 +109,7 @@ Implementation batches, retaining all IDs:
 Before application handoff, finish targeted source/hosted review of new observations and record exact acceptance criteria. Scope safety tests to real permissions, blank saves, navigation/disposal, schema round-trips, stale identity, privacy/no implicit uploads, existing templates/reports/branches and account conflicts. Run affected checks then full backend/Flutter/analyzer/configured release gates for coherent batches; maintain rollback and data-preserving additive migrations. No full test run per small cosmetic change.
 
 No new application edit, Copilot message/task, deployment or merge in this checkpoint update. Source review is in progress, not complete implementation or live validation. Real semantics remains first-customer deferred.
+
+## Implementation authorised — 2026-10-07
+
+Founder said “Okay, action improvements” after confirming four batches. IP24: meaningful contextual placeholders throughout, supplementing visible labels, never prefilled answers. IP23 confirmed missing editing applies to personal/guest Interact, not a new organisation editing feature. Batch 3 includes IP24. All 24 IDs retained. Batch 1 starts with IP01–IP04/IP11 and relevant IP12 regression coverage against complete base7aac21fad638570cf6f60a5dad478b776278c603. Existing guest originals/import boundaries and working functionality must remain intact. Implementation via one Copilot task per sequential batch; independent review and gates precede DEV rollout. No production/merge/destructive changes. Earlier analysis-only statements are historical, superseded by this explicit authorisation.
