@@ -1,5 +1,65 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+### Independent organisation review — 2026-10-07 10:05Z / 11:05 BST
+
+Copilot correction completed and published original mailbox artifact
+6ed7cbadfabf2c6ab66f6e136c8b13610ab17c0a, authored source
+a3855d4fdbfcaec9af4acc581edb0e180e9734cd, basef662a6c.
+Exact mailbox SHA256 verified e14ea697b17f1287099e8856119c744f0fc5b76bf0220e7c5412d756054bda75.
+Applied UNCHANGED in isolated worktree as
+c0a124683cad1cb2287d31f212c943a2649b41c2; git diff to authored source empty.
+Clean isolated tree pushed fix/unified-search-dev-20261006; GitHub readback
+verified source SHA/tree c39a7fdf2b528c34a7c82e6da65d92de4c8f724d.
+This is review source only, NOT current runtime. Main four dirty docs preserved.
+
+Independent executed gates:
+- compile0; Alembic single0015head0.
+- SQLite/default backend116PASS8SKIP10warnings22.71s exit0 (PG absent).
+- FULL backend with BOTH PostgreSQL URLs on fresh loopback-only disposable
+  PostgreSQL16 port55443:124PASS0SKIP10warnings33.56s exit0. Includes owner,
+  join/delegation races plus existing PostgreSQL regressions.
+- Flutter full185PASS85s exit0.
+- analyzer0errors0warnings13existinginfos11.6s exit1 solely infos.
+- release compilation118.4s PASS exit0; command flutter build web --release
+  --no-pub --dart-define=API_BASE_URL=<existingDEVAPI>. This diagnostic build
+  omits full Firebase/AppCheck public defines; NOT a publication-ready bundle.
+  Full configured DEV release/hashes remain rollout gate. Copilot HTTP403 did
+  not reproduce using existing Codespace SDK.
+- fresh isolated0014→0015 user-row preservation/no owner appointments/one
+  explicit legacy-admin grant and0015→0014→0015 round-tripPASS exit0. No live
+  DB mutation or downgrade.
+
+Two EXTRA independent regression probes FAILED exit1; rollout BLOCKED:
+1. Scoped reviewer in deptA with explicit review grant for deptB can request
+   deptB then approve their own request. Real PostgreSQL service probe logged
+   SELF_DECISION_OUTCOME approved / SELF_APPROVAL_CHANGED_DEPARTMENT True.
+   This widens department visibility eligibility and violates no-self-escalation.
+2. Real organisationPermissionsProvider + OrganisationRepository + createApiClient,
+   faithful fake Auth/token source and delayed HTTP adapter: request for UID A,
+   auth/currentUser switch to B, delayed200 A-grants response still publishes A
+   grants (Expected false/Actual true/noerror). Four organisation list providers
+   lack UID/membership dependency and successful late-response checks. Mounted-only
+   mutation callbacks also need identity/org recheck; existing routed tests do
+   not cover these transitions.
+
+ONE consolidated incremental correction sent SAME task8a480ce0 from exact NEW
+complete basec0a1246 (fetch fix/unified-search-dev-20261006), not old reconstruction.
+Requires server self-approval denial/legitimate distinct reviewer regression,
+identity/org/role invalidation/cancellation/stale-result/mutation guards, actual
+routed/provider delayed-response/partial-failure/retry coverage and unchanged
+incremental mailbox organisation-improvements-dev-20261007-correction.patch
+with provenance/checksum/tree equivalence. UI confirmed In progress / Copilot
+is working, fourth session. Await corrected delivery; no competing request.
+
+DEV STILL reviewf662a6c100% /Hosting3e8209ddae71b73b/schema0014. No deployment,
+merge/live owner appointment/IAM/AppCheck/provider change. Real semantics stays
+first-customer deferred; personal-import F04/F08/F09 and registered hosted Ask
+scope acceptance remain separate/open. Reviewed rollback retained.
+Evidence/probes/logs retained OUTSIDE repo:
+/home/vscode/.local/share/intqaflow/org-validation-20261007.
+Fresh databases org_c0a1246_tests/org_c0a1246_migrate retained. Own PG cluster
+stopped and port55443 no listener; no proxy started. Codespace stop follows.
+
 ### Organisation delivery incomplete; same-task correction — 2026-10-07 09:30Z
 
 Copilot session5e25f212 completed after56m40s. Published branch
