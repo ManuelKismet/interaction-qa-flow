@@ -1,5 +1,28 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+### Organisation delivery incomplete; same-task correction — 2026-10-07 09:30Z
+
+Copilot session5e25f212 completed after56m40s. Published branch
+copilot/organisation-improvements-dev-20261007 head verified via GitHub:
+f83307cd24ae94832061af08be0f3bfb15c7441b (09:24:14Z).
+Copilot reports backend120PASS4SKIP, PostgreSQL concurrency4PASS and isolated
+0014→0015 preserving existing users without appointing owners. These results
+have NOT yet been independently verified by Codex. Delivery is incomplete:
+Flutter organisation-page tests fail including overflow; analyzer not rerun
+after final fix; web SDK download HTTP403 blocked release; pubspec.lock drift;
+required mailbox/hashes/design-permission matrix absent. No artifact applied.
+
+ONE consolidated correction sent in SAME task8a480ce0 against currentf83307c,
+preserving original complete basef662a6c. Request fixes/tests/analyzer, lockfile
+resolution, exact tooling-limit reporting, complete unchanged mailbox from
+original base, authored/artifact SHA and byteSHA256, permission/migration matrix.
+UI confirmed Queued then In progress: “Addressing layout overflow and testing
+issues in organisation improvements”, environment spinning up. No competing
+request/task. Await coherent corrected delivery before independent application
+and gates. Existing DEV reviewf662a6c/Hosting3e8209ddae71b73b/schema0014 unchanged;
+Codespace remains idle/stopped; no runtime/security/provider changes. Real
+semantics remains deferred until first customer; F04/F08/F09 remain open.
+
 ### Same-task documentation clarification — 2026-10-07
 
 Initial sessionaea65059 stopped before implementation: it incorrectly searched
