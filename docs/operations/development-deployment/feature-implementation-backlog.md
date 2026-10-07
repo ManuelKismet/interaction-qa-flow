@@ -1,5 +1,26 @@
 # IntQAFlow feature and function backlog
 
+## Interact parity assessment backlog — 2026-10-07
+
+[Complete audit](interact-parity-audit-2026-10-07.md) pins source `7aac21fad638570cf6f60a5dad478b776278c603`. **Findings only: founder authorised analysis and documentation, not implementation.** Priority indicates proposed ordering, not assignment. Existing feature statuses/evidence below remain historical and scoped.
+
+| ID | Priority | Finding / decision | Status | Acceptance |
+|---|---|---|---|---|
+| IP01 | P1 | Capability-based owner/grant controls | SOURCE mismatch; unassigned | Owner, legacy grant, role-only, revoked and private matrix |
+| IP02 | P1 | Empty organisation answer persistence | SOURCE defect; unassigned | Clear, save, reload remains blank |
+| IP03 | P1 | Pending edit flush and save/conflict recovery | SOURCE/RISK; unassigned | Fast navigation, failure/retry, concurrent edit, refresh |
+| IP04 | P1 | Portable imports/exports and visible warnings | SOURCE mismatch; unassigned | Lossless round trip or explicit rejection; no silent empty session |
+| IP05 | P2 | Group snapshot versus editable Interact | DECISION; unassigned | Agreed sharing/editing and permission semantics |
+| IP06 | P2 | Local/private storage feedback | SOURCE mismatch; unassigned | Correct label for actual saved destination |
+| IP07 | P2 | Template authoring/governance alignment | DECISION; unassigned | Answer stripping, branches, version pinning |
+| IP08 | P2 | Completion/archive/history recovery semantics | DECISION; unassigned | Explicit editing/recovery policy and tests |
+| IP09 | P2 | Participant/metadata controls and export coverage | DECISION; unassigned | Agreed common operations and actual output artifacts |
+| IP10 | P2 | Editor/report/navigation consistency | DECISION; unassigned | Local/private/org paths understandable and consistent |
+| IP11 | P2 | UID/org/session response transitions | RISK; unassigned | Delayed read/write probes; no stale/wrong-identity state |
+| IP12 | P2 | Hosted mobile/accessibility/multi-device parity | OPEN; unassigned | Actual actor/device results, not inferred from suite counts |
+
+No Copilot request, app/test change, rollout or new role appointment made. Keep F04/F08/F09 open and semantic-provider work deferred until first customer. Earlier authorised organisation implementation remains separately recorded; this does not create a new Interact implementation scope.
+
 Current development queue, 5 October 2026. Linked to [test index](user-flow-acceptance-index.md) and [checkpoint](user-admin-e2e-checkpoint-2026-10-04.md). Implementation is not verification. P1 core blockers; P2 remaining acceptance/operations; P3 future work. Production and old local database excluded.
 
 | ID | Priority | Feature / function | Status | Task / evidence | Acceptance / next action |

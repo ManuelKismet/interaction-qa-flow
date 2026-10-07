@@ -1,5 +1,23 @@
 # Development acceptance coverage index
 
+## Current Interact parity coverage — 2026-10-07
+
+[Complete audit](interact-parity-audit-2026-10-07.md), exact source `7aac21fad638570cf6f60a5dad478b776278c603`. This table supersedes any interpretation of historical Interact PASS rows as full parity. No new test execution; retain historical successes within their stated scope.
+
+| Gate / actor | Status | Evidence / scope | Next action |
+|---|---|---|---|
+| Core participant/question/answer/branch model | SOURCE aligned; prior scoped tests | Guest/personal shared editor versus separate Guided org editor | No blanket seamless/parity sign-off |
+| Org owner/grant/private control matrix | SOURCE mismatch IP01 | UI role admin versus backend owner/legacy grant | Targeted acceptance after authorised correction |
+| Clear org answer and reload | SOURCE defect IP02; runtime not run | Empty value fails save guard | Blank-answer persistence regression |
+| Rapid navigation, failed save, concurrent edit | SOURCE/RISK IP03; OPEN | Timer disposal cancels pending write; recovery differs | Persistence, retry and truthful status tests |
+| Guest/personal/org JSON portability | SOURCE mismatch IP04 | Distinct formats; import warnings discarded | Explicit schemas and fidelity/rejection fixtures |
+| Group full Interact editing | SOURCE absent IP05; DECISION | Shared entry copy permits title edit only | Decide snapshot versus collaborative editing |
+| Storage labels/templates/lifecycle/export/navigation | SOURCE differences IP06–IP10 | Audit feature matrix | Define intended common UX and retained privacy boundaries |
+| Delayed UID/org/session/permission responses | RISK IP11; OPEN | No Guided-specific acceptance proof | Independent delayed-response scenarios; no leak claim |
+| Hosted multi-device/mobile/accessibility parity | OPEN IP12 | Automated/reused samples insufficient | Named actors/devices/artifacts and actual results required |
+
+Prior rollout remains 126 backend / 190 Flutter passes, analyzer 0 errors / 0 warnings / 13 existing infos. Latest runtime/source is recorded in [rollout checkpoint](unified-knowledge-search-checkpoint-2026-10-06.md), not the historical “Current deployed code” row below. F04/F08/F09 remain open. This is documentation only; no implementation assignment or deployment.
+
 Updated 2026-10-05. This index is the starting point before running a test. Scope is development only; production and the old local database are excluded. Detailed evidence and chronology remain in [the checkpoint](user-admin-e2e-checkpoint-2026-10-04.md). PASS means the stated scope only, not every related feature. UNCERTAIN means evidence is incomplete, not a failure.
 
 | Gate / actor | Status | Evidence / scope | Next action or reason for retest |

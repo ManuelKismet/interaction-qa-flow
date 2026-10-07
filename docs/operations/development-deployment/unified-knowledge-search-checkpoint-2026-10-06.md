@@ -1,5 +1,15 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Interact parity review — 2026-10-07
+
+**Analysis/documentation only; no implementation authorised by this review.** [Complete audit](interact-parity-audit-2026-10-07.md) records guest, registered personal, organisation and Groups parity at exact source `7aac21fad638570cf6f60a5dad478b776278c603`. Core flow concepts align; full functional/UI parity is NOT established.
+
+Priority source findings: IP01 role-label UI versus owner/grant backend authority; IP02 blank organisation answers do not save; IP03 pending debounce cancelled on disposal and weaker recovery; IP04 incompatible backup/export/legacy-import shapes with hidden warnings. Groups are shared copies with title-only editing; templates, lifecycle, reporting, metadata controls and navigation differ. Stale-identity and mobile/accessibility scenarios remain risks/open evidence, not proven incidents.
+
+No new tests or hosted functional checks executed. Prior 126 backend / 190 Flutter passes and 0 analyzer errors/warnings (13 infos) remain scoped rollout evidence. Latest recorded runtime: `intqaflow-dev-api-review7aac21f`, schema0015, Hosting1791372154776000/version8dc80b67398948f1. Runtime/bundle details remain in [rollout checkpoint](unified-knowledge-search-checkpoint-2026-10-06.md); this review did not redeploy or remeasure them.
+
+Existing dated evidence below is historical and remains preserved. F04/F08/F09, hosted registered personal/role acceptance and real semantic quality remain open/deferred as recorded. No Copilot assignment or application/test changes. See audit for IP01–IP12, exact source anchors, acceptance criteria and intentional privacy boundaries.
+
 ### Organisation DEV rollout independently completed — 2026-10-07 11:24Z / 12:24 BST
 
 Copilot same-task fifth session completed (5m28s); no competing request.
