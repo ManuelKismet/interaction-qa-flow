@@ -1,0 +1,79 @@
+From d35440f932085a8d30d8cf6071b212fdc0ab3997 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 07:57:16 +0000
+Subject: [PATCH] Scope Ask source subtitle assertions
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ apps/flutter_app/test/ask_page_test.dart | 39 ++++++++++++++++++++++--
+ 1 file changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/apps/flutter_app/test/ask_page_test.dart b/apps/flutter_app/test/ask_page_test.dart
+index faeed36..00f271d 100644
+--- a/apps/flutter_app/test/ask_page_test.dart
++++ b/apps/flutter_app/test/ask_page_test.dart
+@@ -217,6 +217,31 @@ TeamSummary _team() => TeamSummary(
+   department: _department(),
+ );
+ 
++void _expectKnowledgeSubtitle({
++  required WidgetTester tester,
++  required String title,
++  required String answer,
++  required String storageStatus,
++}) {
++  final itemTile = find.ancestor(
++    of: find.text(title),
++    matching: find.byType(ListTile),
++  );
++  expect(itemTile, findsOneWidget);
++  expect(
++    find.descendant(
++      of: itemTile,
++      matching: find.byWidgetPredicate(
++        (widget) =>
++            widget is Text &&
++            widget.data?.contains(answer) == true &&
++            widget.data?.contains(storageStatus) == true,
++      ),
++    ),
++    findsOneWidget,
++  );
++}
++
+ void main() {
+   testWidgets('Ask suggestions show unified source badges and open source', (
+     tester,
+@@ -345,7 +370,12 @@ void main() {
+     await tester.pumpAndSettle();
+     expect(find.text('Saved Q&A'), findsOneWidget);
+     expect(find.text('Private account policy'), findsOneWidget);
+-    expect(find.text('Keep account passwords unique.'), findsOneWidget);
++    _expectKnowledgeSubtitle(
++      tester: tester,
++      title: 'Private account policy',
++      answer: 'Keep account passwords unique.',
++      storageStatus: 'Personal account · saved',
++    );
+ 
+     await searchAgain();
+     await tester.ensureVisible(find.text('Password local guide'));
+@@ -354,7 +384,12 @@ void main() {
+     await tester.pumpAndSettle();
+     expect(find.text('Saved Q&A'), findsOneWidget);
+     expect(find.text('Password local guide'), findsOneWidget);
+-    expect(find.text('Rotate test credentials regularly.'), findsOneWidget);
++    _expectKnowledgeSubtitle(
++      tester: tester,
++      title: 'Password local guide',
++      answer: 'Rotate test credentials regularly.',
++      storageStatus: 'Local on this device',
++    );
+   });
+ 
+   testWidgets(
+-- 
+2.55.0
+
+
+base-commit: 8b675e20133ee713416c162896851d308d615881
