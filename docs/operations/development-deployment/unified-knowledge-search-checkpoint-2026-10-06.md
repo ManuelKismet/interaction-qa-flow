@@ -58,7 +58,7 @@ scope acceptance remain separate/open. Reviewed rollback retained.
 Evidence/probes/logs retained OUTSIDE repo:
 /home/vscode/.local/share/intqaflow/org-validation-20261007.
 Fresh databases org_c0a1246_tests/org_c0a1246_migrate retained. Own PG cluster
-stopped and port55443 no listener; no proxy started. Codespace stop follows.
+stopped and port55443 no listener; no proxy started. GitHub UI confirmed Codespace “bookish happiness” stopped. All files and databases retained.
 
 ### Organisation delivery incomplete; same-task correction — 2026-10-07 09:30Z
 
