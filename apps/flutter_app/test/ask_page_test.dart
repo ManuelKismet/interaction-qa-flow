@@ -217,6 +217,31 @@ TeamSummary _team() => TeamSummary(
   department: _department(),
 );
 
+void _expectKnowledgeSubtitle({
+  required WidgetTester tester,
+  required String title,
+  required String answer,
+  required String storageStatus,
+}) {
+  final itemTile = find.ancestor(
+    of: find.text(title),
+    matching: find.byType(ListTile),
+  );
+  expect(itemTile, findsOneWidget);
+  expect(
+    find.descendant(
+      of: itemTile,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            widget.data?.contains(answer) == true &&
+            widget.data?.contains(storageStatus) == true,
+      ),
+    ),
+    findsOneWidget,
+  );
+}
+
 void main() {
   testWidgets('Ask suggestions show unified source badges and open source', (
     tester,
@@ -345,7 +370,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Saved Q&A'), findsOneWidget);
     expect(find.text('Private account policy'), findsOneWidget);
-    expect(find.text('Keep account passwords unique.'), findsOneWidget);
+    _expectKnowledgeSubtitle(
+      tester: tester,
+      title: 'Private account policy',
+      answer: 'Keep account passwords unique.',
+      storageStatus: 'Personal account · saved',
+    );
 
     await searchAgain();
     await tester.ensureVisible(find.text('Password local guide'));
@@ -354,7 +384,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Saved Q&A'), findsOneWidget);
     expect(find.text('Password local guide'), findsOneWidget);
-    expect(find.text('Rotate test credentials regularly.'), findsOneWidget);
+    _expectKnowledgeSubtitle(
+      tester: tester,
+      title: 'Password local guide',
+      answer: 'Rotate test credentials regularly.',
+      storageStatus: 'Local on this device',
+    );
   });
 
   testWidgets(
