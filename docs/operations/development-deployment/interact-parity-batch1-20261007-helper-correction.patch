@@ -1,0 +1,68 @@
+From e7a596385d8f394fcb97f79ea17e9f5d97c104d2 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 21:12:24 +0000
+Subject: [PATCH] Fix bounded widget readiness helper scope in guided safety
+ tests
+
+Move _pumpUntil out of _waitFor into top-level scope, retaining the 200 one-millisecond pump bound and all regression assertions. Add descriptive readiness diagnostics. Flutter/analyzer unavailable in this sandbox; independent validation remains required.
+---
+ apps/flutter_app/test/guided_safety_test.dart | 27 ++++++++++++++-----
+ 1 file changed, 20 insertions(+), 7 deletions(-)
+
+diff --git a/apps/flutter_app/test/guided_safety_test.dart b/apps/flutter_app/test/guided_safety_test.dart
+index f710f49c7f7e06a108075458df9c512c7bd8184a..f00c026cde5e5ace26287cb7cbaf7758789e2a09 100644
+--- a/apps/flutter_app/test/guided_safety_test.dart
++++ b/apps/flutter_app/test/guided_safety_test.dart
+@@ -591,7 +591,11 @@ void main() {
+         (session) => rawResults.add(session.title),
+         onError: (Object error) => rawResults.add(error),
+       ));
+-      await _pumpUntil(tester, () => h.adapter.reads.length == originalReads + 2);
++      await _pumpUntil(
++        tester,
++        () => h.adapter.reads.length == originalReads + 2,
++        reason: 'Both original-session reads must reach the delayed adapter.',
++      );
+       expect(h.adapter.readGate, isNotNull);
+       final gate = h.adapter.readGate!;
+       h.adapter.holdReads = false;
+@@ -600,7 +604,11 @@ void main() {
+       if (destination == '/guided') expect(originalPage.mounted, isFalse);
+       expect(repository.cancelToken!.isCancelled, isFalse);
+       gate.complete(_response(h.adapter.session(title: 'Old private read marker')));
+-      await _pumpUntil(tester, () => rawResults.isNotEmpty);
++      await _pumpUntil(
++        tester,
++        () => rawResults.isNotEmpty,
++        reason: 'The released original-session read must complete.',
++      );
+       await tester.pumpAndSettle();
+       // The original raw read really arrived; only its abandoned view is stale.
+       expect(rawResults, ['Old private read marker']);
+@@ -1136,11 +1144,16 @@ Future<void> _waitFor(bool Function() condition, {String? reason}) async {
+     await Future<void>.delayed(const Duration(milliseconds: 1));
+   }
+ 
+-  Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
+-    for (var attempt = 0; attempt < 200 && !condition(); attempt++) {
+-      await tester.pump(const Duration(milliseconds: 1));
+-    }
+-    expect(condition(), isTrue);
++  expect(condition(), isTrue, reason: reason);
++}
++
++Future<void> _pumpUntil(
++  WidgetTester tester,
++  bool Function() condition, {
++  String? reason,
++}) async {
++  for (var attempt = 0; attempt < 200 && !condition(); attempt++) {
++    await tester.pump(const Duration(milliseconds: 1));
+   }
+   expect(condition(), isTrue, reason: reason);
+ }
+
+base-commit: ac0346ee83ab9be25dc52aa992030ecf26f1f631
+-- 
+2.55.0
+
