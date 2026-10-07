@@ -36,185 +36,161 @@ void main() {
     }
   });
 
-  test(
-    'attaches current Firebase and App Check tokens to protected calls',
-    () async {
-      final tokens = _FakeTokenSource();
-      final adapter = _RecordingAdapter((_) => _ok());
-      final client = createApiClient(tokens, adapter: adapter);
+  test('attaches current Firebase and App Check tokens to protected calls', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _ok());
+    final client = createApiClient(tokens, adapter: adapter);
 
-      await client.get<void>('/api/v1/questions');
+    await client.get<void>('/api/v1/questions');
 
-      expect(
-        adapter.requests.single.headers['Authorization'],
-        '$_authorizationScheme current-id-token',
-      );
-      expect(
-        adapter.requests.single.headers['X-Firebase-AppCheck'],
-        'current-app-check-token',
-      );
-      client.close();
-    },
-  );
+    expect(
+      adapter.requests.single.headers['Authorization'],
+      '$_authorizationScheme current-id-token',
+    );
+    expect(
+      adapter.requests.single.headers['X-Firebase-AppCheck'],
+      'current-app-check-token',
+    );
+    client.close();
+  });
 
-  test(
-    'shared guest-group listing uses Firebase and App Check tokens',
-    () async {
-      final tokens = _FakeTokenSource();
-      final adapter = _RecordingAdapter((_) => _okList());
-      final client = createApiClient(tokens, adapter: adapter);
+  test('shared guest-group listing uses Firebase and App Check tokens', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _okList());
+    final client = createApiClient(tokens, adapter: adapter);
 
-      await client.get<List<dynamic>>('/api/v1/guest/groups');
+    await client.get<List<dynamic>>('/api/v1/guest/groups');
 
-      expect(adapter.requests.single.path, '/api/v1/guest/groups');
-      expect(
-        adapter.requests.single.headers['Authorization'],
-        '$_authorizationScheme current-id-token',
-      );
-      expect(
-        adapter.requests.single.headers['X-Firebase-AppCheck'],
-        'current-app-check-token',
-      );
-      client.close();
-    },
-  );
+    expect(adapter.requests.single.path, '/api/v1/guest/groups');
+    expect(
+      adapter.requests.single.headers['Authorization'],
+      '$_authorizationScheme current-id-token',
+    );
+    expect(
+      adapter.requests.single.headers['X-Firebase-AppCheck'],
+      'current-app-check-token',
+    );
+    client.close();
+  });
 
-  test(
-    'refreshes expired sessions and signs out after a rejected refresh',
-    () async {
-      final tokens = _FakeTokenSource();
-      final adapter = _RecordingAdapter((_) => _unauthorized());
-      final client = createApiClient(tokens, adapter: adapter);
+  test('refreshes expired sessions and signs out after a rejected refresh', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _unauthorized());
+    final client = createApiClient(tokens, adapter: adapter);
 
-      await expectLater(
-        client.get<void>('/api/v1/questions'),
-        throwsA(isA<DioException>()),
-      );
+    await expectLater(
+      client.get<void>('/api/v1/questions'),
+      throwsA(isA<DioException>()),
+    );
 
-      expect(tokens.forceRefreshCount, 1);
-      expect(tokens.signedOut, isTrue);
-      expect(adapter.requests.length, 2);
-      expect(
-        adapter.requests.last.headers['Authorization'],
-        '$_authorizationScheme refreshed-id-token',
-      );
-      client.close();
-    },
-  );
+    expect(tokens.forceRefreshCount, 1);
+    expect(tokens.signedOut, isTrue);
+    expect(adapter.requests.length, 2);
+    expect(
+      adapter.requests.last.headers['Authorization'],
+      '$_authorizationScheme refreshed-id-token',
+    );
+    client.close();
+  });
 
-  test(
-    'does not retry a personal request with a different Firebase UID',
-    () async {
-      final tokens = _FakeTokenSource()..currentUid = 'owner-a';
-      final adapter = _RecordingAdapter((_) {
-        tokens.currentUid = 'owner-b';
-        return _unauthorized();
-      });
-      final client = createApiClient(tokens, adapter: adapter);
+  test('does not retry a personal request with a different Firebase UID', () async {
+    final tokens = _FakeTokenSource()..currentUid = 'owner-a';
+    final adapter = _RecordingAdapter((_) {
+      tokens.currentUid = 'owner-b';
+      return _unauthorized();
+    });
+    final client = createApiClient(tokens, adapter: adapter);
 
-      await expectLater(
-        client.get<void>(
-          '/api/v1/personal/items',
-          options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
+    await expectLater(
+      client.get<void>(
+        '/api/v1/personal/items',
+        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
+      ),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(tokens.forceRefreshCount, 0);
+    expect(tokens.signedOut, isFalse);
+    expect(adapter.requests, hasLength(1));
+    client.close();
+  });
+
+  test('rejects a successful response after the Firebase UID changes', () async {
+    final tokens = _FakeTokenSource()..currentUid = 'owner-a';
+    final adapter = _RecordingAdapter((_) {
+      tokens.currentUid = 'owner-b';
+      return _okList();
+    });
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await expectLater(
+      client.get<List<dynamic>>(
+        '/api/v1/organisation/permissions',
+        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
+      ),
+      throwsA(
+        isA<DioException>().having(
+          (error) => error.type,
+          'type',
+          DioExceptionType.cancel,
         ),
-        throwsA(isA<DioException>()),
-      );
+      ),
+    );
 
-      expect(tokens.forceRefreshCount, 0);
-      expect(tokens.signedOut, isFalse);
-      expect(adapter.requests, hasLength(1));
-      client.close();
-    },
-  );
+    expect(adapter.requests, hasLength(1));
+    client.close();
+  });
 
-  test(
-    'rejects a successful response after the Firebase UID changes',
-    () async {
-      final tokens = _FakeTokenSource()..currentUid = 'owner-a';
-      final adapter = _RecordingAdapter((_) {
-        tokens.currentUid = 'owner-b';
-        return _okList();
-      });
-      final client = createApiClient(tokens, adapter: adapter);
+  test('does not dispatch after identity changes while loading App Check', () async {
+    final tokens = _FakeTokenSource()
+      ..currentUid = 'owner-a'
+      ..uidAfterAppCheck = 'owner-b';
+    final adapter = _RecordingAdapter((_) => _ok());
+    final client = createApiClient(tokens, adapter: adapter);
 
-      await expectLater(
-        client.get<List<dynamic>>(
-          '/api/v1/organisation/permissions',
-          options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
-        ),
-        throwsA(
-          isA<DioException>().having(
-            (error) => error.type,
-            'type',
-            DioExceptionType.cancel,
-          ),
-        ),
-      );
+    await expectLater(
+      client.get<void>(
+        '/api/v1/organisation/permissions',
+        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
+      ),
+      throwsA(isA<DioException>()),
+    );
 
-      expect(adapter.requests, hasLength(1));
-      client.close();
-    },
-  );
+    expect(adapter.requests, isEmpty);
+    client.close();
+  });
 
-  test(
-    'does not dispatch after identity changes while loading App Check',
-    () async {
-      final tokens = _FakeTokenSource()
-        ..currentUid = 'owner-a'
-        ..uidAfterAppCheck = 'owner-b';
-      final adapter = _RecordingAdapter((_) => _ok());
-      final client = createApiClient(tokens, adapter: adapter);
+  test('keeps a linked guest identity after organisation membership lookup returns 401', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _unauthorized());
+    final client = createApiClient(tokens, adapter: adapter);
 
-      await expectLater(
-        client.get<void>(
-          '/api/v1/organisation/permissions',
-          options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
-        ),
-        throwsA(isA<DioException>()),
-      );
+    await expectLater(
+      client.get<void>('/api/v1/auth/me'),
+      throwsA(isA<DioException>()),
+    );
 
-      expect(adapter.requests, isEmpty);
-      client.close();
-    },
-  );
+    expect(tokens.forceRefreshCount, 1);
+    expect(tokens.signedOut, isFalse);
+    expect(adapter.requests.length, 2);
+    client.close();
+  });
 
-  test(
-    'keeps a linked guest identity after organisation membership lookup returns 401',
-    () async {
-      final tokens = _FakeTokenSource();
-      final adapter = _RecordingAdapter((_) => _unauthorized());
-      final client = createApiClient(tokens, adapter: adapter);
+  test('keeps signed-in identity when account-state lookup cannot be verified', () async {
+    final tokens = _FakeTokenSource();
+    final adapter = _RecordingAdapter((_) => _unauthorized());
+    final client = createApiClient(tokens, adapter: adapter);
 
-      await expectLater(
-        client.get<void>('/api/v1/auth/me'),
-        throwsA(isA<DioException>()),
-      );
+    await expectLater(
+      client.get<void>('/api/v1/account/state'),
+      throwsA(isA<DioException>()),
+    );
 
-      expect(tokens.forceRefreshCount, 1);
-      expect(tokens.signedOut, isFalse);
-      expect(adapter.requests.length, 2);
-      client.close();
-    },
-  );
-
-  test(
-    'keeps signed-in identity when account-state lookup cannot be verified',
-    () async {
-      final tokens = _FakeTokenSource();
-      final adapter = _RecordingAdapter((_) => _unauthorized());
-      final client = createApiClient(tokens, adapter: adapter);
-
-      await expectLater(
-        client.get<void>('/api/v1/account/state'),
-        throwsA(isA<DioException>()),
-      );
-
-      expect(tokens.forceRefreshCount, 1);
-      expect(tokens.signedOut, isFalse);
-      expect(adapter.requests.length, 2);
-      client.close();
-    },
-  );
+    expect(tokens.forceRefreshCount, 1);
+    expect(tokens.signedOut, isFalse);
+    expect(adapter.requests.length, 2);
+    client.close();
+  });
 }
 
 class _FakeTokenSource implements ApiTokenSource {
@@ -266,25 +242,25 @@ class _RecordingAdapter implements HttpClientAdapter {
 }
 
 ResponseBody _ok() => ResponseBody.fromString(
-  '{}',
-  200,
-  headers: {
-    Headers.contentTypeHeader: ['application/json'],
-  },
-);
+      '{}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
 
 ResponseBody _okList() => ResponseBody.fromString(
-  '[]',
-  200,
-  headers: {
-    Headers.contentTypeHeader: ['application/json'],
-  },
-);
+      '[]',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
 
 ResponseBody _unauthorized() => ResponseBody.fromString(
-  '{"detail":"Authentication required"}',
-  401,
-  headers: {
-    Headers.contentTypeHeader: ['application/json'],
-  },
-);
+      '{"detail":"Authentication required"}',
+      401,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
