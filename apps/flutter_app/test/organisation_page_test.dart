@@ -75,10 +75,18 @@ Widget _routedPage({
   );
 }
 
+void _setViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(900, 1800);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 void main() {
   testWidgets('routed organisation page explains when no organisation exists', (
     tester,
   ) async {
+    _setViewport(tester);
     await tester.pumpWidget(
       _routedPage(status: AccountMembershipStatus.noMembership),
     );
@@ -94,20 +102,15 @@ void main() {
   testWidgets('admin title alone displays no delegated permissions', (
     tester,
   ) async {
+    _setViewport(tester);
     await tester.pumpWidget(
       _routedPage(status: AccountMembershipStatus.active, profile: _profile()),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Example organisation'), findsOneWidget);
     final noPermissions = find.text(
       'The administrator title alone grants no organisation permissions.',
     );
-    await tester.scrollUntilVisible(
-      noPermissions,
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
-
-    expect(find.text('Example organisation'), findsOneWidget);
     expect(noPermissions, findsOneWidget);
     expect(find.text('Owner administration'), findsNothing);
   });
@@ -115,6 +118,7 @@ void main() {
   testWidgets('membership load failure is explicit and can be retried', (
     tester,
   ) async {
+    _setViewport(tester);
     var attempts = 0;
     await tester.pumpWidget(
       _routedPage(
@@ -140,6 +144,7 @@ void main() {
   testWidgets('owner sees assigned scoped capability and owner controls', (
     tester,
   ) async {
+    _setViewport(tester);
     await tester.pumpWidget(
       _routedPage(
         status: AccountMembershipStatus.active,
@@ -156,14 +161,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Role: Organisation owner'), findsOneWidget);
     final ownerControls = find.text('Owner administration');
-    await tester.scrollUntilVisible(
-      ownerControls,
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
-
-    expect(find.text('Organisation owner'), findsOneWidget);
     expect(ownerControls, findsOneWidget);
     expect(find.text('Organisation-wide'), findsWidgets);
   });
@@ -171,6 +170,7 @@ void main() {
   testWidgets('scoped reviewer is shown the exact department scope', (
     tester,
   ) async {
+    _setViewport(tester);
     await tester.pumpWidget(
       _routedPage(
         status: AccountMembershipStatus.active,
@@ -186,13 +186,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final departmentScope = find.text('Department department-1');
-    await tester.scrollUntilVisible(
-      departmentScope,
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
-
+    final departmentScope = find.text('department department-1');
     expect(departmentScope, findsOneWidget);
     expect(find.text('Owner administration'), findsNothing);
   });

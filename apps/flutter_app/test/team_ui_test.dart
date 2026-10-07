@@ -11,6 +11,8 @@ import 'package:int_qa_flow/features/governance/application/governance_providers
 import 'package:int_qa_flow/features/governance/domain/governance_models.dart';
 import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
+import 'package:int_qa_flow/features/organisation/domain/organisation_models.dart';
 
 const finance = DepartmentSummary(id: 'department-1', name: 'Finance');
 const payroll = TeamSummary(
@@ -148,6 +150,20 @@ void main() {
             email: 'admin@example.test',
             displayName: 'Test Admin',
             role: 'admin',
+          ),
+        ),
+        organisationProfileProvider.overrideWith(
+          (ref) async => const OrganisationProfile(
+            organisationId: 'test-organisation',
+            organisationName: 'Test organisation',
+            userId: 'admin-user',
+            role: 'admin',
+            primaryDepartment: null,
+            teams: [],
+            isOwner: false,
+            permissions: {'legacy_admin'},
+            permissionScopes: [],
+            assignmentManagers: [],
           ),
         ),
         governanceRepositoryProvider.overrideWithValue(governanceRepository),

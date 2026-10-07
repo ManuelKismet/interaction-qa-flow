@@ -191,6 +191,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
               width: 220,
               child: DropdownButtonFormField<String>(
                 initialValue: _requestType,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Request type'),
                 items: const [
                   DropdownMenuItem(
@@ -322,6 +323,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
         initialValue: options.any((item) => item.$1 == _targetId)
             ? _targetId
             : null,
+        isExpanded: true,
         decoration: InputDecoration(
           labelText: _requestType == 'team' ? 'Team' : 'Department',
         ),
