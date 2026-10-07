@@ -35,10 +35,10 @@ class _GuidedScopeKeyController extends Notifier<_GuidedScopeKey> {
     final membership = ref.watch(currentMembershipProvider);
     final authority = ref.watch(organisationProfileProvider);
     final uid = auth.value?.uid ?? (auth.isLoading ? _previous?.$1 : null);
-    final anonymous = auth.value?.isAnonymous ??
-        (auth.isLoading ? _previous?.$2 : null);
-    final sameIdentity = uid != null &&
-        _previous?.$1 == uid && _previous?.$2 == anonymous;
+    final anonymous =
+        auth.value?.isAnonymous ?? (auth.isLoading ? _previous?.$2 : null);
+    final sameIdentity =
+        uid != null && _previous?.$1 == uid && _previous?.$2 == anonymous;
     // Keep the original namespace while authority is unknown; requests pause.
     final membershipKey = membership.hasValue
         ? _membershipKey(membership)
@@ -74,21 +74,30 @@ final guidedRepositoryProvider = Provider<GuidedRepository>((ref) {
       final user = auth.value;
       final membership = ref.read(currentMembershipProvider);
       final authority = ref.read(organisationProfileProvider);
-      return user != null && auth.hasValue && !auth.isLoading && !auth.hasError &&
-          membership.hasValue && !membership.isLoading && !membership.hasError &&
-          authority.hasValue && !authority.isLoading && !authority.hasError &&
+      return user != null &&
+          auth.hasValue &&
+          !auth.isLoading &&
+          !auth.hasError &&
+          membership.hasValue &&
+          !membership.isLoading &&
+          !membership.hasError &&
+          authority.hasValue &&
+          !authority.isLoading &&
+          !authority.hasError &&
           user.uid == uid &&
           !user.isAnonymous &&
           _membershipKey(membership) == membershipKey &&
           _authorityKey(authority) == authorityKey &&
           authority.requireValue.userId == membership.requireValue.userId &&
-          authority.requireValue.organisationId == membership.requireValue.organisationId;
+          authority.requireValue.organisationId ==
+              membership.requireValue.organisationId;
     },
   );
 });
 
-(String?, String?, String?) _membershipKey(AsyncValue<ActiveMembership> state) =>
-    (state.value?.userId, state.value?.organisationId, state.value?.role);
+(String?, String?, String?) _membershipKey(
+  AsyncValue<ActiveMembership> state,
+) => (state.value?.userId, state.value?.organisationId, state.value?.role);
 
 String? _authorityKey(AsyncValue<OrganisationProfile> state) {
   final profile = state.value;
@@ -101,8 +110,13 @@ String? _authorityKey(AsyncValue<OrganisationProfile> state) {
     profile.primaryDepartment,
     profile.teams.toList()..sort(),
     profile.permissions.toList()..sort(),
-    profile.permissionScopes.map((scope) =>
-        jsonEncode([scope.permission, scope.scopeType, scope.scopeId])).toList()..sort(),
+    profile.permissionScopes
+        .map(
+          (scope) =>
+              jsonEncode([scope.permission, scope.scopeType, scope.scopeId]),
+        )
+        .toList()
+      ..sort(),
     profile.assignmentManagers.toList()..sort(),
   ]);
 }
@@ -111,7 +125,8 @@ class GuidedConflict implements Exception {
   const GuidedConflict();
 
   @override
-  String toString() => 'This session changed. Review the server version before retrying.';
+  String toString() =>
+      'This session changed. Review the server version before retrying.';
 }
 
 class GuidedImportResult {
@@ -133,12 +148,13 @@ class GuidedRepository {
   final CancelToken? cancelToken;
   final bool Function()? isCurrent;
 
-  Options get _options =>
-      Options(extra: {'expectedFirebaseUid': ?expectedUid});
+  Options get _options => Options(extra: {'expectedFirebaseUid': ?expectedUid});
 
   void ensureCurrent() {
     if (isCurrent?.call() == false) {
-      throw StateError('The account, organisation or permissions changed. Reopen Interact.');
+      throw StateError(
+        'The account, organisation or permissions changed. Reopen Interact.',
+      );
     }
   }
 
@@ -164,7 +180,10 @@ class GuidedRepository {
         cancelToken: cancelToken,
       );
       return (response.data ?? const [])
-          .map((item) => GuidedSessionSummary.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) =>
+                GuidedSessionSummary.fromJson(item as Map<String, dynamic>),
+          )
           .toList();
     });
   }
@@ -218,7 +237,11 @@ class GuidedRepository {
 
   Future<void> transition(String sessionId, String action) {
     return _request(() async {
-      await _client.post<void>('/api/v1/guided/sessions/$sessionId/$action', options: _options, cancelToken: cancelToken);
+      await _client.post<void>(
+        '/api/v1/guided/sessions/$sessionId/$action',
+        options: _options,
+        cancelToken: cancelToken,
+      );
     });
   }
 
@@ -254,7 +277,9 @@ class GuidedRepository {
     });
   }
 
-  Future<void> updateQuestion(String questionId, String text, {
+  Future<void> updateQuestion(
+    String questionId,
+    String text, {
     int? expectedRevision,
     void Function(int)? onRevision,
   }) {
@@ -272,9 +297,17 @@ class GuidedRepository {
   Future<void> setQuestionDeleted(String questionId, bool deleted) {
     return _request(() async {
       if (deleted) {
-        await _client.delete<void>('/api/v1/guided/questions/$questionId', options: _options, cancelToken: cancelToken);
+        await _client.delete<void>(
+          '/api/v1/guided/questions/$questionId',
+          options: _options,
+          cancelToken: cancelToken,
+        );
       } else {
-        await _client.post<void>('/api/v1/guided/questions/$questionId/restore', options: _options, cancelToken: cancelToken);
+        await _client.post<void>(
+          '/api/v1/guided/questions/$questionId/restore',
+          options: _options,
+          cancelToken: cancelToken,
+        );
       }
     });
   }
@@ -347,7 +380,11 @@ class GuidedRepository {
 
   Future<List<GuidedTemplate>> listTemplates() {
     return _request(() async {
-      final response = await _client.get<List<dynamic>>('/api/v1/guided/templates', options: _options, cancelToken: cancelToken);
+      final response = await _client.get<List<dynamic>>(
+        '/api/v1/guided/templates',
+        options: _options,
+        cancelToken: cancelToken,
+      );
       return (response.data ?? const [])
           .map((item) => GuidedTemplate.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -371,7 +408,10 @@ class GuidedRepository {
     });
   }
 
-  Future<void> versionTemplate(String id, List<GuidedTemplateQuestion> questions) {
+  Future<void> versionTemplate(
+    String id,
+    List<GuidedTemplateQuestion> questions,
+  ) {
     return _request(() async {
       await _client.post<void>(
         '/api/v1/guided/templates/$id/versions',
@@ -396,19 +436,31 @@ class GuidedRepository {
 
   Future<void> archiveTemplate(String id) {
     return _request(() async {
-      await _client.post<void>('/api/v1/guided/templates/$id/archive', options: _options, cancelToken: cancelToken);
+      await _client.post<void>(
+        '/api/v1/guided/templates/$id/archive',
+        options: _options,
+        cancelToken: cancelToken,
+      );
     });
   }
 
   Future<void> restoreTemplate(String id) {
     return _request(() async {
-      await _client.post<void>('/api/v1/guided/templates/$id/restore', options: _options, cancelToken: cancelToken);
+      await _client.post<void>(
+        '/api/v1/guided/templates/$id/restore',
+        options: _options,
+        cancelToken: cancelToken,
+      );
     });
   }
 
   Future<void> duplicateTemplate(String id) {
     return _request(() async {
-      await _client.post<void>('/api/v1/guided/templates/$id/duplicate', options: _options, cancelToken: cancelToken);
+      await _client.post<void>(
+        '/api/v1/guided/templates/$id/duplicate',
+        options: _options,
+        cancelToken: cancelToken,
+      );
     });
   }
 
@@ -443,8 +495,11 @@ class GuidedRepository {
         cancelToken: cancelToken,
       );
       return GuidedImportResult(
-        session: GuidedSessionDetail.fromJson(response.data!['session'] as Map<String, dynamic>),
-        warnings: (response.data!['warnings'] as List<dynamic>? ?? const []).cast<String>(),
+        session: GuidedSessionDetail.fromJson(
+          response.data!['session'] as Map<String, dynamic>,
+        ),
+        warnings: (response.data!['warnings'] as List<dynamic>? ?? const [])
+            .cast<String>(),
       );
     });
   }
@@ -482,7 +537,10 @@ class GuidedRepository {
         cancelToken: cancelToken,
       );
       return (response.data ?? const [])
-          .map((item) => SemanticSearchResult.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) =>
+                SemanticSearchResult.fromJson(item as Map<String, dynamic>),
+          )
           .toList();
     });
   }
@@ -509,7 +567,9 @@ class GuidedRepository {
         cancelToken: cancelToken,
       );
       return (response.data ?? const [])
-          .map((item) => KnowledgeProposal.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) => KnowledgeProposal.fromJson(item as Map<String, dynamic>),
+          )
           .toList();
     });
   }
@@ -522,7 +582,10 @@ class GuidedRepository {
         cancelToken: cancelToken,
       );
       return (response.data ?? const [])
-          .map((item) => SemanticSearchResult.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) =>
+                SemanticSearchResult.fromJson(item as Map<String, dynamic>),
+          )
           .toList();
     });
   }
@@ -535,10 +598,7 @@ class GuidedRepository {
     return _request(() async {
       await _client.post<void>(
         '/api/v1/guided/knowledge-proposals/$proposalId',
-        data: {
-          'action': action,
-          'existing_question_id': existingQuestionId,
-        },
+        data: {'action': action, 'existing_question_id': existingQuestionId},
         options: _options,
         cancelToken: cancelToken,
       );

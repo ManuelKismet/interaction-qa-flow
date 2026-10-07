@@ -122,27 +122,32 @@ GuidedQuestion nestedQuestions(int depth) {
 }
 
 void main() {
-  testWidgets('active participant shows their shared answer and recursive branch', (tester) async {
-    await tester.pumpWidget(flow());
+  testWidgets(
+    'active participant shows their shared answer and recursive branch',
+    (tester) async {
+      await tester.pumpWidget(flow());
 
-    expect(find.text('I received an email.'), findsOneWidget);
-    expect(find.text('I received a phone call.'), findsNothing);
-    await scrollToListItem(
-      tester,
-      find.byKey(const ValueKey('question-follow')),
-      listKey: 'guided-flow-list',
-    );
-    expect(find.text('Who sent the email?'), findsOneWidget);
-    expect(find.textContaining('Return to parent'), findsOneWidget);
-    await scrollToListItem(
-      tester,
-      find.byKey(const ValueKey('question-nested')),
-      listKey: 'guided-flow-list',
-    );
-    expect(find.text('Which Finance employee?'), findsOneWidget);
-  });
+      expect(find.text('I received an email.'), findsOneWidget);
+      expect(find.text('I received a phone call.'), findsNothing);
+      await scrollToListItem(
+        tester,
+        find.byKey(const ValueKey('question-follow')),
+        listKey: 'guided-flow-list',
+      );
+      expect(find.text('Who sent the email?'), findsOneWidget);
+      expect(find.textContaining('Return to parent'), findsOneWidget);
+      await scrollToListItem(
+        tester,
+        find.byKey(const ValueKey('question-nested')),
+        listKey: 'guided-flow-list',
+      );
+      expect(find.text('Which Finance employee?'), findsOneWidget);
+    },
+  );
 
-  testWidgets('switching participant selects the other shared answer', (tester) async {
+  testWidgets('switching participant selects the other shared answer', (
+    tester,
+  ) async {
     await tester.pumpWidget(flow(participant: 'bob'));
 
     expect(find.text('I received a phone call.'), findsOneWidget);
@@ -172,25 +177,29 @@ void main() {
     expect(find.text('Expand branch'), findsOneWidget);
   });
 
-  testWidgets('inline answer edit is debounced before autosave', (tester) async {
+  testWidgets('inline answer edit is debounced before autosave', (
+    tester,
+  ) async {
     var saves = 0;
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: GuidedFlowView(
-          questions: const [shared],
-          participantId: 'alice',
-          participantName: 'Alice',
-          onEditing: () {},
-          onSaveQuestion: (_, _) async {},
-          onSaveAnswer: (_, _, _) async => saves++,
-          onAddFollowUp: (_) {},
-          onToggleBranch: (_) {},
-          onDelete: (_) {},
-          onKnowledgeSearch: (_) {},
-          onPropose: (_, _) {},
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GuidedFlowView(
+            questions: const [shared],
+            participantId: 'alice',
+            participantName: 'Alice',
+            onEditing: () {},
+            onSaveQuestion: (_, _) async {},
+            onSaveAnswer: (_, _, _) async => saves++,
+            onAddFollowUp: (_) {},
+            onToggleBranch: (_) {},
+            onDelete: (_) {},
+            onKnowledgeSearch: (_) {},
+            onPropose: (_, _) {},
+          ),
         ),
       ),
-    ));
+    );
 
     final answerField = find.widgetWithText(TextField, 'I received an email.');
     await tester.enterText(answerField, 'Updated answer');
@@ -202,44 +211,39 @@ void main() {
 
   for (final width in [360.0, 768.0, 1366.0]) {
     for (final depth in [0, 1, 3, 8, 12]) {
-      testWidgets(
-        'keeps depth $depth editor wide at $width logical pixels',
-        (tester) async {
-          tester.view.physicalSize = Size(width, 936);
-          tester.view.devicePixelRatio = 1;
-          addTearDown(tester.view.resetPhysicalSize);
-          addTearDown(tester.view.resetDevicePixelRatio);
-          final root = nestedQuestions(depth);
-          await tester.pumpWidget(flow(question: root));
+      testWidgets('keeps depth $depth editor wide at $width logical pixels', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(width, 936);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final root = nestedQuestions(depth);
+        await tester.pumpWidget(flow(question: root));
 
-          final deepQuestion = find.byKey(
-            ValueKey('question-deep-$depth'),
-          );
-          await scrollToListItem(
-            tester,
-            deepQuestion,
-            listKey: 'guided-flow-list',
-          );
-          await tester.pumpAndSettle();
+        final deepQuestion = find.byKey(ValueKey('question-deep-$depth'));
+        await scrollToListItem(
+          tester,
+          deepQuestion,
+          listKey: 'guided-flow-list',
+        );
+        await tester.pumpAndSettle();
 
-          expect(deepQuestion, findsOneWidget);
-          expect(tester.getSize(deepQuestion).width, greaterThan(180));
+        expect(deepQuestion, findsOneWidget);
+        expect(tester.getSize(deepQuestion).width, greaterThan(180));
+        expect(
+          find.textContaining('Path ${List.filled(depth + 1, '1').join('.')}'),
+          findsOneWidget,
+        );
+        if (depth > 0) {
           expect(
-            find.textContaining(
-              'Path ${List.filled(depth + 1, '1').join('.')}',
-            ),
+            find.text('Parent: ${rootTextAtDepth(depth - 1)}'),
             findsOneWidget,
           );
-          if (depth > 0) {
-            expect(
-              find.text('Parent: ${rootTextAtDepth(depth - 1)}'),
-              findsOneWidget,
-            );
-          }
-          expect(find.text('Add follow-up'), findsWidgets);
-          expect(tester.takeException(), isNull);
-        },
-      );
+        }
+        expect(find.text('Add follow-up'), findsWidgets);
+        expect(tester.takeException(), isNull);
+      });
     }
   }
 

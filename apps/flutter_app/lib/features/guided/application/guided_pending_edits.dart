@@ -5,20 +5,21 @@ import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 
 // Retain pending edits across routes, but never across an authority change.
-final guidedPendingEditsProvider = Provider.family<GuidedPendingEdits, String>(
-  (ref, sessionId) {
-    final repository = ref.watch(guidedRepositoryProvider);
-    final drafts = GuidedPendingEdits(
-      repository: repository,
-      sessionId: sessionId,
-      onChanged: () {
-        if (ref.mounted) ref.notifyListeners();
-      },
-    );
-    ref.onDispose(drafts.close);
-    return drafts;
-  },
-);
+final guidedPendingEditsProvider = Provider.family<GuidedPendingEdits, String>((
+  ref,
+  sessionId,
+) {
+  final repository = ref.watch(guidedRepositoryProvider);
+  final drafts = GuidedPendingEdits(
+    repository: repository,
+    sessionId: sessionId,
+    onChanged: () {
+      if (ref.mounted) ref.notifyListeners();
+    },
+  );
+  ref.onDispose(drafts.close);
+  return drafts;
+});
 
 class _PendingEdit {
   const _PendingEdit({
@@ -91,10 +92,11 @@ class GuidedPendingEdits {
       }
       if (remote == null ||
           (remote != entry.value.baseline &&
-          remote != _confirmed[entry.key] &&
-          remote != entry.value.value)) {
+              remote != _confirmed[entry.key] &&
+              remote != entry.value.value)) {
         conflict = true;
-        error = 'This session changed. Your pending edits are retained. Review the server version.';
+        error =
+            'This session changed. Your pending edits are retained. Review the server version.';
         state = GuidedSaveState.failed;
         _timer?.cancel();
         return;
@@ -102,7 +104,10 @@ class GuidedPendingEdits {
     }
   }
 
-  GuidedQuestion? _findQuestion(GuidedSessionDetail session, String questionId) {
+  GuidedQuestion? _findQuestion(
+    GuidedSessionDetail session,
+    String questionId,
+  ) {
     GuidedQuestion? find(List<GuidedQuestion> questions) {
       for (final question in questions) {
         if (question.id == questionId) return question;
@@ -111,20 +116,26 @@ class GuidedPendingEdits {
       }
       return null;
     }
+
     return find(session.questions);
   }
 
   String? _remoteValue(GuidedSessionDetail session, _PendingEdit edit) {
     final question = _findQuestion(session, edit.questionId);
-    if (question == null || question.deletedAt != null ||
+    if (question == null ||
+        question.deletedAt != null ||
         question.scope != edit.question.scope ||
         question.source != edit.question.source ||
         question.targetParticipantId != edit.question.targetParticipantId ||
         question.triggeringAnswerId != edit.question.triggeringAnswerId ||
         (edit.participantId != null &&
-            !session.participants.any((item) => item.id == edit.participantId)) ||
+            !session.participants.any(
+              (item) => item.id == edit.participantId,
+            )) ||
         (question.targetParticipantId != null &&
-            !session.participants.any((item) => item.id == question.targetParticipantId))) {
+            !session.participants.any(
+              (item) => item.id == question.targetParticipantId,
+            ))) {
       return null;
     }
     if (question.triggeringAnswerId != null) {
@@ -138,6 +149,7 @@ class GuidedPendingEdits {
         }
         return null;
       }
+
       final parent = findAnswer(session.questions);
       if (parent == null ||
           (question.targetParticipantId != null &&
@@ -152,11 +164,10 @@ class GuidedPendingEdits {
   }
 
   Future<void> question(GuidedQuestion question, String value) async {
-    _stage(questionKey(question.id), _PendingEdit(
-      question: question,
-      baseline: question.text,
-      value: value,
-    ));
+    _stage(
+      questionKey(question.id),
+      _PendingEdit(question: question, baseline: question.text, value: value),
+    );
   }
 
   Future<void> answer(
@@ -165,14 +176,17 @@ class GuidedPendingEdits {
     String participantId,
     String value,
   ) async {
-    _stage(answerKey(question.id, participantId), _PendingEdit(
-      question: question,
-      participantId: participantId,
-      answerId: answer?.id,
-      branchesCollapsed: answer?.branchesCollapsed ?? false,
-      baseline: answer?.body ?? '',
-      value: value,
-    ));
+    _stage(
+      answerKey(question.id, participantId),
+      _PendingEdit(
+        question: question,
+        participantId: participantId,
+        answerId: answer?.id,
+        branchesCollapsed: answer?.branchesCollapsed ?? false,
+        baseline: answer?.body ?? '',
+        value: value,
+      ),
+    );
   }
 
   void _stage(String key, _PendingEdit edit) {
@@ -214,12 +228,15 @@ class GuidedPendingEdits {
     onChanged();
     try {
       repository.ensureCurrent();
-      if (_revision == null) throw StateError('Reload this session before saving.');
+      if (_revision == null)
+        throw StateError('Reload this session before saving.');
       if (_needsFullRead) {
         final session = await repository.getSession(sessionId);
         if (_closed) return;
         if (session.revision != _revision ||
-            _pending.values.any((edit) => _remoteValue(session, edit) == null)) {
+            _pending.values.any(
+              (edit) => _remoteValue(session, edit) == null,
+            )) {
           throw const GuidedConflict();
         }
         _needsFullRead = false;
@@ -231,15 +248,21 @@ class GuidedPendingEdits {
         void acknowledge(int revision) => acknowledgedRevision = revision;
         if (edit.participantId == null) {
           if (edit.value.trim().isEmpty) {
-            throw StateError('Question title cannot be blank. Your edit is not saved.');
+            throw StateError(
+              'Question title cannot be blank. Your edit is not saved.',
+            );
           }
           await repository.updateQuestion(
-            edit.questionId, edit.value, expectedRevision: _revision,
+            edit.questionId,
+            edit.value,
+            expectedRevision: _revision,
             onRevision: acknowledge,
           );
         } else if (edit.answerId != null) {
           await repository.updateAnswer(
-            edit.answerId!, body: edit.value, expectedRevision: _revision,
+            edit.answerId!,
+            body: edit.value,
+            expectedRevision: _revision,
             onRevision: acknowledge,
           );
         } else {
@@ -272,7 +295,9 @@ class GuidedPendingEdits {
       if (conflict) {
         state = GuidedSaveState.failed;
       } else {
-        state = _pending.isEmpty ? GuidedSaveState.saved : GuidedSaveState.editing;
+        state = _pending.isEmpty
+            ? GuidedSaveState.saved
+            : GuidedSaveState.editing;
         error = null;
       }
     } catch (failure) {
@@ -300,10 +325,12 @@ class GuidedPendingEdits {
         final remote = _remoteValue(session, entry.value);
         final remoteAnswer = entry.value.participantId == null
             ? null
-            : _findQuestion(session, entry.value.questionId)
-                ?.answerFor(entry.value.participantId);
-        final acknowledged = entry.value.participantId == null ||
-            remoteAnswer != null;
+            : _findQuestion(
+                session,
+                entry.value.questionId,
+              )?.answerFor(entry.value.participantId);
+        final acknowledged =
+            entry.value.participantId == null || remoteAnswer != null;
         if (acknowledged && remote == entry.value.value) {
           _pending.remove(entry.key);
           _confirmed[entry.key] = remote!;
