@@ -483,8 +483,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     await _save(() => repository.setQuestionDeleted(question.id, true));
     if (!mounted ||
         !_isCurrent(repository, sessionId) ||
-        _saveState != GuidedSaveState.saved)
+        _saveState != GuidedSaveState.saved) {
       return;
+    }
     _refresh();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -515,8 +516,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
       sessionId,
       () => repository.searchKnowledge(question.id),
     );
-    if (!mounted || results == null || !_isCurrent(repository, sessionId))
+    if (!mounted || results == null || !_isCurrent(repository, sessionId)) {
       return;
+    }
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
@@ -578,8 +580,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
       session.id,
       () => repository.exportSession(session.id, format),
     );
-    if (!mounted || contents == null || !_isCurrent(repository, session.id))
+    if (!mounted || contents == null || !_isCurrent(repository, session.id)) {
       return;
+    }
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
@@ -614,8 +617,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
       sessionId,
       () => repository.revisions(sessionId),
     );
-    if (!mounted || revisions == null || !_isCurrent(repository, sessionId))
+    if (!mounted || revisions == null || !_isCurrent(repository, sessionId)) {
       return;
+    }
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
