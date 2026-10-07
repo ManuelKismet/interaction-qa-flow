@@ -591,7 +591,11 @@ void main() {
         (session) => rawResults.add(session.title),
         onError: (Object error) => rawResults.add(error),
       ));
-      await _pumpUntil(tester, () => h.adapter.reads.length == originalReads + 2);
+      await _pumpUntil(
+        tester,
+        () => h.adapter.reads.length == originalReads + 2,
+        reason: 'Both original-session reads must reach the delayed adapter.',
+      );
       expect(h.adapter.readGate, isNotNull);
       final gate = h.adapter.readGate!;
       h.adapter.holdReads = false;
@@ -600,7 +604,11 @@ void main() {
       if (destination == '/guided') expect(originalPage.mounted, isFalse);
       expect(repository.cancelToken!.isCancelled, isFalse);
       gate.complete(_response(h.adapter.session(title: 'Old private read marker')));
-      await _pumpUntil(tester, () => rawResults.isNotEmpty);
+      await _pumpUntil(
+        tester,
+        () => rawResults.isNotEmpty,
+        reason: 'The released original-session read must complete.',
+      );
       await tester.pumpAndSettle();
       // The original raw read really arrived; only its abandoned view is stale.
       expect(rawResults, ['Old private read marker']);
@@ -1136,11 +1144,16 @@ Future<void> _waitFor(bool Function() condition, {String? reason}) async {
     await Future<void>.delayed(const Duration(milliseconds: 1));
   }
 
-  Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
-    for (var attempt = 0; attempt < 200 && !condition(); attempt++) {
-      await tester.pump(const Duration(milliseconds: 1));
-    }
-    expect(condition(), isTrue);
+  expect(condition(), isTrue, reason: reason);
+}
+
+Future<void> _pumpUntil(
+  WidgetTester tester,
+  bool Function() condition, {
+  String? reason,
+}) async {
+  for (var attempt = 0; attempt < 200 && !condition(); attempt++) {
+    await tester.pump(const Duration(milliseconds: 1));
   }
   expect(condition(), isTrue, reason: reason);
 }
