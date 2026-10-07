@@ -1,5 +1,23 @@
 # Organisation improvements — deferred proposal, 2026-10-06
 
+## Superseding founder authorisation — 2026-10-07
+
+After confirmed unified Ask/search rollout f662a6c, founder reviewed all nine
+agreed organisation improvements and instructed "Action" at09:26BST.
+The nine-point scope below is now authorised for implementation; prior
+search-first deferral is historical and no longer blocks this scope.
+Copilot owns application/test/migration code; Codex applies unchanged artifacts,
+independently reviews/tests, and manages configuration/docs and gated DEV-only
+rollout. No production, merge, live purge/downgrade, security weakening or new
+permissions are authorised. No real live owner/admin appointments are made
+merely by this implementation instruction; provisioning follows reviewed workflow.
+Real semantic embeddings/provider billing explicitly deferred until first customer;
+keep fake-provider DEV. Personal import E2E/F04/F08/F09 remain separate.
+Baseline f662a6cff70526f287fb521bea25ec24860d8f4a on
+fix/unified-search-dev-20261006; schema0014. New separate organisation task,
+not old PR13 or completed PR19/20 continuation. Reject quarantined old output.
+Task provenance and independent results will be recorded here.
+
 ## Priority and authorisation
 
 Founder instructed: complete only the search work already sent to Copilot, verify
