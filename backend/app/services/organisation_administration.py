@@ -523,6 +523,10 @@ class OrganisationAdministrationService:
             department_id=department_id,
             team_id=team_id,
         )
+        if data.decision == "approve" and actor.id == requester.id:
+            raise HTTPException(
+                status_code=403, detail="You cannot approve your own join request"
+            )
         if data.decision == "approve":
             if request.request_type == "team":
                 team = await self._team(request.target_id, organisation_id)

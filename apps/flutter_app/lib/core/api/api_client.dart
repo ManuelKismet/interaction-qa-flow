@@ -78,6 +78,21 @@ Dio createApiClient(
           );
         }
       },
+      onResponse: (response, handler) {
+        final expectedUid = response.requestOptions.extra['expectedFirebaseUid'];
+        if (expectedUid is String && tokenSource.currentUid != expectedUid) {
+          handler.reject(
+            DioException(
+              requestOptions: response.requestOptions,
+              response: response,
+              type: DioExceptionType.cancel,
+              error: StateError('The signed-in account changed during the request.'),
+            ),
+          );
+          return;
+        }
+        handler.next(response);
+      },
       onError: (error, handler) async {
         final options = error.requestOptions;
         final detail = jsonEncode(error.response?.data ?? '').toLowerCase();

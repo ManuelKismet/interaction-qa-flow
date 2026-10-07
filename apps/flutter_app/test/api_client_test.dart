@@ -115,6 +115,32 @@ void main() {
     client.close();
   });
 
+  test('rejects a successful response after the Firebase UID changes', () async {
+    final tokens = _FakeTokenSource()..currentUid = 'owner-a';
+    final adapter = _RecordingAdapter((_) {
+      tokens.currentUid = 'owner-b';
+      return _okList();
+    });
+    final client = createApiClient(tokens, adapter: adapter);
+
+    await expectLater(
+      client.get<List<dynamic>>(
+        '/api/v1/organisation/permissions',
+        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
+      ),
+      throwsA(
+        isA<DioException>().having(
+          (error) => error.type,
+          'type',
+          DioExceptionType.cancel,
+        ),
+      ),
+    );
+
+    expect(adapter.requests, hasLength(1));
+    client.close();
+  });
+
   test('keeps a linked guest identity after organisation membership lookup returns 401', () async {
     final tokens = _FakeTokenSource();
     final adapter = _RecordingAdapter((_) => _unauthorized());

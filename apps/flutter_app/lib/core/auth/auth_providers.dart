@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
@@ -17,9 +18,19 @@ final currentMembershipProvider = FutureProvider.autoDispose<ActiveMembership>(
   (ref) async {
     final user = ref.watch(authStateProvider).value;
     if (user == null) throw StateError('No authenticated user');
+    final expectedUid = user.uid;
+    final cancelToken = CancelToken();
+    ref.onDispose(cancelToken.cancel);
     final response = await ref
         .watch(apiClientProvider)
-        .get<Map<String, dynamic>>('/api/v1/auth/me');
+        .get<Map<String, dynamic>>(
+          '/api/v1/auth/me',
+          options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+          cancelToken: cancelToken,
+        );
+    if (!ref.mounted || ref.read(authStateProvider).value?.uid != expectedUid) {
+      throw StateError('The signed-in account changed while loading membership.');
+    }
     return ActiveMembership.fromJson(response.data!);
   },
 );
@@ -37,9 +48,20 @@ final accountMembershipStatusProvider =
       if (user == null || user.isAnonymous) {
         throw StateError('A registered Firebase identity is required.');
       }
+      final expectedUid = user.uid;
+      final cancelToken = CancelToken();
+      ref.onDispose(cancelToken.cancel);
       final response = await ref
           .watch(apiClientProvider)
-          .get<Map<String, dynamic>>('/api/v1/account/state');
+          .get<Map<String, dynamic>>(
+            '/api/v1/account/state',
+            options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+            cancelToken: cancelToken,
+          );
+      if (!ref.mounted ||
+          ref.read(authStateProvider).value?.uid != expectedUid) {
+        throw StateError('The signed-in account changed while checking membership.');
+      }
       return switch (response.data?['status']) {
         'active' => AccountMembershipStatus.active,
         'no_membership' => AccountMembershipStatus.noMembership,
