@@ -1,5 +1,61 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+### Independent incremental correction review — 2026-10-07 10:49Z / 11:49 BST
+
+Artifact087548b0a410b9cb4a9fa925e0fa230d5798ce27 correction mailbox SHA256
+edba78ee16cdb207d83ca28301267e80c8cb1a4aefd2a2bf77fed29359eadcfc verified.
+Applied UNCHANGED from basec0a1246 as
+019097f72c0f6ef678d5ebe96ac852268aa737dc. Tree
+e8857692b70e180d7aa267916a2d78fed145c7f7 equals declared patch source
+21834f765be55c01cb16a6a1c91cd94449af7d62 (empty git diff).
+Clean review source pushed fix/unified-search-dev-20261006 and GitHub-readback
+verified. This is NOT deployed runtime. No old patch reconstruction.
+
+Independent compile0, singleAlembic0015head0; Flutter190PASS108s exit0;
+analyzer0errors0warnings13existinginfos13.8s exit1 solely infos;
+FULL configured DEV release build80.4s exit0 using existing public defines
+rollout-dca98b7-web-defines.json, AUTH_DIAGNOSTICS=true, no-wasm-dry-run,
+pwa-strategy=none; no publication or bundle hash acceptance yet.
+Fresh isolated PostgreSQL0014→0015 preserves exact two user rows, creates no
+owners and one explicit legacy-admin grant; isolated0015→0014→0015 PASS0.
+BOTH extra independent blocker probes now PASS0: self-approval denied with
+HTTPException/dept unchanged, late UID-switch grants rejected. Identity probe
+fixture gained isAnonymous=false/currentMembershipProvider driven by auth UID,
+matching the new required scope dependency; no app/test source edited by Codex.
+All independent probes remain outside repo.
+
+Full backend with BOTH real PostgreSQL URLs:125PASS1FAIL0SKIP10warnings46.51s,
+exit1. ONLY failure test_postgres_duplicate_requests_and_concurrent_decisions_are_serialized
+at backend/tests/test_organisation_administration_postgres.py:302, expected
+memberships1/actual0. Concurrent approve/decline correctly had outcomes200/409;
+test incorrectly always assumes approval wins rather than asserting committed
+state matches successful decision. Either decision may acquire org lock first.
+No rollout until meaningful corrected race test passes. Earlier setup attempt
+had PG connection-refused (4FAIL117PASS5ERROR); fixture preparation initially
+failed/missing files. Both setup errors corrected before actual125/1 result;
+retained logs distinguish those from application results. No unexecuted pass.
+
+ONE same-task fifth session correction submitted task8a480ce0 from NEW exact
+complete base019097f, asking correction-only mailbox
+organisation-improvements-dev-20261007-race-test-correction.patch.
+Requires deterministic BOTH approve-first/decline-first interleavings with
+independent sessions/bounded barriers, exactlyone200/one409/one audit decision,
+correct reviewer/status and membership/add-audit consistency, duplicate safety
+and retained security regressions. No loose ranges/test removal/production
+approval-first manipulation. UI confirmed In progress / Copilot is working.
+Await artifact; no competing task/request and no retry-until-pass loop.
+
+DEV UNCHANGED reviewf662a6c100% /Hosting3e8209ddae71b73b/schema0014.
+No Cloud Run stage/image build/traffic switch, hosted migration, Hosting publish,
+merge/production/live appointments/security/provider change executed.
+Rollback remains reviewedf662/Hosting3e8209; additive schema/data retained.
+Real semantics first-customer deferred; F04/F08/F09 and registered live Ask scope
+acceptance separate/open. No monitoring automation recreated.
+Evidence /home/vscode/.local/share/intqaflow/org-validation-21834f7;
+fresh DBs org_21834f7_tests/org_21834f7_migrate retained. Own PG stopped, port55443
+no listener, no proxy started. GitHub UI confirms Codespace bookish happiness
+stopped. Main four dirty docs preserved; isolated tree clean019097f.
+
 ### Independent organisation review — 2026-10-07 10:05Z / 11:05 BST
 
 Copilot correction completed and published original mailbox artifact
