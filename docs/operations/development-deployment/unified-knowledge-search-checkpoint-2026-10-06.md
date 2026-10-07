@@ -1,5 +1,50 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Active replacement and old-output quarantine — 2026-10-07
+
+Founder explicitly authorised a NEW SEPARATE Copilot session after both browser
+and manual Stop failed to confirm cancellation of stalled request6026870639.
+CLI2.102.0 was installed from the official release with SHA256 verified, outside
+the repo at /home/vscode/.local/bin/gh. Authenticated workflow lookup succeeded;
+no new Actions run exists for the old correction. Exact CLI Stop attempt returned
+unknown command "stop" for "gh agent-task". Do not claim old cancellation.
+Codespace stopped again; files and main four dirty docs preserved.
+
+ONLY active authorised correction: **REPLACEMENT-ASK-PARITY-20261007**.
+[Replacement task](https://github.com/ManuelKismet/interaction-qa-flow/tasks/b8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0?q=is%3Aopen+author%3A%40me)
+ID `b8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0`; initial activity/session
+`659d9fb1-53de-49bc-bb43-acdf79ad6f21`. GitHub shows **In progress**,
+with actual environment setup, base/checkpoint/PR discussion inspection and Ask
+source/test reads, not merely a queued spinner. Created2026-10-07 around07:01Z
+(08:01 Europe/London). No completed artifact or new independent passes yet.
+Selected source branch fix/unified-search-dev-20261006; fresh GitHub readback
+confirmed exact COMPLETE base `e9e3cc804e8dbb45033e637304fd34c21cd14b2f`.
+Same full correction6026870639 and original acceptance6026591268; no added scope.
+Replacement must use a separate branch/PR, never old PR13 carrier, publish ONE
+incremental format patch declaring this base plus authored/source/artifact SHAs.
+Copilot owns app/tests; Codex applies unchanged and independently reruns gates.
+
+**SUPERSEDED / QUARANTINED**: old correction request6026870639,
+created2026-10-06T22:49:13Z, under task
+`8c57d37e-831d-4101-8af0-5c25a6aa65da` on PR13 /
+copilot/improve-short-query-search-yet-again. Old UI still Queued; not stopped.
+[Supersession marker](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6032732442).
+Any late completion, commit, patch, or Actions artifact attributable to that OLD
+attempt is audit-only: **DO NOT APPLY, MERGE OR DEPLOY**. Retain history; do not
+reset/delete its commits. PR13 head movement is not acceptance evidence. Only
+registered replacement provenance may enter review. Previously accepted runtime
+105a528 and unchanged-applied rejected reviewe9e3cc8 are not invalidated.
+Record replacement PR/branch/run/artifact IDs when published; do not invent them.
+
+DEV UNCHANGED: reviewed105a528/backendreview105a528100%, schema0014,
+Hostingrelease1791323636722000/version4eb839685c6f21c7. No new deployment,
+merge or hosted migration. Retain105a528 rollback and additive schema/private
+records. Fake-provider quality, personal-import authenticated E2E/F04/F08/F09
+remain unverified. Organisation improvements remain DEFERRED. No production,
+IAM/AppCheck weakening, secret disclosure, paid-provider activation, automatic
+local-content upload or database downgrade/purge. Monitoring remains cancelled;
+no automation created. Await ONLY replacement artifact, avoid retry loops.
+
 ## Latest independent review — Ask parity correction pending, 2026-10-06
 
 Copilot Ask-parity run37540651764 completed success at22:41:25Z.
