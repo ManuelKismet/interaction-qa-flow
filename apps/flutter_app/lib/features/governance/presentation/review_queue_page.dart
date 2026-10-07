@@ -46,8 +46,8 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
     }
     final profile = organisation.requireValue;
     final canReview = profile.can('review');
-    final canApproveAnswers = role == 'answer_owner' ||
-        profile.can('answer_approval');
+    final canApproveAnswers =
+        role == 'answer_owner' || profile.can('answer_approval');
     final queue = ref.watch(reviewQueueProvider(_filter));
     final departments = ref.watch(departmentsProvider);
     return RefreshIndicator(
@@ -64,8 +64,8 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
             canReview && canApproveAnswers
                 ? 'Challenges, expiring guidance, and answers awaiting verification.'
                 : canReview
-                    ? 'Challenges, expiring guidance, and duplicate suggestions.'
-                    : 'Answers awaiting verification.',
+                ? 'Challenges, expiring guidance, and duplicate suggestions.'
+                : 'Answers awaiting verification.',
           ),
           const SizedBox(height: 24),
           Wrap(
@@ -136,28 +136,28 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
               ),
               if (canReview)
                 SizedBox(
-                width: 180,
-                child: DropdownButtonFormField<String?>(
-                  initialValue: _status,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Challenge status',
+                  width: 180,
+                  child: DropdownButtonFormField<String?>(
+                    initialValue: _status,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Challenge status',
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Open only')),
+                      DropdownMenuItem(value: 'open', child: Text('Open')),
+                      DropdownMenuItem(
+                        value: 'accepted',
+                        child: Text('Accepted'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'rejected',
+                        child: Text('Rejected'),
+                      ),
+                    ],
+                    onChanged: (value) => setState(() => _status = value),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('Open only')),
-                    DropdownMenuItem(value: 'open', child: Text('Open')),
-                    DropdownMenuItem(
-                      value: 'accepted',
-                      child: Text('Accepted'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'rejected',
-                      child: Text('Rejected'),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => _status = value),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -208,7 +208,9 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
-            ref.watch(questionChangeRequestsProvider).when(
+            ref
+                .watch(questionChangeRequestsProvider)
+                .when(
                   data: (items) => items.isEmpty
                       ? const Text('No question changes pending review.')
                       : Column(
@@ -218,9 +220,8 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
                           ],
                         ),
                   loading: () => const LinearProgressIndicator(),
-                  error: (_, _) => const Text(
-                    'Unable to load question change requests.',
-                  ),
+                  error: (_, _) =>
+                      const Text('Unable to load question change requests.'),
                 ),
           ],
         ],
@@ -236,37 +237,36 @@ class _QuestionChangeRequestRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => ListTile(
-        contentPadding: const EdgeInsets.symmetric(vertical: 8),
-        title: Text(
-          request.proposedTitle ??
-              (request.archiveRequested
-                  ? 'Question archival request'
-                  : 'Question content change request'),
+    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+    title: Text(
+      request.proposedTitle ??
+          (request.archiveRequested
+              ? 'Question archival request'
+              : 'Question content change request'),
+    ),
+    subtitle: Text(request.reason),
+    onTap: () => context.go('/questions/${request.questionId}'),
+    trailing: Wrap(
+      spacing: 4,
+      children: [
+        IconButton(
+          tooltip: 'Reject change request',
+          icon: const Icon(Icons.close),
+          onPressed: () => _review(ref, 'reject'),
         ),
-        subtitle: Text(request.reason),
-        onTap: () => context.go('/questions/${request.questionId}'),
-        trailing: Wrap(
-          spacing: 4,
-          children: [
-            IconButton(
-              tooltip: 'Reject change request',
-              icon: const Icon(Icons.close),
-              onPressed: () => _review(ref, 'reject'),
-            ),
-            IconButton(
-              tooltip: 'Approve change request',
-              icon: const Icon(Icons.check),
-              onPressed: () => _review(ref, 'approve'),
-            ),
-          ],
+        IconButton(
+          tooltip: 'Approve change request',
+          icon: const Icon(Icons.check),
+          onPressed: () => _review(ref, 'approve'),
         ),
-      );
+      ],
+    ),
+  );
 
   Future<void> _review(WidgetRef ref, String decision) async {
-    await ref.read(questionsRepositoryProvider).reviewChangeRequest(
-          request.id,
-          decision: decision,
-        );
+    await ref
+        .read(questionsRepositoryProvider)
+        .reviewChangeRequest(request.id, decision: decision);
     ref.invalidate(questionChangeRequestsProvider);
     ref.invalidate(questionDetailProvider(request.questionId));
     ref.invalidate(questionsProvider);

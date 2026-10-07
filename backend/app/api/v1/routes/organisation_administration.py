@@ -11,9 +11,9 @@ from app.schemas.organisation_administration import (
     OrganisationJoinRequestCreate,
     OrganisationJoinRequestDecision,
     OrganisationJoinRequestResponse,
+    OrganisationOwnerSummary,
     OrganisationPermissionCreate,
     OrganisationPermissionResponse,
-    OrganisationOwnerSummary,
     OrganisationProfile,
     OwnerAppointment,
 )

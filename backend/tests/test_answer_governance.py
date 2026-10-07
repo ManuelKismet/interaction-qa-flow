@@ -14,8 +14,8 @@ from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.question import Question, QuestionStatus
 from app.models.user import User, UserRole
 from app.schemas.governance import FreshnessStatus
-from app.services.freshness import answer_freshness
 from app.services import governance as governance_module
+from app.services.freshness import answer_freshness
 
 
 async def seed_governance(session_factory):

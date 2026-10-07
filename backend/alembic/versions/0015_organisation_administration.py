@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0015"

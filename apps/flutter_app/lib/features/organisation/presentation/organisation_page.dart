@@ -25,11 +25,13 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
     if (uid == null || _targetId == null) return;
     setState(() => _busy = true);
     try {
-      await ref.read(organisationRepositoryProvider).requestMembership(
-        uid,
-        requestType: _requestType,
-        targetId: _targetId!,
-      );
+      await ref
+          .read(organisationRepositoryProvider)
+          .requestMembership(
+            uid,
+            requestType: _requestType,
+            targetId: _targetId!,
+          );
       ref.invalidate(myOrganisationJoinRequestsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -125,11 +127,19 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
-                _detail('Primary department', profile.primaryDepartment ?? 'Not assigned'),
-                _detail('Role', profile.isOwner ? 'Organisation owner' : profile.role),
+                _detail(
+                  'Primary department',
+                  profile.primaryDepartment ?? 'Not assigned',
+                ),
+                _detail(
+                  'Role',
+                  profile.isOwner ? 'Organisation owner' : profile.role,
+                ),
                 _detail(
                   'Teams',
-                  profile.teams.isEmpty ? 'No Teams assigned' : profile.teams.join(', '),
+                  profile.teams.isEmpty
+                      ? 'No Teams assigned'
+                      : profile.teams.join(', '),
                 ),
                 _detail(
                   'Assignment managers',
@@ -153,17 +163,22 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(
-              profile.can(item.$1) ? Icons.check_circle_outline : Icons.lock_outline,
+              profile.can(item.$1) ||
+                      profile.permissionScopes.any(
+                        (grant) => grant.permission == item.$1,
+                      )
+                  ? Icons.check_circle_outline
+                  : Icons.lock_outline,
             ),
             title: Text(item.$2),
-            subtitle: Text(
-              _permissionScopes(profile, item.$1),
-            ),
+            subtitle: Text(_permissionScopes(profile, item.$1)),
           ),
         if (profile.role == 'admin' &&
             !profile.isOwner &&
             !profile.permissions.contains('legacy_admin'))
-          const Text('The administrator title alone grants no organisation permissions.'),
+          const Text(
+            'The administrator title alone grants no organisation permissions.',
+          ),
         const SizedBox(height: 16),
         Text('Request a change', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
@@ -178,8 +193,14 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
                 initialValue: _requestType,
                 decoration: const InputDecoration(labelText: 'Request type'),
                 items: const [
-                  DropdownMenuItem(value: 'team', child: Text('Team membership')),
-                  DropdownMenuItem(value: 'department', child: Text('Department change')),
+                  DropdownMenuItem(
+                    value: 'team',
+                    child: Text('Team membership'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'department',
+                    child: Text('Department change'),
+                  ),
                 ],
                 onChanged: _busy
                     ? null
@@ -191,10 +212,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
                       },
               ),
             ),
-            SizedBox(
-              width: 280,
-              child: _targetDropdown(departments, teams),
-            ),
+            SizedBox(width: 280, child: _targetDropdown(departments, teams)),
             FilledButton(
               onPressed: _busy || _targetId == null
                   ? null
@@ -228,7 +246,10 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
         ),
         if (pending != null) ...[
           const SizedBox(height: 20),
-          Text('Requests you can review', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            'Requests you can review',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           pending.when(
             loading: () => const LinearProgressIndicator(),
             error: (_, _) => _inlineError(
@@ -283,17 +304,15 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
       return teams.when(
         loading: () => const LinearProgressIndicator(),
         error: (_, _) => const Text('Available Teams could not be loaded.'),
-        data: (items) => _targetOptions(
-          items.map((item) => (item.id, item.name)).toList(),
-        ),
+        data: (items) =>
+            _targetOptions(items.map((item) => (item.id, item.name)).toList()),
       );
     }
     return departments.when(
       loading: () => const LinearProgressIndicator(),
       error: (_, _) => const Text('Available departments could not be loaded.'),
-      data: (items) => _targetOptions(
-        items.map((item) => (item.id, item.name)).toList(),
-      ),
+      data: (items) =>
+          _targetOptions(items.map((item) => (item.id, item.name)).toList()),
     );
   }
 
@@ -341,9 +360,11 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
     }
     final scopes = profile.permissionScopes
         .where((grant) => grant.permission == permission)
-        .map((grant) => grant.scopeType == 'organisation'
-            ? 'Organisation-wide'
-            : '${grant.scopeType} ${grant.scopeId}')
+        .map(
+          (grant) => grant.scopeType == 'organisation'
+              ? 'Organisation-wide'
+              : '${grant.scopeType} ${grant.scopeId}',
+        )
         .toSet();
     return scopes.isEmpty ? 'Not granted' : scopes.join(', ');
   }
@@ -432,7 +453,10 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Owner administration', style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          'Owner administration',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const Text('Administrator titles do not grant permissions.'),
         members.when(
           loading: () => const LinearProgressIndicator(),
@@ -514,7 +538,10 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
           decoration: const InputDecoration(labelText: 'Permission'),
           items: [
             for (final permission in _permissions.entries)
-              DropdownMenuItem(value: permission.key, child: Text(permission.value)),
+              DropdownMenuItem(
+                value: permission.key,
+                child: Text(permission.value),
+              ),
           ],
           onChanged: (value) => setState(() {
             _permission = value ?? 'team_create';
@@ -528,8 +555,14 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
           initialValue: _scopeType,
           decoration: const InputDecoration(labelText: 'Scope type'),
           items: [
-            const DropdownMenuItem(value: 'organisation', child: Text('Organisation')),
-            const DropdownMenuItem(value: 'department', child: Text('Department')),
+            const DropdownMenuItem(
+              value: 'organisation',
+              child: Text('Organisation'),
+            ),
+            const DropdownMenuItem(
+              value: 'department',
+              child: Text('Department'),
+            ),
             if (_permission != 'team_create')
               const DropdownMenuItem(value: 'team', child: Text('Team')),
           ],
@@ -538,20 +571,23 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
             _scopeId = null;
           }),
         ),
-        if (_scopeType != 'organisation')
-          _scopeDropdown(departments, teams),
+        if (_scopeType != 'organisation') _scopeDropdown(departments, teams),
         FilledButton(
-          onPressed: _busy || _memberId == null ||
+          onPressed:
+              _busy ||
+                  _memberId == null ||
                   (_scopeType != 'organisation' && _scopeId == null)
               ? null
               : () => _withAction(
-                  (uid) => ref.read(organisationRepositoryProvider).grantPermission(
-                    uid,
-                    userId: _memberId!,
-                    permission: _permission,
-                    scopeType: _scopeType,
-                    scopeId: _scopeId,
-                  ),
+                  (uid) => ref
+                      .read(organisationRepositoryProvider)
+                      .grantPermission(
+                        uid,
+                        userId: _memberId!,
+                        permission: _permission,
+                        scopeType: _scopeType,
+                        scopeId: _scopeId,
+                      ),
                 ),
           child: const Text('Grant permission'),
         ),
@@ -599,11 +635,11 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
       data: (items) {
         final options = _scopeType == 'team'
             ? (items as List<TeamSummary>)
-                .map((item) => (item.id, item.name))
-                .toList()
+                  .map((item) => (item.id, item.name))
+                  .toList()
             : (items as List<DepartmentSummary>)
-                .map((item) => (item.id, item.name))
-                .toList();
+                  .map((item) => (item.id, item.name))
+                  .toList();
         return DropdownButtonFormField<String>(
           key: ValueKey('grant-scope-$_scopeType'),
           initialValue: options.any((item) => item.$1 == _scopeId)

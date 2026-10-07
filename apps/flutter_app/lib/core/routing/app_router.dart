@@ -22,10 +22,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
     overridePlatformDefaultLocation: true,
     routes: [
       ShellRoute(
-        builder: (context, state, child) => AppShell(
-          currentPath: state.uri.path,
-          child: child,
-        ),
+        builder: (context, state, child) =>
+            AppShell(currentPath: state.uri.path, child: child),
         routes: [
           GoRoute(path: '/', builder: (context, state) => const AskPage()),
           GoRoute(

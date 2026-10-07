@@ -13,8 +13,8 @@ from app.models.guided import (
     KnowledgeProposalStatus,
 )
 from app.models.question import QuestionVisibility
-from app.repositories.governance import GovernanceRepository
 from app.repositories.department import DepartmentRepository
+from app.repositories.governance import GovernanceRepository
 from app.repositories.guided import GuidedRepository
 from app.repositories.question import QuestionRepository
 from app.repositories.team import TeamRepository

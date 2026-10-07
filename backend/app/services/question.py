@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.embedding_provider import (
     EmbeddingProvider,
@@ -19,11 +19,11 @@ from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedEr
 from app.models.answer import Answer, AnswerStatus
 from app.models.answer_version import AnswerVersion
 from app.models.audit_event import AuditAction, AuditEvent
+from app.models.question import Question, QuestionStatus
 from app.models.question_change_request import (
     ChangeRequestStatus,
     QuestionChangeRequest,
 )
-from app.models.question import Question, QuestionStatus
 from app.models.question_version import QuestionVersion
 from app.models.user import User
 from app.repositories.answer import AnswerRepository
@@ -46,12 +46,12 @@ from app.schemas.question import (
     QuestionDetailResponse,
     QuestionListItem,
     QuestionResolve,
+    QuestionUpdate,
     QuestionVersionResponse,
     RestoreQuestionRequest,
-    QuestionUpdate,
 )
-from app.schemas.user import UserSummary
 from app.schemas.team import TeamSummary
+from app.schemas.user import UserSummary
 from app.services.freshness import answer_freshness
 from app.services.permissions import PermissionService
 

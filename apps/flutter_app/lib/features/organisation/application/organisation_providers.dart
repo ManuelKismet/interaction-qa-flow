@@ -27,9 +27,7 @@ final organisationPermissionsProvider =
     FutureProvider.autoDispose<List<OrganisationPermissionGrant>>((ref) async {
       final user = ref.watch(firebaseAuthProvider).currentUser;
       if (user == null) throw StateError('Sign in to manage permissions.');
-      return ref
-          .watch(organisationRepositoryProvider)
-          .permissions(user.uid);
+      return ref.watch(organisationRepositoryProvider).permissions(user.uid);
     });
 
 final organisationOwnersProvider =

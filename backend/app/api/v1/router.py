@@ -1,16 +1,20 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import enforce_tenant_scope, get_development_identity, require_app_check
+from app.api.dependencies import (
+    enforce_tenant_scope,
+    get_development_identity,
+    require_app_check,
+)
 from app.api.v1.routes import (
+    answers,
     auth,
-	answers,
-	comments,
-	departments,
-	governance,
-	guided,
-	organisation_administration,
-	questions,
-	teams,
+    comments,
+    departments,
+    governance,
+    guided,
+    organisation_administration,
+    questions,
+    teams,
 )
 
 api_router = APIRouter(

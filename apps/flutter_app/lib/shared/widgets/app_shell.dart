@@ -7,11 +7,7 @@ import 'package:int_qa_flow/shared/models/app_destination.dart';
 import 'package:int_qa_flow/shared/utils/responsive.dart';
 
 class AppShell extends ConsumerWidget {
-  const AppShell({
-    required this.currentPath,
-    required this.child,
-    super.key,
-  });
+  const AppShell({required this.currentPath, required this.child, super.key});
 
   final String currentPath;
   final Widget child;
@@ -92,58 +88,52 @@ class AppShell extends ConsumerWidget {
     WidgetRef ref,
     ActiveMembership membership, {
     bool showLabel = true,
-  }) =>
-      PopupMenuButton<String>(
-        tooltip: 'Account',
-        onSelected: (value) {
-          if (value == 'sign-out') {
-            ref.read(firebaseAuthProvider).signOut();
-          } else if (value == 'personal') {
-            context.go('/personal');
-          }
-        },
-        itemBuilder: (context) => [
-          PopupMenuItem(
-            enabled: false,
-            child: SizedBox(
-              width: 260,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    membership.displayName,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Text(membership.email),
-                  Text('Organisation workspace · ${membership.role}'),
-                  const Text(
-                    'Group roles are separate from organisation roles.',
-                  ),
-                ],
+  }) => PopupMenuButton<String>(
+    tooltip: 'Account',
+    onSelected: (value) {
+      if (value == 'sign-out') {
+        ref.read(firebaseAuthProvider).signOut();
+      } else if (value == 'personal') {
+        context.go('/personal');
+      }
+    },
+    itemBuilder: (context) => [
+      PopupMenuItem(
+        enabled: false,
+        child: SizedBox(
+          width: 260,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                membership.displayName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
-            ),
+              Text(membership.email),
+              Text('Organisation workspace · ${membership.role}'),
+              const Text('Group roles are separate from organisation roles.'),
+            ],
           ),
-          const PopupMenuDivider(),
-          const PopupMenuItem(
-            value: 'personal',
-            child: Text('Personal workspace'),
-          ),
-          const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
-        ],
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: showLabel
-              ? const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.account_circle_outlined),
-                    SizedBox(width: 4),
-                    Text('Account'),
-                  ],
-                )
-              : const Icon(Icons.account_circle_outlined),
-          ),
-      );
+        ),
+      ),
+      const PopupMenuDivider(),
+      const PopupMenuItem(value: 'personal', child: Text('Personal workspace')),
+      const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
+    ],
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: showLabel
+          ? const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.account_circle_outlined),
+                SizedBox(width: 4),
+                Text('Account'),
+              ],
+            )
+          : const Icon(Icons.account_circle_outlined),
+    ),
+  );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -153,27 +143,28 @@ class AppShell extends ConsumerWidget {
     final user =
         ref.watch(authStateProvider).value ??
         ref.watch(firebaseAuthProvider).currentUser;
-    final destinations = _destinations(
-      role,
-      showGroups: isVerifiedRegisteredFirebaseUser(user),
-      showOrganisation: membership != null,
-      showAdmin:
-          organisation?.isOwner == true ||
-          organisation?.permissions.contains('legacy_admin') == true ||
-          organisation?.can('team_create') == true ||
-          organisation?.can('team_membership') == true,
-      showReview:
-          role == 'answer_owner' ||
-          organisation?.can('review') == true ||
-          organisation?.can('answer_approval') == true,
-    ).where((destination) {
-      return destination.path != '/review-queue' ||
-          role == 'answer_owner' ||
-          organisation?.can('review') == true ||
-          organisation?.can('answer_approval') == true;
-    }).toList();
-    final isWide = MediaQuery.sizeOf(context).width >=
-        Responsive.navigationRailBreakpoint;
+    final destinations =
+        _destinations(
+          role,
+          showGroups: isVerifiedRegisteredFirebaseUser(user),
+          showOrganisation: membership != null,
+          showAdmin:
+              organisation?.isOwner == true ||
+              organisation?.permissions.contains('legacy_admin') == true ||
+              organisation?.can('team_create') == true ||
+              organisation?.can('team_membership') == true,
+          showReview:
+              role == 'answer_owner' ||
+              organisation?.can('review') == true ||
+              organisation?.can('answer_approval') == true,
+        ).where((destination) {
+          return destination.path != '/review-queue' ||
+              role == 'answer_owner' ||
+              organisation?.can('review') == true ||
+              organisation?.can('answer_approval') == true;
+        }).toList();
+    final isWide =
+        MediaQuery.sizeOf(context).width >= Responsive.navigationRailBreakpoint;
 
     return Scaffold(
       appBar: isWide

@@ -32,23 +32,20 @@ class OrganisationProfile {
         primaryDepartment: json['primary_department'] as String?,
         teams: (json['teams'] as List<dynamic>).cast<String>(),
         isOwner: json['is_owner'] as bool,
-        permissions: (json['permissions'] as List<dynamic>).cast<String>().toSet(),
+        permissions: (json['permissions'] as List<dynamic>)
+            .cast<String>()
+            .toSet(),
         permissionScopes: (json['permission_scopes'] as List<dynamic>)
             .map(
-              (item) => OrganisationCapability.fromJson(
-                item as Map<String, dynamic>,
-              ),
+              (item) =>
+                  OrganisationCapability.fromJson(item as Map<String, dynamic>),
             )
             .toList(),
-        assignmentManagers:
-            (json['assignment_managers'] as List<dynamic>).cast<String>(),
+        assignmentManagers: (json['assignment_managers'] as List<dynamic>)
+            .cast<String>(),
       );
 
-  bool can(
-    String permission, {
-    String? scopeType,
-    String? scopeId,
-  }) =>
+  bool can(String permission, {String? scopeType, String? scopeId}) =>
       isOwner ||
       permissions.contains('legacy_admin') ||
       permissionScopes.any(

@@ -13,8 +13,7 @@ class OrganisationRepository {
 
   final Dio _client;
 
-  Options _options(String uid) =>
-      Options(extra: {'expectedFirebaseUid': uid});
+  Options _options(String uid) => Options(extra: {'expectedFirebaseUid': uid});
 
   Future<OrganisationProfile> profile(
     String uid, {
@@ -66,8 +65,7 @@ class OrganisationRepository {
       );
       return (response.data ?? const [])
           .map(
-            (item) =>
-                OrganisationOwner.fromJson(item as Map<String, dynamic>),
+            (item) => OrganisationOwner.fromJson(item as Map<String, dynamic>),
           )
           .toList();
     } on DioException catch (error) {

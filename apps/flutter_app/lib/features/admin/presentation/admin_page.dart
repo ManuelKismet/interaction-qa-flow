@@ -40,14 +40,16 @@ class _AdminPageState extends ConsumerState<AdminPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (profile.hasError || !profile.hasValue) {
-      return const Center(child: Text('Organisation permissions are unavailable.'));
+      return const Center(
+        child: Text('Organisation permissions are unavailable.'),
+      );
     }
     final organisation = profile.requireValue;
     final isAdmin =
         organisation.isOwner ||
         organisation.permissions.contains('legacy_admin');
-    final canManageTeams = organisation.can('team_create') ||
-        organisation.can('team_membership');
+    final canManageTeams =
+        organisation.can('team_create') || organisation.can('team_membership');
     if (!isAdmin && !canManageTeams) {
       return const Center(
         child: Text('No organisation administration permission is assigned.'),
@@ -69,375 +71,399 @@ class _AdminPageState extends ConsumerState<AdminPage> {
         const Text('Assign departmental responsibility for verified answers.'),
         const SizedBox(height: 24),
         if (isAdmin) ...[
-        Text('Members', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        const Text(
-          'Add an existing registered account by its verified email, then assign its organisation role and primary department. This does not grant access to another organisation.',
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.icon(
-            onPressed: _busy || members.value == null
-                ? null
-                : () => _addMember(
-                    departments,
-                    members.value ?? const [],
-                    allowAdminRole: organisation.isOwner,
-                  ),
-            icon: const Icon(Icons.person_add_alt_1),
-            label: const Text('Add organisation member'),
+          Text('Members', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          const Text(
+            'Add an existing registered account by its verified email, then assign its organisation role and primary department. This does not grant access to another organisation.',
           ),
-        ),
-        members.when(
-          data: (items) => items.isEmpty
-              ? const Text('No active organisation members.')
-              : Column(
-                  children: [
-                    for (final member in items)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(member.displayName),
-                        subtitle: Text(
-                          '${member.email} · ${member.role} · '
-                          '${member.departmentName ?? 'No primary department'}',
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: _busy || members.value == null
+                  ? null
+                  : () => _addMember(
+                      departments,
+                      members.value ?? const [],
+                      allowAdminRole: organisation.isOwner,
+                    ),
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Add organisation member'),
+            ),
+          ),
+          members.when(
+            data: (items) => items.isEmpty
+                ? const Text('No active organisation members.')
+                : Column(
+                    children: [
+                      for (final member in items)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(member.displayName),
+                          subtitle: Text(
+                            '${member.email} · ${member.role} · '
+                            '${member.departmentName ?? 'No primary department'}',
+                          ),
+                          trailing: TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => _editMember(
+                                    member,
+                                    departments,
+                                    allowAdminRole: organisation.isOwner,
+                                  ),
+                            child: const Text('Manage'),
+                          ),
                         ),
-                        trailing: TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => _editMember(
-                                  member,
-                                  departments,
-                                  allowAdminRole: organisation.isOwner,
-                                ),
-                          child: const Text('Manage'),
-                        ),
-                      ),
-                      ],
-                ),
-          loading: () => const LinearProgressIndicator(),
-          error: (_, _) => const Text('Organisation members unavailable.'),
-        ),
-        const SizedBox(height: 24),
+                    ],
+                  ),
+            loading: () => const LinearProgressIndicator(),
+            error: (_, _) => const Text('Organisation members unavailable.'),
+          ),
+          const SizedBox(height: 24),
         ],
         if (isAdmin) ...[
-        Text('Departments', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          children: [
-            SizedBox(
-              width: 280,
-              child: TextField(
-                controller: _departmentNameController,
-                decoration: const InputDecoration(
-                  labelText: 'New department name',
+          Text('Departments', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              SizedBox(
+                width: 280,
+                child: TextField(
+                  controller: _departmentNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'New department name',
+                  ),
+                  onSubmitted: (_) => _createDepartment(),
                 ),
-                onSubmitted: (_) => _createDepartment(),
               ),
-            ),
-            FilledButton.icon(
-              key: const ValueKey('create-department-button'),
-              onPressed: _busy ? null : _createDepartment,
-              icon: const Icon(Icons.add),
-              label: const Text('Create department'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        departments.when(
-          data: (items) => items.isEmpty
-              ? const Text('No departments yet. Create one to assign members.')
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final item in items) Chip(label: Text(item.name)),
-                  ],
-                ),
-          loading: () => const LinearProgressIndicator(),
-          error: (_, _) => const Text('Departments unavailable'),
-        ),
-        const SizedBox(height: 32),
+              FilledButton.icon(
+                key: const ValueKey('create-department-button'),
+                onPressed: _busy ? null : _createDepartment,
+                icon: const Icon(Icons.add),
+                label: const Text('Create department'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          departments.when(
+            data: (items) => items.isEmpty
+                ? const Text(
+                    'No departments yet. Create one to assign members.',
+                  )
+                : Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final item in items) Chip(label: Text(item.name)),
+                    ],
+                  ),
+            loading: () => const LinearProgressIndicator(),
+            error: (_, _) => const Text('Departments unavailable'),
+          ),
+          const SizedBox(height: 32),
         ],
         if (canManageTeams || isAdmin) ...[
-        Text('Teams', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          children: [
-            SizedBox(
-              width: 220,
-              child: TextField(
-                controller: _teamNameController,
-                decoration: const InputDecoration(labelText: 'Team name'),
-              ),
-            ),
-            SizedBox(
-              width: 280,
-              child: TextField(
-                controller: _teamDescriptionController,
-                decoration: const InputDecoration(labelText: 'Description (optional)'),
-              ),
-            ),
-            SizedBox(
-              width: 220,
-              child: departments.when(
-                data: (items) => DropdownButtonFormField<String?>(
-                  initialValue: _teamDepartmentId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Parent department'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('Cross-functional')),
-                    for (final item in items)
-                      DropdownMenuItem(value: item.id, child: Text(item.name)),
-                  ],
-                  onChanged: (value) => setState(() => _teamDepartmentId = value),
+          Text('Teams', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              SizedBox(
+                width: 220,
+                child: TextField(
+                  controller: _teamNameController,
+                  decoration: const InputDecoration(labelText: 'Team name'),
                 ),
-                loading: () => const LinearProgressIndicator(),
-                error: (_, _) => const Text('Departments unavailable'),
               ),
-            ),
-            FilledButton.icon(
-              onPressed: _busy ||
-                      !organisation.can(
-                        'team_create',
-                        scopeType: _teamDepartmentId == null
-                            ? 'organisation'
-                            : 'department',
-                        scopeId: _teamDepartmentId,
-                      )
-                  ? null
-                  : _createTeam,
-              icon: const Icon(Icons.group_add_outlined),
-              label: const Text('Create team'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        teams.when(
-          data: (items) => items.isEmpty
-              ? const Text('No teams created.')
-              : Column(
-                  children: [
-                    for (final team in items)
-                      _TeamAdminTile(
-                        team: team,
-                        organisationMembers: members,
-                        canManageMembership: isAdmin ||
-                            organisation.can(
-                              'team_membership',
-                              scopeType: 'team',
-                              scopeId: team.id,
-                            ) ||
-                            (team.departmentId != null &&
-                                organisation.can(
-                                  'team_membership',
-                                  scopeType: 'department',
-                                  scopeId: team.departmentId,
-                                )),
+              SizedBox(
+                width: 280,
+                child: TextField(
+                  controller: _teamDescriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description (optional)',
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 220,
+                child: departments.when(
+                  data: (items) => DropdownButtonFormField<String?>(
+                    initialValue: _teamDepartmentId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Parent department',
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Cross-functional'),
                       ),
-                  ],
+                      for (final item in items)
+                        DropdownMenuItem(
+                          value: item.id,
+                          child: Text(item.name),
+                        ),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => _teamDepartmentId = value),
+                  ),
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, _) => const Text('Departments unavailable'),
                 ),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, _) => const Text('Unable to load teams.'),
-        ),
-        const SizedBox(height: 36),
+              ),
+              FilledButton.icon(
+                onPressed:
+                    _busy ||
+                        !organisation.can(
+                          'team_create',
+                          scopeType: _teamDepartmentId == null
+                              ? 'organisation'
+                              : 'department',
+                          scopeId: _teamDepartmentId,
+                        )
+                    ? null
+                    : _createTeam,
+                icon: const Icon(Icons.group_add_outlined),
+                label: const Text('Create team'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          teams.when(
+            data: (items) => items.isEmpty
+                ? const Text('No teams created.')
+                : Column(
+                    children: [
+                      for (final team in items)
+                        _TeamAdminTile(
+                          team: team,
+                          organisationMembers: members,
+                          canManageMembership:
+                              isAdmin ||
+                              organisation.can(
+                                'team_membership',
+                                scopeType: 'team',
+                                scopeId: team.id,
+                              ) ||
+                              (team.departmentId != null &&
+                                  organisation.can(
+                                    'team_membership',
+                                    scopeType: 'department',
+                                    scopeId: team.departmentId,
+                                  )),
+                        ),
+                    ],
+                  ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, _) => const Text('Unable to load teams.'),
+          ),
+          const SizedBox(height: 36),
         ],
         if (isAdmin) ...[
-        Text('Department answer owners', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          children: [
-            SizedBox(
-              width: 240,
-              child: departments.when(
-                data: (items) => DropdownButtonFormField<String?>(
-                  key: const ValueKey(
-                    'department-answer-owner-department-selector',
-                  ),
-                  initialValue: _departmentId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Department'),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Select a department'),
+          Text(
+            'Department answer owners',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              SizedBox(
+                width: 240,
+                child: departments.when(
+                  data: (items) => DropdownButtonFormField<String?>(
+                    key: const ValueKey(
+                      'department-answer-owner-department-selector',
                     ),
-                    for (final item in items)
-                      DropdownMenuItem<String?>(
-                        value: item.id,
-                        child: Text(
-                          item.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                    initialValue: _departmentId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Department'),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Select a department'),
                       ),
-                  ],
-                  selectedItemBuilder: (context) => [
-                    const Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: Text('Select a department'),
-                    ),
-                    for (final item in items)
-                      Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: SizedBox(
-                          width: 120,
+                      for (final item in items)
+                        DropdownMenuItem<String?>(
+                          value: item.id,
                           child: Text(
                             item.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                      ),
-                  ],
-                  onChanged: (value) => setState(() {
-                    _departmentId = value;
-                    _ownerUserId = null;
-                  }),
-                ),
-                loading: () => const LinearProgressIndicator(),
-                error: (_, _) => const Text('Departments unavailable'),
-              ),
-            ),
-            SizedBox(
-              width: 300,
-              child: members.when(
-                data: (items) {
-                  final alreadyAssigned = (owners.value ?? const [])
-                      .where((owner) => owner.department.id == _departmentId)
-                      .map((owner) => owner.user.id)
-                      .toSet();
-                  final answerOwners = items
-                      .where(
-                        (member) =>
-                            member.status == 'active' &&
-                            member.role == 'answer_owner',
-                      )
-                      .toList();
-                  final eligible = answerOwners
-                      .where((member) => !alreadyAssigned.contains(member.id))
-                      .toList();
-                  if (_departmentId == null) {
-                    return const Text('Select a department first.');
-                  }
-                  if (owners.isLoading) {
-                    return const LinearProgressIndicator();
-                  }
-                  if (owners.hasError) {
-                    return const Text('Department owners unavailable.');
-                  }
-                  if (eligible.isEmpty) {
-                    return answerOwners.isEmpty
-                        ? const Text(
-                            'No active answer-owner members. Assign a member the answer-owner role first.',
-                          )
-                        : const Text(
-                            'All answer owners are already assigned to this department.',
-                          );
-                  }
-                  return DropdownButtonFormField<String?>(
-                    key: const ValueKey('department-answer-owner-selector'),
-                    initialValue: _ownerUserId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Answer owner'),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('Select a member'),
-                      ),
-                      for (final member in eligible)
-                        DropdownMenuItem<String?>(
-                          value: member.id,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 160),
-                            child: Text(
-                              '${member.displayName} · ${member.email}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
                     ],
                     selectedItemBuilder: (context) => [
                       const Align(
                         alignment: AlignmentDirectional.centerStart,
-                        child: Text('Select a member'),
+                        child: Text('Select a department'),
                       ),
-                      for (final member in eligible)
+                      for (final item in items)
                         Align(
                           alignment: AlignmentDirectional.centerStart,
                           child: SizedBox(
                             width: 120,
                             child: Text(
-                              member.displayName,
+                              item.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _ownerUserId = value),
-                  );
-                },
-                loading: () => const LinearProgressIndicator(),
-                error: (_, _) =>
-                    const Text('Organisation members unavailable.'),
+                    onChanged: (value) => setState(() {
+                      _departmentId = value;
+                      _ownerUserId = null;
+                    }),
+                  ),
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, _) => const Text('Departments unavailable'),
+                ),
               ),
-            ),
-            FilledButton.icon(
-              onPressed: _busy ||
-                      members.isLoading ||
-                      members.hasError ||
-                      owners.isLoading ||
-                      owners.hasError ||
-                      _departmentId == null ||
-                      _ownerUserId == null
-                  ? null
-                  : _assign,
-              icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Assign owner'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 32),
-        Text('Department owners', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        owners.when(
-          data: (items) => items.isEmpty
-              ? const Text('No answer owners assigned.')
-              : Column(
-                  children: [
-                    for (final owner in items)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(owner.user.displayName),
-                        subtitle: Text(owner.department.name),
-                        trailing: IconButton(
-                          tooltip: 'Remove owner',
-                          icon: const Icon(Icons.person_remove_outlined),
-                          onPressed: _busy
-                              ? null
-                              : () => _remove(
+              SizedBox(
+                width: 300,
+                child: members.when(
+                  data: (items) {
+                    final alreadyAssigned = (owners.value ?? const [])
+                        .where((owner) => owner.department.id == _departmentId)
+                        .map((owner) => owner.user.id)
+                        .toSet();
+                    final answerOwners = items
+                        .where(
+                          (member) =>
+                              member.status == 'active' &&
+                              member.role == 'answer_owner',
+                        )
+                        .toList();
+                    final eligible = answerOwners
+                        .where((member) => !alreadyAssigned.contains(member.id))
+                        .toList();
+                    if (_departmentId == null) {
+                      return const Text('Select a department first.');
+                    }
+                    if (owners.isLoading) {
+                      return const LinearProgressIndicator();
+                    }
+                    if (owners.hasError) {
+                      return const Text('Department owners unavailable.');
+                    }
+                    if (eligible.isEmpty) {
+                      return answerOwners.isEmpty
+                          ? const Text(
+                              'No active answer-owner members. Assign a member the answer-owner role first.',
+                            )
+                          : const Text(
+                              'All answer owners are already assigned to this department.',
+                            );
+                    }
+                    return DropdownButtonFormField<String?>(
+                      key: const ValueKey('department-answer-owner-selector'),
+                      initialValue: _ownerUserId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Answer owner',
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Select a member'),
+                        ),
+                        for (final member in eligible)
+                          DropdownMenuItem<String?>(
+                            value: member.id,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 160),
+                              child: Text(
+                                '${member.displayName} · ${member.email}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                      ],
+                      selectedItemBuilder: (context) => [
+                        const Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text('Select a member'),
+                        ),
+                        for (final member in eligible)
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: SizedBox(
+                              width: 120,
+                              child: Text(
+                                member.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _ownerUserId = value),
+                    );
+                  },
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, _) =>
+                      const Text('Organisation members unavailable.'),
+                ),
+              ),
+              FilledButton.icon(
+                onPressed:
+                    _busy ||
+                        members.isLoading ||
+                        members.hasError ||
+                        owners.isLoading ||
+                        owners.hasError ||
+                        _departmentId == null ||
+                        _ownerUserId == null
+                    ? null
+                    : _assign,
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('Assign owner'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          Text(
+            'Department owners',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          owners.when(
+            data: (items) => items.isEmpty
+                ? const Text('No answer owners assigned.')
+                : Column(
+                    children: [
+                      for (final owner in items)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(owner.user.displayName),
+                          subtitle: Text(owner.department.name),
+                          trailing: IconButton(
+                            tooltip: 'Remove owner',
+                            icon: const Icon(Icons.person_remove_outlined),
+                            onPressed: _busy
+                                ? null
+                                : () => _remove(
                                     owner.department.id,
                                     owner.user.id,
                                   ),
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, _) => const Text('Unable to load department owners.'),
-        ),
+                    ],
+                  ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, _) => const Text('Unable to load department owners.'),
+          ),
         ],
       ],
     );
@@ -488,13 +514,10 @@ class _AdminPageState extends ConsumerState<AdminPage> {
     final roleChanged = existing != null && existing.role != values['role'];
     final departmentChanged =
         existing != null && existing.departmentId != values['department_id'];
-    final grantsAdmin =
-        values['role'] == 'admin' && existing?.role != 'admin';
+    final grantsAdmin = values['role'] == 'admin' && existing?.role != 'admin';
     if (existing != null && (roleChanged || departmentChanged)) {
       final departmentName = departments.value
-          ?.where(
-            (department) => department.id == values['department_id'],
-          )
+          ?.where((department) => department.id == values['department_id'])
           .firstOrNull
           ?.name;
       final changes = [
@@ -532,7 +555,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
           title: const Text('Add an organisation admin?'),
           content: Text(
             '${values['email']} will receive the admin title only. The owner '
-                'must separately grant administrative permissions.',
+            'must separately grant administrative permissions.',
           ),
           actions: [
             TextButton(
@@ -549,7 +572,9 @@ class _AdminPageState extends ConsumerState<AdminPage> {
       if (confirmed != true || !mounted) return;
     }
     await _run(() async {
-      await ref.read(governanceRepositoryProvider).addOrganisationMember(
+      await ref
+          .read(governanceRepositoryProvider)
+          .addOrganisationMember(
             email: values['email'] as String,
             role: values['role'] as String,
             departmentId: values['department_id'] as String?,
@@ -579,7 +604,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
           title: const Text('Grant organisation admin?'),
           content: Text(
             '${member.displayName} will receive the admin title only. The '
-                'owner must separately grant administrative permissions.',
+            'owner must separately grant administrative permissions.',
           ),
           actions: [
             TextButton(
@@ -596,7 +621,9 @@ class _AdminPageState extends ConsumerState<AdminPage> {
       if (confirmed != true || !mounted) return;
     }
     await _run(() async {
-      await ref.read(governanceRepositoryProvider).updateOrganisationMember(
+      await ref
+          .read(governanceRepositoryProvider)
+          .updateOrganisationMember(
             member.id,
             role: values['role'] as String,
             departmentId: values['department_id'] as String?,
@@ -612,38 +639,40 @@ class _AdminPageState extends ConsumerState<AdminPage> {
     required bool includeEmail,
     required bool allowAdminRole,
     String? initialDepartmentId,
-  }) =>
-      showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (context) => _OrganisationMemberEditorDialog(
-          title: title,
-          departments: departments,
-          initialRole: initialRole,
-          initialDepartmentId: initialDepartmentId,
-          includeEmail: includeEmail,
-          allowAdminRole: allowAdminRole,
-        ),
-      );
+  }) => showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (context) => _OrganisationMemberEditorDialog(
+      title: title,
+      departments: departments,
+      initialRole: initialRole,
+      initialDepartmentId: initialDepartmentId,
+      includeEmail: includeEmail,
+      allowAdminRole: allowAdminRole,
+    ),
+  );
 
   Future<void> _createTeam() async {
     final name = _teamNameController.text.trim();
     if (name.isEmpty) return;
-    await _run(() => ref.read(governanceRepositoryProvider).createTeam(
-          name: name,
-          departmentId: _teamDepartmentId,
-          description: _teamDescriptionController.text.trim(),
-        ));
+    await _run(
+      () => ref
+          .read(governanceRepositoryProvider)
+          .createTeam(
+            name: name,
+            departmentId: _teamDepartmentId,
+            description: _teamDescriptionController.text.trim(),
+          ),
+    );
     _teamNameController.clear();
     _teamDescriptionController.clear();
     ref.invalidate(teamsProvider);
   }
 
   Future<void> _remove(String departmentId, String userId) => _run(
-        () => ref.read(governanceRepositoryProvider).removeOwner(
-              departmentId,
-              userId,
-            ),
-      );
+    () => ref
+        .read(governanceRepositoryProvider)
+        .removeOwner(departmentId, userId),
+  );
 
   Future<void> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
@@ -653,11 +682,13 @@ class _AdminPageState extends ConsumerState<AdminPage> {
       ref.invalidate(organisationMembersProvider);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-            error is ApiException ? error.message : 'Unable to save changes.',
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is ApiException ? error.message : 'Unable to save changes.',
+            ),
           ),
-        ));
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -720,11 +751,8 @@ class _OrganisationMemberEditorDialogState
             initialValue: _role,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Organisation role'),
-            items: const [
-              DropdownMenuItem(
-                value: 'employee',
-                child: Text('Employee'),
-              ),
+            items: [
+              DropdownMenuItem(value: 'employee', child: Text('Employee')),
               DropdownMenuItem(
                 value: 'answer_owner',
                 child: Text('Department answer owner'),
@@ -858,8 +886,7 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
             data: (organisationMembers) =>
                 _memberSelector(organisationMembers, teamMembers),
             loading: () => const LinearProgressIndicator(),
-            error: (_, _) =>
-                const Text('Organisation members unavailable.'),
+            error: (_, _) => const Text('Organisation members unavailable.'),
           ),
           loading: () => const LinearProgressIndicator(),
           error: (_, _) => const Text('Unable to load team members.'),
@@ -881,7 +908,9 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
         )
         .toList();
     if (organisationMembers.isEmpty) {
-      return const Text('Add an organisation member before assigning this team.');
+      return const Text(
+        'Add an organisation member before assigning this team.',
+      );
     }
     if (eligible.isEmpty) {
       if (!organisationMembers.any((member) => member.status == 'active')) {
@@ -939,8 +968,7 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
                   ),
                 ),
             ],
-            onChanged: (value) =>
-                setState(() => _selectedMemberId = value),
+            onChanged: (value) => setState(() => _selectedMemberId = value),
           ),
         ),
         FilledButton.icon(
@@ -964,11 +992,10 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
   }
 
   Future<void> _remove(TeamMembership membership) => _run(
-        () => ref.read(governanceRepositoryProvider).removeTeamMember(
-              widget.team.id,
-              membership.user.id,
-            ),
-      );
+    () => ref
+        .read(governanceRepositoryProvider)
+        .removeTeamMember(widget.team.id, membership.user.id),
+  );
 
   Future<void> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
@@ -977,11 +1004,15 @@ class _TeamAdminTileState extends ConsumerState<_TeamAdminTile> {
       ref.invalidate(teamMembersProvider(widget.team.id));
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(error is ApiException
-              ? error.message
-              : 'Unable to update team membership.'),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is ApiException
+                  ? error.message
+                  : 'Unable to update team membership.',
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);

@@ -15,15 +15,15 @@ from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.team import Team, TeamStatus
 from app.models.team_membership import TeamMembership
 from app.models.user import User, UserRole
+from app.repositories.user import UserRepository
 from app.schemas.organisation_administration import (
+    OrganisationCapability,
     OrganisationJoinRequestCreate,
     OrganisationJoinRequestDecision,
-    OrganisationPermissionCreate,
     OrganisationOwnerSummary,
-    OrganisationCapability,
+    OrganisationPermissionCreate,
 )
 from app.services.permissions import PermissionService
-from app.repositories.user import UserRepository
 
 
 class OrganisationAdministrationService:
@@ -393,7 +393,9 @@ class OrganisationAdministrationService:
         else:
             target = await self._department(data.target_id, organisation_id)
             if actor.department_id == target.id:
-                raise HTTPException(status_code=409, detail="Already in this department")
+                raise HTTPException(
+                    status_code=409, detail="Already in this department"
+                )
         existing = await self.session.scalar(
             select(OrganisationJoinRequest).where(
                 OrganisationJoinRequest.organisation_id == organisation_id,
@@ -413,6 +415,7 @@ class OrganisationAdministrationService:
             reason=data.reason,
         )
         self.session.add(request)
+        await self.session.flush()
         self._audit(
             organisation_id,
             actor.id,
@@ -466,9 +469,7 @@ class OrganisationAdministrationService:
             for request in requests:
                 department_id, team_id = await self._request_scope(request)
                 required = (
-                    "team_membership"
-                    if request.request_type == "team"
-                    else "review"
+                    "team_membership" if request.request_type == "team" else "review"
                 )
                 if not await self.permissions.has_permission(
                     actor,
@@ -500,7 +501,9 @@ class OrganisationAdministrationService:
         if request is None:
             raise HTTPException(status_code=404, detail="Join request not found")
         if request.status != "pending":
-            raise HTTPException(status_code=409, detail="Join request was already decided")
+            raise HTTPException(
+                status_code=409, detail="Join request was already decided"
+            )
         requester = await self.session.scalar(
             select(User)
             .where(
@@ -513,9 +516,7 @@ class OrganisationAdministrationService:
         if requester is None:
             raise HTTPException(status_code=404, detail="Active requester not found")
         department_id, team_id = await self._request_scope(request)
-        permission = (
-            "team_membership" if request.request_type == "team" else "review"
-        )
+        permission = "team_membership" if request.request_type == "team" else "review"
         await self.permissions.require_permission(
             actor,
             permission,
@@ -526,7 +527,9 @@ class OrganisationAdministrationService:
             if request.request_type == "team":
                 team = await self._team(request.target_id, organisation_id)
                 if team.status != TeamStatus.ACTIVE:
-                    raise HTTPException(status_code=409, detail="Team is no longer active")
+                    raise HTTPException(
+                        status_code=409, detail="Team is no longer active"
+                    )
                 membership = await self.session.scalar(
                     select(TeamMembership).where(
                         TeamMembership.organisation_id == organisation_id,
@@ -535,7 +538,9 @@ class OrganisationAdministrationService:
                     )
                 )
                 if membership is not None:
-                    raise HTTPException(status_code=409, detail="User is already a team member")
+                    raise HTTPException(
+                        status_code=409, detail="User is already a team member"
+                    )
                 self.session.add(
                     TeamMembership(
                         organisation_id=organisation_id,
@@ -602,9 +607,7 @@ class OrganisationAdministrationService:
         if request.request_type == "team":
             team = await self._team(request.target_id, request.organisation_id)
             return team.department_id, team.id
-        department = await self._department(
-            request.target_id, request.organisation_id
-        )
+        department = await self._department(request.target_id, request.organisation_id)
         return department.id, None
 
     async def _active_member(self, user_id: UUID, organisation_id: UUID) -> User:
