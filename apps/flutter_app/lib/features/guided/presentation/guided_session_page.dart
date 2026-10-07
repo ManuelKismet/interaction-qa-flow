@@ -80,7 +80,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         _refresh();
       }
     } catch (error) {
-      if (_isCurrent(repository, sessionId)) {
+      if (mounted && _isCurrent(repository, sessionId)) {
         setState(() => _saveState = GuidedSaveState.failed);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Not saved: $error')),
@@ -109,7 +109,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
       final result = await read();
       return _isCurrent(repository, sessionId) ? result : null;
     } catch (error) {
-      if (_isCurrent(repository, sessionId)) {
+      if (mounted && _isCurrent(repository, sessionId)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not load this session action: $error')),
         );
@@ -464,7 +464,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     await _drafts?.flush();
     if (!_isCurrent(repository, sessionId) || _drafts?.error != null) return;
     await _save(() => repository.setQuestionDeleted(question.id, true));
-    if (!_isCurrent(repository, sessionId) || _saveState != GuidedSaveState.saved) return;
+    if (!mounted ||
+        !_isCurrent(repository, sessionId) ||
+        _saveState != GuidedSaveState.saved) return;
     _refresh();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -490,7 +492,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     final sessionId = widget.sessionId;
     final results = await _readCurrent(repository, sessionId,
       () => repository.searchKnowledge(question.id));
-    if (results == null || !_isCurrent(repository, sessionId)) return;
+    if (!mounted || results == null || !_isCurrent(repository, sessionId)) return;
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
@@ -529,7 +531,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     final repository = ref.read(guidedRepositoryProvider);
     final sessionId = widget.sessionId;
     await _save(() => repository.proposeKnowledge(question, answer));
-    if (_isCurrent(repository, sessionId) && _saveState == GuidedSaveState.saved) {
+    if (mounted &&
+        _isCurrent(repository, sessionId) &&
+        _saveState == GuidedSaveState.saved) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sent to Knowledge review.')),
       );
@@ -547,7 +551,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     final repository = ref.read(guidedRepositoryProvider);
     final contents = await _readCurrent(repository, session.id,
       () => repository.exportSession(session.id, format));
-    if (contents == null || !_isCurrent(repository, session.id)) return;
+    if (!mounted || contents == null || !_isCurrent(repository, session.id)) return;
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
@@ -579,7 +583,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     final sessionId = widget.sessionId;
     final revisions = await _readCurrent(repository, sessionId,
       () => repository.revisions(sessionId));
-    if (revisions == null || !_isCurrent(repository, sessionId)) return;
+    if (!mounted || revisions == null || !_isCurrent(repository, sessionId)) return;
     await showGuidedScopedDialog<void>(
       context: context,
       repository: repository,
