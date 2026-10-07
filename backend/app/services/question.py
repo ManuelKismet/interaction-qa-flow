@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.embedding_provider import (
     EmbeddingProvider,
@@ -19,13 +19,13 @@ from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedEr
 from app.models.answer import Answer, AnswerStatus
 from app.models.answer_version import AnswerVersion
 from app.models.audit_event import AuditAction, AuditEvent
+from app.models.question import Question, QuestionStatus
 from app.models.question_change_request import (
     ChangeRequestStatus,
     QuestionChangeRequest,
 )
-from app.models.question import Question, QuestionStatus
 from app.models.question_version import QuestionVersion
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.repositories.answer import AnswerRepository
 from app.repositories.department import DepartmentRepository
 from app.repositories.governance import GovernanceRepository
@@ -46,12 +46,12 @@ from app.schemas.question import (
     QuestionDetailResponse,
     QuestionListItem,
     QuestionResolve,
+    QuestionUpdate,
     QuestionVersionResponse,
     RestoreQuestionRequest,
-    QuestionUpdate,
 )
-from app.schemas.user import UserSummary
 from app.schemas.team import TeamSummary
+from app.schemas.user import UserSummary
 from app.services.freshness import answer_freshness
 from app.services.permissions import PermissionService
 
@@ -271,10 +271,13 @@ class QuestionService:
         }
         if not changes:
             return question
-        if (protected or has_contributions) and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError(
-                "Only an administrator can edit a contributed question"
-            )
+        if (protected or has_contributions) and not await self.permissions.has_permission(
+            actor,
+            "review",
+            department_id=question.department_id,
+            team_id=question.team_id,
+        ):
+            raise PermissionDeniedError("Review permission is required")
         reason = (data.reason or "").strip()
         if (protected or has_contributions) and not reason:
             raise ConflictError("A reason is required for administrator edits")
@@ -337,9 +340,12 @@ class QuestionService:
         )
         if question.status == QuestionStatus.ARCHIVED:
             raise ConflictError("Archived questions must be restored before resolving")
-        if await self._is_protected(question) and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError(
-                "Only an administrator can change an approved question"
+        if await self._is_protected(question):
+            await self.permissions.require_permission(
+                actor,
+                "answer_approval",
+                department_id=question.department_id,
+                team_id=question.team_id,
             )
         answer = await self.answers.get_for_organisation(
             data.answer_id,
@@ -361,9 +367,12 @@ class QuestionService:
         question, actor = await self._question_and_actor(
             question_id, data.organisation_id, data.user_id
         )
-        if await self._is_protected(question) and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError(
-                "Only an administrator can reopen approved knowledge"
+        if await self._is_protected(question):
+            await self.permissions.require_permission(
+                actor,
+                "answer_approval",
+                department_id=question.department_id,
+                team_id=question.team_id,
             )
         if question.status != QuestionStatus.RESOLVED:
             raise ConflictError("Only resolved questions can be reopened")
@@ -386,10 +395,13 @@ class QuestionService:
         if (
             await self._is_protected(question)
             or await self._has_contributions(question)
-        ) and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError(
-                "Only an administrator can archive a contributed question"
-            )
+        ) and not await self.permissions.has_permission(
+            actor,
+            "review",
+            department_id=question.department_id,
+            team_id=question.team_id,
+        ):
+            raise PermissionDeniedError("Review permission is required")
         reason = data.reason.strip()
         if not reason:
             raise ConflictError("An archive reason is required")
@@ -428,10 +440,13 @@ class QuestionService:
         if (
             await self._is_protected(question)
             or await self._has_contributions(question)
-        ) and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError(
-                "Only an administrator can restore a contributed question"
-            )
+        ) and not await self.permissions.has_permission(
+            actor,
+            "review",
+            department_id=question.department_id,
+            team_id=question.team_id,
+        ):
+            raise PermissionDeniedError("Review permission is required")
         reason = data.reason.strip()
         if not reason:
             raise ConflictError("A restoration reason is required")
@@ -521,14 +536,17 @@ class QuestionService:
         user_id: UUID,
     ) -> list[QuestionChangeRequestResponse]:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
-        rows = await self.questions.list_change_requests(
-            organisation_id, actor
-        )
-        return [
-            QuestionChangeRequestResponse.model_validate(request)
-            for request, _, _ in rows
-        ]
+        rows = await self.questions.list_change_requests(organisation_id, actor)
+        visible = []
+        for request, question, _ in rows:
+            if await self.permissions.has_permission(
+                actor,
+                "review",
+                department_id=question.department_id,
+                team_id=question.team_id,
+            ):
+                visible.append(QuestionChangeRequestResponse.model_validate(request))
+        return visible
 
     async def review_change_request(
         self,
@@ -538,7 +556,6 @@ class QuestionService:
         data: QuestionChangeRequestReview,
     ) -> QuestionChangeRequestResponse:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
         row = await self.questions.get_change_request(
             request_id, organisation_id
         )
@@ -546,6 +563,12 @@ class QuestionService:
             raise NotFoundError("Change request not found")
         request, question = row
         self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_permission(
+            actor,
+            "review",
+            department_id=question.department_id,
+            team_id=question.team_id,
+        )
         if request.status != ChangeRequestStatus.PENDING:
             raise ConflictError("Change request has already been reviewed")
         review_note = (data.review_note or "").strip() or request.reason
@@ -749,7 +772,7 @@ class QuestionService:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
         self.permissions.require_question_visibility(actor, question)
-        self.permissions.require_question_owner_or_admin(actor, question)
+        await self.permissions.require_question_owner_or_admin(actor, question)
         return question, actor
 
     async def _sync_embedding_safely(self, question: Question) -> None:

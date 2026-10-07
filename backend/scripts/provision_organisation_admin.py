@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import re
-import uuid
 
 from firebase_admin import auth
 from sqlalchemy import func, select
@@ -10,7 +9,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.dependencies import firebase_app
 from app.core.config import get_settings
-from app.models import AuditAction, AuditEvent, FirebaseUidMapping, Organisation, User
+from app.models import (
+    AuditAction,
+    AuditEvent,
+    FirebaseUidMapping,
+    Organisation,
+    OrganisationOwner,
+    User,
+)
 from app.models.user import UserRole
 
 
@@ -24,7 +30,7 @@ async def provision(
     settings = get_settings()
     account = auth.get_user_by_email(email, app=firebase_app(settings))
     if not account.email_verified or not account.email:
-        raise SystemExit("Initial admin must have a verified Firebase email.")
+        raise SystemExit("Initial owner must have a verified Firebase email.")
 
     engine = create_async_engine(settings.database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -48,28 +54,36 @@ async def provision(
             organisation = Organisation(name=name, slug=slug)
             session.add(organisation)
             await session.flush()
-            admin = User(
+            owner = User(
                 organisation_id=organisation.id,
                 email=account.email,
                 display_name=account.display_name or account.email,
                 role=UserRole.ADMIN,
                 status="active",
             )
-            session.add(admin)
+            session.add(owner)
             await session.flush()
             session.add(
-                FirebaseUidMapping(firebase_uid=account.uid, user_id=admin.id)
+                FirebaseUidMapping(firebase_uid=account.uid, user_id=owner.id)
+            )
+            session.add(
+                OrganisationOwner(
+                    organisation_id=organisation.id,
+                    user_id=owner.id,
+                    appointed_by=None,
+                )
             )
             session.add(
                 AuditEvent(
                     organisation_id=organisation.id,
-                    actor_id=admin.id,
-                    action=AuditAction.ORGANISATION_ADMIN_PROVISIONED.value,
+                    actor_id=owner.id,
+                    action=AuditAction.ORGANISATION_OWNER_PROVISIONED.value,
                     entity_type="user",
-                    entity_id=admin.id,
+                    entity_id=owner.id,
                     event_metadata={
                         "operator": operator,
                         "method": "controlled_operator_cli",
+                        "outcome": "owner_provisioned",
                     },
                 )
             )
@@ -81,7 +95,7 @@ async def provision(
                     "Provisioning conflicted with an existing organisation or membership."
                 ) from None
             print(
-                f"Organisation {organisation.id} and first admin {admin.id} provisioned."
+                f"Organisation {organisation.id} and initial owner {owner.id} provisioned."
             )
     finally:
         await engine.dispose()
@@ -89,11 +103,11 @@ async def provision(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Provision an organisation and its first verified admin."
+        description="Provision an organisation and its first verified owner."
     )
     parser.add_argument("--name", required=True)
     parser.add_argument("--slug", required=True)
-    parser.add_argument("--admin-email", required=True)
+    parser.add_argument("--admin-email", required=True, help="Verified owner's email")
     parser.add_argument("--operator", required=True)
     parser.add_argument("--confirm-operator-provisioning", action="store_true")
     args = parser.parse_args()

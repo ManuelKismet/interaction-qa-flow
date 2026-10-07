@@ -10,6 +10,7 @@ import 'package:int_qa_flow/features/guided/presentation/guided_session_page.dar
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 import 'package:int_qa_flow/features/questions/presentation/question_detail_page.dart';
 import 'package:int_qa_flow/features/questions/presentation/questions_page.dart';
+import 'package:int_qa_flow/features/organisation/presentation/organisation_page.dart';
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 
 final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
@@ -21,12 +22,14 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
     overridePlatformDefaultLocation: true,
     routes: [
       ShellRoute(
-        builder: (context, state, child) => AppShell(
-          currentPath: state.uri.path,
-          child: child,
-        ),
+        builder: (context, state, child) =>
+            AppShell(currentPath: state.uri.path, child: child),
         routes: [
           GoRoute(path: '/', builder: (context, state) => const AskPage()),
+          GoRoute(
+            path: '/organisation',
+            builder: (context, state) => const OrganisationPage(),
+          ),
           GoRoute(
             path: '/questions',
             builder: (context, state) => const QuestionsPage(),

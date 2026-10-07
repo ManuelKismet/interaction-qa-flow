@@ -8,6 +8,7 @@ from app.models.answer_version import AnswerVersion
 from app.models.department import Department
 from app.models.department_answer_owner import DepartmentAnswerOwner
 from app.models.organisation import Organisation
+from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.question import Question
 from app.models.user import User, UserRole
 
@@ -67,6 +68,15 @@ async def seed_policy_users(session_factory):
         }
         session.add_all(users.values())
         await session.flush()
+        session.add(
+            OrganisationPermissionGrant(
+                organisation_id=organisation.id,
+                user_id=users["admin"].id,
+                permission="legacy_admin",
+                scope_type="organisation",
+                granted_by=users["admin"].id,
+            )
+        )
         session.add(
             DepartmentAnswerOwner(
                 organisation_id=organisation.id,
@@ -199,7 +209,8 @@ async def test_answered_question_author_requests_admin_review(app_client) -> Non
         "/api/v1/questions/change-requests",
         headers=headers(ids["organisation"], ids["department_owner"]),
     )
-    assert denied_queue.status_code == 403
+    assert denied_queue.status_code == 200
+    assert denied_queue.json() == []
 
     reviewed = await client.post(
         f"/api/v1/questions/change-requests/{request.json()['id']}/review",

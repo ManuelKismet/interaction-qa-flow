@@ -12,9 +12,12 @@ def test_unified_search_migration_follows_personal_workspace_revision() -> None:
 
     personal_workspace = scripts.get_revision("0013")
     unified_search = scripts.get_revision("0014")
+    organisation_administration = scripts.get_revision("0015")
 
     assert personal_workspace is not None
     assert unified_search is not None
+    assert organisation_administration is not None
     assert personal_workspace.down_revision == "0012"
     assert unified_search.down_revision == "0013"
-    assert scripts.get_heads() == ["0014"]
+    assert organisation_administration.down_revision == "0014"
+    assert scripts.get_heads() == ["0015"]

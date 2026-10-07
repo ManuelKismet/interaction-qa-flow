@@ -4,8 +4,21 @@ from sqlalchemy import select
 from app.models.audit_event import AuditAction, AuditEvent
 from app.models.department import Department
 from app.models.firebase_uid_mapping import FirebaseUidMapping
+from app.models.organisation_owner import OrganisationOwner
 from app.models.user import User, UserRole
 from tests.test_answer_governance import headers, seed_governance
+
+
+async def appoint_owner(session_factory, ids):
+    async with session_factory() as session:
+        session.add(
+            OrganisationOwner(
+                organisation_id=ids["organisation"],
+                user_id=ids["admin"],
+                appointed_by=ids["admin"],
+            )
+        )
+        await session.commit()
 
 
 @pytest.mark.asyncio
@@ -14,6 +27,7 @@ async def test_organisation_member_management_is_admin_scoped_and_audited(
 ) -> None:
     client, session_factory = app_client
     ids = await seed_governance(session_factory)
+    await appoint_owner(session_factory, ids)
     async with session_factory() as session:
         second_admin = User(
             organisation_id=ids["organisation"],
@@ -131,21 +145,22 @@ async def test_organisation_member_management_is_admin_scoped_and_audited(
 
 
 @pytest.mark.asyncio
-async def test_last_active_organisation_admin_cannot_be_demoted(app_client) -> None:
+async def test_last_active_organisation_owner_cannot_be_deactivated(app_client) -> None:
     client, session_factory = app_client
     ids = await seed_governance(session_factory)
+    await appoint_owner(session_factory, ids)
 
     response = await client.patch(
         f"/api/v1/auth/members/{ids['admin']}",
         headers=headers(ids),
-        json={"role": "employee"},
+        json={"status": "inactive"},
     )
 
     assert response.status_code == 409
     async with session_factory() as session:
         admin = await session.get(User, ids["admin"])
         assert admin is not None
-        assert admin.role == UserRole.ADMIN
+        assert admin.status == "active"
         assert await session.scalar(select(AuditEvent.id)) is None
 
 
@@ -272,7 +287,7 @@ async def test_linking_existing_member_audits_role_and_department_changes(
 
 
 @pytest.mark.asyncio
-async def test_linking_existing_last_admin_cannot_demote_it(
+async def test_legacy_admin_cannot_demote_an_admin_when_linking_account(
     app_client,
     monkeypatch,
 ) -> None:
@@ -300,7 +315,7 @@ async def test_linking_existing_last_admin_cannot_demote_it(
         json={"email": "admin@governance.test", "role": "employee"},
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 403
     async with session_factory() as session:
         admin = await session.get(User, ids["admin"])
         assert admin is not None

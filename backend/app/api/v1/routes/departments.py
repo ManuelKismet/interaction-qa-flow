@@ -33,7 +33,7 @@ async def create_department(
         identity.user_id,
         identity.organisation_id,
     )
-    PermissionService.require_admin(actor)
+    await PermissionService(UserRepository(session)).require_admin(actor)
     return await DepartmentService(session).create(
         payload.model_copy(update={"organisation_id": identity.organisation_id})
     )

@@ -11,14 +11,13 @@ from app.core.config import get_settings
 from app.core.exceptions import (
     ConflictError,
     NotFoundError,
-    PermissionDeniedError,
 )
 from app.models.answer import Answer, AnswerStatus
 from app.models.answer_reaction import AnswerReaction
 from app.models.answer_version import AnswerVersion
 from app.models.audit_event import AuditAction, AuditEvent
 from app.models.question import Question, QuestionStatus
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.repositories.answer import AnswerReactionRepository, AnswerRepository
 from app.repositories.governance import GovernanceRepository
 from app.repositories.question import QuestionRepository
@@ -122,10 +121,12 @@ class AnswerService:
             raise ConflictError("Archived answers must be restored before editing")
         protected = self._is_protected_answer(answer, question)
         if protected:
-            if actor.role != UserRole.ADMIN:
-                raise PermissionDeniedError(
-                    "Only an administrator can edit an approved answer"
-                )
+            await self.permissions.require_permission(
+                actor,
+                "answer_approval",
+                department_id=question.department_id,
+                team_id=question.team_id,
+            )
             reason = (data.reason or "").strip()
             if not reason:
                 raise ConflictError(
@@ -168,10 +169,12 @@ class AnswerService:
         if answer.archived_at is not None:
             raise ConflictError("Answer is already archived")
         if self._is_protected_answer(answer, question):
-            if actor.role != UserRole.ADMIN:
-                raise PermissionDeniedError(
-                    "Only an administrator can remove an approved answer"
-                )
+            await self.permissions.require_permission(
+                actor,
+                "answer_approval",
+                department_id=question.department_id,
+                team_id=question.team_id,
+            )
             archive_reason = (reason or "").strip()
             if not archive_reason:
                 raise ConflictError(
@@ -214,7 +217,7 @@ class AnswerService:
         answer, question, actor = await self._answer_and_actor(
             answer_id, organisation_id, user_id
         )
-        self.permissions.require_admin(actor)
+        await self.permissions.require_admin(actor)
         if answer.archived_at is None:
             raise ConflictError("Only archived answers can be restored")
         answer.archived_at = None

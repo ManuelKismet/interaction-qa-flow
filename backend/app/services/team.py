@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.audit_event import AuditAction, AuditEvent
+from app.models.organisation import Organisation
 from app.models.team import Team
 from app.models.team_membership import TeamMembership
+from app.models.user import User
 from app.repositories.department import DepartmentRepository
 from app.repositories.governance import GovernanceRepository
 from app.repositories.team import TeamRepository
@@ -51,8 +54,11 @@ class TeamService:
         user_id: UUID,
         data: TeamCreate,
     ) -> TeamResponse:
+        await self._lock_organisation(organisation_id)
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
+        await self.permissions.require_permission(
+            actor, "team_create", department_id=data.department_id
+        )
         department = await self._department(data.department_id, organisation_id)
         team = Team(organisation_id=organisation_id, **data.model_dump())
         try:
@@ -72,12 +78,18 @@ class TeamService:
         user_id: UUID,
         data: TeamUpdate,
     ) -> TeamResponse:
+        await self._lock_organisation(organisation_id)
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
         row = await self.teams.get(team_id, organisation_id)
         if not row:
             raise NotFoundError("Team not found")
         team, current_department = row
+        await self.permissions.require_permission(
+            actor,
+            "team_membership",
+            department_id=team.department_id,
+            team_id=team.id,
+        )
         changes = data.model_dump(exclude_unset=True)
         department = current_department
         if "department_id" in changes:
@@ -100,12 +112,28 @@ class TeamService:
         user_id: UUID,
         data: TeamMemberCreate,
     ) -> TeamMembershipResponse:
+        await self._lock_organisation(organisation_id)
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
-        if not await self.teams.get(team_id, organisation_id):
+        row = await self.teams.get(team_id, organisation_id)
+        if not row:
             raise NotFoundError("Team not found")
-        member = await self.users.get_for_organisation(data.user_id, organisation_id)
-        if not member:
+        team = row[0]
+        await self.permissions.require_permission(
+            actor,
+            "team_membership",
+            department_id=team.department_id,
+            team_id=team.id,
+        )
+        member = await self.session.scalar(
+            select(User)
+            .where(
+                User.id == data.user_id,
+                User.organisation_id == organisation_id,
+                User.status == "active",
+            )
+            .with_for_update()
+        )
+        if member is None:
             raise NotFoundError("User not found in this organisation")
         if await self.teams.membership(team_id, member.id, organisation_id):
             raise ConflictError("User is already a member of this team")
@@ -133,8 +161,17 @@ class TeamService:
         organisation_id: UUID,
         user_id: UUID,
     ) -> None:
+        await self._lock_organisation(organisation_id)
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
+        team = await self.teams.get(team_id, organisation_id)
+        if not team:
+            raise NotFoundError("Team not found")
+        await self.permissions.require_permission(
+            actor,
+            "team_membership",
+            department_id=team[0].department_id,
+            team_id=team_id,
+        )
         membership = await self.teams.membership(
             team_id, member_user_id, organisation_id
         )
@@ -158,9 +195,15 @@ class TeamService:
         user_id: UUID,
     ) -> list[TeamMembershipResponse]:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
-        if not await self.teams.get(team_id, organisation_id):
+        row = await self.teams.get(team_id, organisation_id)
+        if not row:
             raise NotFoundError("Team not found")
+        await self.permissions.require_permission(
+            actor,
+            "team_membership",
+            department_id=row[0].department_id,
+            team_id=team_id,
+        )
         return [
             self._membership_response(membership, member)
             for membership, member in await self.teams.members(
@@ -177,6 +220,14 @@ class TeamService:
         if not department:
             raise NotFoundError("Department not found in this organisation")
         return department
+
+    async def _lock_organisation(self, organisation_id: UUID) -> None:
+        if await self.session.scalar(
+            select(Organisation.id)
+            .where(Organisation.id == organisation_id)
+            .with_for_update()
+        ) is None:
+            raise NotFoundError("Organisation not found")
 
     async def _audit(
         self,

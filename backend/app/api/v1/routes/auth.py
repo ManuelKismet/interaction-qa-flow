@@ -48,7 +48,11 @@ async def list_organisation_members(
         identity.user_id,
         identity.organisation_id,
     )
-    PermissionService.require_admin(actor)
+    permissions = PermissionService(UserRepository(session))
+    if not await permissions.is_organisation_admin(
+        actor
+    ) and not await permissions.has_any_permission(actor, "team_membership"):
+        await permissions.require_admin(actor)
     return await OrganisationMemberService(session).list_members(
         identity.organisation_id
     )
@@ -68,7 +72,7 @@ async def update_organisation_member(
         identity.user_id,
         identity.organisation_id,
     )
-    PermissionService.require_admin(actor)
+    await PermissionService(UserRepository(session)).require_admin(actor)
     return await OrganisationMemberService(session).update_member(
         organisation_id=identity.organisation_id,
         actor_id=actor.id,
@@ -92,7 +96,7 @@ async def add_organisation_member(
         identity.user_id,
         identity.organisation_id,
     )
-    PermissionService.require_admin(actor)
+    await PermissionService(UserRepository(session)).require_admin(actor)
     try:
         app = firebase_app(settings)
         firebase_user = await run_in_threadpool(

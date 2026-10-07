@@ -5,16 +5,21 @@ from app.models.answer_version import AnswerVersion
 from app.models.audit_event import AuditAction, AuditEvent
 from app.models.base import Base
 from app.models.comment import Comment
-from app.models.question_change_request import (
-    ChangeRequestStatus,
-    QuestionChangeRequest,
-)
 from app.models.department import Department
 from app.models.department_answer_owner import DepartmentAnswerOwner
-from app.models.firebase_uid_mapping import FirebaseUidMapping
 from app.models.duplicate_suggestion import (
     DuplicateSuggestion,
     DuplicateSuggestionStatus,
+)
+from app.models.firebase_uid_mapping import FirebaseUidMapping
+from app.models.guest import (
+    GuestActionRateLimit,
+    GuestGroup,
+    GuestGroupAdminTransfer,
+    GuestGroupEntry,
+    GuestGroupEntryRevision,
+    GuestGroupInvitation,
+    GuestGroupMembership,
 )
 from app.models.guided import (
     GuidedAnswer,
@@ -33,18 +38,16 @@ from app.models.guided import (
     KnowledgeProposal,
     KnowledgeProposalStatus,
 )
-from app.models.guest import (
-    GuestActionRateLimit,
-    GuestGroup,
-    GuestGroupAdminTransfer,
-    GuestGroupEntry,
-    GuestGroupEntryRevision,
-    GuestGroupInvitation,
-    GuestGroupMembership,
-)
 from app.models.organisation import Organisation
+from app.models.organisation_join_request import OrganisationJoinRequest
+from app.models.organisation_owner import OrganisationOwner
+from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.personal_workspace import PersonalWorkspaceItem
 from app.models.question import Question, QuestionStatus, QuestionVisibility
+from app.models.question_change_request import (
+    ChangeRequestStatus,
+    QuestionChangeRequest,
+)
 from app.models.question_embedding import QuestionEmbedding
 from app.models.question_version import QuestionVersion
 from app.models.team import Team, TeamStatus
@@ -92,6 +95,9 @@ __all__ = [
     "KnowledgeProposal",
     "KnowledgeProposalStatus",
     "Organisation",
+    "OrganisationJoinRequest",
+    "OrganisationOwner",
+    "OrganisationPermissionGrant",
     "PersonalWorkspaceItem",
     "Question",
     "QuestionChangeRequest",
