@@ -239,68 +239,161 @@ async def test_postgres_concurrent_owner_revocation_and_deactivation_preserve_ow
 async def test_postgres_duplicate_requests_and_concurrent_decisions_are_serialized(
     postgres_sessions,
 ):
-    ids = await seed_postgres(postgres_sessions)
+    async def run_order(first_decision: str) -> None:
+        ids = await seed_postgres(postgres_sessions)
 
-    async def request_membership():
+        async def request_membership():
+            async with postgres_sessions() as session:
+                request = await OrganisationAdministrationService(
+                    session
+                ).request_membership(
+                    ids["organisation_id"],
+                    ids["requester"],
+                    OrganisationJoinRequestCreate(
+                        request_type="team",
+                        target_id=ids["team_id"],
+                        reason=f"Concurrent {first_decision}-first test",
+                    ),
+                )
+                return request.id
+
+        request_ids = await asyncio.gather(
+            request_membership(),
+            request_membership(),
+        )
+        assert request_ids[0] == request_ids[1]
+        request_id = request_ids[0]
         async with postgres_sessions() as session:
-            request = await OrganisationAdministrationService(
-                session
-            ).request_membership(
-                ids["organisation_id"],
-                ids["requester"],
-                OrganisationJoinRequestCreate(
-                    request_type="team",
-                    target_id=ids["team_id"],
-                    reason="Concurrent request test",
-                ),
-            )
-            return request.id
-
-    request_ids = await asyncio.gather(
-        request_membership(),
-        request_membership(),
-    )
-    assert request_ids[0] == request_ids[1]
-    async with postgres_sessions() as session:
-        assert (
-            await session.scalar(
+            pending_count = await session.scalar(
                 select(func.count(OrganisationJoinRequest.id)).where(
                     OrganisationJoinRequest.organisation_id == ids["organisation_id"],
                     OrganisationJoinRequest.requester_id == ids["requester"],
                     OrganisationJoinRequest.status == "pending",
                 )
             )
-            == 1
-        )
-        request_id = request_ids[0]
+            assert pending_count == 1
 
-    async def decide(decision):
-        async with postgres_sessions() as session:
-            try:
-                await OrganisationAdministrationService(session).decide_request(
-                    ids["organisation_id"],
-                    ids["manager"],
-                    request_id,
-                    OrganisationJoinRequestDecision(decision=decision),
-                )
-                return 200
-            except (HTTPException, PermissionDeniedError) as error:
-                await session.rollback()
-                return getattr(error, "status_code", 403)
+        second_decision = "decline" if first_decision == "approve" else "approve"
+        app_names = {
+            decision: f"join_{decision}_{uuid4().hex}"
+            for decision in (first_decision, second_decision)
+        }
 
-    outcomes = await asyncio.gather(decide("approve"), decide("decline"))
-    assert sorted(outcomes) == [200, 409]
-    async with postgres_sessions() as session:
-        memberships = await session.scalar(
-            select(func.count(TeamMembership.id)).where(
-                TeamMembership.organisation_id == ids["organisation_id"],
-                TeamMembership.team_id == ids["team_id"],
-                TeamMembership.user_id == ids["requester"],
+        async def decide(decision: str) -> int:
+            async with postgres_sessions() as session:
+                try:
+                    await session.execute(
+                        text("SELECT set_config('application_name', :name, false)"),
+                        {"name": app_names[decision]},
+                    )
+                    await OrganisationAdministrationService(session).decide_request(
+                        ids["organisation_id"],
+                        ids["manager"],
+                        request_id,
+                        OrganisationJoinRequestDecision(decision=decision),
+                    )
+                    return 200
+                except (HTTPException, PermissionDeniedError) as error:
+                    await session.rollback()
+                    return getattr(error, "status_code", 403)
+
+        async def wait_for_lock_waiter(application_name: str) -> None:
+            async def is_waiting() -> bool:
+                async with postgres_sessions() as session:
+                    return bool(
+                        await session.scalar(
+                            text(
+                                """
+                                SELECT EXISTS (
+                                    SELECT 1
+                                    FROM pg_stat_activity
+                                    WHERE application_name = :name
+                                      AND wait_event_type = 'Lock'
+                                )
+                                """
+                            ),
+                            {"name": application_name},
+                        )
+                    )
+
+            async def poll() -> None:
+                while not await is_waiting():
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(poll(), timeout=5)
+
+        async with postgres_sessions() as lock_session:
+            await lock_session.begin()
+            await lock_session.scalar(
+                select(Organisation.id)
+                .where(Organisation.id == ids["organisation_id"])
+                .with_for_update()
             )
-        )
-        request = await session.get(OrganisationJoinRequest, request_id)
-        assert memberships == 1
-        assert request is not None and request.status == "approved"
+            first_task = asyncio.create_task(decide(first_decision))
+            second_task = None
+            try:
+                await wait_for_lock_waiter(app_names[first_decision])
+                second_task = asyncio.create_task(decide(second_decision))
+                await wait_for_lock_waiter(app_names[second_decision])
+                await lock_session.commit()
+                outcomes = await asyncio.wait_for(
+                    asyncio.gather(first_task, second_task),
+                    timeout=10,
+                )
+            finally:
+                if lock_session.in_transaction():
+                    await lock_session.rollback()
+                tasks = [first_task]
+                if second_task is not None:
+                    tasks.append(second_task)
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert outcomes == [200, 409]
+        async with postgres_sessions() as session:
+            membership_count = await session.scalar(
+                select(func.count(TeamMembership.id)).where(
+                    TeamMembership.organisation_id == ids["organisation_id"],
+                    TeamMembership.team_id == ids["team_id"],
+                    TeamMembership.user_id == ids["requester"],
+                )
+            )
+            request = await session.get(OrganisationJoinRequest, request_id)
+            assert request is not None
+            assert request.status == (
+                "approved" if first_decision == "approve" else "declined"
+            )
+            assert request.reviewed_by == ids["manager"]
+            assert membership_count == (1 if first_decision == "approve" else 0)
+
+            decision_events = list(
+                await session.scalars(
+                    select(AuditEvent).where(
+                        AuditEvent.organisation_id == ids["organisation_id"],
+                        AuditEvent.action
+                        == AuditAction.ORGANISATION_JOIN_REQUEST_DECIDED.value,
+                        AuditEvent.entity_id == request_id,
+                    )
+                )
+            )
+            assert len(decision_events) == 1
+            assert decision_events[0].actor_id == ids["manager"]
+            assert decision_events[0].event_metadata["outcome"] == request.status
+
+            member_add_events = list(
+                await session.scalars(
+                    select(AuditEvent).where(
+                        AuditEvent.organisation_id == ids["organisation_id"],
+                        AuditEvent.action == AuditAction.TEAM_MEMBER_ADDED.value,
+                        AuditEvent.entity_id == request_id,
+                    )
+                )
+            )
+            assert len(member_add_events) == (
+                1 if first_decision == "approve" else 0
+            )
+
+    await run_order("approve")
+    await run_order("decline")
 
 
 @pytest.mark.asyncio
