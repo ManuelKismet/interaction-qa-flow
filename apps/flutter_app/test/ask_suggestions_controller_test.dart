@@ -31,6 +31,7 @@ class _QuestionsRepository extends QuestionsRepository {
   final List<SemanticSearchResult> results;
   final requests = <String>[];
   final pending = <Completer<List<SemanticSearchResult>>>[];
+  void Function()? onSearch;
 
   @override
   Future<List<SemanticSearchResult>> searchQuestions(
@@ -38,6 +39,7 @@ class _QuestionsRepository extends QuestionsRepository {
     int limit = 5,
   }) {
     requests.add(query);
+    onSearch?.call();
     if (pending.isNotEmpty) return pending.removeAt(0).future;
     return Future.value(results);
   }
@@ -48,6 +50,7 @@ class _PersonalRepository extends PersonalWorkspaceRepository {
 
   final List<Map<String, dynamic>> results;
   final requests = <String>[];
+  final requestedUids = <String>[];
   String? expectedUid;
   bool failSearch = false;
 
@@ -58,6 +61,7 @@ class _PersonalRepository extends PersonalWorkspaceRepository {
   }) async {
     requests.add(query);
     this.expectedUid = expectedUid;
+    requestedUids.add(expectedUid);
     if (failSearch) throw StateError('Private source unavailable');
     return {'results': results, 'partial': false};
   }
@@ -591,6 +595,10 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
+    final requestedScopes = <AskSearchIdentity>[];
+    questions.onSearch = () => requestedScopes.add(
+      container.read(_testAskIdentityProvider),
+    );
     container.listen(askSuggestionsProvider, (_, _) {});
     final controller = container.read(askSuggestionsProvider.notifier);
     final identityController = container.read(
@@ -633,6 +641,12 @@ void main() {
       container.read(askSuggestionsProvider).value!.hits.map((hit) => hit.id),
       ['local-hit'],
     );
+    expect(questions.requests, ['password', 'password']);
+    expect(personal.requestedUids, [
+      'verified-uid',
+      'verified-uid',
+      'verified-uid',
+    ]);
 
     identityController.setIdentity(
       const AskSearchIdentity(
@@ -643,6 +657,7 @@ void main() {
     );
     await Future<void>.delayed(const Duration(milliseconds: 380));
     expect(personal.expectedUid, 'next-uid');
+    expect(questions.requests, ['password', 'password', 'password']);
     identityController.setIdentity(const AskSearchIdentity());
     await Future<void>.delayed(const Duration(milliseconds: 380));
     third.complete([_organisationResult(id: 'signed-out-hit', relevance: 1)]);
@@ -650,6 +665,29 @@ void main() {
     final signedOut = container.read(askSuggestionsProvider).value!;
     expect(signedOut.hits.map((hit) => hit.id), ['local-hit']);
     expect(questions.requests, ['password', 'password', 'password']);
-    expect(personal.requests, ['password', 'password', 'password']);
+    expect(requestedScopes, [
+      const AskSearchIdentity(
+        verifiedUid: 'verified-uid',
+        membershipState: 'active',
+        organisationId: 'first-organisation',
+      ),
+      const AskSearchIdentity(
+        verifiedUid: 'verified-uid',
+        membershipState: 'active',
+        organisationId: 'second-organisation',
+      ),
+      const AskSearchIdentity(
+        verifiedUid: 'next-uid',
+        membershipState: 'active',
+        organisationId: 'second-organisation',
+      ),
+    ]);
+    expect(personal.requests, ['password', 'password', 'password', 'password']);
+    expect(personal.requestedUids, [
+      'verified-uid',
+      'verified-uid',
+      'verified-uid',
+      'next-uid',
+    ]);
   });
 }

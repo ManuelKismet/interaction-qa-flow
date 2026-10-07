@@ -169,6 +169,18 @@ class _VerifiedUser extends Fake implements User {
   bool get isAnonymous => false;
 }
 
+class _TestFirebaseAuth extends Fake implements FirebaseAuth {
+  _TestFirebaseAuth(this.user);
+
+  final User user;
+
+  @override
+  User get currentUser => user;
+
+  @override
+  Stream<User?> authStateChanges() => Stream.value(user);
+}
+
 class _GroupRepository extends GuestGroupRepository {
   _GroupRepository() : super(Dio());
 
@@ -184,6 +196,9 @@ class _GroupRepository extends GuestGroupRepository {
       'match_method': 'keyword',
     },
   ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => const [];
 
   @override
   Future<Map<String, dynamic>> searchKnowledge(String query) async => {
@@ -210,6 +225,7 @@ void main() {
     final questions = _QuestionsRepository();
     final personal = _PersonalRepository();
     final groups = _GroupRepository();
+    final user = _VerifiedUser();
     await GuestWorkspaceStore(storage).save(
       const GuestWorkspaceData(
         knowledge: [
@@ -233,7 +249,7 @@ void main() {
           builder: (_, state) => GuestWorkspacePage(
             firebaseReady: true,
             personalWorkspaceEnabled: true,
-            accountUser: _VerifiedUser(),
+            accountUser: user,
             membershipStatus: AccountMembershipStatus.active,
             initialKnowledgeItemId:
                 (state.extra as Map?)?['knowledgeItemId'] as String?,
@@ -255,6 +271,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          authStateProvider.overrideWith((ref) => Stream.value(user)),
           questionsRepositoryProvider.overrideWithValue(questions),
           departmentsProvider.overrideWith((ref) async => [_department()]),
           teamsProvider.overrideWith((ref) async => [_team()]),
@@ -433,7 +451,7 @@ void main() {
       await tester.ensureVisible(find.text('Team (optional)'));
       await tester.tap(find.text('No team'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Identity').last);
+      await tester.tap(find.text('Security · Identity').last);
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Ask as new question'));
       await tester.tap(find.text('Ask as new question'));
