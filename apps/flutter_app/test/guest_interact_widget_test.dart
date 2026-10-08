@@ -33,6 +33,41 @@ void main() {
     expect(label.style?.color, Theme.of(context).colorScheme.onSurfaceVariant);
     expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
     expect(find.byTooltip('Account'), findsOneWidget);
+    for (final tooltip in [
+      'Workspace storage information',
+      'Search help',
+      'Interact privacy information',
+    ]) {
+      expect(
+        find.ancestor(
+          of: find.byTooltip(tooltip),
+          matching: find.byType(AppBar),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(find.textContaining('Guest workspace ·'), findsNothing);
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Guest workspace ·'), findsOneWidget);
+    expect(find.textContaining('Clearing browser data'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Interact'));
+    await tester.pumpAndSettle();
+    final sessionField = tester.widget<TextFormField>(
+      find.widgetWithText(TextFormField, 'Session title'),
+    );
+    expect(sessionField.decoration.labelText, 'New Interact session');
+    expect(
+      sessionField.decoration.floatingLabelBehavior,
+      FloatingLabelBehavior.always,
+    );
+    final participantField = tester.widget<TextFormField>(
+      find.widgetWithText(TextFormField, 'Participant'),
+    );
+    expect(participantField.decoration.labelText, isNull);
+    expect(participantField.decoration.hintText, 'Participant');
     expect(tester.takeException(), isNull);
   });
 
