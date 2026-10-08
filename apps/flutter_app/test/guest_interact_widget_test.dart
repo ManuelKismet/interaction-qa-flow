@@ -214,9 +214,7 @@ void main() {
       final destinationControl = find.byKey(
         const ValueKey('guest-session-destination'),
       );
-      final pdfControl = find.byKey(
-        const ValueKey('guest-session-pdf-action'),
-      );
+      final pdfControl = find.byKey(const ValueKey('guest-session-pdf-action'));
       expect(
         tester.getSize(destinationControl).height,
         tester.getSize(pdfControl).height,
@@ -278,10 +276,7 @@ void main() {
         tester.getTopLeft(deleteButton).dx,
         greaterThan(tester.getTopRight(field).dx),
       );
-      expect(
-        tester.getTopLeft(deleteButton).dy,
-        tester.getTopLeft(field).dy,
-      );
+      expect(tester.getTopLeft(deleteButton).dy, tester.getTopLeft(field).dy);
       expect(tester.widget<TextField>(field).decoration?.isDense, isTrue);
       await tester.enterText(field, 'Edited shared question');
       await tester.pumpAndSettle();

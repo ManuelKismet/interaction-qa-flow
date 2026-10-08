@@ -1960,8 +1960,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final viewport = MediaQuery.sizeOf(context);
     final compactViewport = viewport.height < 300;
     final hasWorkspaceNavigation =
-        widget.personalWorkspaceEnabled &&
-        widget.onWorkspaceTabChanged != null;
+        widget.personalWorkspaceEnabled && widget.onWorkspaceTabChanged != null;
     final workspaceHelp = widget.initialWorkspaceTab == 0
         ? _knowledgeInfoButton
         : _interactInfoButton(_verifiedPersonalUid != null);
@@ -2105,8 +2104,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                               ?.copyWith(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w400,
-                                color: Theme.of(context)
-                                    .colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -2133,8 +2133,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       AccountMembershipStatus.noMembership,
                   saveStatus: _saveStatus,
                 ),
-              if (viewport.width < 320 && hasWorkspaceNavigation)
-                workspaceHelp,
+              if (viewport.width < 320 && hasWorkspaceNavigation) workspaceHelp,
               if (compactViewport && !hasWorkspaceNavigation)
                 Builder(
                   builder: (context) => PopupMenuButton<int>(
@@ -3607,7 +3606,10 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                 ),
               ),
               if (!widget.privateWorkspace) ...[
-                Text('Saved Q&A', style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  'Saved Q&A',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 12),
               ],
               if (matches
@@ -5528,7 +5530,8 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
                           labelText: widget.nested
                               ? 'Follow-up question text'
                               : 'Question text',
-                          hintText: 'e.g. What would you like to discuss today?',
+                          hintText:
+                              'e.g. What would you like to discuss today?',
                           alignLabelWithHint: true,
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(

@@ -646,9 +646,8 @@ void main() {
         accountUser: ref.watch(authStateProvider).value,
         membershipStatus: AccountMembershipStatus.active,
         initialWorkspaceTab: tab,
-        onWorkspaceTabChanged: (index) => router.go(
-          index == 0 ? '/personal/ask' : '/personal/interact',
-        ),
+        onWorkspaceTabChanged: (index) =>
+            router.go(index == 0 ? '/personal/ask' : '/personal/interact'),
         initialKnowledgeSection: section,
       ),
     );
@@ -732,9 +731,11 @@ void main() {
     );
     final workspace = find.byType(GuestWorkspacePage);
     expect(
-      tester.widget<AppBar>(
-        find.descendant(of: workspace, matching: find.byType(AppBar)),
-      ).bottom,
+      tester
+          .widget<AppBar>(
+            find.descendant(of: workspace, matching: find.byType(AppBar)),
+          )
+          .bottom,
       isNull,
     );
     expect(find.byTooltip('Switch Knowledge or Interact'), findsNothing);
@@ -746,67 +747,83 @@ void main() {
     expect(find.byTooltip('Interact privacy information'), findsOneWidget);
     expect(find.byTooltip('Search help'), findsNothing);
     expect(
-      tester.widget<AppBar>(
-        find.descendant(
-          of: find.byType(GuestWorkspacePage),
-          matching: find.byType(AppBar),
-        ),
-      ).bottom,
+      tester
+          .widget<AppBar>(
+            find.descendant(
+              of: find.byType(GuestWorkspacePage),
+              matching: find.byType(AppBar),
+            ),
+          )
+          .bottom,
       isNull,
     );
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });
 
-  testWidgets('personal workspace consolidates information and import controls', (
-    tester,
-  ) async {
-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
-    await store.save(
-      const GuestWorkspaceData(
-        knowledge: [
-          {'id': 'local-draft', 'title': 'Local draft', 'body': 'Keep separate'},
-        ],
-      ),
-    );
-    final repository = _TestPersonalWorkspaceRepository([]);
-    await pumpGuestWorkspace(
-      tester,
-      user: _TestUser(isAnonymous: false, isEmailVerified: true),
-      membershipStatus: AccountMembershipStatus.noMembership,
-      personalWorkspaceEnabled: true,
-      personalRepository: repository,
-      store: store,
-    );
+  testWidgets(
+    'personal workspace consolidates information and import controls',
+    (tester) async {
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        const GuestWorkspaceData(
+          knowledge: [
+            {
+              'id': 'local-draft',
+              'title': 'Local draft',
+              'body': 'Keep separate',
+            },
+          ],
+        ),
+      );
+      final repository = _TestPersonalWorkspaceRepository([]);
+      await pumpGuestWorkspace(
+        tester,
+        user: _TestUser(isAnonymous: false, isEmailVerified: true),
+        membershipStatus: AccountMembershipStatus.noMembership,
+        personalWorkspaceEnabled: true,
+        personalRepository: repository,
+        store: store,
+      );
 
-    final heading = find.text('Personal workspace');
-    expect(tester.widget<Text>(heading).style?.fontSize, 14);
-    expect(tester.widget<Text>(heading).style?.fontWeight, FontWeight.w400);
-    expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
-    expect(find.text('Import local work'), findsNothing);
-    expect(find.textContaining('private to your verified identity'), findsNothing);
-    expect(find.textContaining('no organisation membership'), findsNothing);
-    expect(find.byTooltip('Group identity information'), findsNothing);
-    expect(find.byTooltip('Workspace storage information'), findsOneWidget);
+      final heading = find.text('Personal workspace');
+      expect(tester.widget<Text>(heading).style?.fontSize, 14);
+      expect(tester.widget<Text>(heading).style?.fontWeight, FontWeight.w400);
+      expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
+      expect(find.text('Import local work'), findsNothing);
+      expect(
+        find.textContaining('private to your verified identity'),
+        findsNothing,
+      );
+      expect(find.textContaining('no organisation membership'), findsNothing);
+      expect(find.byTooltip('Group identity information'), findsNothing);
+      expect(find.byTooltip('Workspace storage information'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('private to your verified identity'), findsOneWidget);
-    expect(find.textContaining('no organisation membership'), findsOneWidget);
-    expect(find.textContaining('Group access is associated'), findsOneWidget);
-    expect(find.textContaining('Local browser work remains separate'), findsOneWidget);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Workspace storage information'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('private to your verified identity'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('no organisation membership'), findsOneWidget);
+      expect(find.textContaining('Group access is associated'), findsOneWidget);
+      expect(
+        find.textContaining('Local browser work remains separate'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
 
-    await openPersonalImportFromMenu(tester);
-    expect(find.text('Local draft'), findsOneWidget);
-    expect(repository.imports, isEmpty);
-    expect((await store.load()).knowledge.single['id'], 'local-draft');
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpAndSettle();
-  });
+      await openPersonalImportFromMenu(tester);
+      expect(find.text('Local draft'), findsOneWidget);
+      expect(repository.imports, isEmpty);
+      expect((await store.load()).knowledge.single['id'], 'local-draft');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets('local guest account menu explains local-only work', (
     tester,
