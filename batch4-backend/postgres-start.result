@@ -1,0 +1,2 @@
+docker run --detach --name batch4-backend-postgres --publish 127.0.0.1::5432 --env POSTGRES_HOST_AUTH_METHOD=trust --env POSTGRES_DB=batch4_backend pgvector/pgvector:pg16
+exit=0

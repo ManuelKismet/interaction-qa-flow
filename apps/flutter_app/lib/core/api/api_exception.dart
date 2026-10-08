@@ -1,26 +1,35 @@
 import 'package:dio/dio.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message);
+  const ApiException(this.message, {this.statusCode});
 
   final String message;
+  final int? statusCode;
 
   factory ApiException.fromDio(DioException error) {
     final statusCode = error.response?.statusCode;
     if (statusCode == 401) {
       return const ApiException(
         'The request was not authorized. Check your sign-in and application verification, then retry.',
+        statusCode: 401,
       );
     }
     if (statusCode == 403) {
-      return const ApiException('You do not have permission to do that.');
+      return const ApiException(
+        'You do not have permission to do that.',
+        statusCode: 403,
+      );
     }
     if (statusCode == 404) {
-      return const ApiException('That item could not be found.');
+      return const ApiException(
+        'That item could not be found.',
+        statusCode: 404,
+      );
     }
     if (statusCode == 409) {
       return const ApiException(
         'This content changed or is unavailable. Refresh and review it before trying again.',
+        statusCode: 409,
       );
     }
     if (statusCode == 408) {

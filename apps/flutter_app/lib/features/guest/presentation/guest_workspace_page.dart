@@ -27,6 +27,8 @@ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
 import 'package:share_plus/share_plus.dart';
 
+part 'group_interact_editor.dart';
+
 void _showPdfFontFallbackNotice(BuildContext context) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
@@ -3933,20 +3935,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
   }
 
   Map<String, dynamic> _newQuestion(String text, List<String> participantIds) =>
-      {
-        'id': newGuestItemId(),
-        'text': text,
-        'scope': 'shared',
-        'answers': [
-          for (final participantId in participantIds)
-            {
-              'participant_id': participantId,
-              'body': '',
-              'branches_collapsed': false,
-              'follow_ups': <Map<String, dynamic>>[],
-            },
-        ],
-      };
+      _newGuestQuestion(text, participantIds);
 
   void _updateSession(Map<String, dynamic> updated) {
     widget.onChange(
@@ -4306,6 +4295,24 @@ class _GuestMissingSession extends StatelessWidget {
   );
 }
 
+Map<String, dynamic> _newGuestQuestion(
+  String text,
+  List<String> participantIds,
+) => {
+  'id': newGuestItemId(),
+  'text': text,
+  'scope': 'shared',
+  'answers': [
+    for (final participantId in participantIds)
+      {
+        'participant_id': participantId,
+        'body': '',
+        'branches_collapsed': false,
+        'follow_ups': <Map<String, dynamic>>[],
+      },
+  ],
+};
+
 class _GuestSessionEditor extends StatefulWidget {
   const _GuestSessionEditor({
     required this.session,
@@ -4319,6 +4326,7 @@ class _GuestSessionEditor extends StatefulWidget {
     required this.onPrint,
     required this.onCopyJson,
     required this.makeQuestion,
+    this.groupName,
     super.key,
   });
 
@@ -4333,6 +4341,7 @@ class _GuestSessionEditor extends StatefulWidget {
   final ValueChanged<String?> onPrint;
   final VoidCallback onCopyJson;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
+  final String? groupName;
 
   @override
   State<_GuestSessionEditor> createState() => _GuestSessionEditorState();
@@ -4376,8 +4385,11 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
 
-  String get _storageLabel =>
-      widget.isPersonalAccount ? 'your private account' : 'this device';
+  String get _storageLabel => widget.groupName != null
+      ? 'this Group copy'
+      : widget.isPersonalAccount
+      ? 'your private account'
+      : 'this device';
 
   void _editSession(void Function(Map<String, dynamic>) update) {
     final session = _copyMap(widget.session);
@@ -4401,14 +4413,21 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   }
 
   String _storageFeedback({required String local, required String account}) =>
-      widget.isPersonalAccount ? account : local;
+      widget.groupName != null
+      ? 'Group copy draft changed. Save to confirm changes for members.'
+      : widget.isPersonalAccount
+      ? account
+      : local;
 
   Future<void> _addParticipant() async {
     final values = await showDialog<List<String>>(
       context: context,
+      useRootNavigator: widget.groupName == null,
       builder: (context) => _GuestRequiredTextDialog(
         title: 'Add participant',
-        submitLabel: widget.isPersonalAccount
+        submitLabel: widget.groupName != null
+            ? 'Add to Group draft'
+            : widget.isPersonalAccount
             ? 'Add to account session'
             : 'Add participant locally',
         description:
@@ -4446,9 +4465,12 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     if (participant == null) return;
     final values = await showDialog<List<String>>(
       context: context,
+      useRootNavigator: widget.groupName == null,
       builder: (context) => _GuestRequiredTextDialog(
         title: 'Rename participant',
-        submitLabel: widget.isPersonalAccount
+        submitLabel: widget.groupName != null
+            ? 'Update Group draft'
+            : widget.isPersonalAccount
             ? 'Save account changes'
             : 'Save name locally',
         fields: [
@@ -4489,6 +4511,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     if (blocked) {
       await showDialog<void>(
         context: context,
+        useRootNavigator: widget.groupName == null,
         builder: (context) => AlertDialog(
           title: const Text('Participant cannot be removed'),
           content: Text(
@@ -4511,6 +4534,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     }
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: widget.groupName == null,
       builder: (context) => AlertDialog(
         title: const Text('Remove participant?'),
         content: Text(
@@ -4575,9 +4599,12 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   Future<void> _renameSession() async {
     final values = await showDialog<List<String>>(
       context: context,
+      useRootNavigator: widget.groupName == null,
       builder: (context) => _GuestRequiredTextDialog(
         title: 'Rename session',
-        submitLabel: widget.isPersonalAccount
+        submitLabel: widget.groupName != null
+            ? 'Update Group draft'
+            : widget.isPersonalAccount
             ? 'Save account changes'
             : 'Save title locally',
         fields: [
@@ -4644,7 +4671,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       context: context,
       builder: (context) => _GuestRequiredTextDialog(
         title: nested ? 'Edit follow-up question' : 'Edit question',
-        submitLabel: widget.isPersonalAccount
+        submitLabel: widget.groupName != null
+            ? 'Update Group draft'
+            : widget.isPersonalAccount
             ? 'Save account changes'
             : 'Save question locally',
         description:
@@ -4660,6 +4689,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           ),
         ],
       ),
+      useRootNavigator: widget.groupName == null,
     );
     if (values == null || !mounted) return;
     var changed = false;
@@ -4836,24 +4866,26 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                   value: 'rename',
                   child: Text('Rename session'),
                 ),
-                PopupMenuItem(
-                  value: 'template',
-                  enabled: !duplicateIds,
-                  child: Text(
-                    widget.privateWorkspace
-                        ? 'Save as private template'
-                        : 'Save as local template',
+                if (widget.groupName == null)
+                  PopupMenuItem(
+                    value: 'template',
+                    enabled: !duplicateIds,
+                    child: Text(
+                      widget.privateWorkspace
+                          ? 'Save as private template'
+                          : 'Save as local template',
+                    ),
                   ),
-                ),
                 const PopupMenuItem(
                   value: 'json',
                   child: Text('Copy session JSON backup'),
                 ),
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Text('Delete session'),
-                ),
+                if (widget.groupName == null) const PopupMenuDivider(),
+                if (widget.groupName == null)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete session'),
+                  ),
               ],
               icon: const Icon(Icons.more_vert),
             ),
@@ -4865,34 +4897,38 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           runSpacing: 4,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Chip(
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              avatar: Icon(
-                widget.isPersonalAccount
-                    ? Icons.lock_person_outlined
-                    : Icons.phone_android_outlined,
-                size: 18,
+            if (widget.groupName == null)
+              Chip(
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                avatar: Icon(
+                  widget.isPersonalAccount
+                      ? Icons.lock_person_outlined
+                      : Icons.phone_android_outlined,
+                  size: 18,
+                ),
+                label: Text(
+                  widget.isPersonalAccount
+                      ? 'Destination: Private account'
+                      : 'Destination: Local · this device',
+                ),
               ),
-              label: Text(
-                widget.isPersonalAccount
-                    ? 'Destination: Private account'
-                    : 'Destination: Local · this device',
-              ),
-            ),
             if (!statusPinned)
               Semantics(liveRegion: true, child: Text(widget.storageStatus)),
-            const _GuestInfoButton(
-              tooltip: 'Session lifecycle information',
-              title: 'About session lifecycle',
-              content:
-                  'Local and private account sessions stay editable. They '
-                  'have no draft, active, completed or archived status. '
-                  'Delete removes a session with Undo while the message is '
-                  'shown; private account changes are confirmed by the save '
-                  'status. Organisation sessions use their own server '
-                  'lifecycle.',
-            ),
+            if (widget.groupName != null)
+              Text('Shared · Group: ${widget.groupName}'),
+            if (widget.groupName == null)
+              const _GuestInfoButton(
+                tooltip: 'Session lifecycle information',
+                title: 'About session lifecycle',
+                content:
+                    'Local and private account sessions stay editable. They '
+                    'have no draft, active, completed or archived status. '
+                    'Delete removes a session with Undo while the message is '
+                    'shown; private account changes are confirmed by the save '
+                    'status. Organisation sessions use their own server '
+                    'lifecycle.',
+              ),
           ],
         ),
         const SizedBox(height: 4),
@@ -5134,6 +5170,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               _GuestQuestionEditor(
                 key: ValueKey(question['id']),
                 question: question,
+                isGroupCopy: widget.groupName != null,
                 isPersonalAccount: widget.isPersonalAccount,
                 participants: activeParticipant == null
                     ? const []
@@ -5155,7 +5192,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           Padding(
             padding: const EdgeInsets.only(bottom: 24),
             child: Text(
-              'Changes are saved to $_storageLabel as you type.',
+              widget.groupName != null
+                  ? 'Edits affect this Group copy only, not the original. Use Save Group copy to confirm changes.'
+                  : 'Changes are saved to $_storageLabel as you type.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
@@ -5281,6 +5320,7 @@ class _GuestQuestionEditor extends StatefulWidget {
     required this.onRemoveFollowUp,
     required this.makeQuestion,
     this.nested = false,
+    this.isGroupCopy = false,
     super.key,
   });
 
@@ -5294,6 +5334,7 @@ class _GuestQuestionEditor extends StatefulWidget {
   onRemoveFollowUp;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
   final bool nested;
+  final bool isGroupCopy;
 
   @override
   State<_GuestQuestionEditor> createState() => _GuestQuestionEditorState();
@@ -5414,6 +5455,7 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
                     questionId: id,
                     participant: participant,
                     isPersonalAccount: widget.isPersonalAccount,
+                    isGroupCopy: widget.isGroupCopy,
                     answer: _answers
                         .where(
                           (answer) =>
@@ -5479,6 +5521,7 @@ class _GuestAnswerEditor extends StatefulWidget {
     required this.onEditText,
     required this.onRemoveFollowUp,
     required this.makeQuestion,
+    this.isGroupCopy = false,
     super.key,
   });
 
@@ -5493,6 +5536,7 @@ class _GuestAnswerEditor extends StatefulWidget {
   final void Function(String parentQuestionId, String participantId, String id)
   onRemoveFollowUp;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
+  final bool isGroupCopy;
 
   @override
   State<_GuestAnswerEditor> createState() => _GuestAnswerEditorState();
@@ -5582,7 +5626,9 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                     minLines: 2,
                     maxLines: 6,
                     decoration: InputDecoration(
-                      labelText: widget.isPersonalAccount
+                      labelText: widget.isGroupCopy
+                          ? 'Group copy answer'
+                          : widget.isPersonalAccount
                           ? 'Personal-account answer'
                           : 'Local answer',
                       hintText: 'Record $participantName’s answer…',
@@ -5680,6 +5726,7 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                           children: [
                             for (final branch in branches)
                               _GuestQuestionEditor(
+                                isGroupCopy: widget.isGroupCopy,
                                 key: ValueKey(
                                   (branch as Map<String, dynamic>)['id'],
                                 ),
@@ -7069,6 +7116,27 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   Future<void> _editEntry(Map<String, dynamic> entry) async {
     final groupId = _groupId;
     if (groupId == null) return;
+    if (entry['kind'] == 'interact_session') {
+      final uid = _activeUid;
+      final generation = _loadGeneration;
+      if (uid == null || !_canEdit(entry)) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _GroupInteractEditor(
+          entry: entry,
+          groupId: groupId,
+          groupName: _group?['name'] as String? ?? 'Group',
+          uid: uid,
+          isOriginCurrent: () =>
+              _isCurrentLoad(uid, generation) && _groupId == groupId,
+        ),
+      );
+      if (_isCurrentLoad(uid, generation) && _groupId == groupId) {
+        await _loadGroup(groupId);
+      }
+      return;
+    }
     final entryId = entry['id'] as String;
     final sourceData = entry['data'] is Map
         ? Map<String, dynamic>.from(entry['data'] as Map)
