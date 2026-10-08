@@ -29,4 +29,8 @@ No deploy/merge/production/IAM/credential/firewall/access change; reuse endpoint
 
 ## Assignment status
 
-Brief prepared and founder decision recorded. One new Copilot task submission in progress; no implementation result or new validation claimed.
+## Batch 4 started — 2026-10-08
+
+Founder authorised batch 4 and selected **Edit shared copy**: existing authorised Group members can edit shared Interact questions and answers; originals remain independent. ONE new Copilot task submitted and UI verified **Queued / session started**: https://github.com/ManuelKismet/interaction-qa-flow/tasks/49641b6c-45e3-447f-9db4-2675b4a3fdde?q=is%3Aopen+author%3A%40me. Exact source-picker branch `fix/interact-parity-batch3-dev-20261008` pinned to complete accepted source `5a2dd26410a428b6a0b516efe53afc37d89362b7` (repository tree `46e373deec7f3351dd307d5b68d3e7042d75122b`, Flutter subtree `1a3642d9fde6dd377300c056966712174dcae89a`).
+
+Scope: IP05 shared-copy editor plus remaining IP12/IP22 permission/concurrency/identity and narrow-screen/accessibility regressions, IP01–IP24 acceptance matrix and manual scenarios. Reuse existing editors/APIs/revisions, preserve all batches 1–3 and Group eligibility; no live link, implicit import or original mutation. Full brief: [batch 4 handoff](interact-parity-batch4-handoff-20261008.md). Original incremental mailbox required from exact 5a2dd264; independent review and validation follow delivery. No batch 4 implementation result, new tests, merge or deployment claimed. DEV stays batch 3; Codespace remains stopped. Hosted authenticated and physical-device/accessibility acceptance remains OPEN. Earlier not-started entries are historical.
