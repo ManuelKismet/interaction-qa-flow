@@ -3564,6 +3564,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
       },
     );
     if (_showSavedQuestions) {
+      final savedItems = widget.privateWorkspace ? widget.items : matches;
       return Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
@@ -3580,9 +3581,11 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                 ),
                 const SizedBox(height: 12),
               ],
-              searchField,
-              _remoteSearchResults(context, query, const []),
-              const SizedBox(height: 16),
+              if (!widget.privateWorkspace) ...[
+                searchField,
+                _remoteSearchResults(context, query, const []),
+                const SizedBox(height: 16),
+              ],
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
@@ -3612,7 +3615,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                 ),
                 const SizedBox(height: 12),
               ],
-              if (matches
+              if (savedItems
                   .where(
                     (item) =>
                         _selectedKnowledgeItemId == null ||
@@ -3629,7 +3632,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                         : 'No local matches.',
                   ),
                 ),
-              for (final item in matches.where(
+              for (final item in savedItems.where(
                 (item) =>
                     _selectedKnowledgeItemId == null ||
                     item['id'] == _selectedKnowledgeItemId,
