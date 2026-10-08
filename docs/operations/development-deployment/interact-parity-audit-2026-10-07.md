@@ -265,3 +265,31 @@ meaningful repairs preserving all guards, coherent full/release when stable,
 exact logs/source/artifact provenance. No rebuild/competing task/later batches/
 PR13/deploy/schema. Workflow lessons updated with two-stage gates and hosted
 setup receipts. Batch2 remains unaccepted, DEV prior7aac21f unchanged.
+
+### Flutter test assets completed before session startup — 2026-10-08
+
+Tenth Copilot session completed formatting-only source2a6417a401a8cb0b788b35b388d8b624b0e07ab2,
+app tree5cbf332eb6c2a9ca343ab237d0c6c44bbc84f61c; reported real mailbox
+interact-parity-batch2-runtime-repair-mailbox-20261008.patch44903bytes/
+SHA256859e824c5b694c4d40922b4ddb14944c22383d9ff691fd7021ecefcdaae8cb73
+from exact4cb132. Provenance/apply/runtime acceptance independently pending.
+Actual session logs: required Material-fonts download403 prevented pubget,
+analyzer and focused tests from running. Six-file formatter0changes also had
+package-resolution warnings. Prior hosted web-only readiness did not prove
+session widget-test readiness; no new pass/failure counts or analyzer-clean claim.
+
+Founder authorised adding required setup. Config-only default main commit
+0b88f0596d4e1a8e30add936e61490914cdbf57e explicitly precaches
+--universal --linux --web, verifies font/tester files, enforced lockfile pubget,
+then temporary MaterialApp widget smoke test (removed by trap). Local YAML/Bash
+syntax verified; hosted run37767338120/job113278082801 SUCCESS: actual Material
+fonts download, locked dependencies, smoke1PASS0FAIL and complete readiness
+marker independently observed. No firewall/credentials/access expansion.
+Workflow lessons updateda489135e7dff96776dfffad0153aed1f0b0ba4af.
+
+ONE SAME-task eleventh session submitted and UI verified Queued/11sessions.
+Continue latest2a6417a app, verify new setup inherited, rerun actual project
+checks and preserve safeguards/scope. Independent Codex acceptance remains
+required. No rebuild/later batches/oldPR13/application merge/Cloud Run/Firebase
+DEV rollout/schema change. Existing GitHub Pages automation ran on config push;
+DEV app remains prior7aac21f. No Codespace/DB/proxy/local tests started this turn.
