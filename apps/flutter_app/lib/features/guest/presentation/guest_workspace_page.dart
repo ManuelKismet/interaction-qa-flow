@@ -1979,23 +1979,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           text:
               'Account status could not be verified. This workspace is local; organisation access is not assumed.',
         ),
-      if (_verifiedPersonalUid != null &&
-          localData != null &&
-          _hasMeaningfulWork(localData))
-        MaterialBanner(
-          forceActionsBelow: narrowViewport,
-          content: const Text(
-            'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: _personalSaving || _personalLoading
-                  ? null
-                  : _openPersonalImport,
-              child: const Text('Import local work'),
-            ),
-          ],
-        ),
       if (_personalError != null)
         MaterialBanner(
           forceActionsBelow: narrowViewport,
@@ -2029,7 +2012,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             ),
           ],
         ),
-      if (widget.membershipStatus == AccountMembershipStatus.noMembership)
+      if (_verifiedPersonalUid == null &&
+          widget.membershipStatus == AccountMembershipStatus.noMembership)
         const _AccountMembershipNotice(
           text:
               'This signed-in account has no organisation membership. Groups require a verified registered account, but do not require organisation membership.',
@@ -2046,7 +2030,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ),
       if (widget.firebaseReady &&
           _hasSignedInNonGuestUser &&
-          !widget.sharedIdentityActive)
+          !widget.sharedIdentityActive &&
+          (_verifiedPersonalUid == null || !canUseGroups))
         Padding(
           padding: const EdgeInsets.all(12),
           child: canUseGroups
@@ -2098,7 +2083,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         initialIndex: widget.initialWorkspaceTab,
         child: Scaffold(
           appBar: AppBar(
-            toolbarHeight: !_hasSignedInNonGuestUser ? 48 : kToolbarHeight,
+            toolbarHeight: 48,
             title: viewport.width < 320
                 ? null
                 : Row(
@@ -2110,23 +2095,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                               : _hasSignedInNonGuestUser
                               ? 'Registered local workspace'
                               : 'Guest workspace',
-                          style: !_hasSignedInNonGuestUser
-                              ? Theme.of(
-                                  context,
-                                ).textTheme.bodyMedium?.copyWith(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w400,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                )
-                              : null,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w400,
+                                color: Theme.of(context)
+                                    .colorScheme.onSurfaceVariant,
+                              ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       _GuestNotice(
                         isRegistered: _hasSignedInNonGuestUser,
+                        isPrivateAccount: _verifiedPersonalUid != null,
+                        noOrganisationMembership:
+                            widget.membershipStatus ==
+                            AccountMembershipStatus.noMembership,
                         saveStatus: _saveStatus,
                       ),
                     ],
@@ -2135,6 +2120,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               if (viewport.width < 320)
                 _GuestNotice(
                   isRegistered: _hasSignedInNonGuestUser,
+                  isPrivateAccount: _verifiedPersonalUid != null,
+                  noOrganisationMembership:
+                      widget.membershipStatus ==
+                      AccountMembershipStatus.noMembership,
                   saveStatus: _saveStatus,
                 ),
               if (compactViewport)
@@ -2179,9 +2168,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                     child: Text('Import local JSON backup'),
                   ),
                   if (_verifiedPersonalUid != null)
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'account-import',
-                      child: Text('Import local work into my account'),
+                      enabled: !_personalSaving && !_personalLoading,
+                      child: const Text('Import local work into my account'),
                     ),
                   PopupMenuDivider(),
                   PopupMenuItem(
@@ -2847,17 +2837,35 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 }
 
 class _GuestNotice extends StatelessWidget {
-  const _GuestNotice({required this.isRegistered, required this.saveStatus});
+  const _GuestNotice({
+    required this.isRegistered,
+    required this.saveStatus,
+    this.isPrivateAccount = false,
+    this.noOrganisationMembership = false,
+  });
 
   final bool isRegistered;
   final String saveStatus;
+  final bool isPrivateAccount;
+  final bool noOrganisationMembership;
 
   @override
   Widget build(BuildContext context) {
-    final status = isRegistered
+    final status = isPrivateAccount
+        ? 'Personal workspace · Local browser copy: $saveStatus'
+        : isRegistered
         ? 'Registered personal account · Local copy · $saveStatus'
         : 'Guest workspace · $saveStatus';
-    final explanation = isRegistered
+    final explanation = isPrivateAccount
+        ? 'This personal account is private to your verified identity. '
+              'New Knowledge and Interact sessions are saved privately to your '
+              'account. Local browser work remains separate until you choose '
+              'items to import. Use Workspace options to import local work '
+              'into your account.\n\n'
+              'Group access is associated with this signed-in verified identity. '
+              'A separate account does not inherit its Group data. '
+              'Group and organisation access are separate.'
+        : isRegistered
         ? 'Registered workspace. Local drafts stay in this browser profile '
               'and may be visible to people using it. This local copy is separate '
               'from your personal account. Importing selected items to your account '
@@ -2866,10 +2874,15 @@ class _GuestNotice extends StatelessWidget {
               'profile can see its local work. Groups require a registered '
               'account with a verified email. Clearing browser data or losing '
               'this device can erase local work.';
+    final membership = isPrivateAccount && noOrganisationMembership
+        ? '\n\nThis signed-in account has no organisation membership. '
+              'Groups require a verified registered account, but do not require '
+              'organisation membership.'
+        : '';
     return _GuestInfoButton(
       tooltip: 'Workspace storage information',
       title: 'About this workspace',
-      content: '$status\n\n$explanation',
+      content: '$status\n\n$explanation$membership',
     );
   }
 }
