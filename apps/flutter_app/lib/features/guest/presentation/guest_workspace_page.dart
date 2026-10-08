@@ -4857,7 +4857,32 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   }) {
     final theme = Theme.of(context);
     final title = widget.session['title'] as String? ?? 'Interact session';
-    return Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final inlineActions =
+            constraints.maxWidth >= 800 &&
+            MediaQuery.textScalerOf(context).scale(14) <= 20;
+        final destination = Chip(
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                avatar: Icon(
+                  widget.isPersonalAccount
+                      ? Icons.lock_person_outlined
+                      : Icons.phone_android_outlined,
+                  size: 18,
+                ),
+                label: Text(
+                  widget.isPersonalAccount
+                      ? 'Destination: Private account'
+                      : 'Destination: Local · this device',
+                ),
+              );
+        final pdfAction = OutlinedButton.icon(
+            onPressed: () => widget.onPrint(_selectedParticipantId),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Download / Share PDF'),
+          );
+        return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
@@ -4883,6 +4908,12 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 ),
               ),
             ),
+            if (inlineActions) ...[
+              if (widget.groupName == null) destination,
+              const SizedBox(width: 8),
+              pdfAction,
+              const SizedBox(width: 8),
+            ],
             PopupMenuButton<String>(
               tooltip: 'More session actions',
               onSelected: (value) {
@@ -4933,22 +4964,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           runSpacing: 4,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            if (widget.groupName == null)
-              Chip(
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                avatar: Icon(
-                  widget.isPersonalAccount
-                      ? Icons.lock_person_outlined
-                      : Icons.phone_android_outlined,
-                  size: 18,
-                ),
-                label: Text(
-                  widget.isPersonalAccount
-                      ? 'Destination: Private account'
-                      : 'Destination: Local · this device',
-                ),
-              ),
+            if (widget.groupName == null && !inlineActions) destination,
+            if (!inlineActions) pdfAction,
             if (!statusPinned)
               Semantics(liveRegion: true, child: Text(widget.storageStatus)),
             if (widget.groupName != null)
@@ -4967,16 +4984,10 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
           ],
         ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: () => widget.onPrint(_selectedParticipantId),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: const Text('Download / Share PDF'),
-          ),
-        ),
+
       ],
+        );
+      },
     );
   }
 
