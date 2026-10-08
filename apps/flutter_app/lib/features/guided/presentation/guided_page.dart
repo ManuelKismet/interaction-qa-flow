@@ -18,9 +18,10 @@ class GuidedPage extends ConsumerWidget {
     final drafts = ref.watch(draftGuidedSessionsProvider);
     final active = ref.watch(activeGuidedSessionsProvider);
     final completed = ref.watch(completedGuidedSessionsProvider);
+    final archived = ref.watch(archivedGuidedSessionsProvider);
     final templates = ref.watch(guidedTemplatesProvider);
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           Padding(
@@ -62,6 +63,7 @@ class GuidedPage extends ConsumerWidget {
               Tab(text: 'Active sessions'),
               Tab(text: 'Templates'),
               Tab(text: 'Completed sessions'),
+              Tab(text: 'Archived sessions'),
             ],
           ),
           Expanded(
@@ -70,6 +72,7 @@ class GuidedPage extends ConsumerWidget {
                 _SessionsList(groups: [drafts, active]),
                 _TemplatesList(templates: templates),
                 _SessionsList(groups: [completed]),
+                _SessionsList(groups: [archived]),
               ],
             ),
           ),

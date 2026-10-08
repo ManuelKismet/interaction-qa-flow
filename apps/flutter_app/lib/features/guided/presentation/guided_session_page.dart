@@ -29,6 +29,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   bool _reportMode = false;
   bool _allParticipantsReport = false;
   GuidedPendingEdits? _drafts;
+  String? _activeName;
 
   @override
   void didUpdateWidget(covariant GuidedSessionPage oldWidget) {
@@ -202,194 +203,252 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         final activeParticipant = session.participants
             .where((item) => item.id == _participantId)
             .firstOrNull;
+        _activeName = activeParticipant?.name;
         final answered = _countAnswered(session.questions, _participantId);
-        return Column(
-          children: [
-            _SessionHeader(
-              session: session,
-              saveState:
-                  _saveState == GuidedSaveState.saving ||
-                      _saveState == GuidedSaveState.failed ||
-                      drafts?.state == GuidedSaveState.idle
-                  ? _saveState
-                  : drafts?.state ?? _saveState,
-              reportMode: _reportMode,
-              allParticipantsReport: _allParticipantsReport,
-              onBack: () => context.go('/guided'),
-              onToggleReport: (all) => setState(() {
-                _reportMode = !_reportMode || _allParticipantsReport != all;
-                _allParticipantsReport = _reportMode && all;
-              }),
-              onExport: (format) => _export(session, format),
-              onHistory: _history,
-              onPrint: _reportMode
-                  ? () => openPrintableReport(
-                      buildGuidedReportDocument(
-                        session: session,
-                        allParticipants: _allParticipantsReport,
-                        participantId: _participantId,
-                        generatedAt: DateTime.now(),
-                      ),
-                    )
-                  : null,
-              onTransition: transition,
-            ),
-            if (drafts != null && drafts.error != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Wrap(
-                  spacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text('Not saved: ${drafts.error}'),
-                    TextButton(
-                      onPressed: drafts.isBusy ? null : drafts.retry,
-                      child: const Text('Review and retry'),
-                    ),
-                    if (drafts.conflict)
-                      TextButton(
-                        onPressed: drafts.isBusy
-                            ? null
-                            : () {
-                                drafts.useServerVersion();
-                                _refresh();
-                              },
-                        child: const Text('Use server version'),
-                      ),
-                  ],
-                ),
-              ),
-            if (readOnly)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'View-only session. Private sessions can only be edited by their creator. Other sessions allow their creator, an organisation owner or a legacy administrator.',
-                    key: ValueKey('guided-session-read-only-notice'),
-                  ),
-                ),
-              ),
-            if (!_reportMode)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 230,
-                      child: DropdownButtonFormField<String?>(
-                        key: ValueKey(_participantId),
-                        initialValue: _participantId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Active participant',
-                        ),
-                        selectedItemBuilder: (context) => [
-                          for (final participant in session.participants)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                participant.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        items: [
-                          for (final participant in session.participants)
-                            DropdownMenuItem(
-                              value: participant.id,
-                              child: Text(
-                                participant.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: (value) =>
-                            setState(() => _participantId = value),
-                      ),
-                    ),
-                    SegmentedButton<GuidedViewMode>(
-                      segments: [
-                        for (final mode in GuidedViewMode.values)
-                          ButtonSegment(value: mode, label: Text(mode.label)),
-                      ],
-                      selected: {_viewMode},
-                      onSelectionChanged: (selection) =>
-                          setState(() => _viewMode = selection.first),
-                    ),
-                    Text(
-                      '$answered of ${session.preparedQuestionCount} prepared answered',
-                    ),
-                    Text('${session.followUpCount} follow-ups'),
-                    if (canEditSession) ...[
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.person_add_alt_1_outlined),
-                        label: const Text('Add participant'),
-                        onPressed: () => _addParticipant(),
-                      ),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.add),
-                        label: const Text('Shared question'),
-                        onPressed: () => _addQuestion('shared'),
-                      ),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.person_outline),
-                        label: const Text('Participant question'),
-                        onPressed: activeParticipant == null
-                            ? null
-                            : () => _addQuestion('participant'),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            const Divider(height: 1),
-            Expanded(
-              child: _reportMode
-                  ? GuidedReportView(
+        final topArea = <Widget>[
+          _SessionHeader(
+            session: session,
+            saveState:
+                _saveState == GuidedSaveState.saving ||
+                    _saveState == GuidedSaveState.failed ||
+                    drafts?.state == GuidedSaveState.idle
+                ? _saveState
+                : drafts?.state ?? _saveState,
+            reportMode: _reportMode,
+            allParticipantsReport: _allParticipantsReport,
+            onBack: () => context.go('/guided'),
+            onToggleReport: (all) => setState(() {
+              _reportMode = !_reportMode || _allParticipantsReport != all;
+              _allParticipantsReport = _reportMode && all;
+            }),
+            onExport: (format) => _export(session, format),
+            onHistory: _history,
+            onLifecycleInfo: () => _lifecycleInfo(session, canEditSession),
+            onSessionAction: canEditSession
+                ? (action) => _sessionAction(session, action)
+                : null,
+            onPrint: _reportMode
+                ? () => openPrintableReport(
+                    buildGuidedReportDocument(
                       session: session,
                       allParticipants: _allParticipantsReport,
-                    )
-                  : GuidedFlowView(
-                      key: ValueKey((session.id, repository)),
-                      questions: session.questions,
                       participantId: _participantId,
-                      participantName: activeParticipant?.name,
-                      readOnly: readOnly,
-                      managedDebounce: drafts != null,
-                      pendingValues: drafts?.values ?? const {},
-                      onEditing: _editing,
-                      onSaveQuestion: (question, value) =>
-                          drafts?.question(question, value) ?? Future.value(),
-                      onSaveAnswer: (question, answer, value) =>
-                          drafts != null && participantId != null
-                          ? drafts.answer(
-                              question,
-                              answer,
-                              participantId,
-                              value,
-                            )
-                          : Future.value(),
-                      onAddFollowUp: _addFollowUp,
-                      onToggleBranch: (answer) => _save(
-                        () => repository!.updateAnswer(
-                          answer.id,
-                          branchesCollapsed: !answer.branchesCollapsed,
-                          expectedRevision:
-                              drafts?.revision ?? session.revision,
-                        ),
-                      ),
-                      onDelete: _deleteQuestion,
-                      onKnowledgeSearch: _knowledgeSearch,
-                      onPropose: _propose,
+                      generatedAt: DateTime.now(),
                     ),
+                  )
+                : null,
+            onTransition: transition,
+          ),
+          if (drafts != null && drafts.error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Wrap(
+                spacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text('Not saved: ${drafts.error}'),
+                  TextButton(
+                    onPressed: drafts.isBusy ? null : drafts.retry,
+                    child: const Text('Review and retry'),
+                  ),
+                  if (drafts.conflict)
+                    TextButton(
+                      onPressed: drafts.isBusy
+                          ? null
+                          : () {
+                              drafts.useServerVersion();
+                              _refresh();
+                            },
+                      child: const Text('Use server version'),
+                    ),
+                ],
+              ),
             ),
-          ],
+          if (session.status == 'archived')
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Archived session: read-only for everyone. Reports and exports remain available; archived sessions cannot be reopened.',
+                  key: ValueKey('guided-session-archived-notice'),
+                ),
+              ),
+            )
+          else if (readOnly)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'View-only session. Private sessions can only be edited by their creator. Other sessions allow their creator, an organisation owner or a legacy administrator.',
+                  key: ValueKey('guided-session-read-only-notice'),
+                ),
+              ),
+            ),
+          if (!_reportMode)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 230,
+                    child: DropdownButtonFormField<String?>(
+                      key: ValueKey(_participantId),
+                      initialValue: _participantId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Active participant',
+                      ),
+                      selectedItemBuilder: (context) => [
+                        for (final participant in session.participants)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              participant.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      items: [
+                        for (final participant in session.participants)
+                          DropdownMenuItem(
+                            value: participant.id,
+                            child: Text(
+                              participant.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _participantId = value),
+                    ),
+                  ),
+                  if (canEditSession && activeParticipant != null)
+                    PopupMenuButton<String>(
+                      tooltip: 'Active participant actions',
+                      icon: const Icon(Icons.manage_accounts_outlined),
+                      onSelected: (action) => action == 'rename'
+                          ? _renameParticipant(activeParticipant)
+                          : _removeParticipant(activeParticipant),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'rename',
+                          child: Text('Rename participant'),
+                        ),
+                        PopupMenuItem(
+                          value: 'remove',
+                          child: Text('Remove participant'),
+                        ),
+                      ],
+                    ),
+                  SegmentedButton<GuidedViewMode>(
+                    segments: [
+                      for (final mode in GuidedViewMode.values)
+                        ButtonSegment(value: mode, label: Text(mode.label)),
+                    ],
+                    selected: {_viewMode},
+                    onSelectionChanged: (selection) =>
+                        setState(() => _viewMode = selection.first),
+                  ),
+                  Text(
+                    '$answered of ${session.preparedQuestionCount} questions answered',
+                  ),
+                  Text('${session.followUpCount} follow-ups'),
+                  if (canEditSession) ...[
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.person_add_alt_1_outlined),
+                      label: const Text('Add participant'),
+                      onPressed: () => _addParticipant(),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Shared question'),
+                      onPressed: () => _addQuestion('shared'),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.person_outline),
+                      label: const Text('Participant question'),
+                      onPressed: activeParticipant == null
+                          ? null
+                          : () => _addQuestion('participant'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ];
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            // Keep the session controls bounded so the question list (and
+            // its focused field) stays reachable on phones and with the
+            // on-screen keyboard open.
+            final maxTop = constraints.maxHeight.isFinite
+                ? constraints.maxHeight *
+                      (constraints.maxHeight < 560 ? 0.4 : 0.6)
+                : double.infinity;
+            return Column(
+              children: [
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxTop),
+                  child: SingleChildScrollView(
+                    key: const ValueKey('guided-session-controls'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: topArea,
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: _reportMode
+                      ? GuidedReportView(
+                          session: session,
+                          allParticipants: _allParticipantsReport,
+                        )
+                      : GuidedFlowView(
+                          key: ValueKey((session.id, repository)),
+                          questions: session.questions,
+                          participantId: _participantId,
+                          participantName: activeParticipant?.name,
+                          readOnly: readOnly,
+                          managedDebounce: drafts != null,
+                          pendingValues: drafts?.values ?? const {},
+                          onEditing: _editing,
+                          onSaveQuestion: (question, value) =>
+                              drafts?.question(question, value) ??
+                              Future.value(),
+                          onSaveAnswer: (question, answer, value) =>
+                              drafts != null && participantId != null
+                              ? drafts.answer(
+                                  question,
+                                  answer,
+                                  participantId,
+                                  value,
+                                )
+                              : Future.value(),
+                          onAddFollowUp: _addFollowUp,
+                          onToggleBranch: (answer) => _save(
+                            () => repository!.updateAnswer(
+                              answer.id,
+                              branchesCollapsed: !answer.branchesCollapsed,
+                              expectedRevision:
+                                  drafts?.revision ?? session.revision,
+                            ),
+                          ),
+                          onDelete: _deleteQuestion,
+                          onKnowledgeSearch: _knowledgeSearch,
+                          onPropose: _propose,
+                        ),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -404,20 +463,35 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     }).length;
   }
 
-  Future<String?> _textDialog(String title, String label) async {
+  Future<String?> _textDialog(
+    String title,
+    String label, {
+    String? hint,
+    String initialValue = '',
+    String action = 'Add',
+    String? message,
+  }) async {
     final repository = ref.read(guidedRepositoryProvider);
     final sessionId = widget.sessionId;
-    final controller = TextEditingController();
+    final controller = TextEditingController(text: initialValue);
     final submit = await showGuidedScopedDialog<bool>(
       context: context,
       repository: repository,
       isCurrent: () => _isCurrent(repository, sessionId),
       builder: (context) => AlertDialog(
         title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(labelText: label),
+        scrollable: true,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (message != null) ...[Text(message), const SizedBox(height: 12)],
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(labelText: label, hintText: hint),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -426,7 +500,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Add'),
+            child: Text(action),
           ),
         ],
       ),
@@ -438,7 +512,11 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   Future<void> _addParticipant() async {
     final repository = ref.read(guidedRepositoryProvider);
     final sessionId = widget.sessionId;
-    final name = await _textDialog('Add participant', 'Name');
+    final name = await _textDialog(
+      'Add participant',
+      'Name',
+      hint: 'e.g. Alex (team lead)',
+    );
     if (name == null || !_isCurrent(repository, sessionId)) return;
     await _save(() async {
       final participant = await repository.addParticipant(sessionId, name);
@@ -455,6 +533,12 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     final text = await _textDialog(
       scope == 'shared' ? 'Add shared question' : 'Add participant question',
       'Question',
+      hint: scope == 'shared'
+          ? 'e.g. What went well this week?'
+          : 'e.g. What support do you need next?',
+      message: scope == 'shared'
+          ? 'Shared questions are answered separately by every participant.'
+          : 'Only ${_activeName ?? 'the active participant'} answers this question.',
     );
     if (text == null || !_isCurrent(repository, sessionId)) return;
     await _save(
@@ -470,7 +554,12 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   Future<void> _addFollowUp(GuidedAnswer answer) async {
     final repository = ref.read(guidedRepositoryProvider);
     final sessionId = widget.sessionId;
-    final text = await _textDialog('Add follow-up', 'Question');
+    final text = await _textDialog(
+      'Add follow-up',
+      'Question',
+      hint: 'e.g. Can you give an example?',
+      message: 'The follow-up belongs to this answer and its participant.',
+    );
     if (text == null || !_isCurrent(repository, sessionId)) return;
     await _save(() => repository.addFollowUp(answer.id, text));
   }
@@ -609,6 +698,326 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     );
   }
 
+  void _notify(String message, {SnackBarAction? action}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), action: action));
+  }
+
+  Future<bool> _confirm(String title, String message, String action) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final result = await showGuidedScopedDialog<bool>(
+      context: context,
+      repository: repository,
+      isCurrent: () => _isCurrent(repository, sessionId),
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        scrollable: true,
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return result == true && _isCurrent(repository, sessionId);
+  }
+
+  Future<void> _lifecycleInfo(GuidedSessionDetail session, bool canEdit) {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final next = switch (session.status) {
+      'draft' => 'Start makes it active. Archive is also available.',
+      'active' => 'Complete marks it completed. Archive is also available.',
+      'completed' =>
+        'Completed sessions stay editable by authorised editors. Archive is the only further step.',
+      _ =>
+        'Archived sessions are read-only and cannot be reopened or restored.',
+    };
+    return showGuidedScopedDialog<void>(
+      context: context,
+      repository: repository,
+      isCurrent: () => _isCurrent(repository, sessionId),
+      builder: (context) => AlertDialog(
+        title: const Text('Lifecycle and recovery'),
+        scrollable: true,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Status: ${guidedStatusLabel(session.status)}',
+              key: const ValueKey('guided-lifecycle-status'),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(next),
+            const SizedBox(height: 8),
+            const Text(
+              'Archive is final: there is no reopen or restore action. Reports and JSON/CSV exports stay available.',
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Save history lists audit entries only; it cannot restore earlier versions. A deleted question can be restored with Undo straight after deleting it.',
+            ),
+            if (!canEdit) ...[
+              const SizedBox(height: 8),
+              const Text('You can view this session but cannot change it.'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sessionAction(GuidedSessionDetail session, String action) {
+    return switch (action) {
+      'details' => _editDetails(session),
+      'template' => _saveAsTemplate(session),
+      'archive' => _archive(),
+      _ => Future.value(),
+    };
+  }
+
+  Future<void> _archive() async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final confirmed = await _confirm(
+      'Archive session?',
+      'Archiving makes this organisation session read-only for everyone. There is no reopen or restore action. Reports and JSON/CSV exports stay available.',
+      'Archive',
+    );
+    if (!confirmed) return;
+    await _transition('archive');
+    if (_isCurrent(repository, sessionId) &&
+        _saveState == GuidedSaveState.saved) {
+      _notify('Session archived in the organisation workspace.');
+    }
+  }
+
+  Future<void> _editDetails(GuidedSessionDetail session) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final title = TextEditingController(text: session.title);
+    final owner = TextEditingController(text: session.ownerText ?? '');
+    final contextReference = TextEditingController(
+      text: session.contextReference ?? '',
+    );
+    final submit = await showGuidedScopedDialog<bool>(
+      context: context,
+      repository: repository,
+      isCurrent: () => _isCurrent(repository, sessionId),
+      builder: (context) => AlertDialog(
+        title: const Text('Session details'),
+        scrollable: true,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: title,
+              autofocus: true,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                labelText: 'Session title',
+                hintText: 'e.g. Q3 onboarding review',
+              ),
+            ),
+            TextField(
+              controller: owner,
+              maxLength: 255,
+              decoration: const InputDecoration(
+                labelText: 'Owner',
+                hintText: 'e.g. People team',
+              ),
+            ),
+            TextField(
+              controller: contextReference,
+              decoration: const InputDecoration(
+                labelText: 'Context / reference',
+                hintText: 'e.g. Ticket HR-142',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save details'),
+          ),
+        ],
+      ),
+    );
+    final newTitle = title.text.trim();
+    String? optional(TextEditingController controller) =>
+        controller.text.trim().isEmpty ? null : controller.text.trim();
+    final newOwner = optional(owner);
+    final newContext = optional(contextReference);
+    if (submit != true || !_isCurrent(repository, sessionId)) return;
+    if (newTitle.isEmpty) {
+      _notify('Session title cannot be blank. Nothing was changed.');
+      return;
+    }
+    await _save(
+      () => repository.updateSessionDetails(
+        sessionId,
+        title: newTitle,
+        ownerText: newOwner,
+        contextReference: newContext,
+        expectedRevision: _drafts?.revision ?? session.revision,
+      ),
+    );
+    if (_isCurrent(repository, sessionId) &&
+        _saveState == GuidedSaveState.saved) {
+      invalidateGuidedLists(ref);
+      _notify('Session details saved to the organisation workspace.');
+    }
+  }
+
+  Future<void> _saveAsTemplate(GuidedSessionDetail session) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final name = await _textDialog(
+      'Save as organisation template',
+      'Template name',
+      hint: 'e.g. Weekly check-in',
+      initialValue: session.title,
+      action: 'Save template',
+      message:
+          'Creates a new organisation template (version 1) in this organisation\'s Templates. Question wording, shared/participant targets and follow-up branches are copied as numbered participant slots. Answers and participant names are not included, and this session is not changed.',
+    );
+    if (name == null || !_isCurrent(repository, sessionId)) return;
+    await _drafts?.flush();
+    if (!_isCurrent(repository, sessionId)) return;
+    if (_drafts?.error != null || _drafts?.isBusy == true) {
+      _notify('Save or resolve pending edits before creating a template.');
+      return;
+    }
+    try {
+      final full = await repository.getSession(sessionId);
+      if (!_isCurrent(repository, sessionId)) return;
+      final questions = guidedTemplateQuestionsFromSession(full);
+      if (questions.isEmpty) {
+        _notify('Add at least one question before saving a template.');
+        return;
+      }
+      await repository.createTemplateFromQuestions(name, questions);
+      if (!_isCurrent(repository, sessionId)) return;
+      ref.invalidate(guidedTemplatesProvider);
+      _notify(
+        'Saved organisation template "$name" (version 1). Answers were not included.',
+      );
+    } on GuidedConflict {
+      if (_isCurrent(repository, sessionId)) {
+        _notify(
+          'A template named "$name" already exists. Nothing was created; choose another name.',
+        );
+      }
+    } catch (error) {
+      if (_isCurrent(repository, sessionId)) {
+        _notify(
+          'Template creation was not confirmed ($error). Check Templates before retrying to avoid a duplicate.',
+        );
+      }
+    }
+  }
+
+  Future<void> _renameParticipant(GuidedParticipant participant) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final name = await _textDialog(
+      'Rename participant',
+      'Name',
+      hint: 'e.g. Alex (team lead)',
+      initialValue: participant.name,
+      action: 'Rename',
+    );
+    if (name == null ||
+        name == participant.name ||
+        !_isCurrent(repository, sessionId)) {
+      return;
+    }
+    await _save(() => repository.renameParticipant(participant.id, name));
+    if (_isCurrent(repository, sessionId) &&
+        _saveState == GuidedSaveState.saved) {
+      _notify('Participant renamed in the organisation workspace.');
+    }
+  }
+
+  Future<void> _removeParticipant(GuidedParticipant participant) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final sessionId = widget.sessionId;
+    final confirmed = await _confirm(
+      'Remove ${participant.name}?',
+      'Only participants without answers or participant questions can be removed, so other participants\' answers and branches are never changed. If ${participant.name} has content, nothing is removed.',
+      'Remove',
+    );
+    if (!confirmed) return;
+    await _drafts?.flush();
+    if (!_isCurrent(repository, sessionId) || _drafts?.error != null) return;
+    if (mounted) setState(() => _saveState = GuidedSaveState.saving);
+    try {
+      await repository.removeParticipant(participant.id);
+      if (!_isCurrent(repository, sessionId)) return;
+      setState(() {
+        _saveState = GuidedSaveState.saved;
+        if (_participantId == participant.id) _participantId = null;
+      });
+      _refresh();
+      _notify(
+        'Removed ${participant.name} from the organisation session.',
+        action: SnackBarAction(
+          label: 'Add back',
+          onPressed: () {
+            if (!_isCurrent(repository, sessionId)) return;
+            unawaited(
+              _save(() async {
+                final restored = await repository.addParticipant(
+                  sessionId,
+                  participant.name,
+                );
+                if (_isCurrent(repository, sessionId)) {
+                  setState(() => _participantId = restored.id);
+                }
+              }),
+            );
+          },
+        ),
+      );
+    } on GuidedConflict {
+      if (!_isCurrent(repository, sessionId)) return;
+      setState(() => _saveState = GuidedSaveState.idle);
+      _refresh();
+      _notify(
+        '${participant.name} has answers or participant questions, so nothing was removed.',
+      );
+    } catch (error) {
+      if (!_isCurrent(repository, sessionId)) return;
+      setState(() => _saveState = GuidedSaveState.failed);
+      _refresh();
+      _notify(
+        'Removal of ${participant.name} was not confirmed ($error). Reloaded the session.',
+      );
+    }
+  }
+
   Future<void> _history() async {
     final repository = ref.read(guidedRepositoryProvider);
     final sessionId = widget.sessionId;
@@ -633,6 +1042,12 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
               : ListView(
                   shrinkWrap: true,
                   children: [
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Audit entries only. Earlier versions cannot be restored from this list.',
+                      ),
+                    ),
                     for (final revision in revisions)
                       ListTile(
                         title: Text(revision.change),
@@ -666,6 +1081,8 @@ class _SessionHeader extends StatelessWidget {
     required this.onHistory,
     required this.onPrint,
     required this.onTransition,
+    required this.onLifecycleInfo,
+    required this.onSessionAction,
   });
 
   final GuidedSessionDetail session;
@@ -678,6 +1095,8 @@ class _SessionHeader extends StatelessWidget {
   final VoidCallback onHistory;
   final VoidCallback? onPrint;
   final VoidCallback? onTransition;
+  final VoidCallback onLifecycleInfo;
+  final ValueChanged<String>? onSessionAction;
 
   @override
   Widget build(BuildContext context) {
@@ -704,8 +1123,9 @@ class _SessionHeader extends StatelessWidget {
         ),
         Text(
           [
-            session.status,
-            session.visibility,
+            'Organisation',
+            guidedVisibilityLabel(session.visibility),
+            'Status: ${guidedStatusLabel(session.status)}',
             if (session.ownerText?.isNotEmpty == true) session.ownerText!,
             if (session.contextReference?.isNotEmpty == true)
               session.contextReference!,
@@ -739,6 +1159,32 @@ class _SessionHeader extends StatelessWidget {
         icon: const Icon(Icons.groups_outlined),
         onPressed: () => onToggleReport(true),
       ),
+      IconButton(
+        tooltip: 'Lifecycle and recovery',
+        icon: const Icon(Icons.info_outline),
+        onPressed: onLifecycleInfo,
+      ),
+      if (onSessionAction != null)
+        PopupMenuButton<String>(
+          tooltip: 'Session actions',
+          icon: const Icon(Icons.more_vert),
+          onSelected: onSessionAction,
+          itemBuilder: (_) => [
+            const PopupMenuItem(
+              value: 'details',
+              child: Text('Edit session details'),
+            ),
+            const PopupMenuItem(
+              value: 'template',
+              child: Text('Save as organisation template'),
+            ),
+            if (session.status != 'archived')
+              const PopupMenuItem(
+                value: 'archive',
+                child: Text('Archive session'),
+              ),
+          ],
+        ),
       PopupMenuButton<String>(
         tooltip: 'Export',
         icon: const Icon(Icons.download_outlined),
@@ -979,7 +1425,7 @@ class GuidedQuestionNode extends StatelessWidget {
         ? 'Follow-up'
         : question.scope == 'participant'
         ? 'Participant-specific'
-        : 'Prepared · Shared';
+        : 'Shared';
     return _CappedBranchIndent(
       depth: depth,
       child: SizedBox(
@@ -1050,22 +1496,28 @@ class GuidedQuestionNode extends StatelessWidget {
                           question.text,
                       managedDebounce: managedDebounce,
                       minLines: 1,
+                      labelText: question.source == 'follow_up'
+                          ? 'Follow-up question text'
+                          : 'Question text',
+                      hintText: question.source == 'follow_up'
+                          ? 'e.g. What made that difficult?'
+                          : 'e.g. What would you like to cover first?',
                       style: Theme.of(context).textTheme.titleMedium,
                       onEditing: onEditing,
                       onSave: (value) => onSaveQuestion(question, value),
                     ),
                   const SizedBox(height: 10),
-                  Text(
-                    'Answer · $participantName',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  if (readOnly)
+                  if (readOnly) ...[
+                    Text(
+                      'Answer · $participantName',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                     Text(
                       answer?.body.isNotEmpty == true
                           ? answer!.body
                           : 'No answer recorded.',
-                    )
-                  else
+                    ),
+                  ] else
                     _DebouncedField(
                       key: ValueKey('answer-${question.id}-$participantId'),
                       initialValue:
@@ -1078,6 +1530,7 @@ class GuidedQuestionNode extends StatelessWidget {
                       managedDebounce: managedDebounce,
                       allowBlank: true,
                       minLines: 2,
+                      labelText: 'Answer · $participantName',
                       hintText: 'Record $participantName’s answer...',
                       onEditing: onEditing,
                       onSave: (value) => onSaveAnswer(question, answer, value),
@@ -1181,6 +1634,7 @@ class _DebouncedField extends StatefulWidget {
     required this.onSave,
     required this.minLines,
     this.hintText,
+    this.labelText,
     this.style,
     this.allowBlank = false,
     this.managedDebounce = false,
@@ -1192,6 +1646,7 @@ class _DebouncedField extends StatefulWidget {
   final Future<void> Function(String) onSave;
   final int minLines;
   final String? hintText;
+  final String? labelText;
   final TextStyle? style;
   final bool allowBlank;
   final bool managedDebounce;
@@ -1273,7 +1728,9 @@ class _DebouncedFieldState extends State<_DebouncedField> {
       minLines: widget.minLines,
       maxLines: null,
       style: widget.style,
+      scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       decoration: InputDecoration(
+        labelText: widget.labelText,
         hintText: widget.hintText,
         isDense: true,
         errorText: _error,
@@ -1428,3 +1885,19 @@ class _ReportQuestion extends StatelessWidget {
     );
   }
 }
+
+String guidedStatusLabel(String status) => switch (status) {
+  'draft' => 'Draft',
+  'active' => 'Active',
+  'completed' => 'Completed',
+  'archived' => 'Archived',
+  _ => status,
+};
+
+String guidedVisibilityLabel(String visibility) => switch (visibility) {
+  'private' => 'Private to creator',
+  'organisation' => 'Organisation members',
+  'department' => 'Department',
+  'team' => 'Team',
+  _ => visibility,
+};

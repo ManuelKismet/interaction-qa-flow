@@ -7,10 +7,10 @@ String buildGuidedReportDocument({
   required DateTime generatedAt,
 }) {
   final participantNames = {
-    for (final participant in session.participants) participant.id: participant.name,
+    for (final participant in session.participants)
+      participant.id: participant.name,
   };
-  String participantName(String? id) =>
-      participantNames[id] ?? 'Participant';
+  String participantName(String? id) => participantNames[id] ?? 'Participant';
 
   bool isRelevant(GuidedQuestion question) {
     if (question.deletedAt != null) return false;
@@ -106,11 +106,13 @@ String buildGuidedReportDocument({
   <h3>Follow-up trigger answer unavailable</h3>
   <p>Parent question: ${_escapeHtml(question.text)}</p>
  </article>''');
-        sections.addAll(renderQuestion(
-          followUp,
-          path: [...path, index + 1],
-          parentText: question.text,
-        ));
+        sections.addAll(
+          renderQuestion(
+            followUp,
+            path: [...path, index + 1],
+            parentText: question.text,
+          ),
+        );
       }
     }
     return sections;
@@ -121,7 +123,11 @@ String buildGuidedReportDocument({
       : 'Active participant — ${participantId == null ? 'Not selected' : participantName(participantId)}';
   final participantSummary = allParticipants
       ? session.participants.map((item) => _escapeHtml(item.name)).join(', ')
-      : _escapeHtml(participantId == null ? 'Not selected' : participantName(participantId));
+      : _escapeHtml(
+          participantId == null
+              ? 'Not selected'
+              : participantName(participantId),
+        );
   final questions = <String>[];
   for (final (index, question) in session.questions.indexed) {
     questions.addAll(renderQuestion(question, path: [index + 1]));

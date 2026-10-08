@@ -257,6 +257,77 @@ class GuidedRepository {
     });
   }
 
+  Future<GuidedParticipant> renameParticipant(
+    String participantId,
+    String name,
+  ) {
+    return _request(() async {
+      final response = await _client.patch<Map<String, dynamic>>(
+        '/api/v1/guided/participants/$participantId',
+        data: {'name': name},
+        options: _options,
+        cancelToken: cancelToken,
+      );
+      return GuidedParticipant.fromJson(response.data!);
+    });
+  }
+
+  /// The server refuses (409) to remove a participant that has answers or
+  /// targeted questions, so other participants' content is never affected.
+  Future<void> removeParticipant(String participantId) {
+    return _request(() async {
+      await _client.delete<void>(
+        '/api/v1/guided/participants/$participantId',
+        options: _options,
+        cancelToken: cancelToken,
+      );
+    });
+  }
+
+  Future<void> updateSessionDetails(
+    String sessionId, {
+    required String title,
+    required String? ownerText,
+    required String? contextReference,
+    required int expectedRevision,
+  }) {
+    return _request(() async {
+      await _client.patch<Map<String, dynamic>>(
+        '/api/v1/guided/sessions/$sessionId',
+        data: {
+          'title': title,
+          'owner_text': ownerText,
+          'context_reference': contextReference,
+          'expected_revision': expectedRevision,
+        },
+        options: _options,
+        cancelToken: cancelToken,
+      );
+    });
+  }
+
+  /// Creates a new organisation template (version 1) from structured
+  /// question inputs; see [guidedTemplateQuestionsFromSession].
+  Future<GuidedTemplate> createTemplateFromQuestions(
+    String name,
+    List<Map<String, dynamic>> questions, {
+    String? description,
+  }) {
+    return _request(() async {
+      final response = await _client.post<Map<String, dynamic>>(
+        '/api/v1/guided/templates',
+        data: {
+          'name': name,
+          'description': ?description,
+          'questions': questions,
+        },
+        options: _options,
+        cancelToken: cancelToken,
+      );
+      return GuidedTemplate.fromJson(response.data!);
+    });
+  }
+
   Future<void> addQuestion(
     String sessionId,
     String text, {

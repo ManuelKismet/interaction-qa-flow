@@ -188,7 +188,9 @@ class GuidedSessionDetail extends GuidedSessionSummary {
       templateId: summary.templateId,
       templateVersionId: summary.templateVersionId,
       participants: (json['participants'] as List<dynamic>? ?? const [])
-          .map((item) => GuidedParticipant.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) => GuidedParticipant.fromJson(item as Map<String, dynamic>),
+          )
           .toList(),
       questions: (json['questions'] as List<dynamic>? ?? const [])
           .map((item) => GuidedQuestion.fromJson(item as Map<String, dynamic>))
@@ -254,7 +256,10 @@ class GuidedTemplate {
       currentVersion: json['current_version'] as int,
       createdById: json['created_by'] as String?,
       questions: (version?['questions'] as List<dynamic>? ?? const [])
-          .map((item) => GuidedTemplateQuestion.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) =>
+                GuidedTemplateQuestion.fromJson(item as Map<String, dynamic>),
+          )
           .toList(),
     );
   }
@@ -325,4 +330,48 @@ class GuidedRevision {
   final int revisionNumber;
   final String change;
   final DateTime createdAt;
+}
+
+/// Builds organisation template question inputs from a full (all
+/// participants, all relevant) session detail.
+///
+/// Answers, participant names and IDs are not copied: participants that own a
+/// participant question or follow-up become numbered `Participant N` slots
+/// (zero-padded so the server's alphabetical slot ordering keeps session
+/// order). Shared/participant targets and answer-owned follow-up branches are
+/// preserved through `reference`/`parent_reference`.
+List<Map<String, dynamic>> guidedTemplateQuestionsFromSession(
+  GuidedSessionDetail session,
+) {
+  final width = session.participants.length.toString().length;
+  final slots = <String, String>{
+    for (final (index, participant) in session.participants.indexed)
+      participant.id:
+          'Participant ${(index + 1).toString().padLeft(width, '0')}',
+  };
+  final result = <Map<String, dynamic>>[];
+  void add(GuidedQuestion question, int order, String? parentId) {
+    final isFollowUp = parentId != null;
+    final scope = isFollowUp ? 'participant' : question.scope;
+    result.add({
+      'text': question.text,
+      'scope': scope,
+      'order_index': order,
+      'participant_reference': scope == 'participant'
+          ? slots[question.targetParticipantId]
+          : null,
+      'reference': question.id,
+      'parent_reference': parentId,
+    });
+    for (final (index, followUp) in question.followUps.indexed) {
+      if (followUp.deletedAt != null) continue;
+      add(followUp, index, question.id);
+    }
+  }
+
+  for (final (index, question) in session.questions.indexed) {
+    if (question.deletedAt != null) continue;
+    add(question, index, null);
+  }
+  return result;
 }

@@ -40,6 +40,13 @@ final completedGuidedSessionsProvider = FutureProvider.autoDispose((ref) {
   );
 });
 
+final archivedGuidedSessionsProvider = FutureProvider.autoDispose((ref) {
+  return _loadGuided(
+    ref,
+    (repository) => repository.listSessions(status: 'archived'),
+  );
+});
+
 final guidedTemplatesProvider = FutureProvider.autoDispose((ref) {
   return _loadGuided(ref, (repository) => repository.listTemplates());
 });
@@ -70,4 +77,5 @@ void invalidateGuidedLists(WidgetRef ref) {
   ref.invalidate(activeGuidedSessionsProvider);
   ref.invalidate(draftGuidedSessionsProvider);
   ref.invalidate(completedGuidedSessionsProvider);
+  ref.invalidate(archivedGuidedSessionsProvider);
 }
