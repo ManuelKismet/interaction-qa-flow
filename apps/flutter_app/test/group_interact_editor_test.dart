@@ -346,7 +346,9 @@ void main() {
     (tester) async {
       final repository = _Repository();
       await _mount(tester, repository);
-      final questionEdit = find.byKey(const ValueKey('guest-question-text-root'));
+      final questionEdit = find.byKey(
+        const ValueKey('guest-question-text-root'),
+      );
       await tester.scrollUntilVisible(
         questionEdit,
         180,
@@ -1337,9 +1339,20 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       expect(find.text('Add to Group draft'), findsNothing);
-      await tester.scrollUntilVisible(find.text('Add shared question'), 160, scrollable: scrollable, maxScrolls: 100);
+      await tester.scrollUntilVisible(
+        find.text('Add shared question'),
+        160,
+        scrollable: scrollable,
+        maxScrolls: 100,
+      );
       await _tap(tester, find.text('Add shared question'));
-      await tester.enterText(find.descendant(of: find.byType(AlertDialog).last, matching: find.byType(TextFormField)), 'Keyboard question');
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AlertDialog).last,
+          matching: find.byType(TextFormField),
+        ),
+        'Keyboard question',
+      );
       await _tap(tester, find.widgetWithText(FilledButton, 'Add question'));
       await _tap(tester, find.text('Save Group copy'));
       expect(repository.entry['data']['participants'], hasLength(3));
@@ -1379,7 +1392,9 @@ void main() {
         scrollable: scrollable,
         maxScrolls: 100,
       );
-      final field = find.byKey(const ValueKey('guest-question-text-root-child-child-child-child'));
+      final field = find.byKey(
+        const ValueKey('guest-question-text-root-child-child-child-child'),
+      );
       await _tap(tester, field);
       await tester.enterText(
         field,

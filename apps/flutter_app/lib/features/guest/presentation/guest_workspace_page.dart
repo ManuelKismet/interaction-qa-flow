@@ -4653,8 +4653,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
 
   Future<void> _addQuestion({required bool shared}) async {
     final sessionId = widget.session['id'];
-    final initialParticipantIds =
-        _participants.map((item) => item['id'] as String).toList();
+    final initialParticipantIds = _participants
+        .map((item) => item['id'] as String)
+        .toList();
     if (initialParticipantIds.isEmpty) return;
     final targetParticipantId =
         initialParticipantIds.contains(_selectedParticipantId)
@@ -4683,17 +4684,22 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     );
     if (values == null || !mounted || widget.session['id'] != sessionId) return;
     if (duplicateGuestParticipantIds(widget.session).isNotEmpty) {
-      _notify('Question editing is paused because participant IDs are duplicated.');
+      _notify(
+        'Question editing is paused because participant IDs are duplicated.',
+      );
       return;
     }
-    final participantIds =
-        _participants.map((item) => item['id'] as String).toList();
+    final participantIds = _participants
+        .map((item) => item['id'] as String)
+        .toList();
     if (participantIds.isEmpty) {
       _notify('Add a participant before adding a question.');
       return;
     }
     if (!shared && !participantIds.contains(targetParticipantId)) {
-      _notify('The selected participant is no longer available. Choose a participant and try again.');
+      _notify(
+        'The selected participant is no longer available. Choose a participant and try again.',
+      );
       return;
     }
     final question = widget.makeQuestion(
@@ -4706,7 +4712,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted ||
         widget.session['id'] != sessionId ||
-        !_scrollController.hasClients) return;
+        !_scrollController.hasClients)
+      return;
     await _scrollController.animateTo(
       _scrollController.position.maxScrollExtent,
       duration: const Duration(milliseconds: 200),
@@ -4834,129 +4841,131 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             constraints.maxWidth >= 800 &&
             MediaQuery.textScalerOf(context).scale(14) <= 20;
         final destination = Chip(
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                avatar: Icon(
-                  widget.isPersonalAccount
-                      ? Icons.lock_person_outlined
-                      : Icons.phone_android_outlined,
-                  size: 18,
-                ),
-                label: Text(
-                  widget.isPersonalAccount
-                      ? 'Destination: Private account'
-                      : 'Destination: Local · this device',
-                ),
-              );
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          avatar: Icon(
+            widget.isPersonalAccount
+                ? Icons.lock_person_outlined
+                : Icons.phone_android_outlined,
+            size: 18,
+          ),
+          label: Text(
+            widget.isPersonalAccount
+                ? 'Destination: Private account'
+                : 'Destination: Local · this device',
+          ),
+        );
         final pdfAction = OutlinedButton.icon(
-            onPressed: () => widget.onPrint(_selectedParticipantId),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: const Text('Download / Share PDF'),
-          );
+          onPressed: () => widget.onPrint(_selectedParticipantId),
+          icon: const Icon(Icons.picture_as_pdf_outlined),
+          label: const Text('Download / Share PDF'),
+        );
         return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            IconButton(
-              tooltip: 'Back to sessions',
-              onPressed: widget.onBack,
-              icon: const Icon(Icons.arrow_back),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge,
-                  ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IconButton(
+                  tooltip: 'Back to sessions',
+                  onPressed: widget.onBack,
+                  icon: const Icon(Icons.arrow_back),
                 ),
-              ),
-            ),
-            if (inlineActions) ...[
-              if (widget.groupName == null) destination,
-              const SizedBox(width: 8),
-              pdfAction,
-              const SizedBox(width: 8),
-            ],
-            PopupMenuButton<String>(
-              tooltip: 'More session actions',
-              onSelected: (value) {
-                switch (value) {
-                  case 'rename':
-                    _renameSession();
-                  case 'template':
-                    widget.onSaveTemplate();
-                  case 'json':
-                    widget.onCopyJson();
-                  case 'delete':
-                    widget.onDelete();
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'rename',
-                  child: Text('Rename session'),
-                ),
-                if (widget.groupName == null)
-                  PopupMenuItem(
-                    value: 'template',
-                    enabled: !duplicateIds,
-                    child: Text(
-                      widget.privateWorkspace
-                          ? 'Save as private template'
-                          : 'Save as local template',
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Semantics(
+                      header: true,
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge,
+                      ),
                     ),
                   ),
-                const PopupMenuItem(
-                  value: 'json',
-                  child: Text('Copy session JSON backup'),
                 ),
-                if (widget.groupName == null) const PopupMenuDivider(),
+                if (inlineActions) ...[
+                  if (widget.groupName == null) destination,
+                  const SizedBox(width: 8),
+                  pdfAction,
+                  const SizedBox(width: 8),
+                ],
+                PopupMenuButton<String>(
+                  tooltip: 'More session actions',
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'rename':
+                        _renameSession();
+                      case 'template':
+                        widget.onSaveTemplate();
+                      case 'json':
+                        widget.onCopyJson();
+                      case 'delete':
+                        widget.onDelete();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: Text('Rename session'),
+                    ),
+                    if (widget.groupName == null)
+                      PopupMenuItem(
+                        value: 'template',
+                        enabled: !duplicateIds,
+                        child: Text(
+                          widget.privateWorkspace
+                              ? 'Save as private template'
+                              : 'Save as local template',
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'json',
+                      child: Text('Copy session JSON backup'),
+                    ),
+                    if (widget.groupName == null) const PopupMenuDivider(),
+                    if (widget.groupName == null)
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Delete session'),
+                      ),
+                  ],
+                  icon: const Icon(Icons.more_vert),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (widget.groupName == null && !inlineActions) destination,
+                if (!inlineActions) pdfAction,
+                if (!statusPinned)
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(widget.storageStatus),
+                  ),
+                if (widget.groupName != null)
+                  Text('Shared · Group: ${widget.groupName}'),
                 if (widget.groupName == null)
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Text('Delete session'),
+                  const _GuestInfoButton(
+                    tooltip: 'Session lifecycle information',
+                    title: 'About session lifecycle',
+                    content:
+                        'Local and private account sessions stay editable. They '
+                        'have no draft, active, completed or archived status. '
+                        'Delete removes a session with Undo while the message is '
+                        'shown; private account changes are confirmed by the save '
+                        'status. Organisation sessions use their own server '
+                        'lifecycle.',
                   ),
               ],
-              icon: const Icon(Icons.more_vert),
             ),
           ],
-        ),
-        const SizedBox(height: 4),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (widget.groupName == null && !inlineActions) destination,
-            if (!inlineActions) pdfAction,
-            if (!statusPinned)
-              Semantics(liveRegion: true, child: Text(widget.storageStatus)),
-            if (widget.groupName != null)
-              Text('Shared · Group: ${widget.groupName}'),
-            if (widget.groupName == null)
-              const _GuestInfoButton(
-                tooltip: 'Session lifecycle information',
-                title: 'About session lifecycle',
-                content:
-                    'Local and private account sessions stay editable. They '
-                    'have no draft, active, completed or archived status. '
-                    'Delete removes a session with Undo while the message is '
-                    'shown; private account changes are confirmed by the save '
-                    'status. Organisation sessions use their own server '
-                    'lifecycle.',
-              ),
-          ],
-        ),
-
-      ],
         );
       },
     );
@@ -5029,47 +5038,48 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     ],
   );
 
-  Widget _questionActions(BuildContext context, bool hasParticipants) => Padding(
-    padding: const EdgeInsets.only(top: 12),
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 440;
-        return Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            const _GuestInfoButton(
-              tooltip: 'Question help',
-              title: 'About shared and participant questions',
-              content:
-                  'Shared questions get separate answers from each '
-                  'participant. Participant questions are asked only of '
-                  'the active participant. Templates are optional.',
-            ),
-            FilledButton.tonal(
-              onPressed: hasParticipants
-                  ? () => _addQuestion(shared: true)
-                  : null,
-              child: const Text('Add shared question'),
-            ),
-            Tooltip(
-              message: 'Add question for the active participant',
-              child: FilledButton.tonal(
-                onPressed: hasParticipants
-                    ? () => _addQuestion(shared: false)
-                    : null,
-                child: Text(
-                  compact
-                      ? 'Add participant question'
-                      : 'Add question for active participant',
+  Widget _questionActions(BuildContext context, bool hasParticipants) =>
+      Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 440;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                const _GuestInfoButton(
+                  tooltip: 'Question help',
+                  title: 'About shared and participant questions',
+                  content:
+                      'Shared questions get separate answers from each '
+                      'participant. Participant questions are asked only of '
+                      'the active participant. Templates are optional.',
                 ),
-              ),
-            ),
-          ],
-        );
-      },
-    ),
-  );
+                FilledButton.tonal(
+                  onPressed: hasParticipants
+                      ? () => _addQuestion(shared: true)
+                      : null,
+                  child: const Text('Add shared question'),
+                ),
+                Tooltip(
+                  message: 'Add question for the active participant',
+                  child: FilledButton.tonal(
+                    onPressed: hasParticipants
+                        ? () => _addQuestion(shared: false)
+                        : null,
+                    child: Text(
+                      compact
+                          ? 'Add participant question'
+                          : 'Add question for active participant',
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
