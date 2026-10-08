@@ -180,7 +180,7 @@ void main() {
     },
   );
 
-  for (final width in [360.0, 800.0, 1200.0]) {
+  for (final width in [360.0, 800.0, 832.0, 1200.0]) {
     testWidgets('session header and inline fields fit ${width}px', (
       tester,
     ) async {
@@ -213,7 +213,8 @@ void main() {
       final destination = find.text('Destination: Local · this device');
       final pdf = find.text('Download / Share PDF');
       final menu = find.byTooltip('More session actions');
-      if (width >= 800) {
+      // The session list contributes 16px padding on each side.
+      if (width >= 832) {
         expect(
           (tester.getCenter(title).dy - tester.getCenter(pdf).dy).abs(),
           lessThan(16),
