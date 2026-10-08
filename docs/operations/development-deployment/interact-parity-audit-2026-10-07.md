@@ -1,5 +1,19 @@
 # Interact parity audit — 2026-10-07
 
+## Batch 4 DEV frontend published and verified — 2026-10-08
+
+Founder authorised the next deployment step after choosing external manual acceptance. Published the independently tested configured build from exact source `6c97993c0de10f5199a26f3dda09697560d7e707` (repository tree `57c8260b1e96b683689d477576b5c678b1b1285e`, Flutter subtree `9528f2b5760a27996b46d35cc0bd439fff066f5d`). This rollout supersedes the earlier “not yet deployed” status below; those sections retain historical review evidence.
+
+Firebase DEV Hosting release `1791483895509000`, version `408afbad8341c730`, published successfully with 36 files. All 36 served files on each of `https://intqaflow-dev.web.app/` and `https://intqaflow-dev.firebaseapp.com/` matched the local upload manifest byte lengths and SHA-256 hashes. Browser load of the DEV guest workspace also succeeded; this is load verification, not authenticated acceptance.
+
+The independently tested build hashes remain: index.html `a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858` (1531 bytes); flutter_bootstrap.js `0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67` (9805 bytes); main.dart.js `8a13ff7e5500360cd5b7b94b314c3ab7f50470576fa045d92a60653d7b36bf7d` (4677702 bytes). Verification receipt: `/workspaces/batch4-dev-publication-20261008/publication-verified.json`; publisher log and full manifest are retained alongside it.
+
+API health and readiness both returned HTTP 200. Existing API revision `intqaflow-dev-api-review80f421d` and 100% traffic allocation were unchanged. Previous batch 3 Hosting release `1791473511974000` / version `f2b2a3b33b4acd94` is retained for rollback. No backend, schema, IAM, credentials, production deployment or merge was performed.
+
+**External manual acceptance remains pending.** Founder will sign in externally and check Group shared-copy editing/save/reopen, recursive questions and answers, permission boundaries, concurrent-edit conflict handling, phone layout/keyboard and PDF/share/printing. Original local/private copies must remain intact. Cloud-browser sign-in diagnosis remains paused. Guest reload to the session list is accepted (IP-19 closed); users reopen their session manually. Refresh the external DEV page before testing; Hosting cache max-age is 300 seconds.
+
+Cleanup verified on GitHub: Codespace “bookish happiness” stopped; its row shows last-used time rather than Active. Existing files and deployment receipts retained.
+
 ## Batch 4 independent review complete — 2026-10-08
 
 Exact corrected final source `6c97993c0de10f5199a26f3dda09697560d7e707`, repository tree `57c8260b1e96b683689d477576b5c678b1b1285e`, Flutter subtree `9528f2b5760a27996b46d35cc0bd439fff066f5d`. Founder authorised exact pushed-commit review because the original mailbox exceeds GitHub's 100MiB cap; no filtered/reconstructed mailbox used. Same Copilot task/branch retained, completed three sessions.
