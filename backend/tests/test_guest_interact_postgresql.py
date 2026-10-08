@@ -3,16 +3,18 @@ from copy import deepcopy
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select, text
-
 from app.core.database import get_session
 from app.main import app
 from app.models.guest import GuestGroupEntry, GuestGroupEntryRevision
 from app.repositories.guest import GuestRepository
+from sqlalchemy import func, select, text
+
 from tests import test_guest_interact_edit as interact_tests
+from tests import test_organisation_administration_postgres as postgres_tests
 from tests.test_guest_groups import bearer, install_test_tokens, make_group
 from tests.test_guest_interact_edit import add_member, interact_graph, share_interact
-from tests.test_organisation_administration_postgres import postgres_sessions
+
+postgres_sessions = postgres_tests.postgres_sessions
 
 
 @pytest_asyncio.fixture

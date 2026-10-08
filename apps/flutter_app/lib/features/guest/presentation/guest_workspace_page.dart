@@ -5801,6 +5801,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   final Set<String> _uncertainArchivedDeletionIds = {};
   bool _archivedDeleteNeedsSafeRefresh = false;
   bool _initialEntryOpened = false;
+  bool _groupEditorOpen = false;
+  final Set<VoidCallback> _groupDialogClosers = {};
 
   GuestGroupRepository get _repository =>
       ref.read(guestGroupRepositoryProvider);
@@ -5823,6 +5825,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     if (nextUid == _activeUid) return;
     _activeUid = nextUid;
     _loadGeneration++;
+    _createGroupNameDraft = '';
+    _createGroupDisplayNameDraft = '';
+    _joinTokenDraft = '';
+    _joinDisplayNameDraft = '';
+    _createKnowledgeDrafts.clear();
+    _entryEditDrafts.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _closeGroupDialogs());
     if (mounted) {
       setState(() {
         _groups = const [];
@@ -5840,13 +5849,50 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) _loadGroups();
+    if (state == AppLifecycleState.resumed && mounted && !_groupEditorOpen) {
+      _loadGroups();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _closeGroupDialogs());
     super.dispose();
+  }
+
+  void _closeGroupDialogs() {
+    final closers = _groupDialogClosers.toList();
+    _groupDialogClosers.clear();
+    for (final close in closers.reversed) {
+      close();
+    }
+  }
+
+  Future<T?> _showScopedGroupDialog<T>({
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    VoidCallback? close;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: (dialogContext) {
+          if (close == null) {
+            final route = ModalRoute.of(dialogContext);
+            final navigator = Navigator.of(dialogContext);
+            close = () {
+              if (route != null && route.isActive) navigator.removeRoute(route);
+            };
+            _groupDialogClosers.add(close!);
+          }
+          return builder(dialogContext);
+        },
+      );
+    } finally {
+      if (close != null) _groupDialogClosers.remove(close);
+    }
   }
 
   Future<bool> _loadGroups({String? preferredGroupId}) async {
@@ -5899,7 +5945,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
             if (entry['id'] == widget.initialEntryId) {
               _initialEntryOpened = true;
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) _openEntry(entry);
+                if (_isCurrentLoad(uid, generation) &&
+                    _groupId == selectedGroupId) {
+                  _openEntry(entry);
+                }
               });
               break;
             }
@@ -6755,10 +6804,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 
   Future<void> _openEntry(Map<String, dynamic> entry) async {
     final groupId = _groupId;
-    if (groupId == null) return;
+    final uid = _activeUid;
+    final generation = _loadGeneration;
+    if (groupId == null || uid == null || !_isCurrentLoad(uid, generation)) {
+      return;
+    }
+    bool current() => _isCurrentLoad(uid, generation) && _groupId == groupId;
     var entryDialogActive = true;
-    final entryDialog = showDialog<void>(
-      context: context,
+    final entryDialog = _showScopedGroupDialog<void>(
       builder: (entryDialogContext) => AlertDialog(
         title: Text(entry['title'] as String? ?? 'Group entry'),
         content: SizedBox(
@@ -6772,7 +6825,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 groupId: groupId,
                 entryId: entry['id'] as String,
               );
-              if (entryDialogActive &&
+              if (current() &&
+                  entryDialogActive &&
                   entryDialogContext.mounted &&
                   (ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
                 entryDialogActive = false;
@@ -6788,13 +6842,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 groupId: groupId,
                 entryId: entry['id'] as String,
               );
-              if (!entryDialogActive ||
+              if (!current() ||
+                  !entryDialogActive ||
                   !entryDialogContext.mounted ||
                   !(ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
                 return;
               }
-              await showDialog<void>(
-                context: entryDialogContext,
+              await _showScopedGroupDialog<void>(
                 builder: (context) => AlertDialog(
                   title: const Text('Entry revisions'),
                   content: SizedBox(
@@ -6826,6 +6880,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           if (_canEdit(entry))
             TextButton(
               onPressed: () {
+                if (!current()) return;
                 entryDialogActive = false;
                 Navigator.pop(entryDialogContext);
                 _editEntry(entry);
@@ -6835,6 +6890,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           if (_canEdit(entry))
             TextButton(
               onPressed: () {
+                if (!current()) return;
                 entryDialogActive = false;
                 Navigator.pop(entryDialogContext);
                 _deleteEntry(entry);
@@ -7120,29 +7176,35 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       final uid = _activeUid;
       final generation = _loadGeneration;
       if (uid == null || !_canEdit(entry)) return;
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => _GroupInteractEditor(
-          entry: entry,
-          groupId: groupId,
-          groupName: _group?['name'] as String? ?? 'Group',
-          uid: uid,
-          isOriginCurrent: () =>
-              _isCurrentLoad(uid, generation) && _groupId == groupId,
-        ),
-      );
+      _groupEditorOpen = true;
+      try {
+        await _showScopedGroupDialog<void>(
+          barrierDismissible: false,
+          builder: (_) => _GroupInteractEditor(
+            entry: entry,
+            groupId: groupId,
+            groupName: _group?['name'] as String? ?? 'Group',
+            uid: uid,
+            isOriginCurrent: () =>
+                _isCurrentLoad(uid, generation) && _groupId == groupId,
+          ),
+        );
+      } finally {
+        _groupEditorOpen = false;
+      }
       if (_isCurrentLoad(uid, generation) && _groupId == groupId) {
         await _loadGroup(groupId);
       }
       return;
     }
     final entryId = entry['id'] as String;
+    final uid = _activeUid;
+    final generation = _loadGeneration;
+    if (uid == null || !_isCurrentLoad(uid, generation)) return;
     final sourceData = entry['data'] is Map
         ? Map<String, dynamic>.from(entry['data'] as Map)
         : <String, dynamic>{};
-    final values = await showDialog<Map<String, String>>(
-      context: context,
+    final values = await _showScopedGroupDialog<Map<String, String>>(
       builder: (context) => _GuestEntryEditDialog(
         title:
             _entryEditDrafts[entryId]?['title'] ??
@@ -7163,13 +7225,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (mounted) _entryEditDrafts.remove(entryId);
       return;
     }
-    if (!mounted) return;
+    if (!_isCurrentLoad(uid, generation) || _groupId != groupId) return;
     _entryEditDrafts[entryId] = values;
     final editedTitle = values['title']!;
     final updatedData = entry['kind'] == 'interact_session'
         ? sourceData
         : {...sourceData, 'body': values['body']!, 'answer': values['answer']!};
     final succeeded = await _run(() async {
+      if (!_isCurrentLoad(uid, generation) || _groupId != groupId) return;
       await _repository.updateEntry(
         groupId: groupId,
         entryId: entryId,
@@ -7467,6 +7530,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _groupId,
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Your approved groups',
             ),
@@ -7474,7 +7538,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
               for (final group in _groups)
                 DropdownMenuItem(
                   value: group['id'] as String,
-                  child: Text('${group['name']} · ${group['role']}'),
+                  child: Text(
+                    '${group['name']} · ${group['role']}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
             ],
             onChanged: _busy

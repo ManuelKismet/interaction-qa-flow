@@ -1,2 +1,0 @@
-cd backend && ../batch4-backend/venv/bin/python -m pytest tests/test_guest_interact_edit.py tests/test_guest_groups.py tests/test_personal_workspace.py -q
-exit=0

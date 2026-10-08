@@ -40,15 +40,14 @@ class GuestGroupRepository {
         .toList();
   });
 
-  Future<List<Map<String, dynamic>>> listArchivedGroups() =>
-      _request(() async {
-        final response = await _client.get<List<dynamic>>(
-          '/api/v1/guest/groups/archived',
-        );
-        return (response.data ?? const [])
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
-      });
+  Future<List<Map<String, dynamic>>> listArchivedGroups() => _request(() async {
+    final response = await _client.get<List<dynamic>>(
+      '/api/v1/guest/groups/archived',
+    );
+    return (response.data ?? const [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  });
 
   Future<Map<String, dynamic>> createGroup({
     required String name,
@@ -61,13 +60,12 @@ class GuestGroupRepository {
     return response.data!;
   });
 
-  Future<Map<String, dynamic>> getGroup(String groupId) =>
-      _request(() async {
-        final response = await _client.get<Map<String, dynamic>>(
-          '/api/v1/guest/groups/$groupId',
-        );
-        return response.data!;
-      });
+  Future<Map<String, dynamic>> getGroup(String groupId) => _request(() async {
+    final response = await _client.get<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId',
+    );
+    return response.data!;
+  });
 
   Future<Map<String, dynamic>> createInvitation({
     required String groupId,
@@ -232,8 +230,8 @@ class GuestGroupRepository {
         final data = response.data ?? const <String, dynamic>{};
         return {
           'results': (data['results'] as List<dynamic>? ?? const [])
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .toList(),
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList(),
           'partial': data['partial'] == true,
         };
       });
@@ -294,6 +292,7 @@ class GuestGroupRepository {
         throw const ApiException(
           'This content changed since you opened it. '
           'Refresh and review the latest version before saving.',
+          statusCode: 409,
         );
       }
       throw ApiException.fromDio(error);

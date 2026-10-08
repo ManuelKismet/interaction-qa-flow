@@ -20,7 +20,8 @@ class _GroupInteractEditor extends ConsumerStatefulWidget {
       _GroupInteractEditorState();
 }
 
-class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
+class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
+    with WidgetsBindingObserver {
   final _navigator = GlobalKey<NavigatorState>();
   BuildContext? _editorContext;
   late Map<String, dynamic> _baseline;
@@ -30,6 +31,7 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
   bool _uncertain = false;
   bool _conflict = false;
   bool _closing = false;
+  int _editorGeneration = 0;
   String _status = 'Saved Group copy';
 
   GuestGroupRepository get _repository =>
@@ -48,7 +50,7 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
     final data = _copyMap(session);
     // Entry title is authoritative; retain the payload's existing title field.
     if ((_baseline['data'] as Map).containsKey('title')) {
-      data['title'] = session['title'];
+      data['title'] = (_baseline['data'] as Map)['title'];
     } else {
       data.remove('title');
     }
@@ -76,13 +78,61 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
     return left == right;
   }
 
-  bool get _dirty => !_matches(_baseline, _draft);
+  bool get _dirty => !_closing && !_unavailable && !_matches(_baseline, _draft);
 
   @override
   void initState() {
     super.initState();
     _baseline = _copyMap(widget.entry);
     _draft = _session(_baseline);
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshAccess());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshAccess();
+  }
+
+  Future<void> _refreshAccess() async {
+    if (_busy || _unavailable || !_current) return;
+    _beginBusy();
+    try {
+      final remote = await _readAuthorized();
+      if (remote == null) return;
+      if (remote['revision'] != _baseline['revision']) {
+        setState(() {
+          if (_dirty || _uncertain || _conflict) {
+            _conflict = true;
+            _status = 'Conflict: draft kept. Review the latest Group copy.';
+          } else {
+            _baseline = _copyMap(remote);
+            _draft = _session(remote);
+            _editorGeneration++;
+            _status = 'Saved Group copy · revision ${remote['revision']}';
+          }
+        });
+      }
+    } on Object catch (error) {
+      if (!_current) {
+        _invalidate();
+      } else if (_denied(error)) {
+        _unavailableNow();
+      } else {
+        setState(
+          () => _status =
+              'Access could not be refreshed. Saving requires a fresh permission check.',
+        );
+      }
+    } finally {
+      if (_current && !_closing) setState(() => _busy = false);
+    }
   }
 
   void _invalidate() {
@@ -92,6 +142,12 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
     _baseline = {};
     // All editor dialogs live on the nested navigator and are disposed together.
     Navigator.of(context).pop();
+  }
+
+  void _beginBusy() {
+    final editorContext = _editorContext;
+    if (editorContext != null) FocusScope.of(editorContext).unfocus();
+    setState(() => _busy = true);
   }
 
   void _unavailableNow() {
@@ -150,6 +206,8 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
       return false;
     }
     final attempted = _copyMap(_draft);
+    final editorContext = _editorContext;
+    if (editorContext != null) FocusScope.of(editorContext).unfocus();
     setState(() {
       _busy = true;
       _status = 'Saving Group copy…';
@@ -179,6 +237,11 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
         _invalidate();
         return false;
       }
+      if (saved['id'] != widget.entry['id'] ||
+          saved['revision'] != (_baseline['revision'] as int) + 1 ||
+          !_matches(saved, attempted)) {
+        throw const ApiException('The save response could not be confirmed.');
+      }
       setState(() {
         _baseline = _copyMap(saved);
         _draft = _session(saved);
@@ -207,7 +270,7 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
 
   Future<void> _reconcile() async {
     if (_busy || !_current || _unavailable) return;
-    setState(() => _busy = true);
+    _beginBusy();
     try {
       final remote = await _readAuthorized();
       if (remote == null) return;
@@ -242,7 +305,7 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
 
   Future<void> _review() async {
     if (_busy || !_current || _unavailable) return;
-    setState(() => _busy = true);
+    _beginBusy();
     try {
       final remote = await _readAuthorized();
       final dialogContext = _dialogContext;
@@ -288,6 +351,7 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
         setState(() {
           _baseline = _copyMap(remote);
           _draft = _session(remote);
+          _editorGeneration++;
           _conflict = false;
           _uncertain = false;
           _status = 'Latest Group copy loaded · revision ${remote['revision']}';
@@ -353,7 +417,7 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
 
   Future<void> _export() async {
     if (_busy || !_current || _unavailable) return;
-    setState(() => _busy = true);
+    _beginBusy();
     try {
       // Export only an authorised persisted revision, never an unconfirmed draft.
       final remote = await _readAuthorized();
@@ -401,6 +465,224 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
     }
   }
 
+  Future<void> _history() async {
+    if (_busy || !_current || _unavailable) return;
+    _beginBusy();
+    try {
+      if (await _readAuthorized() == null) return;
+      final history = await _repository.entryHistory(
+        groupId: widget.groupId,
+        entryId: widget.entry['id'] as String,
+      );
+      final dialogContext = _dialogContext;
+      if (!_current || dialogContext == null || !dialogContext.mounted) return;
+      await showDialog<void>(
+        context: dialogContext,
+        useRootNavigator: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Entry revisions'),
+          content: SizedBox(
+            width: 640,
+            height: MediaQuery.sizeOf(context).height * 0.55,
+            child: ListView(
+              children: [
+                for (final revision in history)
+                  ListTile(
+                    title: Text(
+                      'Revision ${revision['revision']} · ${revision['title']}',
+                    ),
+                    subtitle: const Text('Updated by a group member'),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } on Object catch (error) {
+      if (!_current) {
+        _invalidate();
+      } else if (_denied(error)) {
+        _unavailableNow();
+      } else {
+        setState(() => _status = 'History unavailable. Draft kept.');
+      }
+    } finally {
+      if (_current && !_closing) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _report(String? participantId) async {
+    if (_busy || !_current || _unavailable) return;
+    _beginBusy();
+    try {
+      if (await _readAuthorized() == null) return;
+      final exported = await _repository.exportEntry(
+        groupId: widget.groupId,
+        entryId: widget.entry['id'] as String,
+      );
+      var dialogContext = _dialogContext;
+      if (!_current || dialogContext == null || !dialogContext.mounted) return;
+      final scope = await showDialog<String>(
+        context: dialogContext,
+        useRootNavigator: false,
+        builder: (context) => SimpleDialog(
+          title: const Text('Saved Group copy report scope'),
+          children: [
+            if (participantId != null)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, participantId),
+                child: const Text('Selected participant'),
+              ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, '*'),
+              child: const Text('All participants'),
+            ),
+          ],
+        ),
+      );
+      dialogContext = _dialogContext;
+      if (scope == null ||
+          !_current ||
+          dialogContext == null ||
+          !dialogContext.mounted) {
+        return;
+      }
+      final session = _session(exported);
+      final allParticipants = scope == '*';
+      final selected = allParticipants ? null : scope;
+      final report = composeGuestReport(
+        session: session,
+        allParticipants: allParticipants,
+        participantId: selected,
+        exportedAt: DateTime.now().toUtc(),
+      );
+      Future<bool> authorize() async {
+        if (!_current) return false;
+        try {
+          return await _readAuthorized() != null && _current;
+        } on Object catch (error) {
+          if (!_current) {
+            _invalidate();
+          } else if (_denied(error)) {
+            _unavailableNow();
+          } else {
+            setState(
+              () => _status =
+                  'Export authorization unconfirmed. No copy created.',
+            );
+          }
+          return false;
+        }
+      }
+
+      Future<void> printCopy() async {
+        if (!await authorize()) return;
+        openPrintableReport(
+          buildGuestReportDocument(
+            session: session,
+            allParticipants: allParticipants,
+            participantId: selected,
+            generatedAt: report.exportedAt,
+          ),
+        );
+      }
+
+      Future<void> pdfCopy({required bool share}) async {
+        final confirmationContext = _dialogContext;
+        if (!_current ||
+            confirmationContext == null ||
+            !confirmationContext.mounted) {
+          return;
+        }
+        final confirmed = await showDialog<bool>(
+          context: confirmationContext,
+          useRootNavigator: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Export a saved Group PDF copy?'),
+            content: const Text(
+              'Unsaved edits are excluded. Recipients may keep or forward this copy after Group access is removed.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true || !await authorize()) return;
+        try {
+          final bytes = await buildGuestReportPdf(report);
+          if (!_current || !await authorize()) return;
+          if (!share && await downloadPdf(bytes, guestReportFilename(report))) {
+            return;
+          }
+          if (!_current || !await authorize()) return;
+          if (kIsWeb && !share) {
+            await printCopy();
+            return;
+          }
+          if (!mounted) return;
+          final box = context.findRenderObject() as RenderBox?;
+          await SharePlus.instance.share(
+            ShareParams(
+              title: 'Share Interact PDF',
+              text: 'Portable saved Group copy. Recipients may retain it.',
+              files: [XFile.fromData(bytes, mimeType: 'application/pdf')],
+              fileNameOverrides: [guestReportFilename(report)],
+              downloadFallbackEnabled: false,
+              sharePositionOrigin: box == null
+                  ? null
+                  : box.localToGlobal(Offset.zero) & box.size,
+            ),
+          );
+        } on UnsupportedPdfCharactersException {
+          if (_current && mounted) {
+            _showPdfFontFallbackNotice(context);
+            await printCopy();
+          }
+        } on Object {
+          if (_current) {
+            setState(
+              () => _status = 'PDF export unconfirmed. Try browser print.',
+            );
+          }
+        }
+      }
+
+      await showDialog<void>(
+        context: dialogContext,
+        useRootNavigator: false,
+        builder: (context) => _GuestReportPreviewDialog(
+          report: report,
+          onDownload: () => pdfCopy(share: false),
+          onShare: () => pdfCopy(share: true),
+          onPrintFallback: printCopy,
+        ),
+      );
+    } on Object catch (error) {
+      if (!_current) {
+        _invalidate();
+      } else if (_denied(error)) {
+        _unavailableNow();
+      } else {
+        setState(() => _status = 'Report unavailable. No copy confirmed.');
+      }
+    } finally {
+      if (_current && !_closing) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(authStateProvider, (_, next) {
@@ -411,6 +693,7 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
         _invalidate();
       }
     });
+    if (_closing) return const SizedBox.shrink();
     return Dialog.fullscreen(
       child: PopScope(
         canPop: _closing,
@@ -419,106 +702,148 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor> {
         },
         child: Navigator(
           key: _navigator,
-          onGenerateRoute: (_) => MaterialPageRoute<void>(
-            builder: (context) {
-              _editorContext = context;
-              return Scaffold(
-                appBar: AppBar(
-                  automaticallyImplyLeading: false,
-                  title: const Text('Edit shared copy'),
-                  actions: [
-                    IconButton(
-                      tooltip: 'Close Group editor',
-                      onPressed: _busy ? null : _close,
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-                body: SafeArea(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
+          onDidRemovePage: (_) {},
+          pages: [
+            MaterialPage<void>(
+              child: Builder(
+                builder: (context) {
+                  if (_closing || !_current) return const SizedBox.shrink();
+                  _editorContext = context;
+                  return Scaffold(
+                    appBar: AppBar(
+                      automaticallyImplyLeading: false,
+                      title: const Text('Edit shared copy'),
+                      actions: [
+                        IconButton(
+                          tooltip: 'Group copy revision history',
+                          onPressed: _busy || _unavailable ? null : _history,
+                          icon: const Icon(Icons.history),
                         ),
-                        child: Text(
-                          'Group: ${widget.groupName} · Shared copy\nEdits affect this Group copy only. Personal/local originals stay separate.',
-                        ),
-                      ),
-                      if (_unavailable)
-                        Expanded(child: Center(child: Text(_status)))
-                      else ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              FilledButton(
-                                onPressed:
-                                    _busy || _conflict || _uncertain || !_dirty
-                                    ? null
-                                    : _save,
-                                child: const Text('Save Group copy'),
-                              ),
-                              if (_uncertain)
-                                OutlinedButton(
-                                  onPressed: _busy ? null : _reconcile,
-                                  child: const Text('Check save status'),
-                                ),
-                              if (_conflict)
-                                OutlinedButton(
-                                  onPressed: _busy ? null : _review,
-                                  child: const Text('Review latest copy'),
-                                ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: AbsorbPointer(
-                            absorbing: _busy || _uncertain,
-                            child: _GuestSessionEditor(
-                              key: ValueKey(
-                                '${widget.uid}/${widget.groupId}/${widget.entry['id']}',
-                              ),
-                              session: _draft,
-                              storageStatus: _status,
-                              isPersonalAccount: false,
-                              privateWorkspace: false,
-                              groupName: widget.groupName,
-                              onBack: _close,
-                              onChange: (session) {
-                                if (!_current ||
-                                    _busy ||
-                                    _uncertain ||
-                                    _unavailable) {
-                                  return;
-                                }
-                                setState(() {
-                                  _draft = _copyMap(session);
-                                  if (!_conflict) {
-                                    _status = 'Unsaved Group copy draft';
-                                  }
-                                });
-                              },
-                              onDelete: () {},
-                              onSaveTemplate: () {},
-                              onPrint: (_) => _export(),
-                              onCopyJson: _export,
-                              makeQuestion: _newGuestQuestion,
-                            ),
-                          ),
+                        IconButton(
+                          tooltip: 'Close Group editor',
+                          onPressed: _busy ? null : _close,
+                          icon: const Icon(Icons.close),
                         ),
                       ],
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+                    ),
+                    body: SafeArea(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight: constraints.maxHeight * 0.4,
+                              ),
+                              child: SingleChildScrollView(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Text(
+                                        'Group: ${widget.groupName} · Shared copy\nEdits affect this Group copy only. Personal/local originals stay separate.',
+                                      ),
+                                      Semantics(
+                                        liveRegion: true,
+                                        child: Text(_status),
+                                      ),
+                                      if (!_unavailable)
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            FilledButton(
+                                              onPressed:
+                                                  _busy ||
+                                                      _conflict ||
+                                                      _uncertain ||
+                                                      !_dirty
+                                                  ? null
+                                                  : _save,
+                                              child: const Text(
+                                                'Save Group copy',
+                                              ),
+                                            ),
+                                            if (_uncertain)
+                                              OutlinedButton(
+                                                onPressed: _busy
+                                                    ? null
+                                                    : _reconcile,
+                                                child: const Text(
+                                                  'Check save status',
+                                                ),
+                                              ),
+                                            if (_conflict)
+                                              OutlinedButton(
+                                                onPressed: _busy
+                                                    ? null
+                                                    : _review,
+                                                child: const Text(
+                                                  'Review latest copy',
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_unavailable)
+                              Expanded(child: Center(child: Text(_status)))
+                            else ...[
+                              Expanded(
+                                child: AbsorbPointer(
+                                  absorbing: _busy || _uncertain,
+                                  child: _GuestSessionEditor(
+                                    key: ValueKey(
+                                      '${widget.uid}/${widget.groupId}/${widget.entry['id']}/$_editorGeneration',
+                                    ),
+                                    session: _draft,
+                                    storageStatus: _status,
+                                    isPersonalAccount: false,
+                                    privateWorkspace: false,
+                                    groupName: widget.groupName,
+                                    onBack: _close,
+                                    onChange: (session) {
+                                      if (!_current ||
+                                          _busy ||
+                                          _uncertain ||
+                                          _unavailable) {
+                                        return;
+                                      }
+                                      setState(() {
+                                        _draft = _copyMap(session);
+                                        if (!_conflict) {
+                                          _status = 'Unsaved Group copy draft';
+                                        }
+                                      });
+                                    },
+                                    onDelete: () {},
+                                    onSaveTemplate: () {},
+                                    onPrint: _report,
+                                    onCopyJson: _export,
+                                    makeQuestion: _newGuestQuestion,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
