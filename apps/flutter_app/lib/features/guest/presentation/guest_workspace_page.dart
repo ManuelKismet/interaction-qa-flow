@@ -1959,6 +1959,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         : null;
     final viewport = MediaQuery.sizeOf(context);
     final compactViewport = viewport.height < 300;
+    final hasWorkspaceNavigation =
+        widget.personalWorkspaceEnabled &&
+        widget.onWorkspaceTabChanged != null;
+    final workspaceHelp = widget.initialWorkspaceTab == 0
+        ? _knowledgeInfoButton
+        : _interactInfoButton(_verifiedPersonalUid != null);
     final narrowViewport = viewport.width < 420;
     final workspaceNotices = <Widget>[
       if (_unsavedChanges)
@@ -2114,6 +2120,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                             AccountMembershipStatus.noMembership,
                         saveStatus: _saveStatus,
                       ),
+                      if (hasWorkspaceNavigation) workspaceHelp,
                     ],
                   ),
             actions: [
@@ -2126,7 +2133,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       AccountMembershipStatus.noMembership,
                   saveStatus: _saveStatus,
                 ),
-              if (compactViewport)
+              if (viewport.width < 320 && hasWorkspaceNavigation)
+                workspaceHelp,
+              if (compactViewport && !hasWorkspaceNavigation)
                 Builder(
                   builder: (context) => PopupMenuButton<int>(
                     tooltip: 'Switch Knowledge or Interact',
@@ -2185,7 +2194,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                 ],
               ),
             ],
-            bottom: compactViewport
+            bottom: compactViewport || hasWorkspaceNavigation
                 ? null
                 : TabBar(
                     onTap: _handleWorkspaceTabChanged,
@@ -2270,6 +2279,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                           ...workspaceNotices,
                         Expanded(
                           child: TabBarView(
+                            physics: hasWorkspaceNavigation
+                                ? const NeverScrollableScrollPhysics()
+                                : null,
                             children: [
                               _GuestKnowledgeTab(
                                 items: data.knowledge,
