@@ -2068,7 +2068,7 @@ void main() {
 
       await _scrollToTopOfVerticalList(
         tester,
-        anchor: find.text('Save to private account'),
+        anchor: find.byType(Form),
       );
       await _ensureVisibleInVerticalList(
         tester,
