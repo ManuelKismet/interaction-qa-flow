@@ -715,8 +715,22 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
                     return Scaffold(
                       appBar: AppBar(
                         automaticallyImplyLeading: false,
-                        title: const Text('Edit shared copy'),
+                        toolbarHeight: 48,
+                        title: Text(
+                          'Edit shared copy',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
                         actions: [
+                          _GuestInfoButton(
+                            tooltip: 'Group copy information',
+                            title: 'About this Group copy',
+                            content:
+                                'Group: ${widget.groupName} · Shared copy\n\n'
+                                'Edits affect this Group copy only. Personal/local '
+                                'originals stay separate. Use Save Group copy to '
+                                'confirm changes; closing an unsaved draft requires '
+                                'your choice. Revision history shows saved copies.',
+                          ),
                           IconButton(
                             tooltip: 'Group copy revision history',
                             onPressed: _busy || _unavailable ? null : _history,
@@ -748,13 +762,6 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
-                                        Text(
-                                          'Group: ${widget.groupName} · Shared copy\nEdits affect this Group copy only. Personal/local originals stay separate.',
-                                        ),
-                                        Semantics(
-                                          liveRegion: true,
-                                          child: Text(_status),
-                                        ),
                                         if (!_unavailable)
                                           Wrap(
                                             spacing: 8,
@@ -773,6 +780,10 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
                                                 child: const Text(
                                                   'Save Group copy',
                                                 ),
+                                              ),
+                                              Semantics(
+                                                liveRegion: true,
+                                                child: Text(_status),
                                               ),
                                               if (_uncertain)
                                                 OutlinedButton(
@@ -800,7 +811,14 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
                                 ),
                               ),
                               if (_unavailable)
-                                Expanded(child: Center(child: Text(_status)))
+                                Expanded(
+                                  child: Center(
+                                    child: Semantics(
+                                      liveRegion: true,
+                                      child: Text(_status),
+                                    ),
+                                  ),
+                                )
                               else ...[
                                 Expanded(
                                   child: AbsorbPointer(
