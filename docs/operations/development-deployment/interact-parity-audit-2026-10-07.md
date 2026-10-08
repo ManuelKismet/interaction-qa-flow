@@ -1,8 +1,14 @@
 # Interact parity audit — 2026-10-07
 
+## Batch 4 started — 2026-10-08
+
+Founder authorised batch 4 and selected **Edit shared copy**: existing authorised Group members can edit shared Interact questions and answers; originals remain independent. ONE new Copilot task submitted and UI verified **Queued / session started**: https://github.com/ManuelKismet/interaction-qa-flow/tasks/49641b6c-45e3-447f-9db4-2675b4a3fdde?q=is%3Aopen+author%3A%40me. Exact source-picker branch `fix/interact-parity-batch3-dev-20261008` pinned to complete accepted source `5a2dd26410a428b6a0b516efe53afc37d89362b7` (repository tree `46e373deec7f3351dd307d5b68d3e7042d75122b`, Flutter subtree `1a3642d9fde6dd377300c056966712174dcae89a`).
+
+Scope: IP05 shared-copy editor plus remaining IP12/IP22 permission/concurrency/identity and narrow-screen/accessibility regressions, IP01–IP24 acceptance matrix and manual scenarios. Reuse existing editors/APIs/revisions, preserve all batches 1–3 and Group eligibility; no live link, implicit import or original mutation. Full brief: [batch 4 handoff](interact-parity-batch4-handoff-20261008.md). Original incremental mailbox required from exact 5a2dd264; independent review and validation follow delivery. No batch 4 implementation result, new tests, merge or deployment claimed. DEV stays batch 3; Codespace remains stopped. Hosted authenticated and physical-device/accessibility acceptance remains OPEN. Earlier not-started entries are historical.
+
 ## Accepted reload behaviour — 2026-10-08, 16:48 BST
 
-Founder accepts the current guest/nonmember Interact reload behaviour: refreshing returns to the session list, where users can reopen the session they were working on. **IP19 reload decision CLOSED — accepted as designed; no automatic editor reopening or remembered-session change required.** This is a product acceptance decision, not a new implementation or browser test. It supersedes earlier OPEN reload-decision entries below. Hosted authenticated acceptance and batch 4 remain pending.
+Founder accepts the current guest/nonmember Interact reload behaviour: refreshing returns to the session list, where users can reopen the session they were working on. **IP19 reload decision CLOSED — accepted as designed; no automatic editor reopening or remembered-session change required.** This is a product acceptance decision, not a new implementation or browser test. It supersedes earlier OPEN reload-decision entries below. Hosted authenticated acceptance remains pending; batch 4 implementation is now assigned.
 
 ## Batch 3 DEV frontend rollout — 2026-10-08 (current)
 
@@ -16,7 +22,7 @@ API **`intqaflow-dev-api-review80f421d`100%traffic unchanged**, public health200
 
 Codespace **bookish happiness STOPPED**, explicitly confirmed GitHub toast and Last used (no Active). Isolated source`/workspaces/intqaflow-batch3-independent-20261008`, receipts`/workspaces/batch3-independent-receipts-20261008` (build-receipt.json/publication-verified.json/logs). Root four pre-existing dirty docs preserved. No ongoing test/build/deploy worker or DB started.
 
-**Accepted:** IP19 guest/nonmember reload returns to the session list; users reopen their session from there. Founder accepted this behaviour on 2026-10-08; no reload implementation required. **Still OPEN:** hosted authenticated personal/organisation/Groups and physical/device/accessibility acceptance (earlier cloud-browser auth issue, founder paused). Hosted-file and API verification are not an authenticated UI acceptance pass. No new hosted guest scenario matrix executed after this rollout. Batch 4 Group collaboration/full cross-role acceptance has not started. See `interact-parity-batch3-independent-review-20261008.md` for independent gates/findings and source receipts. Next remaining product work is batch 4; authenticated checks remain founder/manual pending as previously agreed.
+**Accepted:** IP19 guest/nonmember reload returns to the session list; users reopen their session from there. Founder accepted this behaviour on 2026-10-08; no reload implementation required. **Still OPEN:** hosted authenticated personal/organisation/Groups and physical/device/accessibility acceptance (earlier cloud-browser auth issue, founder paused). Hosted-file and API verification are not an authenticated UI acceptance pass. No new hosted guest scenario matrix executed after this rollout. Batch 4 implementation is now assigned; full cross-role acceptance remains pending. See `interact-parity-batch3-independent-review-20261008.md` for independent gates/findings and source receipts. Batch 4 is in progress; authenticated checks remain founder/manual pending as previously agreed.
 
 ## Scope and authority
 
