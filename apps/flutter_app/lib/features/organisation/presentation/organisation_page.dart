@@ -166,12 +166,12 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
       children: [
         Text(
           'My organisation',
-          style: Theme.of(context).textTheme.headlineMedium,
+          style: Theme.of(context).textTheme.bodyMedium,
         ),
         const SizedBox(height: 20),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -205,8 +205,12 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
           ),
         ),
         const SizedBox(height: 20),
-        Text('Your permissions', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
+        ExpansionTile(
+          key: ValueKey('permissions:${profile.userId}:${profile.organisationId}'),
+          tilePadding: EdgeInsets.zero,
+          maintainState: true,
+          title: const Text('Your permissions'),
+          children: [
         for (final item in const [
           ('team_create', 'Create Teams'),
           ('team_membership', 'Manage Team membership'),
@@ -232,6 +236,8 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
           const Text(
             'The administrator title alone grants no organisation permissions.',
           ),
+          ],
+        ),
         const SizedBox(height: 16),
         Text('Request a change', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
@@ -344,11 +350,21 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
         ],
         if (profile.isOwner) ...[
           const SizedBox(height: 24),
-          _OwnerAdministration(
+          ExpansionTile(
             key: ValueKey(
-              '${scope?.firebaseUid}:${profile.userId}:${profile.organisationId}:${profile.role}',
+              'owner:${scope?.firebaseUid}:${profile.userId}:${profile.organisationId}:${profile.role}',
             ),
-            profile: profile,
+            tilePadding: EdgeInsets.zero,
+            maintainState: true,
+            title: const Text('Owner administration'),
+            children: [
+              _OwnerAdministration(
+                key: ValueKey(
+                  '${scope?.firebaseUid}:${profile.userId}:${profile.organisationId}:${profile.role}',
+                ),
+                profile: profile,
+              ),
+            ],
           ),
         ],
       ],
@@ -543,10 +559,7 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Owner administration',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
+
         const Text('Administrator titles do not grant permissions.'),
         members.when(
           loading: () => const LinearProgressIndicator(),
