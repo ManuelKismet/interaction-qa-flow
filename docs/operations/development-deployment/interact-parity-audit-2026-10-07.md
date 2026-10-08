@@ -1,5 +1,11 @@
 # Interact parity audit — 2026-10-07
 
+## Batch 4 timeout recovery — 2026-10-08, 17:47 BST
+
+First session timed out after 25m31s. Durable checkpoint independently fetched: `9fa5caa84fb4da1f3b25f81602385c60336ca8e0` on `copilot/fixinteract-parity-batch4-edit-shared-copy` (prior editor commit `8db08bd`). Pushed source/editor integration, backend and widget tests and IP01–IP24 acceptance matrix inspected; saved `batch4-widget.log` confirms 35 Group widget passes. Copilot reports 115 existing Flutter and 198 PostgreSQL-enabled backend passes, not independently rerun. Final full Flutter/release, human-readable validation receipts, original mailbox/provenance and unchanged git-am proof were missing.
+
+Founder authorised completing batch 4. ONE completion request sent to SAME task `49641b6c-45e3-447f-9db4-2675b4a3fdde` / SAME branch from exact checkpoint; UI confirms **Queued, 2 sessions**, preparing environment. No competing job or main/base restart. Require final complete validation and immutable original exact-5a2dd264 mailbox; disclose early temporary environment captured then removed, ensure clean final source and complete reproducible mailbox without silently filtering history. Independent review follows coherent delivery. Batch 4 is NOT accepted or deployed. DEV remains batch 3, Codespace stopped; hosted auth investigation paused again by founder, device/authenticated acceptance OPEN.
+
 ## Batch 4 started — 2026-10-08
 
 Founder authorised batch 4 and selected **Edit shared copy**: existing authorised Group members can edit shared Interact questions and answers; originals remain independent. ONE new Copilot task submitted and UI verified **Queued / session started**: https://github.com/ManuelKismet/interaction-qa-flow/tasks/49641b6c-45e3-447f-9db4-2675b4a3fdde?q=is%3Aopen+author%3A%40me. Exact source-picker branch `fix/interact-parity-batch3-dev-20261008` pinned to complete accepted source `5a2dd26410a428b6a0b516efe53afc37d89362b7` (repository tree `46e373deec7f3351dd307d5b68d3e7042d75122b`, Flutter subtree `1a3642d9fde6dd377300c056966712174dcae89a`).
