@@ -303,7 +303,27 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
         response: Response(requestOptions: request, statusCode: 409),
       );
     }
-    final current = items.firstWhere((item) => item['id'] == id);
+    final current = items.where((item) => item['id'] == id).firstOrNull;
+    final request = RequestOptions(path: '/api/v1/personal/items/$id');
+    if (current == null) {
+      // Mirrors the server: an unknown item ID is a 404, never an upsert.
+      throw DioException(
+        requestOptions: request,
+        response: Response(requestOptions: request, statusCode: 404),
+      );
+    }
+    if (current['revision'] != expectedRevision) {
+      // Mirrors the server's idempotent replay and revision conflict rules.
+      if (current['revision'] == expectedRevision + 1 &&
+          current['title'] == title &&
+          jsonEncode(current['data']) == jsonEncode(data)) {
+        return current;
+      }
+      throw DioException(
+        requestOptions: request,
+        response: Response(requestOptions: request, statusCode: 409),
+      );
+    }
     final saved = {
       ...current,
       'title': title,
@@ -328,6 +348,14 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     final gate = nextDeleteGate;
     nextDeleteGate = null;
     if (gate != null) await gate.future;
+    final current = items.where((item) => item['id'] == id).firstOrNull;
+    if (current != null && current['revision'] != expectedRevision) {
+      final request = RequestOptions(path: '/api/v1/personal/items/$id');
+      throw DioException(
+        requestOptions: request,
+        response: Response(requestOptions: request, statusCode: 409),
+      );
+    }
     if (deleteFailures > 0) {
       deleteFailures--;
       if (deleteFailureAppliesOnServer) {
@@ -3433,6 +3461,248 @@ void main() {
         expect((await store.load()).sessions, isEmpty);
       },
     );
+
+    Future<_TestPersonalWorkspaceRepository> undoAfterQueuedUncertainDelete(
+      WidgetTester tester, {
+      required bool appliedOnServer,
+      required GuestWorkspaceStore store,
+      User? user,
+    }) async {
+      final session = accountSession('s1', 'Removable account session');
+      final repository =
+          _TestPersonalWorkspaceRepository([accountRecord(session)])
+            ..deleteFailures = 1
+            ..deleteFailureAppliesOnServer = appliedOnServer;
+      await tester.pumpWidget(
+        accountPage(
+          user: user ?? verified('a'),
+          store: store,
+          repository: repository,
+          initialSessionId: 's1',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await deleteOpenSession(tester);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      // The DELETE has finished with an unconfirmed outcome: it is pending
+      // for retry but no longer in flight when Undo is chosen.
+      expect(repository.deleteCalls, 1);
+      expect(find.text('Retry account save'), findsOneWidget);
+      expect(repository.items, appliedOnServer ? isEmpty : hasLength(1));
+      await tester.tap(find.text('Undo').hitTestable().first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(repository.deleteCalls, 1);
+      expect(find.text('Retry account save'), findsOneWidget);
+      expect(find.textContaining('save not confirmed'), findsWidgets);
+      expect(find.textContaining('Personal account · saved'), findsNothing);
+      return repository;
+    }
+
+    Future<void> retryAccountSave(WidgetTester tester) async {
+      await _tapVisibleTarget(tester, find.text('Retry account save'));
+      await tester.pumpAndSettle();
+    }
+
+    for (final appliedOnServer in [true, false]) {
+      testWidgets('Undo after a queued uncertain DELETE '
+          '(${appliedOnServer ? 'applied' : 'not applied'} on server) '
+          'reconciles to one account item', (tester) async {
+        final store = GuestWorkspaceStore(_MemoryGuestStorage());
+        final repository = await undoAfterQueuedUncertainDelete(
+          tester,
+          appliedOnServer: appliedOnServer,
+          store: store,
+        );
+        final listsBeforeRetry = repository.listCalls;
+        await retryAccountSave(tester);
+
+        expect(repository.listCalls, listsBeforeRetry + 1);
+        expect(repository.listUids.last, 'a');
+        expect(repository.deleteCalls, 1);
+        expect(find.text('Retry account save'), findsNothing);
+        expect(find.textContaining('not confirmed'), findsNothing);
+        if (appliedOnServer) {
+          // Recreated idempotently under the same source key.
+          expect(repository.importUids, ['a']);
+          expect(repository.updateRevisions, isEmpty);
+          expectSingleRestored(
+            repository,
+            accountSession('s1', 'Removable account session'),
+            revision: 1,
+          );
+          expect(repository.items.single['id'], 'record-interact_session:s1');
+        } else {
+          // The original record is retained through its known revision.
+          expect(repository.imports, isEmpty);
+          expect(repository.updateRevisions, [1]);
+          expectSingleRestored(
+            repository,
+            accountSession('s1', 'Removable account session'),
+            revision: 2,
+          );
+          expect(repository.items.single['id'], 'remote-s1');
+        }
+        expect((await store.load()).sessions, isEmpty);
+      });
+    }
+
+    testWidgets(
+      'reconciliation read failure keeps the Undo pending and retry converges',
+      (tester) async {
+        final store = GuestWorkspaceStore(_MemoryGuestStorage());
+        final repository = await undoAfterQueuedUncertainDelete(
+          tester,
+          appliedOnServer: true,
+          store: store,
+        );
+        var failRead = true;
+        repository.listHandler = (uid) async {
+          if (failRead) {
+            failRead = false;
+            throw StateError('Simulated network failure.');
+          }
+          return repository.items;
+        };
+        await retryAccountSave(tester);
+
+        expect(find.text('Retry account save'), findsOneWidget);
+        expect(find.textContaining('save not confirmed'), findsWidgets);
+        expect(find.textContaining('Personal account · saved'), findsNothing);
+        expect(repository.imports, isEmpty);
+        expect(repository.items, isEmpty);
+
+        await retryAccountSave(tester);
+        expect(repository.importUids, ['a']);
+        expect(repository.deleteCalls, 1);
+        expectSingleRestored(
+          repository,
+          accountSession('s1', 'Removable account session'),
+          revision: 1,
+        );
+        expect(find.text('Retry account save'), findsNothing);
+        expect((await store.load()).sessions, isEmpty);
+      },
+    );
+
+    testWidgets('a lost recreate response does not create a duplicate', (
+      tester,
+    ) async {
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      final repository = await undoAfterQueuedUncertainDelete(
+        tester,
+        appliedOnServer: true,
+        store: store,
+      );
+      // The recreate is applied but its response is lost.
+      repository.failedImports = 1;
+      await retryAccountSave(tester);
+      expect(repository.imports, hasLength(1));
+      expect(repository.items, hasLength(1));
+      expect(find.text('Retry account save'), findsOneWidget);
+
+      await retryAccountSave(tester);
+      expect(repository.imports, hasLength(1));
+      expect(repository.updateRevisions, isEmpty);
+      expect(repository.deleteCalls, 1);
+      expectSingleRestored(
+        repository,
+        accountSession('s1', 'Removable account session'),
+        revision: 1,
+      );
+      expect(find.text('Retry account save'), findsNothing);
+      expect((await store.load()).sessions, isEmpty);
+    });
+
+    for (final recreated in [false, true]) {
+      testWidgets(
+        'a ${recreated ? 'recreated' : 'changed'} remote record during an '
+        'uncertain-delete Undo needs explicit review',
+        (tester) async {
+          final store = GuestWorkspaceStore(_MemoryGuestStorage());
+          final repository = await undoAfterQueuedUncertainDelete(
+            tester,
+            appliedOnServer: recreated,
+            store: store,
+          );
+          final remoteSession = accountSession('s1', 'Changed elsewhere');
+          final remote = {
+            ...accountRecord(remoteSession),
+            if (recreated) 'id': 'other-device-record',
+            'revision': recreated ? 1 : 2,
+          };
+          repository.items = [remote];
+          await retryAccountSave(tester);
+
+          expect(find.text('Review account change'), findsOneWidget);
+          expect(find.textContaining('changed elsewhere'), findsWidgets);
+          // The newer remote content is untouched and nothing was duplicated.
+          expect(repository.items, [remote]);
+          expect(repository.imports, isEmpty);
+          expect(repository.updateRevisions, isEmpty);
+          expect(repository.deleteCalls, 1);
+          // The local Undo remains available for review.
+          expect(
+            find.textContaining('Removable account session'),
+            findsWidgets,
+          );
+
+          await _tapVisibleTarget(tester, find.text('Review account change'));
+          await tester.pumpAndSettle();
+          expect(
+            find.text(
+              'Latest saved version (revision ${remote['revision']}): '
+              'Changed elsewhere',
+            ),
+            findsOneWidget,
+          );
+          expect(find.text('Save my pending edit'), findsOneWidget);
+          await tester.tap(find.text('Cancel'));
+          await tester.pumpAndSettle();
+          expect(repository.items, [remote]);
+          expect(repository.updateRevisions, isEmpty);
+          expect((await store.load()).sessions, isEmpty);
+        },
+      );
+    }
+
+    for (final signOut in [false, true]) {
+      testWidgets('uncertain-delete reconciliation sends no writes after '
+          '${signOut ? 'sign-out' : 'a UID switch'}', (tester) async {
+        final store = GuestWorkspaceStore(_MemoryGuestStorage());
+        final repository = await undoAfterQueuedUncertainDelete(
+          tester,
+          appliedOnServer: true,
+          store: store,
+        );
+        final oldRead = Completer<List<Map<String, dynamic>>>();
+        repository.listHandler = (uid) => uid == 'a'
+            ? oldRead.future
+            : Future.value(<Map<String, dynamic>>[]);
+        await _tapVisibleTarget(tester, find.text('Retry account save'));
+        await tester.pump();
+
+        await tester.pumpWidget(
+          accountPage(
+            user: signOut ? null : verified('b'),
+            store: store,
+            repository: repository,
+          ),
+        );
+        await tester.pump();
+        oldRead.complete(<Map<String, dynamic>>[]);
+        await tester.pumpAndSettle();
+
+        expect(repository.importUids, isEmpty);
+        expect(repository.updateUids, isEmpty);
+        expect(repository.deleteUids, ['a']);
+        expect(repository.items, isEmpty);
+        expect(find.textContaining('Removable account session'), findsNothing);
+        expect(find.text('Retry account save'), findsNothing);
+        expect((await store.load()).sessions, isEmpty);
+      });
+    }
 
     for (final signOut in [false, true]) {
       testWidgets(

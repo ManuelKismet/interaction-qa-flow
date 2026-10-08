@@ -50,8 +50,13 @@ class _PersonalWorkspaceWrite {
     this.title,
     this.data,
     this.deleteAfterCreate = false,
+    this.reconcileRecordId,
+    this.reconcileRevision,
   });
 
+  /// `create`, `update`, `delete` or `reconcile`. A `reconcile` write restores
+  /// an item after an account removal whose outcome was not confirmed: the
+  /// latest same-UID account state is read before choosing create or update.
   final String action;
   final String kind;
   final String sourceKey;
@@ -59,6 +64,16 @@ class _PersonalWorkspaceWrite {
   final String? title;
   final Map<String, dynamic>? data;
   final bool deleteAfterCreate;
+
+  /// The account record (ID and revision) the unconfirmed removal targeted.
+  final String? reconcileRecordId;
+  final int? reconcileRevision;
+}
+
+class _PersonalReconcileConflict implements Exception {
+  const _PersonalReconcileConflict(this.remote);
+
+  final Map<String, dynamic> remote;
 }
 
 String _pdfFontPreviewMessage() => kIsWeb
@@ -138,6 +153,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   String? _personalLoadedUid;
   String? _openSessionId;
   _PersonalWorkspaceWrite? _inFlightPersonalWrite;
+  // Account removals that were sent but whose outcome was not confirmed,
+  // keyed by source key, with the record they targeted.
+  final Map<String, Map<String, dynamic>> _uncertainPersonalDeletes = {};
   bool _personalSaving = false;
   bool _personalImportSaving = false;
   int _personalWriteGeneration = 0;
@@ -189,6 +207,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     _personalItems = [];
     _pendingPersonalItems = [];
     _pendingPersonalWrites.clear();
+    _uncertainPersonalDeletes.clear();
     _pendingPersonalImport = [];
     _personalImportNeedsReselection = false;
     _personalConflictSourceKey = null;
@@ -571,6 +590,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       }
       final key = '$kind:${data['id']}';
       final replacement = submittedByKey[key];
+      if (_pendingPersonalWrites[key]?.action == 'reconcile') continue;
       if (replacement == null) {
         _enqueuePersonalWrite(
           _PersonalWorkspaceWrite(
@@ -605,16 +625,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         final current = _personalItems
             .where((item) => item['source_key'] == write.sourceKey)
             .firstOrNull;
+        // A removal that failed without confirmation may still have been
+        // applied by the server, so the restore reconciles first.
+        final uncertain = _uncertainPersonalDeletes[write.sourceKey];
         _enqueuePersonalWrite(
           _PersonalWorkspaceWrite(
             action: current == null || identical(_inFlightPersonalWrite, write)
                 ? 'create'
+                : uncertain != null
+                ? 'reconcile'
                 : 'update',
             kind: write.kind,
             sourceKey: write.sourceKey,
             sourceId: write.sourceId,
             title: _personalTitle(write.kind, replacement),
             data: replacement,
+            reconcileRecordId: uncertain?['id'] as String?,
+            reconcileRevision: uncertain?['revision'] as int?,
           ),
         );
         continue;
@@ -639,6 +666,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             title: _personalTitle(write.kind, replacement),
             data: replacement,
             deleteAfterCreate: write.deleteAfterCreate,
+            reconcileRecordId: write.reconcileRecordId,
+            reconcileRevision: write.reconcileRevision,
           ),
         );
       }
@@ -711,6 +740,44 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               .firstOrNull;
           if (current == null && write.action == 'delete') {
             saved = null;
+          } else if (write.action == 'reconcile') {
+            final latest = await repository.listItems(expectedUid: uid);
+            if (!mounted ||
+                generation != _personalGeneration ||
+                uid != _verifiedPersonalUid) {
+              return;
+            }
+            final remote = latest
+                .where((item) => item['source_key'] == write.sourceKey)
+                .firstOrNull;
+            if (remote == null) {
+              // The removal was applied: recreate idempotently by source key.
+              saved = await repository.createItem(
+                kind: write.kind,
+                sourceKey: write.sourceKey,
+                title: write.title!,
+                data: write.data!,
+                expectedUid: uid,
+              );
+              if (!_samePersonalContent(saved, write)) {
+                throw _PersonalReconcileConflict(saved);
+              }
+            } else if (remote['id'] == write.reconcileRecordId &&
+                remote['revision'] == write.reconcileRevision) {
+              // The removal was not applied and nothing changed elsewhere.
+              saved = await repository.updateItem(
+                id: remote['id'] as String,
+                expectedUid: uid,
+                expectedRevision: write.reconcileRevision!,
+                title: write.title!,
+                data: write.data!,
+              );
+            } else if (_samePersonalContent(remote, write)) {
+              // A previous restore whose response was lost already applied.
+              saved = remote;
+            } else {
+              throw _PersonalReconcileConflict(remote);
+            }
           } else if (write.action == 'create') {
             saved = await repository.createItem(
               kind: write.kind,
@@ -747,6 +814,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               data: write.data!,
             );
           } else {
+            _uncertainPersonalDeletes[write.sourceKey] = current;
             await repository.deleteItem(
               current['id'] as String,
               expectedUid: uid,
@@ -760,6 +828,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           }
           setState(() {
             _personalWriteGeneration++;
+            _uncertainPersonalDeletes.remove(write.sourceKey);
             if (saved != null) {
               _personalItems.removeWhere(
                 (item) => item['source_key'] == write.sourceKey,
@@ -789,9 +858,19 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               ),
             );
           }
+        } on _PersonalReconcileConflict catch (conflict) {
+          if (mounted &&
+              generation == _personalGeneration &&
+              uid == _verifiedPersonalUid) {
+            _showReconcileConflict(write, conflict.remote);
+          }
+          return;
         } on DioException catch (error) {
           if (error.response?.statusCode == 409) {
-            await _reloadPersonalConflict(uid, generation, write);
+            final conflictWrite = write.action == 'reconcile'
+                ? _reviewableRestore(entry.key, write)
+                : write;
+            await _reloadPersonalConflict(uid, generation, conflictWrite);
           } else if (mounted && generation == _personalGeneration) {
             setState(() {
               _personalError =
@@ -837,6 +916,52 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         }
       }
     }
+  }
+
+  bool _samePersonalContent(
+    Map<String, dynamic> record,
+    _PersonalWorkspaceWrite write,
+  ) =>
+      record['title'] == write.title &&
+      jsonEncode(record['data']) == jsonEncode(write.data);
+
+  /// Turns a pending restore into an ordinary pending edit so the existing
+  /// explicit conflict review decides whether it may replace the newer
+  /// account version.
+  _PersonalWorkspaceWrite _reviewableRestore(
+    String key,
+    _PersonalWorkspaceWrite write,
+  ) {
+    final reviewable = _PersonalWorkspaceWrite(
+      action: 'update',
+      kind: write.kind,
+      sourceKey: write.sourceKey,
+      sourceId: write.sourceId,
+      title: write.title,
+      data: write.data,
+    );
+    _uncertainPersonalDeletes.remove(write.sourceKey);
+    if (identical(_pendingPersonalWrites[key], write)) {
+      _pendingPersonalWrites[key] = reviewable;
+    }
+    return reviewable;
+  }
+
+  void _showReconcileConflict(
+    _PersonalWorkspaceWrite write,
+    Map<String, dynamic> remote,
+  ) {
+    setState(() {
+      _reviewableRestore('${write.kind}:${write.sourceId}', write);
+      _personalItems.removeWhere(
+        (item) => item['source_key'] == write.sourceKey,
+      );
+      _personalItems.add(remote);
+      _personalConflictSourceKey = write.sourceKey;
+      _personalConflictReloadFailed = false;
+      _personalError =
+          'This account item changed elsewhere while its removal was being undone. Your restored copy is preserved; review the latest account version before choosing.';
+    });
   }
 
   Future<void> _reloadPersonalConflict(
@@ -1428,6 +1553,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             _personalItems = [];
             _pendingPersonalItems = [];
             _pendingPersonalWrites.clear();
+            _uncertainPersonalDeletes.clear();
             _pendingPersonalImport = [];
             _personalImportNeedsReselection = false;
             _personalConflictSourceKey = null;
