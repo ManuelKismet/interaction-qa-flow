@@ -809,7 +809,7 @@ void main() {
         'Groups require a registered account with a verified email, but do '
         'not require organisation membership.',
       ),
-      findsOneWidget,
+      findsNothing,
     );
     await tester.tap(find.byTooltip('Groups information'));
     await tester.pumpAndSettle();
@@ -895,7 +895,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Create group').first);
+    await _openGroupAction(tester, 'Create group');
     await tester.pumpAndSettle();
     await tester.enterText(field('Group name'), 'Safety team');
     await tester.enterText(field('Your display name'), 'Alice');
@@ -909,7 +909,7 @@ void main() {
       find.textContaining('Status was refreshed. Review it before retrying.'),
       findsOneWidget,
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Create group').first);
+    await _openGroupAction(tester, 'Create group');
     await tester.pumpAndSettle();
     expect(
       tester.widget<TextField>(field('Group name')).controller!.text,
@@ -921,9 +921,7 @@ void main() {
     );
     await tapDialogAction('Cancel');
 
-    await tester.tap(
-      find.widgetWithText(OutlinedButton, 'Join with invitation'),
-    );
+    await _openGroupAction(tester, 'Join with invitation');
     await tester.pumpAndSettle();
     await tester.enterText(field('Invitation token'), 'temporary-token');
     await tester.enterText(field('Display name'), 'Alice');
@@ -937,9 +935,7 @@ void main() {
     await tapDialogAction('Request access');
     expect(repository.joinAttempts, 1);
     expect(find.textContaining('temporary-token'), findsNothing);
-    await tester.tap(
-      find.widgetWithText(OutlinedButton, 'Join with invitation'),
-    );
+    await _openGroupAction(tester, 'Join with invitation');
     await tester.pumpAndSettle();
     expect(
       tester.widget<TextField>(field('Invitation token')).controller!.text,
@@ -1023,7 +1019,7 @@ void main() {
     Finder field(String label) => find.byWidgetPredicate(
       (widget) => widget is TextField && widget.decoration?.labelText == label,
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Create group').first);
+    await _openGroupAction(tester, 'Create group');
     await tester.pumpAndSettle();
     await tester.enterText(field('Group name'), 'Uncertain group');
     await tester.enterText(field('Your display name'), 'Alice');
@@ -1043,7 +1039,7 @@ void main() {
       find.textContaining('private invitation-token detail'),
       findsNothing,
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Create group').first);
+    await _openGroupAction(tester, 'Create group');
     await tester.pumpAndSettle();
     expect(
       tester.widget<TextField>(field('Group name')).controller!.text,
@@ -1269,12 +1265,7 @@ void main() {
         child: const MaterialApp(home: SharedGuestGroupsPage()),
       ),
     );
-    await _pumpUntilEnabled(
-      tester,
-      find.widgetWithText(OutlinedButton, 'Preview and share local work'),
-    );
-
-    await tester.tap(find.text('Preview and share local work'));
+    await _openGroupAction(tester, 'Preview and share local work');
     await _pumpUntilFound(
       tester,
       find.text('Preview sharing to Local Safety Team'),
@@ -1342,7 +1333,7 @@ void main() {
     expect(repository.sharedKnowledgeIds, isNull);
     expect((await store.load()).sessions.single['title'], 'Private interview');
 
-    await tester.tap(find.text('Preview and share local work'));
+    await _openGroupAction(tester, 'Preview and share local work');
     await _pumpUntilFound(
       tester,
       find.text('Preview sharing to Local Safety Team'),
@@ -1472,9 +1463,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Manage members and invitations'));
+    await _openGroupAction(tester, 'Manage members and invitations');
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.tap(find.byType(PopupMenuButton<String>).hitTestable());
     await tester.pumpAndSettle();
     await tester.tap(find.text('Remove member'));
     await tester.pumpAndSettle();
@@ -1506,9 +1497,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Manage members and invitations'));
+    await _openGroupAction(tester, 'Manage members and invitations');
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.tap(find.byType(PopupMenuButton<String>).hitTestable());
     await tester.pumpAndSettle();
     await tester.tap(find.text('Request admin transfer'));
     await tester.pumpAndSettle();
@@ -1526,7 +1517,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Your group role: admin'),
+      find.textContaining(' · admin'),
       findsOneWidget,
       reason:
           'The requester keeps the current role until the recipient accepts.',
@@ -1564,7 +1555,7 @@ void main() {
       find.textContaining('asked to accept group administration'),
       findsNothing,
     );
-    expect(find.textContaining('Your group role: admin'), findsOneWidget);
+    expect(find.textContaining(' · admin'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1660,7 +1651,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Archive group'));
+    await _openGroupAction(tester, 'Archive group');
     await tester.pumpAndSettle();
     expect(find.text('Archive this group?'), findsOneWidget);
     expect(
@@ -1913,15 +1904,37 @@ Future<void> _ensureVisibleInVerticalList(
   expect(target.hitTestable(), findsOneWidget);
 }
 
-Future<void> _pumpUntilEnabled(WidgetTester tester, Finder finder) async {
+Future<void> _openGroupAction(WidgetTester tester, String label) async {
+  final menu = find.byWidgetPredicate(
+    (widget) =>
+        widget is PopupMenuButton<String> && widget.tooltip == 'Group options',
+  );
   for (var attempt = 0; attempt < 40; attempt++) {
     await tester.pump(const Duration(milliseconds: 50));
-    if (finder.evaluate().isNotEmpty &&
-        tester.widget<OutlinedButton>(finder).onPressed != null) {
+    if (menu.evaluate().isNotEmpty &&
+        tester.widget<PopupMenuButton<String>>(menu).enabled) {
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label).hitTestable());
+      await tester.pumpAndSettle();
+      return;
+    }
+    final button = find.byWidgetPredicate(
+      (widget) =>
+          (widget is FilledButton || widget is OutlinedButton) &&
+          widget is ButtonStyleButton &&
+          widget.onPressed != null,
+    );
+    final directAction = find
+        .descendant(of: button, matching: find.text(label))
+        .hitTestable();
+    if (directAction.evaluate().isNotEmpty) {
+      await tester.tap(directAction);
+      await tester.pumpAndSettle();
       return;
     }
   }
-  fail('Widget did not become enabled: $finder');
+  fail('Group action did not become available: $label');
 }
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
