@@ -411,10 +411,7 @@ Future<void> _tapVisibleTarget(WidgetTester tester, Finder target) async {
   await tester.tap(hitTarget);
 }
 
-Future<void> _ensureVisibleInDialog(
-  WidgetTester tester,
-  Finder target,
-) async {
+Future<void> _ensureVisibleInDialog(WidgetTester tester, Finder target) async {
   final scrollable = find
       .descendant(
         of: find.byType(AlertDialog),
@@ -428,10 +425,7 @@ Future<void> _ensureVisibleInDialog(
   expect(target.hitTestable(), findsOneWidget);
 }
 
-Future<void> _tapPersonalNavigation(
-  WidgetTester tester,
-  String label,
-) async {
+Future<void> _tapPersonalNavigation(WidgetTester tester, String label) async {
   final railLabel = find.descendant(
     of: find.byType(NavigationRail),
     matching: find.text(label),
@@ -1569,9 +1563,7 @@ void main() {
       'title': 'Keep this Knowledge item local',
       'body': 'Local original',
     };
-    await store.save(
-      const GuestWorkspaceData(knowledge: [localItem]),
-    );
+    await store.save(const GuestWorkspaceData(knowledge: [localItem]));
     final repository = _TestPersonalWorkspaceRepository([]);
     final user = _TestUser(isAnonymous: false, isEmailVerified: true);
     await pumpPersonalRouter(
@@ -1582,10 +1574,7 @@ void main() {
     );
 
     expect(repository.imports, isEmpty);
-    expect(
-      (await store.load()).knowledge.single['id'],
-      'local-knowledge',
-    );
+    expect((await store.load()).knowledge.single['id'], 'local-knowledge');
     await _tapVisibleTarget(tester, find.text('Import local work'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Import selected work'));

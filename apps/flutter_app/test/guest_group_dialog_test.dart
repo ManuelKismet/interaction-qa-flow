@@ -1160,11 +1160,7 @@ void main() {
     );
     await tester.enterText(question, 'Keep this draft');
     final save = find.widgetWithText(FilledButton, 'Save locally');
-    await _ensureVisibleInVerticalList(
-      tester,
-      save,
-      anchor: question,
-    );
+    await _ensureVisibleInVerticalList(tester, save, anchor: question);
     await tester.pumpAndSettle();
     await tester.tap(save);
     await tester.pump(const Duration(milliseconds: 300));

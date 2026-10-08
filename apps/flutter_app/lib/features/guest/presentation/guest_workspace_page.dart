@@ -1776,12 +1776,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         MaterialBanner(
           forceActionsBelow: narrowViewport,
           content: Text(_loadError!),
-          actions: [
-            TextButton(
-              onPressed: _load,
-              child: const Text('Retry'),
-            ),
-          ],
+          actions: [TextButton(onPressed: _load, child: const Text('Retry'))],
         ),
     ];
     return PopScope(
@@ -1935,8 +1930,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                     _handleKnowledgeSectionChanged,
                                 onOpenGroup: _openGroupKnowledge,
                                 privateWorkspace: _verifiedPersonalUid != null,
-                                searchIdentityKey:
-                                    _verifiedPersonalUid == null
+                                searchIdentityKey: _verifiedPersonalUid == null
                                     ? null
                                     : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
                                 searchOrganization: null,
@@ -1948,8 +1942,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                           )
                                           .searchKnowledge(
                                             query,
-                                            expectedUid:
-                                                _verifiedPersonalUid!,
+                                            expectedUid: _verifiedPersonalUid!,
                                           ),
                                 searchGroups: _verifiedPersonalUid == null
                                     ? null
@@ -1981,8 +1974,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                     ],
                                   ),
                                 ),
-                                onDelete: (id) =>
-                                    _deleteKnowledge(data, id),
+                                onDelete: (id) => _deleteKnowledge(data, id),
                               ),
                               _GuestInteractTab(
                                 data: data,
