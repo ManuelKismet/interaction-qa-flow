@@ -1,0 +1,891 @@
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 858524912c2dfb19caad203e8200aa76632c753c..2ad0044bd836b50aa19e0938329bcfd63d1bc377 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -621,7 +621,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           'data': nextWrite.data,
+         });
+       }
+-      _personalError = null;
+     });
+   }
+ 
+@@ -631,7 +630,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     PersonalWorkspaceRepository repository, {
+     String? prioritySourceKey,
+   }) async {
+-    if (_personalSaving || !mounted) return;
++    if (_personalSaving ||
++        !mounted ||
++        _personalError != null ||
++        _personalConflictSourceKey != null) {
++      return;
++    }
+     _personalSaving = true;
+     _publishWorkspaceSaveStatus();
+     try {
+@@ -759,7 +763,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       if (mounted) {
+         _publishWorkspaceSaveStatus();
+         final nextUid = _verifiedPersonalUid;
+-        if (nextUid != null && _pendingPersonalWrites.isNotEmpty) {
++        if (nextUid != null &&
++            nextUid != uid &&
++            _personalError == null &&
++            _personalConflictSourceKey == null &&
++            _pendingPersonalWrites.isNotEmpty) {
+           WidgetsBinding.instance.addPostFrameCallback((_) {
+             if (mounted && nextUid == _verifiedPersonalUid) {
+               unawaited(
+@@ -983,7 +991,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+ 
+   Future<void> _retryPersonalWrites({String? sourceKey}) async {
+     final uid = _verifiedPersonalUid;
+-    if (uid == null) return;
++    if (!mounted || uid == null) return;
++    if (_personalError != null) {
++      setState(() => _personalError = null);
++    }
+     await _processPersonalWrites(
+       uid,
+       _personalGeneration,
+@@ -1733,6 +1744,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                 )
+               : Column(
+                   children: [
++                    Flexible(
++                      fit: FlexFit.loose,
++                      child: ConstrainedBox(
++                        constraints: const BoxConstraints(maxHeight: 220),
++                        child: SingleChildScrollView(
++                          child: Column(
++                            mainAxisSize: MainAxisSize.min,
++                            crossAxisAlignment: CrossAxisAlignment.stretch,
++                            children: [
+                     _GuestNotice(
+                       isRegistered: _hasSignedInNonGuestUser,
+                       saveStatus: _saveStatus,
+@@ -1868,6 +1888,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                           ),
+                         ],
+                       ),
++                            ],
++                          ),
++                        ),
++                      ),
++                    ),
+                     Expanded(
+                       child: TabBarView(
+                         children: [
+@@ -3134,7 +3159,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+                   icon: const Icon(Icons.arrow_back),
+                   label: Text(
+                     _selectedKnowledgeItemId == null
+-                        ? 'Back to add a local question'
++                        ? widget.privateWorkspace
++                              ? 'Back to Ask & search'
++                              : 'Back to add a local question'
+                         : 'Back to all Saved Q&A',
+                   ),
+                 ),
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 8c3a3ef2888c5ae019b49cfd5643aa8392e933da..e839c379bbb582f43f2f68fe37223459a37be8d3 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -18,6 +18,7 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
+ import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
+ import 'package:int_qa_flow/shared/widgets/app_shell.dart';
++import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
+ 
+ class _TestUser extends Fake implements User {
+   _TestUser({
+@@ -383,6 +384,51 @@ Future<void> _openGroupsFromPersonalOptions(WidgetTester tester) async {
+   await tester.pumpAndSettle();
+ }
+ 
++Future<void> _ensureVisibleInVerticalList(
++  WidgetTester tester,
++  Finder target, {
++  required Finder anchor,
++}) async {
++  final scrollable = find
++      .ancestor(of: anchor, matching: find.byType(Scrollable))
++      .first;
++  expect(
++    tester.widget<Scrollable>(scrollable).axisDirection,
++    AxisDirection.down,
++  );
++  await tester.scrollUntilVisible(target, 220, scrollable: scrollable);
++  await tester.pumpAndSettle();
++  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
++  await tester.pumpAndSettle();
++  expect(target.hitTestable(), findsOneWidget);
++}
++
++Future<void> _tapPersonalNavigation(
++  WidgetTester tester,
++  String label,
++) async {
++  final railLabel = find.descendant(
++    of: find.byType(NavigationRail),
++    matching: find.text(label),
++  );
++  if (railLabel.evaluate().isNotEmpty) {
++    final destination = find.ancestor(
++      of: railLabel,
++      matching: find.byType(InkResponse),
++    );
++    expect(destination, findsOneWidget);
++    await tester.tap(destination);
++  } else {
++    final destination = find.ancestor(
++      of: find.text(label),
++      matching: find.byType(NavigationDestination),
++    );
++    expect(destination, findsOneWidget);
++    await tester.tap(destination);
++  }
++  await tester.pumpAndSettle();
++}
++
+ void main() {
+   Future<void> pumpGuestWorkspace(
+     WidgetTester tester, {
+@@ -434,13 +480,19 @@ void main() {
+     Stream<User?>? authChanges,
+     String initialLocation = '/personal/ask',
+   }) async {
+-    Widget page({int tab = 0}) => Consumer(
++    tester.view.physicalSize = const Size(720, 600);
++    addTearDown(tester.view.resetPhysicalSize);
++    Widget page({
++      int tab = 0,
++      KnowledgeSection section = KnowledgeSection.ask,
++    }) => Consumer(
+       builder: (context, ref, _) => GuestWorkspacePage(
+         firebaseReady: true,
+         personalWorkspaceEnabled: true,
+         accountUser: ref.watch(authStateProvider).value,
+         membershipStatus: AccountMembershipStatus.active,
+         initialWorkspaceTab: tab,
++        initialKnowledgeSection: section,
+       ),
+     );
+     final router = GoRouter(
+@@ -456,6 +508,11 @@ void main() {
+                   const Scaffold(body: Text('Organisation route')),
+             ),
+             GoRoute(path: '/personal/ask', builder: (context, state) => page()),
++            GoRoute(
++              path: '/personal/questions',
++              builder: (context, state) =>
++                  page(section: KnowledgeSection.questions),
++            ),
+             GoRoute(
+               path: '/personal/interact',
+               builder: (context, state) => page(tab: 1),
+@@ -1141,27 +1198,12 @@ void main() {
+       await store.save(localData);
+       final repository = _TestPersonalWorkspaceRepository([])
+         ..failedImports = 1;
+-      await tester.pumpWidget(
+-        ProviderScope(
+-          overrides: [
+-            firebaseAuthProvider.overrideWithValue(
+-              _TestFirebaseAuth(
+-                _TestUser(isAnonymous: false, isEmailVerified: true),
+-              ),
+-            ),
+-            guestWorkspaceStoreProvider.overrideWithValue(store),
+-            personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+-          ],
+-          child: MaterialApp(
+-            home: GuestWorkspacePage(
+-              firebaseReady: true,
+-              personalWorkspaceEnabled: true,
+-              accountUser: _TestUser(isAnonymous: false, isEmailVerified: true),
+-            ),
+-          ),
+-        ),
++      await pumpPersonalRouter(
++        tester,
++        user: _TestUser(isAnonymous: false, isEmailVerified: true),
++        repository: repository,
++        store: store,
+       );
+-      await tester.pumpAndSettle();
+       await tester.tap(find.text('Import local work'));
+       await tester.pumpAndSettle();
+       await tester.tap(
+@@ -1190,11 +1232,12 @@ void main() {
+         repository.imports[1].single['source_key'],
+       );
+       expect((await store.load()).knowledge, hasLength(2));
+-      await tester.tap(find.text('Saved Q&A'));
++      await tester.tap(find.text('Questions').first);
+       await tester.pumpAndSettle();
++      expect(find.text('Back to Ask & search'), findsOneWidget);
+       final savedListScrollable = find
+           .ancestor(
+-            of: find.text('Back to add a local question'),
++            of: find.text('Questions').first,
+             matching: find.byType(Scrollable),
+           )
+           .first;
+@@ -1207,6 +1250,12 @@ void main() {
+         250,
+         scrollable: savedListScrollable,
+       );
++      await tester.pumpAndSettle();
++      await Scrollable.ensureVisible(
++        tester.element(find.text('Keep this item local')),
++        alignment: 0.5,
++      );
++      await tester.pumpAndSettle();
+       expect(find.text('Import this item'), findsOneWidget);
+       expect(find.text('Keep this item local'), findsOneWidget);
+     },
+@@ -1464,58 +1513,42 @@ void main() {
+     expect(find.textContaining('Personal account · saved'), findsOneWidget);
+   });
+ 
+-  testWidgets('new local work is not uploaded before explicit import', (
++  testWidgets('local work stays separate until explicit account import', (
+     tester,
+   ) async {
+-    final storage = _MemoryGuestStorage();
+-    final store = GuestWorkspaceStore(storage);
++    final store = GuestWorkspaceStore(_MemoryGuestStorage());
++    const localItem = {
++      'id': 'local-knowledge',
++      'title': 'Keep this Knowledge item local',
++      'body': 'Local original',
++    };
++    await store.save(
++      const GuestWorkspaceData(knowledge: [localItem]),
++    );
+     final repository = _TestPersonalWorkspaceRepository([]);
+     final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [
+-          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+-          guestWorkspaceStoreProvider.overrideWithValue(store),
+-          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+-        ],
+-        child: MaterialApp(
+-          home: GuestWorkspacePage(
+-            firebaseReady: true,
+-            personalWorkspaceEnabled: true,
+-            accountUser: user,
+-          ),
+-        ),
+-      ),
+-    );
+-    await tester.pumpAndSettle();
+-    await tester.enterText(
+-      find.byType(TextFormField).first,
+-      'Keep this Knowledge item local',
++    await pumpPersonalRouter(
++      tester,
++      user: user,
++      repository: repository,
++      store: store,
+     );
+-    final saveLocally = find.text('Save locally');
+-    final addQuestionScrollable = find
+-        .ancestor(
+-          of: find.text('Add a local question'),
+-          matching: find.byType(Scrollable),
+-        )
+-        .first;
++
++    expect(repository.imports, isEmpty);
+     expect(
+-      tester.widget<Scrollable>(addQuestionScrollable).axisDirection,
+-      AxisDirection.down,
++      (await store.load()).knowledge.single['id'],
++      'local-knowledge',
+     );
+-    await tester.scrollUntilVisible(
+-      saveLocally,
+-      250,
+-      scrollable: addQuestionScrollable,
+-    );
+-    await tester.pumpAndSettle();
+-    await Scrollable.ensureVisible(tester.element(saveLocally), alignment: 0.5);
++    await tester.tap(find.text('Import local work'));
+     await tester.pumpAndSettle();
+-    await tester.tap(saveLocally.hitTestable());
+-    await tester.pump(const Duration(milliseconds: 300));
++    await tester.tap(find.text('Import selected work'));
+     await tester.pumpAndSettle();
+ 
+-    expect(repository.imports, isEmpty);
++    expect(repository.imports, hasLength(1));
++    expect(
++      repository.imports.single.single['source_key'],
++      'knowledge:local-knowledge',
++    );
+     expect(
+       (await store.load()).knowledge.single['title'],
+       'Keep this Knowledge item local',
+@@ -1541,6 +1574,11 @@ void main() {
+         store: store,
+       );
+ 
++      await _ensureVisibleInVerticalList(
++        tester,
++        find.text('Save to private account'),
++        anchor: find.widgetWithText(TextFormField, 'Question'),
++      );
+       expect(find.text('Save to private account'), findsOneWidget);
+       await tester.enterText(
+         find.widgetWithText(TextFormField, 'Question'),
+@@ -1560,10 +1598,11 @@ void main() {
+         ),
+         'Account-only answer',
+       );
+-      await tester.tap(find.text('Save to private account'));
++      await tester.tap(find.text('Save to private account').hitTestable());
+       await tester.pumpAndSettle();
+ 
+       expect(find.text('Retry account save'), findsOneWidget);
++      expect(repository.imports, hasLength(1));
+       expect(repository.items, hasLength(1));
+       expect(repository.items.single['kind'], 'knowledge');
+       expect(
+@@ -1572,6 +1611,9 @@ void main() {
+       );
+       expect((await store.load()).knowledge, isEmpty);
+ 
++      await tester.tap(find.text('Retry account save'));
++      await tester.pumpAndSettle();
++      expect(repository.imports, hasLength(2));
+       await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
+       await tester.pumpAndSettle();
+       await tester.enterText(
+@@ -1625,17 +1667,16 @@ void main() {
+         find.widgetWithText(TextFormField, 'Question'),
+         'Held private question',
+       );
+-      await tester.tap(find.text('Save to private account'));
++      await _ensureVisibleInVerticalList(
++        tester,
++        find.text('Save to private account'),
++        anchor: find.widgetWithText(TextFormField, 'Question'),
++      );
++      await tester.tap(find.text('Save to private account').hitTestable());
+       await tester.pump();
+       await tester.pump();
+ 
+-      await tester.tap(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is NavigationDestination && widget.label == 'Interact',
+-        ),
+-      );
+-      await tester.pumpAndSettle();
++      await _tapPersonalNavigation(tester, 'Interact');
+       expect(find.text('Save to private account'), findsOneWidget);
+ 
+       await tester.binding.handlePopRoute();
+@@ -1698,7 +1739,12 @@ void main() {
+         find.widgetWithText(TextFormField, 'Question'),
+         'First identity private question',
+       );
+-      await tester.tap(find.text('Save to private account'));
++      await _ensureVisibleInVerticalList(
++        tester,
++        find.text('Save to private account'),
++        anchor: find.widgetWithText(TextFormField, 'Question'),
++      );
++      await tester.tap(find.text('Save to private account').hitTestable());
+       await tester.pump();
+       await tester.pump();
+       expect(repository.importUids, ['first-private-uid']);
+@@ -1710,7 +1756,12 @@ void main() {
+         find.widgetWithText(TextFormField, 'Question'),
+         'Second identity private question',
+       );
+-      await tester.tap(find.text('Save to private account'));
++      await _ensureVisibleInVerticalList(
++        tester,
++        find.text('Save to private account'),
++        anchor: find.widgetWithText(TextFormField, 'Question'),
++      );
++      await tester.tap(find.text('Save to private account').hitTestable());
+       await tester.pump();
+       await tester.pump();
+       expect(repository.importUids, ['first-private-uid']);
+@@ -1750,7 +1801,12 @@ void main() {
+         find.widgetWithText(TextFormField, 'Question'),
+         'Remove uncertain private create',
+       );
+-      await tester.tap(find.text('Save to private account'));
++      await _ensureVisibleInVerticalList(
++        tester,
++        find.text('Save to private account'),
++        anchor: find.widgetWithText(TextFormField, 'Question'),
++      );
++      await tester.tap(find.text('Save to private account').hitTestable());
+       await tester.pumpAndSettle();
+       expect(repository.items, hasLength(1));
+ 
+@@ -1789,7 +1845,12 @@ void main() {
+         find.widgetWithText(TextFormField, 'Question'),
+         'Refresh race question',
+       );
+-      await tester.tap(find.text('Save to private account'));
++      await _ensureVisibleInVerticalList(
++        tester,
++        find.text('Save to private account'),
++        anchor: find.widgetWithText(TextFormField, 'Question'),
++      );
++      await tester.tap(find.text('Save to private account').hitTestable());
+       await tester.pumpAndSettle();
+       expect(repository.items, hasLength(1));
+ 
+@@ -1837,13 +1898,7 @@ void main() {
+       await tester.pump();
+       await tester.pump();
+ 
+-      await tester.tap(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is NavigationDestination && widget.label == 'Interact',
+-        ),
+-      );
+-      await tester.pumpAndSettle();
++      await _tapPersonalNavigation(tester, 'Interact');
+       expect(find.text('Import local work'), findsOneWidget);
+ 
+       importGate.complete();
+@@ -1851,13 +1906,7 @@ void main() {
+       expect(repository.items, hasLength(1));
+       expect((await store.load()).knowledge.single['id'], 'selected-local');
+       await tester.pump(const Duration(seconds: 5));
+-      await tester.tap(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is NavigationDestination && widget.label == 'Interact',
+-        ),
+-      );
+-      await tester.pumpAndSettle();
++      await _tapPersonalNavigation(tester, 'Interact');
+       expect(find.text('Create private session'), findsOneWidget);
+     },
+   );
+@@ -1894,13 +1943,7 @@ void main() {
+       expect(find.text('Change selection'), findsOneWidget);
+       expect((await store.load()).knowledge.single['id'], 'local-original');
+ 
+-      await tester.tap(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is NavigationDestination && widget.label == 'Interact',
+-        ),
+-      );
+-      await tester.pumpAndSettle();
++      await _tapPersonalNavigation(tester, 'Interact');
+       expect(find.text('Create private session'), findsOneWidget);
+     },
+   );
+@@ -1937,13 +1980,7 @@ void main() {
+       expect(find.text('Retry import'), findsOneWidget);
+       expect((await store.load()).knowledge.single['id'], 'retry-local');
+ 
+-      await tester.tap(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is NavigationDestination && widget.label == 'Interact',
+-        ),
+-      );
+-      await tester.pumpAndSettle();
++      await _tapPersonalNavigation(tester, 'Interact');
+       expect(find.text('Create private session'), findsNothing);
+       expect(find.text('Import local work'), findsOneWidget);
+     },
+@@ -2382,7 +2419,7 @@ void main() {
+     );
+     await tester.pumpAndSettle();
+ 
+-    expect(find.text('IntQAFlow workspace'), findsOneWidget);
++    expect(find.text('Registered local workspace'), findsOneWidget);
+     expect(find.text('IntQAFlow guest workspace'), findsNothing);
+     expect(find.byTooltip('Workspace options'), findsOneWidget);
+     expect(find.byTooltip('Guest workspace options'), findsNothing);
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index d52eff3f91057e2970978c9bc975ae140c95bda5..14ac7052891cc3251e1f5e2de78873f93c301454 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -154,8 +154,7 @@ class _FailingDraftRepository extends GuestGroupRepository {
+     if (failGroupReads) throw StateError('private status detail');
+     return [
+       {'id': 'group-1', 'name': 'Test group', 'role': 'editor'},
+-      if (twoGroups)
+-        {'id': 'group-2', 'name': 'Other group', 'role': 'editor'},
++      if (twoGroups) {'id': 'group-2', 'name': 'Other group', 'role': 'editor'},
+     ];
+   }
+ 
+@@ -644,43 +643,44 @@ void main() {
+   testWidgets(
+     'direct Groups route and lifecycle loads do not call API for guests',
+     (tester) async {
+-    final user = _TestUser(anonymous: true, verified: false);
+-    final auth = _TestFirebaseAuth(user);
+-    final repository = _EmptyGroupsRepository();
+-    final router = GoRouter(
+-      initialLocation: '/guest/groups',
+-      routes: [
+-        GoRoute(
+-          path: '/guest/groups',
+-          builder: (context, state) => const SharedGuestGroupsPage(),
+-        ),
+-      ],
+-    );
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [
+-          authStateProvider.overrideWith((ref) => Stream.value(user)),
+-          firebaseAuthProvider.overrideWithValue(auth),
+-          guestGroupRepositoryProvider.overrideWithValue(repository),
++      final user = _TestUser(anonymous: true, verified: false);
++      final auth = _TestFirebaseAuth(user);
++      final repository = _EmptyGroupsRepository();
++      final router = GoRouter(
++        initialLocation: '/guest/groups',
++        routes: [
++          GoRoute(
++            path: '/guest/groups',
++            builder: (context, state) => const SharedGuestGroupsPage(),
++          ),
+         ],
+-        child: MaterialApp.router(routerConfig: router),
+-      ),
+-    );
+-    await tester.pumpAndSettle();
+-    expect(
+-      find.textContaining('Groups require a registered account'),
+-      findsOneWidget,
+-    );
++      );
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [
++            authStateProvider.overrideWith((ref) => Stream.value(user)),
++            firebaseAuthProvider.overrideWithValue(auth),
++            guestGroupRepositoryProvider.overrideWithValue(repository),
++          ],
++          child: MaterialApp.router(routerConfig: router),
++        ),
++      );
++      await tester.pumpAndSettle();
++      expect(
++        find.textContaining('Groups require a registered account'),
++        findsOneWidget,
++      );
+ 
+-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+-    await tester.pump();
++      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
++      await tester.pump();
+ 
+-    expect(repository.listGroupsCalls, 0);
+-    expect(repository.listArchivedGroupsCalls, 0);
+-    await tester.pumpWidget(const SizedBox.shrink());
+-    await tester.pumpAndSettle();
+-    router.dispose();
+-  });
++      expect(repository.listGroupsCalls, 0);
++      expect(repository.listArchivedGroupsCalls, 0);
++      await tester.pumpWidget(const SizedBox.shrink());
++      await tester.pumpAndSettle();
++      router.dispose();
++    },
++  );
+ 
+   testWidgets('pending Groups response is ignored after page disposal', (
+     tester,
+@@ -858,7 +858,10 @@ void main() {
+     await tester.pumpAndSettle();
+     expect(find.text('Enter a group name.'), findsNothing);
+     expect(find.text('Enter a display name.'), findsOneWidget);
+-    expect(tester.widget<TextField>(field('Group name')).controller!.text, 'Safety');
++    expect(
++      tester.widget<TextField>(field('Group name')).controller!.text,
++      'Safety',
++    );
+   });
+ 
+   testWidgets('failed remote forms retain drafts without replaying writes', (
+@@ -908,11 +911,19 @@ void main() {
+     );
+     await tester.tap(find.widgetWithText(FilledButton, 'Create group').first);
+     await tester.pumpAndSettle();
+-    expect(tester.widget<TextField>(field('Group name')).controller!.text, 'Safety team');
+-    expect(tester.widget<TextField>(field('Your display name')).controller!.text, 'Alice');
++    expect(
++      tester.widget<TextField>(field('Group name')).controller!.text,
++      'Safety team',
++    );
++    expect(
++      tester.widget<TextField>(field('Your display name')).controller!.text,
++      'Alice',
++    );
+     await tapDialogAction('Cancel');
+ 
+-    await tester.tap(find.widgetWithText(OutlinedButton, 'Join with invitation'));
++    await tester.tap(
++      find.widgetWithText(OutlinedButton, 'Join with invitation'),
++    );
+     await tester.pumpAndSettle();
+     await tester.enterText(field('Invitation token'), 'temporary-token');
+     await tester.enterText(field('Display name'), 'Alice');
+@@ -926,10 +937,18 @@ void main() {
+     await tapDialogAction('Request access');
+     expect(repository.joinAttempts, 1);
+     expect(find.textContaining('temporary-token'), findsNothing);
+-    await tester.tap(find.widgetWithText(OutlinedButton, 'Join with invitation'));
++    await tester.tap(
++      find.widgetWithText(OutlinedButton, 'Join with invitation'),
++    );
+     await tester.pumpAndSettle();
+-    expect(tester.widget<TextField>(field('Invitation token')).controller!.text, 'temporary-token');
+-    expect(tester.widget<TextField>(field('Display name')).controller!.text, 'Alice');
++    expect(
++      tester.widget<TextField>(field('Invitation token')).controller!.text,
++      'temporary-token',
++    );
++    expect(
++      tester.widget<TextField>(field('Display name')).controller!.text,
++      'Alice',
++    );
+     await tapDialogAction('Cancel');
+ 
+     final addKnowledge = find.widgetWithText(
+@@ -945,7 +964,10 @@ void main() {
+     expect(repository.createKnowledgeAttempts, 1);
+     await tester.tap(addKnowledge);
+     await tester.pumpAndSettle();
+-    expect(tester.widget<TextField>(field('Title')).controller!.text, 'Draft title');
++    expect(
++      tester.widget<TextField>(field('Title')).controller!.text,
++      'Draft title',
++    );
+     expect(
+       tester.widget<TextField>(field('Knowledge / answer')).controller!.text,
+       'Draft content',
+@@ -963,13 +985,19 @@ void main() {
+     await tester.tap(find.text('Original title'));
+     await tester.pumpAndSettle();
+     await tapDialogAction('Edit');
+-    expect(tester.widget<TextField>(field('Title')).controller!.text, 'Edited draft title');
+-    expect(tester.widget<TextField>(field('Knowledge')).controller!.text, 'Edited draft body');
+-    expect(tester.widget<TextField>(field('Answer')).controller!.text, 'Edited draft answer');
+     expect(
+-      find.textContaining('private answer detail'),
+-      findsNothing,
++      tester.widget<TextField>(field('Title')).controller!.text,
++      'Edited draft title',
+     );
++    expect(
++      tester.widget<TextField>(field('Knowledge')).controller!.text,
++      'Edited draft body',
++    );
++    expect(
++      tester.widget<TextField>(field('Answer')).controller!.text,
++      'Edited draft answer',
++    );
++    expect(find.textContaining('private answer detail'), findsNothing);
+     await tapDialogAction('Cancel');
+     expect(repository.createGroupAttempts, 1);
+     expect(repository.joinAttempts, 1);
+@@ -1008,17 +1036,23 @@ void main() {
+     await tester.pumpAndSettle();
+ 
+     expect(repository.createGroupAttempts, 1);
+-    expect(
+-      find.textContaining('status refresh failed'),
+-      findsOneWidget,
+-    );
++    expect(find.textContaining('status refresh failed'), findsOneWidget);
+     expect(find.textContaining('Status was refreshed'), findsNothing);
+     expect(find.textContaining('private status detail'), findsNothing);
+-    expect(find.textContaining('private invitation-token detail'), findsNothing);
++    expect(
++      find.textContaining('private invitation-token detail'),
++      findsNothing,
++    );
+     await tester.tap(find.widgetWithText(FilledButton, 'Create group').first);
+     await tester.pumpAndSettle();
+-    expect(tester.widget<TextField>(field('Group name')).controller!.text, 'Uncertain group');
+-    expect(tester.widget<TextField>(field('Your display name')).controller!.text, 'Alice');
++    expect(
++      tester.widget<TextField>(field('Group name')).controller!.text,
++      'Uncertain group',
++    );
++    expect(
++      tester.widget<TextField>(field('Your display name')).controller!.text,
++      'Alice',
++    );
+     expect(repository.createGroupAttempts, 1);
+   });
+ 
+@@ -1116,9 +1150,7 @@ void main() {
+           ),
+           guestWorkspaceStoreProvider.overrideWithValue(store),
+         ],
+-        child: const MaterialApp(
+-          home: GuestWorkspacePage(firebaseReady: true),
+-        ),
++        child: const MaterialApp(home: GuestWorkspacePage(firebaseReady: true)),
+       ),
+     );
+     await tester.pumpAndSettle();
+@@ -1249,7 +1281,9 @@ void main() {
+     );
+     expect(find.text('Preview sharing to Local Safety Team'), findsOneWidget);
+     expect(
+-      find.textContaining('uploads selected copies online to Local Safety Team'),
++      find.textContaining(
++        'uploads selected copies online to Local Safety Team',
++      ),
+       findsOneWidget,
+     );
+     expect(find.textContaining('Approved group members'), findsOneWidget);
+@@ -1270,21 +1304,25 @@ void main() {
+     );
+     expect(find.textContaining('added locally'), findsNothing);
+     expect(
+-      tester.widget<CheckboxListTile>(
+-        find.ancestor(
+-          of: find.text('Local knowledge'),
+-          matching: find.byType(CheckboxListTile),
+-        ),
+-      ).value,
++      tester
++          .widget<CheckboxListTile>(
++            find.ancestor(
++              of: find.text('Local knowledge'),
++              matching: find.byType(CheckboxListTile),
++            ),
++          )
++          .value,
+       isFalse,
+     );
+     expect(
+-      tester.widget<CheckboxListTile>(
+-        find.ancestor(
+-          of: find.text('Private interview'),
+-          matching: find.byType(CheckboxListTile),
+-        ),
+-      ).value,
++      tester
++          .widget<CheckboxListTile>(
++            find.ancestor(
++              of: find.text('Private interview'),
++              matching: find.byType(CheckboxListTile),
++            ),
++          )
++          .value,
+       isFalse,
+     );
+     expect(
+@@ -1443,9 +1481,7 @@ void main() {
+ 
+     expect(find.text('Remove this guest member?'), findsOneWidget);
+     expect(find.text('Groups'), findsOneWidget);
+-    await tester.tap(
+-      find.widgetWithText(FilledButton, 'Remove member').last,
+-    );
++    await tester.tap(find.widgetWithText(FilledButton, 'Remove member').last);
+     await tester.pumpAndSettle();
+ 
+     expect(repository.removeRequests, 1);
+@@ -1477,16 +1513,23 @@ void main() {
+     await tester.tap(find.text('Request admin transfer'));
+     await tester.pumpAndSettle();
+     expect(find.text('Request group administration?'), findsOneWidget);
+-    expect(find.textContaining('You remain an administrator unless they accept'), findsOneWidget);
++    expect(
++      find.textContaining('You remain an administrator unless they accept'),
++      findsOneWidget,
++    );
+     await tester.tap(find.widgetWithText(FilledButton, 'Send request'));
+     await tester.pumpAndSettle();
+ 
+     expect(ownerRepository.transferRequests, 1);
+-    expect(find.textContaining('Waiting for Invited viewer to accept'), findsOneWidget);
++    expect(
++      find.textContaining('Waiting for Invited viewer to accept'),
++      findsOneWidget,
++    );
+     expect(
+       find.textContaining('Your group role: admin'),
+       findsOneWidget,
+-      reason: 'The requester keeps the current role until the recipient accepts.',
++      reason:
++          'The requester keeps the current role until the recipient accepts.',
+     );
+   });
+ 
+@@ -1512,7 +1555,9 @@ void main() {
+       find.textContaining('asked to accept group administration'),
+       findsOneWidget,
+     );
+-    await tester.tap(find.widgetWithText(FilledButton, 'Accept administration'));
++    await tester.tap(
++      find.widgetWithText(FilledButton, 'Accept administration'),
++    );
+     await tester.pumpAndSettle();
+     expect(recipientRepository.acceptTransferRequests, 1);
+     expect(
+@@ -1587,7 +1632,9 @@ void main() {
+       find.textContaining('asked to accept group administration'),
+       findsOneWidget,
+     );
+-    await tester.tap(find.widgetWithText(FilledButton, 'Accept administration'));
++    await tester.tap(
++      find.widgetWithText(FilledButton, 'Accept administration'),
++    );
+     await tester.pumpAndSettle();
+ 
+     expect(repository.acceptedByUid, 'recipient-uid');
+@@ -1616,7 +1663,10 @@ void main() {
+     await tester.tap(find.widgetWithText(OutlinedButton, 'Archive group'));
+     await tester.pumpAndSettle();
+     expect(find.text('Archive this group?'), findsOneWidget);
+-    expect(find.textContaining('only the same Firebase account'), findsOneWidget);
++    expect(
++      find.textContaining('only the same Firebase account'),
++      findsOneWidget,
++    );
+     await tester.tap(find.widgetWithText(FilledButton, 'Archive group').last);
+     await tester.pumpAndSettle();
+ 
+@@ -1666,7 +1716,10 @@ void main() {
+       findsOneWidget,
+     );
+     expect(find.textContaining('cannot be restored'), findsOneWidget);
+-    expect(find.textContaining('local copies are not affected'), findsOneWidget);
++    expect(
++      find.textContaining('local copies are not affected'),
++      findsOneWidget,
++    );
+     await tester.tap(find.text('Cancel'));
+     await tester.pumpAndSettle();
+     expect(repository.permanentDeleteRequests, 0);
+@@ -1769,7 +1822,9 @@ void main() {
+     expect(find.textContaining('Research group'), findsOneWidget);
+     expect(find.text('Delete permanently'), findsNothing);
+     expect(
+-      find.textContaining('The item is retained; refresh status before retrying.'),
++      find.textContaining(
++        'The item is retained; refresh status before retrying.',
++      ),
+       findsOneWidget,
+     );
+     expect(find.text('private refresh detail'), findsNothing);
