@@ -4714,55 +4714,6 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     );
   }
 
-  Future<void> _editQuestionText(String questionId) async {
-    final question = _findGuestQuestion(
-      widget.session['questions'] as List? ?? const [],
-      questionId,
-    );
-    if (question == null) return;
-    final nested = !(widget.session['questions'] as List? ?? const []).any(
-      (item) => item is Map && item['id'] == questionId,
-    );
-    final values = await showDialog<List<String>>(
-      context: context,
-      builder: (context) => _GuestRequiredTextDialog(
-        title: nested ? 'Edit follow-up question' : 'Edit question',
-        submitLabel: widget.groupName != null
-            ? 'Update Group draft'
-            : widget.isPersonalAccount
-            ? 'Save account changes'
-            : 'Save question locally',
-        description:
-            'Only the question text changes. Answers, targets and follow-up '
-            'branches are kept.',
-        fields: [
-          _GuestRequiredTextField(
-            label: 'Question text',
-            hintText: 'e.g. What would you like to discuss today?',
-            initialValue: question['text'] as String? ?? '',
-            errorText: 'Enter a question.',
-            maxLines: 4,
-          ),
-        ],
-      ),
-      useRootNavigator: widget.groupName == null,
-    );
-    if (values == null || !mounted) return;
-    var changed = false;
-    _editSession((session) {
-      final current = _findGuestQuestion(
-        session['questions'] as List,
-        questionId,
-      );
-      if (current == null) return;
-      current['text'] = values.single;
-      changed = true;
-    });
-    if (!changed) {
-      _notify('This question was removed before the edit was saved.');
-    }
-  }
-
   void _removeRootQuestion(Map<String, dynamic> question) {
     final removed = _copyMap(question);
     final questions = widget.session['questions'] as List? ?? const [];
@@ -5210,7 +5161,6 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                     ? const []
                     : [activeParticipant],
                 onRemove: () => _removeRootQuestion(question),
-                onEditText: _editQuestionText,
                 onRemoveFollowUp: _removeFollowUp,
                 onUpdate: (updated) => _replaceQuestion(
                   widget.session,
@@ -5335,7 +5285,6 @@ class _GuestQuestionEditor extends StatefulWidget {
     required this.participants,
     required this.onUpdate,
     required this.onRemove,
-    required this.onEditText,
     required this.onRemoveFollowUp,
     required this.makeQuestion,
     this.nested = false,
@@ -5348,7 +5297,6 @@ class _GuestQuestionEditor extends StatefulWidget {
   final List<Map<String, dynamic>> participants;
   final ValueChanged<Map<String, dynamic>> onUpdate;
   final VoidCallback onRemove;
-  final ValueChanged<String> onEditText;
   final void Function(String parentQuestionId, String participantId, String id)
   onRemoveFollowUp;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
@@ -5360,6 +5308,43 @@ class _GuestQuestionEditor extends StatefulWidget {
 }
 
 class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
+  late final TextEditingController _questionText;
+  final _questionFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _questionText = TextEditingController(
+      text: widget.question['text'] as String? ?? '',
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _GuestQuestionEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final current = widget.question['text'] as String? ?? '';
+    if (_questionText.text.trim() != current && !_questionFocus.hasFocus) {
+      _questionText.value = TextEditingValue(text: current);
+    }
+  }
+
+  @override
+  void dispose() {
+    _questionText.dispose();
+    _questionFocus.dispose();
+    super.dispose();
+  }
+
+  void _updateQuestionText(String value) {
+    final text = value.trim();
+    setState(() {});
+    // Keep the saved question intact while the user temporarily clears the field.
+    if (text.isEmpty || text == widget.question['text']) return;
+    final question = _copyMap(widget.question);
+    question['text'] = text;
+    widget.onUpdate(question);
+  }
+
   List<Map<String, dynamic>> get _answers =>
       (widget.question['answers'] as List? ?? const [])
           .map((item) => Map<String, dynamic>.from(item as Map))
@@ -5411,7 +5396,6 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
   @override
   Widget build(BuildContext context) {
     final id = widget.question['id'] as String;
-    final text = widget.question['text'] as String? ?? '';
     final scope = widget.question['scope'] as String? ?? 'shared';
     final target = widget.question['target_participant_id'] as String?;
     final applicable = widget.participants.where((participant) {
@@ -5441,18 +5425,29 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(text, style: Theme.of(context).textTheme.titleSmall),
+                TextField(
+                  key: ValueKey('guest-question-text-$id'),
+                  controller: _questionText,
+                  focusNode: _questionFocus,
+                  minLines: 1,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    labelText: widget.nested
+                        ? 'Follow-up question text'
+                        : 'Question text',
+                    hintText: 'e.g. What would you like to discuss today?',
+                    alignLabelWithHint: true,
+                    border: const OutlineInputBorder(),
+                    errorText: _questionText.text.trim().isEmpty
+                        ? 'Enter a question. The last saved text is kept.'
+                        : null,
+                  ),
+                  onChanged: _updateQuestionText,
+                ),
                 Align(
                   alignment: Alignment.centerRight,
                   child: Wrap(
                     children: [
-                      IconButton(
-                        tooltip: widget.nested
-                            ? 'Edit follow-up question'
-                            : 'Edit question',
-                        onPressed: () => widget.onEditText(id),
-                        icon: const Icon(Icons.edit_note_outlined),
-                      ),
                       IconButton(
                         tooltip: 'Delete question and undo',
                         onPressed: widget.onRemove,
@@ -5486,7 +5481,6 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
                     onAddFollowUp: (text) =>
                         _addFollowUp(participant['id'] as String, text),
                     onUpdate: _replaceAnswer,
-                    onEditText: widget.onEditText,
                     onRemoveFollowUp: widget.onRemoveFollowUp,
                     makeQuestion: widget.makeQuestion,
                   ),
@@ -5537,7 +5531,6 @@ class _GuestAnswerEditor extends StatefulWidget {
     required this.onAnswerChanged,
     required this.onAddFollowUp,
     required this.onUpdate,
-    required this.onEditText,
     required this.onRemoveFollowUp,
     required this.makeQuestion,
     this.isGroupCopy = false,
@@ -5551,7 +5544,6 @@ class _GuestAnswerEditor extends StatefulWidget {
   final ValueChanged<String> onAnswerChanged;
   final ValueChanged<String> onAddFollowUp;
   final ValueChanged<Map<String, dynamic>> onUpdate;
-  final ValueChanged<String> onEditText;
   final void Function(String parentQuestionId, String participantId, String id)
   onRemoveFollowUp;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
@@ -5758,7 +5750,6 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                                   widget.participant['id'] as String,
                                   branch['id'] as String,
                                 ),
-                                onEditText: widget.onEditText,
                                 onRemoveFollowUp: widget.onRemoveFollowUp,
                                 onUpdate: (updated) {
                                   final answer = _copyMap(widget.answer!);
