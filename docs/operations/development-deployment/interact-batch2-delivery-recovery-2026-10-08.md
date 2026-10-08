@@ -1,0 +1,11 @@
+# Batch 2 delivery recovery — 2026-10-08
+
+Canonical parity tracker: [interact-parity-audit-2026-10-07.md](interact-parity-audit-2026-10-07.md).
+
+Resumed after interrupted approval. Current repository checkpoint establishes batch 1 source acceptance at 445088cad1d8173a0cdc6c99e5b2046a5334b9d7, full Flutter 254 passes before mechanical lint finish, final affected 86 passes, analyzer zero errors/warnings with 12 existing infos, configured DEV release pass, backend 158 including disposable PostgreSQL. No DEV rollout or merge.
+
+Batch 2 task https://github.com/ManuelKismet/interaction-qa-flow/tasks/763f99ed-37eb-4894-a8b8-f5ef4c2840ef UI independently observed Completed, one session. Delivery reports app source 1d946a2500cf9cd8c1c3b6d1fa7afb66c61b0a1c, tree 39dd4e19f239a4071b5ca2d69a7563c34cc4a585; artifact 0536967990c90f6262f2ba670643511621a8edcc. Mailbox interact-parity-batch2-20261008.patch, reported 105370 bytes / SHA256 86fc0740b12d4d66bb32e522bbbf5fa8684e4f63728b86470185152d4025c8c2. Source/base tree verification described by Copilot is not independent Codex acceptance. Copilot reports Flutter/Dart/pytest unavailable and pushes failed HTTP403; no runtime gates passed.
+
+GitHub fetch_file independently returned 404 No commit found for artifact ref. Patch unavailable for independent application/review. One continuation submitted in SAME task for delivery recovery only, UI verified Queued / 2 sessions. Preserve exact existing source, publish through supported existing authorised repository access; if unavailable, provide complete numbered bounded base64 patch chunks in CLI logs for byte-exact recovery. No credential/access expansion, new task, app edits, deployment, merge, later batch or quarantined PR13 steering authorised by this recovery.
+
+Next: retrieve complete artifact, verify bytes/checksum, apply unchanged against accepted batch1 base in isolated validation worktree, compare exact source tree, then source review and relevant focused/full Flutter/analyzer/format/configured DEV release gates. Backend gates appropriate to actual scope. Batch2 remains unaccepted; DEV unchanged. No Codespace started by this recovery turn, no DB/proxy started. Old PR13 late output remains rejected.
