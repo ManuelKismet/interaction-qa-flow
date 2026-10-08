@@ -340,6 +340,35 @@ class GuestGroupRepository {
     return response.data!;
   });
 
+  /// Stable source keys distinguish local copies from private account records.
+  /// The graph is copied intact; its internal IDs are never replaced by picker IDs.
+  Future<List<Map<String, dynamic>>> shareInteract({
+    required String groupId,
+    required String expectedUid,
+    required Map<String, Map<String, dynamic>> sessions,
+  }) => _request(() async {
+    if (sessions.isEmpty) return const [];
+    final response = await _client.post<List<dynamic>>(
+      '/api/v1/guest/groups/$groupId/import',
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+      data: {
+        'entries': [
+          for (final entry in sessions.entries)
+            {
+              'kind': 'interact_session',
+              'title': entry.value['title'],
+              'data': {...entry.value, 'visibility': 'guest_group'},
+              'client_import_key': entry.key,
+              'share_with_group': true,
+            },
+        ],
+      },
+    );
+    return (response.data ?? const [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  });
+
   Future<List<Map<String, dynamic>>> importSelected({
     required String groupId,
     required GuestWorkspaceData data,
