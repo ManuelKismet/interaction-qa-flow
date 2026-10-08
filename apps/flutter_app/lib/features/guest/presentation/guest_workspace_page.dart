@@ -4867,7 +4867,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 IconButton(
                   tooltip: 'Back to sessions',
@@ -4877,16 +4877,13 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 const SizedBox(width: 4),
                 Expanded(
                   flex: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Semantics(
-                      header: true,
-                      child: Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge,
-                      ),
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleLarge,
                     ),
                   ),
                 ),
