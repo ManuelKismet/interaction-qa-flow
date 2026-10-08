@@ -1651,14 +1651,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.items, hasLength(1));
       expect((await store.load()).knowledge, isEmpty);
-      await tester.tap(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is NavigationDestination && widget.label == 'Interact',
-        ),
-      );
+      await tester.pump(const Duration(seconds: 5));
+      await tester.tap(find.byTooltip('Switch workspace'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Organisation workspace'));
+      await tester.pumpAndSettle();
+      expect(find.text('Organisation route'), findsOneWidget);
+      unawaited(router.push<void>('/personal/interact'));
+      await tester.pumpAndSettle();
       await tester.pumpAndSettle();
       expect(find.text('Create private session'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -1863,6 +1867,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.items, hasLength(1));
       expect((await store.load()).knowledge.single['id'], 'selected-local');
+      await tester.pump(const Duration(seconds: 5));
       await tester.tap(
         find.byWidgetPredicate(
           (widget) =>

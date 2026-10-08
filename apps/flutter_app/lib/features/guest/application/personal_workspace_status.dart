@@ -28,6 +28,7 @@ class PersonalWorkspaceStatusController
     required bool hasPendingChanges,
     bool claim = false,
   }) {
+    if (!ref.mounted) return;
     if (ownerGeneration < state.ownerGeneration ||
         (!claim && state.ownerGeneration != ownerGeneration)) {
       return;
@@ -40,6 +41,7 @@ class PersonalWorkspaceStatusController
   }
 
   void clear(int ownerGeneration) {
+    if (!ref.mounted) return;
     if (state.ownerGeneration != ownerGeneration) return;
     state = const PersonalWorkspaceStatus();
   }

@@ -191,7 +191,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       unawaited(_flushPendingSave());
     }
     _workspaceStatusRevision++;
-    _workspaceStatusController.clear(_workspaceStatusOwner);
+    final statusController = _workspaceStatusController;
+    final statusOwner = _workspaceStatusOwner;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      statusController.clear(statusOwner);
+    });
     super.dispose();
   }
 
