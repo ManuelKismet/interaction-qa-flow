@@ -2066,10 +2066,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.items, hasLength(1));
 
-      await _scrollToTopOfVerticalList(
-        tester,
-        anchor: find.byType(Form),
-      );
+      await _scrollToTopOfVerticalList(tester, anchor: find.byType(Form));
       await _ensureVisibleInVerticalList(
         tester,
         find.text('Saved Q&A'),

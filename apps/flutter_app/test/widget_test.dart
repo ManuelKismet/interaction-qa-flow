@@ -7,9 +7,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const ProviderScope(
-        child: IntQaFlowApp(firebaseReady: false),
-      ),
+      const ProviderScope(child: IntQaFlowApp(firebaseReady: false)),
     );
     await tester.pumpAndSettle();
 

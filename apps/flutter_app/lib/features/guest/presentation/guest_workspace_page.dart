@@ -2105,20 +2105,24 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                     children: [
                       Flexible(
                         child: Text(
-                    _verifiedPersonalUid != null
-                        ? 'Personal workspace'
-                        : _hasSignedInNonGuestUser
-                        ? 'Registered local workspace'
-                        : 'Guest workspace',
-                    style: !_hasSignedInNonGuestUser
-                        ? Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          )
-                        : null,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                          _verifiedPersonalUid != null
+                              ? 'Personal workspace'
+                              : _hasSignedInNonGuestUser
+                              ? 'Registered local workspace'
+                              : 'Guest workspace',
+                          style: !_hasSignedInNonGuestUser
+                              ? Theme.of(
+                                  context,
+                                ).textTheme.bodyMedium?.copyWith(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                )
+                              : null,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       _GuestNotice(
@@ -2870,7 +2874,6 @@ class _GuestNotice extends StatelessWidget {
   }
 }
 
-
 const _knowledgeInfoButton = _GuestInfoButton(
   tooltip: 'Search help',
   title: 'About Knowledge search',
@@ -2887,11 +2890,11 @@ Widget _interactInfoButton(bool privateWorkspace) => _GuestInfoButton(
   title: 'About Interact storage',
   content: privateWorkspace
       ? 'New sessions are private to your account. Imported '
-          'sessions and their edits stay in your personal '
-          'account; group sharing is separate.'
+            'sessions and their edits stay in your personal '
+            'account; group sharing is separate.'
       : 'New sessions stay on this device unless you explicitly '
-          'import them. Imported sessions and their edits stay '
-          'in your personal account; group sharing is separate.',
+            'import them. Imported sessions and their edits stay '
+            'in your personal account; group sharing is separate.',
 );
 
 class _GuestInfoButton extends StatelessWidget {

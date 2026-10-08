@@ -1649,7 +1649,8 @@ void _registerGuestCleanup(WidgetTester tester) {
 }
 
 Finder _field(String label) => find.byWidgetPredicate(
-  (widget) => widget is TextField &&
+  (widget) =>
+      widget is TextField &&
       (widget.decoration?.labelText == label ||
           widget.decoration?.hintText == label),
 );
