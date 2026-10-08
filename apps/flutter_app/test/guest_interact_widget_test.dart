@@ -268,9 +268,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byTooltip('Back to sessions'), findsOneWidget);
+    expect(find.text('Destination: Local · this device'), findsOneWidget);
+    expect(find.text('Local · saved on this device'), findsOneWidget);
     expect(find.text('Active participant'), findsOneWidget);
+    final editorAnchor = _activeParticipantBar;
+    await _ensureVisibleInGuestList(
+      tester,
+      find.text('Add shared question'),
+      anchor: editorAnchor,
+    );
     expect(find.text('Add shared question'), findsOneWidget);
-    expect(find.text('Add follow-up'), findsWidgets);
     expect(
       find.text('Add participant question'),
       findsOneWidget,
@@ -282,9 +290,25 @@ void main() {
       ),
       findsOneWidget,
     );
+    await _ensureVisibleInGuestList(
+      tester,
+      find.text('A prepared prompt with a long but readable question label'),
+      anchor: editorAnchor,
+    );
+    expect(find.text('Add follow-up'), findsWidgets);
+    await _ensureVisibleInGuestList(
+      tester,
+      find.text('A nested follow-up question with a deliberately long label 8'),
+      anchor: editorAnchor,
+    );
     expect(
       find.text('A nested follow-up question with a deliberately long label 8'),
       findsOneWidget,
+    );
+    expect(
+      find.textContaining('Active participant: A participant name'),
+      findsOneWidget,
+      reason: 'The pinned bar keeps the active participant evident.',
     );
     final compactFollowUpAction = find.byWidgetPredicate(
       (widget) =>
@@ -298,6 +322,11 @@ void main() {
       reason:
           'Deeply nested answer actions should compact before they overflow.',
     );
+    await _ensureVisibleInGuestList(
+      tester,
+      _activeParticipantSelector,
+      anchor: editorAnchor,
+    );
     final participantGuidance = tester.widget<DropdownButtonFormField<String>>(
       find.byWidgetPredicate(
         (widget) =>
@@ -308,9 +337,12 @@ void main() {
     expect(participantGuidance.decoration.helperText, isNull);
     expect(participantGuidance.decoration.helperMaxLines, isNull);
     final participantHelp = find.byTooltip('Active participant help');
+    await _ensureVisibleInGuestList(
+      tester,
+      participantHelp,
+      anchor: editorAnchor,
+    );
     expect(participantHelp, findsOneWidget);
-    await tester.ensureVisible(participantHelp);
-    await tester.pumpAndSettle();
     await tester.tap(participantHelp);
     await tester.pumpAndSettle();
     expect(
@@ -381,6 +413,7 @@ void main() {
 
       expect(find.textContaining('duplicate participant IDs'), findsOneWidget);
       expect(find.text('Active participant'), findsNothing);
+      expect(find.text('New question'), findsNothing);
       expect(find.text('Prepared question'), findsNothing);
       expect(find.text('Download / Share PDF'), findsOneWidget);
       expect((await store.load()).sessions.single, session);
@@ -495,32 +528,45 @@ void main() {
 
       await showWorkspace();
       expect(find.byTooltip('Active participant help'), findsOneWidget);
-      expect(find.byTooltip('Prepared question help'), findsOneWidget);
+      expect(find.byTooltip('Question help'), findsOneWidget);
+      expect(find.text('Prepared question'), findsNothing);
+      expect(find.byTooltip('Prepared question help'), findsNothing);
       await _ensureVisibleInGuestList(
         tester,
-        find.byTooltip('Prepared question help'),
-        anchor: find.text('Two-person interview'),
+        find.byTooltip('Question help'),
+        anchor: find.byTooltip('Back to sessions'),
       );
-      await tester.tap(find.byTooltip('Prepared question help').hitTestable());
+      await tester.tap(find.byTooltip('Question help').hitTestable());
       await tester.pumpAndSettle();
       expect(
         find.text(
-          'Shared questions get separate answers from each participant.',
+          'Shared questions get separate answers from each '
+          'participant. Participant questions are asked only of '
+          'the active participant. Templates are optional.',
         ),
         findsOneWidget,
       );
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
       expect(_answerField(tester).controller!.text, 'Alice answer');
+      await _ensureVisibleInGuestList(
+        tester,
+        find.text(_editorFooter),
+        anchor: find.byTooltip('Back to sessions'),
+      );
       expect(find.text('Bob-only question'), findsNothing);
 
       await _selectParticipant(tester, 'Bob');
       expect(_answerField(tester).controller!.text, 'Bob answer');
-      expect(find.text('Bob-only question'), findsOneWidget);
       expect(find.text('Bob follow-up'), findsOneWidget);
+      await _ensureVisibleInGuestList(
+        tester,
+        find.text('Bob-only question'),
+        anchor: _activeParticipantBar,
+      );
 
-      await tester.enterText(_field('Prepared question'), 'Bob-only addition');
-      await tester.tap(find.text('Add question for selected participant'));
+      await tester.enterText(_field('New question'), 'Bob-only addition');
+      await tester.tap(find.text('Add question for active participant'));
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 300));
       final saved = await store.load();
@@ -533,15 +579,28 @@ void main() {
 
       await _selectParticipant(tester, 'Alice');
       expect(_answerField(tester).controller!.text, 'Alice answer');
+      await _ensureVisibleInGuestList(
+        tester,
+        find.text(_editorFooter),
+        anchor: _activeParticipantBar,
+      );
       expect(find.text('Bob-only addition'), findsNothing);
       await _selectParticipant(tester, 'Bob');
-      expect(find.text('Bob-only addition'), findsOneWidget);
+      await _ensureVisibleInGuestList(
+        tester,
+        find.text('Bob-only addition'),
+        anchor: _activeParticipantBar,
+      );
 
       await showWorkspace();
       await _selectParticipant(tester, 'Bob');
       expect(_answerField(tester).controller!.text, 'Bob answer');
-      expect(find.text('Bob-only addition'), findsOneWidget);
       expect(find.text('Bob follow-up'), findsOneWidget);
+      await _ensureVisibleInGuestList(
+        tester,
+        find.text('Bob-only addition'),
+        anchor: _activeParticipantBar,
+      );
     },
   );
 
@@ -1307,6 +1366,9 @@ Finder _field(String label) => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.decoration?.labelText == label,
 );
 
+const _pinnedHeaderClearance = 120.0;
+const _editorFooter = 'Changes are saved to this device as you type.';
+
 Future<void> _ensureVisibleInGuestList(
   WidgetTester tester,
   Finder target, {
@@ -1351,18 +1413,24 @@ Future<void> _ensureVisibleInGuestList(
     AxisDirection.down,
   );
   final position = tester.state<ScrollableState>(scrollable).position;
-  for (var attempt = 0; attempt < 50; attempt++) {
+  var restartedFromTop = false;
+  for (var attempt = 0; attempt < 80; attempt++) {
     await tester.pumpAndSettle();
     if (target.evaluate().isNotEmpty) {
       if (target.hitTestable().evaluate().isNotEmpty) return;
       final targetRect = tester.getRect(target);
       final listRect = tester.getRect(scrollable);
-      final delta = targetRect.bottom > listRect.bottom
+      var delta = targetRect.bottom > listRect.bottom
           ? targetRect.bottom - listRect.bottom
           : targetRect.top < listRect.top
           ? targetRect.top - listRect.top
           : 0.0;
-      if (delta == 0) break;
+      if (delta == 0) {
+        // Inside the viewport but covered, e.g. by a pinned editor header:
+        // move it lower so it is clear of anything pinned at the top.
+        delta = targetRect.top - listRect.top - _pinnedHeaderClearance;
+        if (delta >= 0 || position.pixels <= position.minScrollExtent) break;
+      }
       position.jumpTo(
         (position.pixels + delta)
             .clamp(position.minScrollExtent, position.maxScrollExtent)
@@ -1370,7 +1438,14 @@ Future<void> _ensureVisibleInGuestList(
       );
       continue;
     }
-    if (position.pixels >= position.maxScrollExtent) break;
+    if (position.pixels >= position.maxScrollExtent) {
+      // Lazily built targets may be above the current offset: rescan once
+      // from the top before failing.
+      if (restartedFromTop) break;
+      restartedFromTop = true;
+      position.jumpTo(position.minScrollExtent);
+      continue;
+    }
     position.jumpTo(
       (position.pixels + 180)
           .clamp(position.minScrollExtent, position.maxScrollExtent)
@@ -1383,11 +1458,22 @@ Future<void> _ensureVisibleInGuestList(
 TextField _answerField(WidgetTester tester) =>
     tester.widget<TextField>(_field('Local answer').first);
 
+final _activeParticipantBar = find.byKey(
+  const ValueKey('guest-active-participant-bar'),
+);
+
+final _activeParticipantSelector = find.byWidgetPredicate(
+  (widget) =>
+      widget is DropdownButtonFormField<String> &&
+      widget.decoration.labelText == 'Active participant',
+);
+
 Future<void> _selectParticipant(WidgetTester tester, String name) async {
-  final selector = find.byWidgetPredicate(
-    (widget) =>
-        widget is DropdownButtonFormField<String> &&
-        widget.decoration.labelText == 'Active participant',
+  final selector = _activeParticipantSelector;
+  await _ensureVisibleInGuestList(
+    tester,
+    selector,
+    anchor: _activeParticipantBar,
   );
   await tester.tap(selector);
   await tester.pumpAndSettle();

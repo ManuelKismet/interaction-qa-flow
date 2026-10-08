@@ -49,16 +49,13 @@ Map<String, dynamic> createGuestSessionFromTemplate({
   final nextId = makeId ?? newGuestItemId;
   final slots = _templateSlots(template);
   final participantIds = <String, String>{
-    for (final slot in slots)
-      slot['id']!: nextId(),
+    for (final slot in slots) slot['id']!: nextId(),
   };
   final participants = [
     for (final (index, slot) in slots.indexed)
       {
         'id': participantIds[slot['id']],
-        'name': index == 0
-            ? firstParticipantName
-            : 'Participant ${index + 1}',
+        'name': index == 0 ? firstParticipantName : 'Participant ${index + 1}',
       },
   ];
   final fallbackSlot = slots.first['id']!;
@@ -163,7 +160,8 @@ Map<String, dynamic> _sessionQuestion(
       ? 'participant'
       : 'shared';
   final requestedTarget = question['target_participant_slot'];
-  final targetSlot = answerOwnerSlot ??
+  final targetSlot =
+      answerOwnerSlot ??
       (requestedTarget is String && participantIds.containsKey(requestedTarget)
           ? requestedTarget
           : fallbackSlot);
@@ -223,11 +221,16 @@ Map<String, dynamic> _sessionAnswer(
 List<Map<String, String>> _templateSlots(Map<String, dynamic> template) {
   final slots = (template['participant_slots'] as List? ?? const [])
       .whereType<Map>()
-      .map((item) => Map<String, String>.fromEntries(
-            item.entries.where((entry) => entry.value is String).map(
-                  (entry) => MapEntry(entry.key.toString(), entry.value as String),
-                ),
-          ))
+      .map(
+        (item) => Map<String, String>.fromEntries(
+          item.entries
+              .where((entry) => entry.value is String)
+              .map(
+                (entry) =>
+                    MapEntry(entry.key.toString(), entry.value as String),
+              ),
+        ),
+      )
       .where((slot) => slot['id']?.isNotEmpty == true)
       .toList();
   final references = <String>{};
@@ -255,10 +258,7 @@ List<Map<String, String>> _templateSlots(Map<String, dynamic> template) {
   } else {
     for (final id in references) {
       if (slots.any((slot) => slot['id'] == id)) continue;
-      slots.add({
-        'id': id,
-        'label': 'Participant ${slots.length + 1}',
-      });
+      slots.add({'id': id, 'label': 'Participant ${slots.length + 1}'});
     }
   }
   if (slots.isEmpty) {

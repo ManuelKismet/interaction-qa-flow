@@ -603,8 +603,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             .firstOrNull;
         _enqueuePersonalWrite(
           _PersonalWorkspaceWrite(
-            action:
-                current == null || identical(_inFlightPersonalWrite, write)
+            action: current == null || identical(_inFlightPersonalWrite, write)
                 ? 'create'
                 : 'update',
             kind: write.kind,
@@ -1225,9 +1224,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       ),
     );
     if (confirmed != true || !mounted) return;
-    final backup = GuestWorkspaceData(
-      sessions: [session],
-    ).encodeBackup();
+    final backup = GuestWorkspaceData(sessions: [session]).encodeBackup();
     try {
       await Clipboard.setData(ClipboardData(text: backup));
       if (!mounted) return;
@@ -4154,13 +4151,10 @@ class _GuestSessionEditor extends StatefulWidget {
 }
 
 class _GuestSessionEditorState extends State<_GuestSessionEditor> {
-  final _participantFormKey = GlobalKey<FormState>();
   final _questionFormKey = GlobalKey<FormState>();
   final _composerKey = GlobalKey();
   final _scrollController = ScrollController();
-  final _participant = TextEditingController();
   final _question = TextEditingController();
-  final _participantFocus = FocusNode();
   final _questionFocus = FocusNode();
   String? _selectedParticipantId;
 
@@ -4184,9 +4178,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _participant.dispose();
     _question.dispose();
-    _participantFocus.dispose();
     _questionFocus.dispose();
     super.dispose();
   }
@@ -4214,12 +4206,28 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   String _storageFeedback({required String local, required String account}) =>
       widget.isPersonalAccount ? account : local;
 
-  void _addParticipant() {
-    if (!_participantFormKey.currentState!.validate()) {
-      _participantFocus.requestFocus();
-      return;
-    }
-    final name = _participant.text.trim();
+  Future<void> _addParticipant() async {
+    final values = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _GuestRequiredTextDialog(
+        title: 'Add participant',
+        submitLabel: widget.isPersonalAccount
+            ? 'Add to account session'
+            : 'Add participant locally',
+        description:
+            'The new participant becomes the active participant and gets a '
+            'blank answer for every shared question.',
+        fields: [
+          _GuestRequiredTextField(
+            label: 'Participant name',
+            hintText: 'e.g. Sam (interviewee)',
+            errorText: 'Enter a participant name.',
+          ),
+        ],
+      ),
+    );
+    if (values == null || !mounted) return;
+    final name = values.single;
     final id = newGuestItemId();
     _editSession((session) {
       (session['participants'] as List).add({'id': id, 'name': name});
@@ -4232,7 +4240,6 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       }
     });
     setState(() => _selectedParticipantId = id);
-    _participant.clear();
   }
 
   Future<void> _renameActiveParticipant() async {
@@ -4580,7 +4587,11 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     );
   }
 
-  Widget _header(BuildContext context, {required bool duplicateIds}) {
+  Widget _header(
+    BuildContext context, {
+    required bool duplicateIds,
+    required bool statusPinned,
+  }) {
     final theme = Theme.of(context);
     final title = widget.session['title'] as String? ?? 'Interact session';
     return Column(
@@ -4602,7 +4613,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                   header: true,
                   child: Text(
                     title,
-                    maxLines: 3,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleLarge,
                   ),
@@ -4615,20 +4626,37 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 switch (value) {
                   case 'rename':
                     _renameSession();
+                  case 'template':
+                    widget.onSaveTemplate();
                   case 'json':
                     widget.onCopyJson();
                   case 'delete':
                     widget.onDelete();
                 }
               },
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: 'rename', child: Text('Rename session')),
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'rename',
+                  child: Text('Rename session'),
+                ),
                 PopupMenuItem(
+                  value: 'template',
+                  enabled: !duplicateIds,
+                  child: Text(
+                    widget.privateWorkspace
+                        ? 'Save as private template'
+                        : 'Save as local template',
+                  ),
+                ),
+                const PopupMenuItem(
                   value: 'json',
                   child: Text('Copy session JSON backup'),
                 ),
-                PopupMenuDivider(),
-                PopupMenuItem(value: 'delete', child: Text('Delete session')),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Delete session'),
+                ),
               ],
               icon: const Icon(Icons.more_vert),
             ),
@@ -4641,6 +4669,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Chip(
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               avatar: Icon(
                 widget.isPersonalAccount
                     ? Icons.lock_person_outlined
@@ -4653,10 +4683,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                     : 'Destination: Local · this device',
               ),
             ),
-            Semantics(
-              liveRegion: true,
-              child: Text(widget.storageStatus),
-            ),
+            if (!statusPinned)
+              Semantics(liveRegion: true, child: Text(widget.storageStatus)),
             const _GuestInfoButton(
               tooltip: 'Session lifecycle information',
               title: 'About session lifecycle',
@@ -4670,26 +4698,14 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: duplicateIds ? null : widget.onSaveTemplate,
-              icon: const Icon(Icons.bookmark_add_outlined),
-              label: Text(
-                widget.privateWorkspace
-                    ? 'Save as private template'
-                    : 'Save as local template',
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => widget.onPrint(_selectedParticipantId),
-              icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Download / Share PDF'),
-            ),
-          ],
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () => widget.onPrint(_selectedParticipantId),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Download / Share PDF'),
+          ),
         ),
       ],
     );
@@ -4699,86 +4715,66 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     BuildContext context,
     List<Map<String, dynamic>> participants,
     String? activeParticipantId,
-  ) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
+  ) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text('1. Participants', style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 8),
-      Form(
-        key: _participantFormKey,
-        child: Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _participant,
-                focusNode: _participantFocus,
+      Expanded(
+        child: participants.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Add a participant to start asking questions.'),
+              )
+            : DropdownButtonFormField<String>(
+                key: ValueKey(activeParticipantId),
+                initialValue: activeParticipantId,
+                isExpanded: true,
                 decoration: const InputDecoration(
-                  labelText: 'Add participant',
-                  hintText: 'e.g. Sam (interviewee)',
+                  labelText: 'Active participant',
+                  suffixIcon: _GuestInfoButton(
+                    tooltip: 'Active participant help',
+                    title: 'About the active participant',
+                    content:
+                        'Answers and individual questions are shown for this participant.',
+                  ),
                 ),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Enter a participant name.'
-                    : null,
-                onFieldSubmitted: (_) => _addParticipant(),
+                items: [
+                  for (final participant in participants)
+                    DropdownMenuItem(
+                      value: participant['id'] as String,
+                      child: Text(
+                        participant['name'] as String? ?? 'Participant',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (value) =>
+                    setState(() => _selectedParticipantId = value),
               ),
-            ),
-            IconButton(
-              tooltip: 'Add participant',
-              onPressed: _addParticipant,
-              icon: const Icon(Icons.person_add_alt_1),
-            ),
-          ],
-        ),
       ),
-      if (participants.isNotEmpty) ...[
-        const SizedBox(height: 12),
-        Text(
-          '2. Active participant',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          key: ValueKey(activeParticipantId),
-          initialValue: activeParticipantId,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Active participant',
-            suffixIcon: _GuestInfoButton(
-              tooltip: 'Active participant help',
-              title: 'About the active participant',
-              content:
-                  'Answers and individual questions are shown for this participant.',
+      IconButton(
+        tooltip: 'Add participant',
+        onPressed: _addParticipant,
+        icon: const Icon(Icons.person_add_alt_1),
+      ),
+      if (participants.isNotEmpty)
+        PopupMenuButton<String>(
+          tooltip: 'Active participant actions',
+          icon: const Icon(Icons.manage_accounts_outlined),
+          onSelected: (value) {
+            if (value == 'rename') _renameActiveParticipant();
+            if (value == 'remove') _removeActiveParticipant();
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: 'rename',
+              child: Text('Rename active participant'),
             ),
-          ),
-          items: [
-            for (final participant in participants)
-              DropdownMenuItem(
-                value: participant['id'] as String,
-                child: Text(
-                  participant['name'] as String? ?? 'Participant',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-          onChanged: (value) => setState(() => _selectedParticipantId = value),
-        ),
-        const SizedBox(height: 4),
-        Wrap(
-          spacing: 8,
-          children: [
-            TextButton.icon(
-              onPressed: _renameActiveParticipant,
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Rename active participant'),
-            ),
-            TextButton.icon(
-              onPressed: _removeActiveParticipant,
-              icon: const Icon(Icons.person_remove_outlined),
-              label: const Text('Remove active participant'),
+            PopupMenuItem(
+              value: 'remove',
+              child: Text('Remove active participant'),
             ),
           ],
         ),
-      ],
     ],
   );
 
@@ -4788,8 +4784,6 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 12),
-        Text('3. Questions', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
         Form(
           key: _questionFormKey,
           child: TextFormField(
@@ -4889,7 +4883,14 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
       slivers: [
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
-        padded(_header(context, duplicateIds: hasDuplicateParticipantIds)),
+        padded(
+          _header(
+            context,
+            duplicateIds: hasDuplicateParticipantIds,
+            statusPinned:
+                !hasDuplicateParticipantIds && activeParticipant != null,
+          ),
+        ),
         if (hasDuplicateParticipantIds) ...[
           padded(
             const Padding(
@@ -4908,15 +4909,17 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             ),
           ),
         ] else ...[
-          padded(const Divider(height: 24)),
+          padded(const Divider(height: 16)),
           padded(
             _participantsSection(context, participants, activeParticipantId),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
           if (activeParticipant != null)
             SliverPersistentHeader(
               pinned: true,
               delegate: _GuestActiveParticipantBarDelegate(
                 name: activeParticipant['name'] as String? ?? 'Participant',
+                status: widget.storageStatus,
                 onAddQuestion: _showComposer,
                 background: Theme.of(context).colorScheme.surface,
               ),
@@ -4969,15 +4972,17 @@ class _GuestActiveParticipantBarDelegate
     extends SliverPersistentHeaderDelegate {
   const _GuestActiveParticipantBarDelegate({
     required this.name,
+    required this.status,
     required this.onAddQuestion,
     required this.background,
   });
 
   final String name;
+  final String status;
   final VoidCallback onAddQuestion;
   final Color background;
 
-  static const double _height = 56;
+  static const double _height = 64;
 
   @override
   double get minExtent => _height;
@@ -5010,15 +5015,29 @@ class _GuestActiveParticipantBarDelegate
                       const Icon(Icons.person_pin_outlined),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Semantics(
-                          liveRegion: true,
-                          child: Text(
-                            'Active participant: $name',
-                            key: const ValueKey('guest-active-participant-bar'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Active participant: $name',
+                              key: const ValueKey(
+                                'guest-active-participant-bar',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                status,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       if (compact)
@@ -5045,8 +5064,11 @@ class _GuestActiveParticipantBarDelegate
   );
 
   @override
-  bool shouldRebuild(covariant _GuestActiveParticipantBarDelegate oldDelegate) =>
+  bool shouldRebuild(
+    covariant _GuestActiveParticipantBarDelegate oldDelegate,
+  ) =>
       oldDelegate.name != name ||
+      oldDelegate.status != status ||
       oldDelegate.onAddQuestion != onAddQuestion ||
       oldDelegate.background != background;
 }
@@ -5325,7 +5347,8 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
   Widget build(BuildContext context) {
     final branches = widget.answer?['follow_ups'] as List? ?? const [];
     final collapsed = widget.answer?['branches_collapsed'] as bool? ?? false;
-    final participantName = widget.participant['name'] as String? ?? 'Participant';
+    final participantName =
+        widget.participant['name'] as String? ?? 'Participant';
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: LayoutBuilder(

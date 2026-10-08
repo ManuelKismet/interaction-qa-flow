@@ -438,12 +438,16 @@ Future<void> _ensureVisibleInVerticalList(
       if (target.hitTestable().evaluate().isNotEmpty) return;
       final targetRect = tester.getRect(target);
       final listRect = tester.getRect(scrollable);
-      final delta = targetRect.bottom > listRect.bottom
+      var delta = targetRect.bottom > listRect.bottom
           ? targetRect.bottom - listRect.bottom
           : targetRect.top < listRect.top
           ? targetRect.top - listRect.top
           : 0.0;
-      if (delta == 0) break;
+      if (delta == 0) {
+        // Covered inside the viewport, e.g. by a pinned editor header.
+        delta = targetRect.top - listRect.top - 120;
+        if (delta >= 0 || position.pixels <= position.minScrollExtent) break;
+      }
       position.jumpTo(
         (position.pixels + delta)
             .clamp(position.minScrollExtent, position.maxScrollExtent)
@@ -1610,6 +1614,13 @@ void main() {
     await tester.tap(find.text('Imported nested session').hitTestable());
     await tester.pumpAndSettle();
 
+    expect(find.text('Destination: Private account'), findsOneWidget);
+    expect(find.textContaining('Personal account · saved'), findsOneWidget);
+    await _ensureVisibleInVerticalList(
+      tester,
+      find.text('Existing nested follow-up'),
+      anchor: find.byTooltip('Back to sessions'),
+    );
     expect(find.text('Existing nested follow-up'), findsOneWidget);
     final answer = find
         .byWidgetPredicate(
