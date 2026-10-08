@@ -40,6 +40,7 @@ from app.schemas.guided import (
 )
 from app.schemas.search import SemanticSearchResult
 from app.services.guided import GuidedService
+from app.services.interact_search import InteractSearchService
 from app.services.guided_knowledge import GuidedKnowledgeService
 
 router = APIRouter(prefix="/guided", tags=["guided"])
@@ -152,6 +153,18 @@ async def create_session(
     session: AsyncSession = Depends(get_session),
 ) -> GuidedSessionResponse:
     return await GuidedService(session).create_session(identity.organisation_id, identity.user_id, payload)
+
+
+@router.get("/sessions/search")
+async def search_interact_sessions(
+    query: str = Query(min_length=2, max_length=100),
+    limit: int = Query(default=25, ge=1, le=50),
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await InteractSearchService(session).organisation(
+        identity.organisation_id, identity.user_id, query, limit=limit
+    )
 
 
 @router.get("/sessions/{session_id}", response_model=GuidedSessionResponse)

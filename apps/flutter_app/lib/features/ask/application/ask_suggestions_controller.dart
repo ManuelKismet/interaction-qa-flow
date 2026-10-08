@@ -7,12 +7,23 @@ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/knowledge/application/knowledge_search_sources.dart';
+import 'package:int_qa_flow/features/knowledge/application/interact_search.dart';
 import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 
 final askSuggestionsProvider =
     AsyncNotifierProvider.autoDispose<AskSuggestionsController, AskSuggestions>(
       AskSuggestionsController.new,
     );
+
+final localAskSuggestionsProvider =
+    AsyncNotifierProvider.autoDispose<LocalAskSuggestionsController, AskSuggestions>(
+      LocalAskSuggestionsController.new,
+    );
+
+class LocalAskSuggestionsController extends AskSuggestionsController {
+  @override
+  bool get localOnly => true;
+}
 
 class AskKnowledgeHit {
   const AskKnowledgeHit({
@@ -26,6 +37,10 @@ class AskKnowledgeHit {
     required this.status,
     required this.destination,
     this.groupId,
+    this.kind = 'knowledge',
+    this.sessionId,
+    this.questionId,
+    this.participantId,
   });
 
   final String id;
@@ -38,6 +53,11 @@ class AskKnowledgeHit {
   final String status;
   final String destination;
   final String? groupId;
+  final String kind;
+  final String? sessionId;
+  final String? questionId;
+  final String? participantId;
+  bool get isInteract => kind == 'interact_session';
 }
 
 class AskSuggestions {
@@ -108,7 +128,8 @@ final askSearchIdentityProvider = Provider<AskSearchIdentity>((ref) {
     }
     if (membership.hasError ||
         !membership.hasValue ||
-        membership.requireValue.userId != uid) {
+        (membership.requireValue.firebaseUid != null &&
+            membership.requireValue.firebaseUid != uid)) {
       return AskSearchIdentity(
         verifiedUid: uid,
         membershipState: 'unavailable',
@@ -125,6 +146,7 @@ final askSearchIdentityProvider = Provider<AskSearchIdentity>((ref) {
 });
 
 class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
+  bool get localOnly => false;
   Timer? _debounce;
   String _latestQuery = '';
   int _queryGeneration = 0;
@@ -133,7 +155,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
 
   @override
   Future<AskSuggestions> build() async {
-    ref.listen(askSearchIdentityProvider, (previous, next) {
+    if (!localOnly) ref.listen(askSearchIdentityProvider, (previous, next) {
       if (previous != null &&
           !previous.sameScopeAs(next) &&
           _latestQuery.isNotEmpty &&
@@ -156,7 +178,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
 
   void retry() {
     final previous = state.value;
-    if (previous == null || _latestQuery.length < 2) return;
+    if (previous == null || _latestQuery.length < (localOnly ? 1 : 2)) return;
     _scheduleQuery(_latestQuery, preserveResults: true);
   }
 
@@ -183,8 +205,12 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
           )
         : const AsyncLoading();
     final requestedQuery = _latestQuery;
+    if (localOnly) {
+      unawaited(_search(requestedQuery, generation, previousResults: previous));
+      return;
+    }
     _debounce = Timer(
-      const Duration(milliseconds: 350),
+      const Duration(milliseconds: 300),
       () => _search(
         requestedQuery,
         generation,
@@ -198,7 +224,9 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
     int generation, {
     AskSuggestions? previousResults,
   }) async {
-    final identity = ref.read(askSearchIdentityProvider);
+    final identity = localOnly
+        ? const AskSearchIdentity()
+        : ref.read(askSearchIdentityProvider);
     _lastSearchQuery = query;
     _lastSearchIdentity = identity;
     GuestWorkspaceData local;
@@ -232,6 +260,13 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
                         value,
                         expectedUid: identity.verifiedUid!,
                       ),
+            searchPrivateInteract: identity.verifiedUid == null
+                ? null
+                : (value) => ref.read(personalWorkspaceRepositoryProvider)
+                    .searchInteract(value, expectedUid: identity.verifiedUid!),
+            searchOrganisationInteract: identity.organisationId == null
+                ? null
+                : (value) => ref.read(questionsRepositoryProvider).searchInteract(value),
             searchGroups: identity.verifiedUid == null
                 ? null
                 : (value) => ref
@@ -375,12 +410,42 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
         ),
       );
     }
+    for (final result in [
+      ...searchLocalInteract(query, local.sessions),
+      ...sources.interact,
+    ]) {
+      final sessionId = result['session_id'] as String?;
+      final source = result['source'] as String?;
+      if (sessionId == null || source == null) continue;
+      if (result['owner_uid'] != null &&
+          result['owner_uid'] != identity.verifiedUid) continue;
+      hits.add(AskKnowledgeHit(
+        id: result['id'] as String? ?? sessionId,
+        sessionId: sessionId,
+        questionId: result['question_id'] as String?,
+        participantId: result['participant_id'] as String?,
+        kind: 'interact_session',
+        title: result['title'] as String? ?? 'Interact session',
+        source: source,
+        attribution: [
+          ..._attribution(result),
+          if (result['visibility'] is String)
+            'Visibility: ${result['visibility']}',
+        ],
+        matchMethod: 'Keyword or prefix match',
+        relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
+        snippet: _string(result['snippet']),
+        status: 'Interact · ${result['matched_in'] ?? 'session'} · ${result['status'] ?? ''}',
+        destination: result['destination'] as String? ?? 'personal',
+        groupId: result['group_id'] as String?,
+      ));
+    }
     final errors = {...sources.failedSources};
     if (localFailed) errors.add('Local');
     if (previousResults != null) {
       for (final source in errors) {
         for (final oldHit in previousResults.hits.where(
-          (hit) => _sourceName(hit.source) == source,
+          (hit) => _hitSourceName(hit) == source,
         )) {
           if (!hits.any((hit) => _scopeKey(hit) == _scopeKey(oldHit))) {
             hits.add(oldHit);
@@ -396,6 +461,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
       ..clear()
       ..addAll(uniqueHits.values);
     hits.sort((left, right) {
+      if (left.isInteract != right.isInteract) return left.isInteract ? 1 : -1;
       final byScore = right.relevance.compareTo(left.relevance);
       if (byScore != 0) return byScore;
       final byTitle = left.title.toLowerCase().compareTo(
@@ -405,23 +471,28 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
       final byId = left.id.compareTo(right.id);
       return byId != 0 ? byId : left.source.compareTo(right.source);
     });
+    final knowledgeHits = hits.where((hit) => !hit.isInteract).toList();
+    final interactHits = hits.where((hit) => hit.isInteract).toList();
+    final partial = {...sources.partialSources};
+    if (knowledgeHits.length > 10) partial.add('Knowledge');
+    if (interactHits.length > 10) partial.add('Interact');
     state = AsyncData(
       AskSuggestions(
-        hits: hits.take(10).toList(),
+        hits: [...knowledgeHits.take(10), ...interactHits.take(10)],
         failedSources: errors,
-        partialSources: sources.partialSources,
+        partialSources: partial,
         hasSearched: true,
         isRefreshing: false,
         notice: query.length > 100
             ? 'Shorten the query to 100 characters to search other accessible '
-                'Knowledge sources. Local Knowledge was searched.'
+                'sources. Local Knowledge and Interact were searched.'
             : null,
       ),
     );
   }
 
   bool _sameCurrentScope(AskSearchIdentity identity) =>
-      identity.sameScopeAs(ref.read(askSearchIdentityProvider));
+      localOnly || identity.sameScopeAs(ref.read(askSearchIdentityProvider));
 
   static String _sourceName(String source) {
     if (source.startsWith('Organisation:')) return 'Organisation';
@@ -429,8 +500,15 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
     return source;
   }
 
+  static String _hitSourceName(AskKnowledgeHit hit) {
+    if (!hit.isInteract || hit.source == 'Local') return _sourceName(hit.source);
+    return hit.destination == 'organisation_interact'
+        ? 'Organisation Interact'
+        : 'Private and Group Interact';
+  }
+
   static String _scopeKey(AskKnowledgeHit hit) =>
-      '${_sourceName(hit.source)}:${hit.groupId ?? ''}:${hit.id}';
+      '${hit.kind}:${_sourceName(hit.source)}:${hit.groupId ?? ''}:${hit.id}:${hit.questionId ?? ''}:${hit.participantId ?? ''}';
 
   static List<String> _attribution(Map<String, dynamic> result) => [
     if (result['department'] is Map &&

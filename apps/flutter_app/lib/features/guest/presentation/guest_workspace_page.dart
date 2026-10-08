@@ -22,12 +22,31 @@ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
-import 'package:int_qa_flow/features/knowledge/application/knowledge_search_sources.dart';
-import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+import 'package:int_qa_flow/features/ask/application/ask_suggestions_controller.dart';
+import 'package:int_qa_flow/features/knowledge/presentation/unified_search_results.dart';
 import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
 import 'package:share_plus/share_plus.dart';
 
 part 'group_interact_editor.dart';
+
+/// Open device-local results in a local-only workspace. An account session
+/// with the same graph ID cannot replace the selected local original.
+Future<void> openLocalInteractSearchResult(
+  BuildContext context,
+  AskKnowledgeHit hit,
+) async {
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => GuestWorkspacePage(
+        firebaseReady: false,
+        initialWorkspaceTab: 1,
+        initialSessionId: hit.sessionId,
+        initialQuestionId: hit.questionId,
+        initialParticipantId: hit.participantId,
+      ),
+    ),
+  );
+}
 
 void _showPdfFontFallbackNotice(BuildContext context) {
   ScaffoldMessenger.of(context).showSnackBar(
@@ -97,6 +116,8 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
     this.authUnavailable = false,
     this.onRetryAccount,
     this.initialSessionId,
+    this.initialQuestionId,
+    this.initialParticipantId,
     this.onSessionRouteChanged,
     super.key,
   });
@@ -116,6 +137,8 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
 
   /// Interact session opened in the dedicated session editor.
   final String? initialSessionId;
+  final String? initialQuestionId;
+  final String? initialParticipantId;
 
   /// Called when the session editor opens (`id`) or closes (`null`) so a
   /// router can reflect the editor in the URL. Without it the editor is
@@ -1291,13 +1314,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     );
   }
 
-  Future<void> _openGroupKnowledge(String groupId, String entryId) async {
+  Future<void> _openGroupSearchResult(AskKnowledgeHit hit) async {
     if (!await _saveBeforeLeaving() || !mounted) return;
+    final groupId = hit.groupId!;
+    final entryId = hit.id;
     if (widget.onWorkspaceTabChanged != null) {
-      context.push(
-        '/guest/groups?groupId=${Uri.encodeQueryComponent(groupId)}'
-        '&entryId=${Uri.encodeQueryComponent(entryId)}',
-      );
+      context.push(Uri(path: '/guest/groups', queryParameters: {
+        'groupId': groupId, 'entryId': entryId,
+        if (hit.questionId != null) 'questionId': hit.questionId!,
+        if (hit.participantId != null) 'participantId': hit.participantId!,
+      }).toString());
       return;
     }
     await Navigator.of(context).push<void>(
@@ -1305,6 +1331,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         builder: (_) => SharedGuestGroupsPage(
           initialGroupId: groupId,
           initialEntryId: entryId,
+          initialQuestionId: hit.questionId,
+          initialParticipantId: hit.participantId,
         ),
       ),
     );
@@ -2290,27 +2318,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                     widget.initialKnowledgeSection,
                                 onKnowledgeSectionChanged:
                                     _handleKnowledgeSectionChanged,
-                                onOpenGroup: _openGroupKnowledge,
+                                onOpenGroupResult: _openGroupSearchResult,
                                 privateWorkspace: _verifiedPersonalUid != null,
-                                searchIdentityKey: _verifiedPersonalUid == null
-                                    ? null
-                                    : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
-                                searchOrganization: null,
-                                searchPersonal: _verifiedPersonalUid == null
-                                    ? null
-                                    : (query) => ref
-                                          .read(
-                                            personalWorkspaceRepositoryProvider,
-                                          )
-                                          .searchKnowledge(
-                                            query,
-                                            expectedUid: _verifiedPersonalUid!,
-                                          ),
-                                searchGroups: _verifiedPersonalUid == null
-                                    ? null
-                                    : (query) => ref
-                                          .read(guestGroupRepositoryProvider)
-                                          .searchKnowledge(query),
                                 reloadPersonalWorkspace:
                                     _refreshPersonalWorkspace,
                                 storageStatus: (item) =>
@@ -2352,6 +2361,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                 onPrint: _printReport,
                                 localSaveStatus: _saveStatus,
                                 openSessionId: _openSessionId,
+                                initialQuestionId: widget.initialQuestionId,
+                                initialParticipantId: widget.initialParticipantId,
                                 sessionLoading:
                                     _personalLoading ||
                                     (_verifiedPersonalUid != null &&
@@ -2966,42 +2977,14 @@ class _AccountMembershipNotice extends StatelessWidget {
   );
 }
 
-class _UnifiedKnowledgeSearchHit {
-  const _UnifiedKnowledgeSearchHit({
-    required this.id,
-    required this.title,
-    required this.source,
-    required this.method,
-    required this.relevance,
-    required this.snippet,
-    required this.icon,
-    required this.onTap,
-    this.storageStatus,
-  });
-
-  final String id;
-  final String title;
-  final String source;
-  final String method;
-  final double relevance;
-  final String? snippet;
-  final IconData icon;
-  final VoidCallback onTap;
-  final String? storageStatus;
-}
-
-class _GuestKnowledgeTab extends StatefulWidget {
+class _GuestKnowledgeTab extends ConsumerStatefulWidget {
   const _GuestKnowledgeTab({
     required this.items,
     required this.privateWorkspace,
     required this.initialKnowledgeSection,
     required this.onKnowledgeSectionChanged,
-    required this.onOpenGroup,
+    required this.onOpenGroupResult,
     this.initialKnowledgeItemId,
-    required this.searchIdentityKey,
-    required this.searchOrganization,
-    required this.searchPersonal,
-    required this.searchGroups,
     required this.reloadPersonalWorkspace,
     required this.storageStatus,
     required this.isPersonalAccount,
@@ -3014,12 +2997,8 @@ class _GuestKnowledgeTab extends StatefulWidget {
   final bool privateWorkspace;
   final KnowledgeSection initialKnowledgeSection;
   final ValueChanged<KnowledgeSection>? onKnowledgeSectionChanged;
-  final Future<void> Function(String, String) onOpenGroup;
+  final Future<void> Function(AskKnowledgeHit) onOpenGroupResult;
   final String? initialKnowledgeItemId;
-  final String? searchIdentityKey;
-  final Future<List<SemanticSearchResult>> Function(String)? searchOrganization;
-  final Future<Map<String, dynamic>> Function(String)? searchPersonal;
-  final Future<Map<String, dynamic>> Function(String)? searchGroups;
   final Future<void> Function() reloadPersonalWorkspace;
   final String Function(Map<String, dynamic>) storageStatus;
   final bool Function(Map<String, dynamic>) isPersonalAccount;
@@ -3028,28 +3007,16 @@ class _GuestKnowledgeTab extends StatefulWidget {
   final ValueChanged<String> onDelete;
 
   @override
-  State<_GuestKnowledgeTab> createState() => _GuestKnowledgeTabState();
+  ConsumerState<_GuestKnowledgeTab> createState() => _GuestKnowledgeTabState();
 }
 
-class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+class _GuestKnowledgeTabState extends ConsumerState<_GuestKnowledgeTab> {
   final _formKey = GlobalKey<FormState>();
   final _query = TextEditingController();
   final _title = TextEditingController();
   final _body = TextEditingController();
   final _answer = TextEditingController();
   final _titleFocus = FocusNode();
-  Timer? _searchTimer;
-  int _searchGeneration = 0;
-  List<SemanticSearchResult> _organizationResults = [];
-  List<Map<String, dynamic>> _personalResults = [];
-  List<Map<String, dynamic>> _groupResults = [];
-  bool _organizationSearchFailed = false;
-  bool _organizationSearchPartial = false;
-  bool _personalSearchFailed = false;
-  bool _groupSearchFailed = false;
-  bool _personalSearchPartial = false;
-  bool _groupSearchPartial = false;
-  bool _remoteSearchLoading = false;
   bool _showSavedQuestions = false;
 
   @override
@@ -3073,7 +3040,6 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
 
   @override
   void dispose() {
-    _searchTimer?.cancel();
     _query.dispose();
     _title.dispose();
     _body.dispose();
@@ -3085,105 +3051,23 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
   @override
   void didUpdateWidget(covariant _GuestKnowledgeTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.searchIdentityKey == widget.searchIdentityKey &&
-        (oldWidget.searchOrganization != null) ==
-            (widget.searchOrganization != null) &&
-        (oldWidget.searchPersonal != null) == (widget.searchPersonal != null) &&
-        (oldWidget.searchGroups != null) == (widget.searchGroups != null)) {
-      return;
-    }
-    _searchGeneration++;
-    _searchTimer?.cancel();
-    _organizationResults = [];
-    _personalResults = [];
-    _groupResults = [];
-    _selectedKnowledgeItemId = null;
-    _organizationSearchFailed = false;
-    _organizationSearchPartial = false;
-    _personalSearchFailed = false;
-    _groupSearchFailed = false;
-    _personalSearchPartial = false;
-    _groupSearchPartial = false;
-    _remoteSearchLoading = false;
-    if (_query.text.trim().isNotEmpty) {
+    if (oldWidget.privateWorkspace != widget.privateWorkspace ||
+        oldWidget.items != widget.items) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _scheduleRemoteSearch(_query.text);
+        if (mounted && _query.text.trim().isNotEmpty) {
+          _scheduleRemoteSearch(_query.text);
+        }
       });
     }
   }
 
   void _scheduleRemoteSearch(String value) {
-    _searchTimer?.cancel();
-    final generation = ++_searchGeneration;
-    final query = value.trim();
-    setState(() {
-      _organizationResults = [];
-      _personalResults = [];
-      _groupResults = [];
-      _organizationSearchFailed = false;
-      _organizationSearchPartial = false;
-      _personalSearchFailed = false;
-      _groupSearchFailed = false;
-      _personalSearchPartial = false;
-      _groupSearchPartial = false;
-      _remoteSearchLoading =
-          query.isNotEmpty &&
-          query.length <= 100 &&
-          (widget.searchOrganization != null ||
-              widget.searchPersonal != null ||
-              widget.searchGroups != null);
-    });
-    if (!_remoteSearchLoading) return;
-    _searchTimer = Timer(const Duration(milliseconds: 300), () {
-      unawaited(_searchRemote(query, generation));
-    });
-  }
-
-  Future<void> _searchRemote(String query, int generation) async {
-    final identityKey = widget.searchIdentityKey;
-    final sources = await searchKnowledgeSources(
-      query,
-      searchOrganisation: widget.searchOrganization,
-      searchPrivateAccount: widget.searchPersonal,
-      searchGroups: widget.searchGroups,
-    );
-    if (!mounted ||
-        generation != _searchGeneration ||
-        identityKey != widget.searchIdentityKey) {
-      return;
+    if (widget.privateWorkspace) {
+      ref.read(askSuggestionsProvider.notifier).queryChanged(value);
+    } else {
+      ref.read(localAskSuggestionsProvider.notifier).queryChanged(value);
     }
-    setState(() {
-      _organizationResults = sources.organisation;
-      _personalResults = sources.privateAccount;
-      _groupResults = sources.groups;
-      _organizationSearchFailed = sources.failedSources.contains(
-        'Organisation',
-      );
-      _organizationSearchPartial = sources.partialSources.contains(
-        'Organisation',
-      );
-      _personalSearchFailed = sources.failedSources.contains('Private');
-      _groupSearchFailed = sources.failedSources.contains('Groups');
-      _personalSearchPartial = sources.partialSources.contains('Private');
-      _groupSearchPartial = sources.partialSources.contains('Groups');
-      _remoteSearchLoading = false;
-    });
   }
-
-  String _matchMethodLabel(String method) => switch (method) {
-    'semantic' => 'meaning-based match',
-    'hybrid' => 'keyword and meaning match',
-    _ => 'keyword or prefix match',
-  };
-
-  String _snippet(String? text) {
-    final value = text?.trim() ?? '';
-    return value.length <= 240
-        ? value
-        : '${value.substring(0, 240).trimRight()}…';
-  }
-
-  String? _stringValue(Object? value) => value is String ? value : null;
 
   Future<void> _openPersonalResult(String id) async {
     if (!widget.items.any((item) => item['id'] == id)) {
@@ -3206,307 +3090,27 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     });
   }
 
-  String? _matchingSnippet(String query, List<String?> candidates) {
-    final terms = query.toLowerCase().split(RegExp(r'\s+'));
-    for (final candidate in candidates.whereType<String>()) {
-      final folded = candidate.toLowerCase();
-      final positions = terms
-          .where((term) => term.isNotEmpty)
-          .map(folded.indexOf)
-          .where((index) => index >= 0)
-          .toList();
-      final index = positions.isEmpty
-          ? null
-          : positions.reduce((left, right) => left < right ? left : right);
-      if (index == null) continue;
-      final start = index > 70 ? index - 70 : 0;
-      final end = (start + 240).clamp(0, candidate.length).toInt();
-      return '${start > 0 ? '…' : ''}${candidate.substring(start, end)}'
-          '${end < candidate.length ? '…' : ''}';
-    }
-    final nonempty = candidates.whereType<String>().toList();
-    return nonempty.isEmpty ? null : nonempty.first;
-  }
-
   Widget _remoteSearchResults(
     BuildContext context,
     String query,
     List<Map<String, dynamic>> localMatches,
   ) {
-    if (query.trim().isEmpty) {
-      return const SizedBox.shrink();
-    }
-    if (query.trim().length > 100) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(
-          'Authorised Knowledge search supports queries up to 100 characters. '
-          'Local Knowledge remains searchable.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      );
-    }
-    final personalById = {
-      for (final result in _personalResults)
-        if (result['source_id'] is String)
-          result['source_id'] as String: result,
-    };
-    final localIds = localMatches
-        .map((item) => item['id'])
-        .whereType<String>()
-        .toSet();
-    final hits = <_UnifiedKnowledgeSearchHit>[];
-    for (final result in _organizationResults) {
-      final sourceLabels = <String>['Organisation: ${result.organisationName}'];
-      if (result.department != null) {
-        sourceLabels.add('Department: ${result.department!.name}');
-      }
-      if (result.team != null) sourceLabels.add('Team: ${result.team!.name}');
-      final snippet = _matchingSnippet(query, [
-        result.canonicalBody,
-        result.acceptedAnswerBody,
-      ]);
-      hits.add(
-        _UnifiedKnowledgeSearchHit(
-          id: result.questionId,
-          title: result.title,
-          source: sourceLabels.join(' · '),
-          method: _matchMethodLabel(result.matchMethod),
-          relevance: result.relevanceScore,
-          snippet: snippet ?? result.matchedText,
-          icon: Icons.business_outlined,
-          onTap: () => context.push('/questions/${result.questionId}'),
-        ),
-      );
-    }
-    for (final item in localMatches) {
-      final id = item['id'] as String? ?? '';
-      final accountResult = personalById[id];
-      final accountData = accountResult?['data'] is Map
-          ? Map<String, dynamic>.from(accountResult!['data'] as Map)
-          : const <String, dynamic>{};
-      final source = widget.isPersonalAccount(item) ? 'Private' : 'Local';
-      final snippet =
-          _stringValue(accountResult?['snippet']) ??
-          _matchingSnippet(query, [
-            _stringValue(item['body']),
-            _stringValue(item['answer']),
-          ]) ??
-          _matchingSnippet(query, [
-            _stringValue(accountData['body']),
-            _stringValue(accountData['answer']),
-          ]);
-      final localRelevance = localKnowledgeRelevance(query, item);
-      final accountRelevance =
-          (accountResult?['relevance_score'] as num?)?.toDouble() ?? 0;
-      final personalMethod = accountResult?['match_method'] as String?;
-      hits.add(
-        _UnifiedKnowledgeSearchHit(
-          id: id,
-          title: item['title'] as String? ?? '',
-          source: source,
-          method: personalMethod == null
-              ? 'keyword or prefix match'
-              : _matchMethodLabel(personalMethod),
-          relevance: accountRelevance > localRelevance
-              ? accountRelevance
-              : localRelevance,
-          snippet: snippet,
-          icon: widget.isPersonalAccount(item)
-              ? Icons.lock_outline
-              : Icons.devices_outlined,
-          onTap: () => _openPersonalResult(id),
-          storageStatus: widget.storageStatus(item),
-        ),
-      );
-    }
-    for (final result in _personalResults) {
-      final id =
-          result['source_id'] as String? ?? result['id'] as String? ?? '';
-      if (id.isEmpty || localIds.contains(id)) continue;
-      Map<String, dynamic>? sourceItem;
-      for (final item in widget.items) {
-        if (item['id'] == id) {
-          sourceItem = item;
-          break;
+    if (query.trim().isEmpty) return const SizedBox.shrink();
+    final suggestions = widget.privateWorkspace
+        ? ref.watch(askSuggestionsProvider)
+        : ref.watch(localAskSuggestionsProvider);
+    return UnifiedSearchResults(
+      suggestions: suggestions,
+      onRetry: () {
+        if (widget.privateWorkspace) {
+          ref.read(askSuggestionsProvider.notifier).retry();
+        } else {
+          ref.read(localAskSuggestionsProvider.notifier).retry();
         }
-      }
-      final isAccountSource =
-          sourceItem == null || widget.isPersonalAccount(sourceItem);
-      final data = result['data'] is Map
-          ? Map<String, dynamic>.from(result['data'] as Map)
-          : const <String, dynamic>{};
-      hits.add(
-        _UnifiedKnowledgeSearchHit(
-          id: id,
-          title: result['title'] as String? ?? '',
-          source: isAccountSource ? 'Private' : 'Local',
-          method: _matchMethodLabel(
-            result['match_method'] as String? ?? 'keyword',
-          ),
-          relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
-          snippet: isAccountSource
-              ? _stringValue(result['snippet']) ??
-                    _matchingSnippet(query, [
-                      _stringValue(data['body']),
-                      _stringValue(data['answer']),
-                    ])
-              : _matchingSnippet(query, [
-                  _stringValue(sourceItem['body']),
-                  _stringValue(sourceItem['answer']),
-                ]),
-          icon: isAccountSource ? Icons.lock_outline : Icons.devices_outlined,
-          onTap: () => _openPersonalResult(id),
-          storageStatus: sourceItem == null
-              ? null
-              : widget.storageStatus(sourceItem),
-        ),
-      );
-    }
-    for (final result in _groupResults) {
-      final id = result['id'] as String?;
-      final groupId = result['group_id'] as String?;
-      if (id == null || id.isEmpty || groupId == null || groupId.isEmpty) {
-        continue;
-      }
-      final data = result['data'] is Map
-          ? Map<String, dynamic>.from(result['data'] as Map)
-          : const <String, dynamic>{};
-      final title = result['title'] as String? ?? '';
-      final groupName = result['group_name'] as String? ?? 'Group';
-      hits.add(
-        _UnifiedKnowledgeSearchHit(
-          id: id,
-          title: title,
-          source: 'Group: $groupName',
-          method: _matchMethodLabel(
-            result['match_method'] as String? ?? 'keyword',
-          ),
-          relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
-          snippet:
-              _stringValue(result['snippet']) ??
-              _matchingSnippet(query, [
-                _stringValue(data['body']),
-                _stringValue(data['answer']),
-              ]),
-          icon: Icons.groups_outlined,
-          onTap: () => widget.onOpenGroup(groupId, id),
-        ),
-      );
-    }
-    hits.sort((left, right) {
-      final byScore = right.relevance.compareTo(left.relevance);
-      return byScore != 0 ? byScore : left.id.compareTo(right.id);
-    });
-    final hasResults = hits.isNotEmpty;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_remoteSearchLoading)
-          const LinearProgressIndicator(
-            semanticsLabel: 'Searching authorized Knowledge sources',
-          ),
-        if (_organizationSearchFailed ||
-            _organizationSearchPartial ||
-            _personalSearchFailed ||
-            _groupSearchFailed ||
-            _personalSearchPartial ||
-            _groupSearchPartial)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_organizationSearchFailed)
-                  Text(
-                    'Organisation search could not be completed.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                if (_organizationSearchPartial)
-                  Text(
-                    'Organisation search reached its result limit. Some matches may be omitted.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                if (_personalSearchFailed)
-                  Text(
-                    'Personal-account search could not be completed.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                if (_groupSearchFailed)
-                  Text(
-                    'Group search could not be completed.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                if (_groupSearchPartial)
-                  Text(
-                    'Group search reached its result limit. Some matches may be omitted.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                if (_personalSearchPartial)
-                  Text(
-                    'Personal-account search reached its result limit. Some matches may be omitted.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                if (_organizationSearchFailed ||
-                    _organizationSearchPartial ||
-                    _personalSearchFailed ||
-                    _personalSearchPartial ||
-                    _groupSearchFailed ||
-                    _groupSearchPartial)
-                  TextButton(
-                    onPressed: () => _scheduleRemoteSearch(_query.text),
-                    child: const Text('Retry available sources'),
-                  ),
-              ],
-            ),
-          ),
-        if (!_remoteSearchLoading &&
-            !_organizationSearchFailed &&
-            !_organizationSearchPartial &&
-            !_personalSearchFailed &&
-            !_groupSearchFailed &&
-            !_personalSearchPartial &&
-            !_groupSearchPartial &&
-            !hasResults &&
-            (widget.searchOrganization != null ||
-                widget.searchPersonal != null ||
-                widget.searchGroups != null))
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              'No matches in the available Knowledge sources.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-        for (final hit in hits)
-          Card(
-            child: ListTile(
-              leading: Icon(hit.icon),
-              title: Text(hit.title),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Chip(
-                        visualDensity: VisualDensity.compact,
-                        label: Text(hit.source),
-                      ),
-                      Text(hit.method),
-                    ],
-                  ),
-                  if (hit.storageStatus != null) Text(hit.storageStatus!),
-                  if (hit.snippet != null && hit.snippet!.isNotEmpty)
-                    Text(_snippet(hit.snippet)),
-                ],
-              ),
-              onTap: hit.onTap,
-            ),
-          ),
-      ],
+      },
+      onOpenLocalInteract: (hit) => openLocalInteractSearchResult(context, hit),
+      onOpenPersonalKnowledge: (id) => unawaited(_openPersonalResult(id)),
+      onOpenGroupResult: (hit) => unawaited(widget.onOpenGroupResult(hit)),
     );
   }
 
@@ -3551,7 +3155,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
     final searchField = TextField(
       controller: _query,
       decoration: InputDecoration(
-        labelText: 'Search Knowledge',
+        labelText: 'Search Knowledge & Interact',
         prefixIcon: const Icon(Icons.search),
         suffixIcon: MediaQuery.sizeOf(context).height < 300
             ? _knowledgeInfoButton
@@ -3941,6 +3545,8 @@ class _GuestInteractTab extends StatefulWidget {
     required this.onCreateItem,
     required this.onPrint,
     required this.openSessionId,
+    this.initialQuestionId,
+    this.initialParticipantId,
     required this.sessionLoading,
     required this.onOpenSession,
     required this.onCloseSession,
@@ -3960,6 +3566,8 @@ class _GuestInteractTab extends StatefulWidget {
   onCreateItem;
   final void Function(Map<String, dynamic>, String?) onPrint;
   final String? openSessionId;
+  final String? initialQuestionId;
+  final String? initialParticipantId;
   final bool sessionLoading;
   final ValueChanged<String> onOpenSession;
   final VoidCallback onCloseSession;
@@ -4161,6 +3769,8 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
         return _GuestSessionEditor(
           key: ValueKey('guest-session-editor-$openId'),
           session: session,
+          initialQuestionId: widget.initialQuestionId,
+          initialParticipantId: widget.initialParticipantId,
           storageStatus: _editorStatus(session),
           isPersonalAccount: isPersonalAccount,
           privateWorkspace: widget.privateWorkspace,
@@ -4402,6 +4012,8 @@ class _GuestSessionEditor extends StatefulWidget {
     required this.onCopyJson,
     required this.makeQuestion,
     this.groupName,
+    this.initialQuestionId,
+    this.initialParticipantId,
     super.key,
   });
 
@@ -4417,6 +4029,8 @@ class _GuestSessionEditor extends StatefulWidget {
   final VoidCallback onCopyJson;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
   final String? groupName;
+  final String? initialQuestionId;
+  final String? initialParticipantId;
 
   @override
   State<_GuestSessionEditor> createState() => _GuestSessionEditorState();
@@ -4425,16 +4039,26 @@ class _GuestSessionEditor extends StatefulWidget {
 class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   final _scrollController = ScrollController();
   String? _selectedParticipantId;
+  String? _searchQuestionId;
 
   @override
   void initState() {
     super.initState();
-    _selectedParticipantId = _participants.firstOrNull?['id'] as String?;
+    _searchQuestionId = widget.initialQuestionId;
+    _selectedParticipantId = widget.initialParticipantId ??
+        _participants.firstOrNull?['id'] as String?;
   }
 
   @override
   void didUpdateWidget(covariant _GuestSessionEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialQuestionId != widget.initialQuestionId) {
+      _searchQuestionId = widget.initialQuestionId;
+    }
+    if (oldWidget.initialParticipantId != widget.initialParticipantId &&
+        widget.initialParticipantId != null) {
+      _selectedParticipantId = widget.initialParticipantId;
+    }
     if (oldWidget.session['id'] != widget.session['id'] ||
         !_participants.any(
           (participant) => participant['id'] == _selectedParticipantId,
@@ -5169,7 +4793,10 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             .firstOrNull ??
         participants.firstOrNull;
     final activeParticipantId = activeParticipant?['id'] as String?;
-    final questions = (widget.session['questions'] as List? ?? const [])
+    final allQuestions = widget.session['questions'] as List? ?? const [];
+    final searchQuestion = _searchQuestionId == null ? null :
+        _findGuestQuestion(allQuestions, _searchQuestionId!);
+    final questions = (searchQuestion == null ? allQuestions : [searchQuestion])
         .whereType<Map<String, dynamic>>()
         .where((question) {
           if (question['scope'] != 'participant') return true;
@@ -5237,6 +4864,16 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 background: Theme.of(context).colorScheme.surface,
               ),
             ),
+          if (_searchQuestionId != null)
+            padded(Row(children: [
+              Expanded(child: Text(searchQuestion == null
+                  ? 'The matched question is no longer available.'
+                  : 'Search match')),
+              TextButton(
+                onPressed: () => setState(() => _searchQuestionId = null),
+                child: const Text('Show all questions'),
+              ),
+            ])),
           if (questions.isEmpty && participants.isNotEmpty)
             padded(
               const Padding(
@@ -5254,7 +4891,14 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 participants: activeParticipant == null
                     ? const []
                     : [activeParticipant],
-                onRemove: () => _removeRootQuestion(question),
+                onRemove: () {
+                  final owner = _guestFollowUpOwner(allQuestions, question['id'] as String);
+                  if (owner == null) {
+                    _removeRootQuestion(question);
+                  } else {
+                    _removeFollowUp(owner.$1, owner.$2, question['id'] as String);
+                  }
+                },
                 onRemoveFollowUp: _removeFollowUp,
                 onUpdate: (updated) => _replaceQuestion(
                   widget.session,
@@ -5881,10 +5525,14 @@ class SharedGuestGroupsPage extends ConsumerStatefulWidget {
     super.key,
     this.initialGroupId,
     this.initialEntryId,
+    this.initialQuestionId,
+    this.initialParticipantId,
   });
 
   final String? initialGroupId;
   final String? initialEntryId;
+  final String? initialQuestionId;
+  final String? initialParticipantId;
 
   @override
   ConsumerState<SharedGuestGroupsPage> createState() =>
@@ -6961,7 +6609,11 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         title: Text(entry['title'] as String? ?? 'Group entry'),
         content: SizedBox(
           width: 700,
-          child: _GuestGroupEntryContent(entry: entry),
+          child: _GuestGroupEntryContent(
+            entry: entry,
+            questionId: entry['id'] == widget.initialEntryId
+                ? widget.initialQuestionId : null,
+          ),
         ),
         actions: [
           TextButton(
@@ -8366,17 +8018,25 @@ class _GuestPortablePreviewDialog extends StatelessWidget {
   );
 }
 
-class _GuestGroupEntryContent extends StatelessWidget {
-  const _GuestGroupEntryContent({required this.entry});
+class _GuestGroupEntryContent extends StatefulWidget {
+  const _GuestGroupEntryContent({required this.entry, this.questionId});
 
   final Map<String, dynamic> entry;
+  final String? questionId;
+
+  @override
+  State<_GuestGroupEntryContent> createState() => _GuestGroupEntryContentState();
+}
+
+class _GuestGroupEntryContentState extends State<_GuestGroupEntryContent> {
+  bool _showAll = false;
 
   @override
   Widget build(BuildContext context) {
-    final data = entry['data'] is Map
-        ? Map<String, dynamic>.from(entry['data'] as Map)
+    final data = widget.entry['data'] is Map
+        ? Map<String, dynamic>.from(widget.entry['data'] as Map)
         : <String, dynamic>{};
-    if (entry['kind'] != 'interact_session') {
+    if (widget.entry['kind'] != 'interact_session') {
       return ListView(
         shrinkWrap: true,
         children: [
@@ -8392,10 +8052,14 @@ class _GuestGroupEntryContent extends StatelessWidget {
         ],
       );
     }
+    final matchedQuestion = !_showAll && widget.questionId != null
+        ? _findGuestQuestion(data['questions'] as List? ?? const [], widget.questionId!)
+        : null;
     final report = composeGuestReport(
       session: {
         ...data,
-        'title': entry['title'] as String? ?? 'Interact session',
+        if (matchedQuestion != null) 'questions': [matchedQuestion],
+        'title': widget.entry['title'] as String? ?? 'Interact session',
       },
       allParticipants: true,
       participantId: null,
@@ -8404,6 +8068,16 @@ class _GuestGroupEntryContent extends StatelessWidget {
     return ListView(
       shrinkWrap: true,
       children: [
+        if (!_showAll && widget.questionId != null)
+          Row(children: [
+            Expanded(child: Text(matchedQuestion == null
+                ? 'The matched question is no longer available.'
+                : 'Search match')),
+            TextButton(
+              onPressed: () => setState(() => _showAll = true),
+              child: const Text('Show all questions'),
+            ),
+          ]),
         Text(
           'All participants · ${report.participantNames.join(', ')}',
           style: Theme.of(context).textTheme.bodySmall,
@@ -8645,6 +8319,24 @@ bool _replaceInQuestions(List questions, Map<String, dynamic> updated) {
     }
   }
   return false;
+}
+
+(String, String)? _guestFollowUpOwner(List questions, String questionId) {
+  for (final question in questions.whereType<Map<String, dynamic>>()) {
+    for (final answer in (question['answers'] as List? ?? const []).whereType<Map>()) {
+      final children = answer['follow_ups'] as List? ?? const [];
+      if (children.whereType<Map>().any((child) => child['id'] == questionId)) {
+        final parentId = question['id'];
+        final participantId = answer['participant_id'];
+        if (parentId is String && participantId is String) {
+          return (parentId, participantId);
+        }
+      }
+      final nested = _guestFollowUpOwner(children, questionId);
+      if (nested != null) return nested;
+    }
+  }
+  return null;
 }
 
 Map<String, dynamic>? _findGuestQuestion(List questions, String questionId) {

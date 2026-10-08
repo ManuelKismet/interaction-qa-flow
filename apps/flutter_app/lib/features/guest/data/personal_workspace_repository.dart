@@ -25,6 +25,18 @@ class PersonalWorkspaceRepository {
     ];
   }
 
+  Future<Map<String, dynamic>> searchInteract(
+    String query, {
+    required String expectedUid,
+  }) async {
+    final response = await _client.get<Map<String, dynamic>>(
+      '/api/v1/personal/interact/search',
+      queryParameters: {'query': query, 'limit': 25},
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+    );
+    return response.data ?? const {'results': [], 'partial': false};
+  }
+
   Future<Map<String, dynamic>> searchKnowledge(
     String query, {
     required String expectedUid,

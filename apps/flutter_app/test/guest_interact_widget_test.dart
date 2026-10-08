@@ -360,7 +360,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final localSearch = _field('Search Knowledge');
+      final localSearch = _field('Search Knowledge & Interact');
       expect(localSearch, findsOneWidget);
       expect(
         tester.widget<TextField>(localSearch).decoration!.helperText,
@@ -960,11 +960,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(_field('Search Knowledge'), findsOneWidget);
+      expect(_field('Search Knowledge & Interact'), findsOneWidget);
       await tester.tap(find.text('Saved Q&A'));
       await tester.pumpAndSettle();
       expect(
-        tester.getSize(_field('Search Knowledge')).width,
+        tester.getSize(_field('Search Knowledge & Interact')).width,
         lessThanOrEqualTo(840),
       );
       await tester.tap(find.text('Back to add a local question'));

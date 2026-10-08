@@ -15,8 +15,13 @@ import 'package:int_qa_flow/features/guided/presentation/guided_scope_dialog.dar
 import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 
 class GuidedSessionPage extends ConsumerStatefulWidget {
-  const GuidedSessionPage({required this.sessionId, super.key});
+  const GuidedSessionPage({
+    required this.sessionId, this.initialQuestionId, this.initialParticipantId,
+    super.key,
+  });
   final String sessionId;
+  final String? initialQuestionId;
+  final String? initialParticipantId;
 
   @override
   ConsumerState<GuidedSessionPage> createState() => _GuidedSessionPageState();
@@ -30,15 +35,30 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   bool _allParticipantsReport = false;
   GuidedPendingEdits? _drafts;
   String? _activeName;
+  String? _searchQuestionId;
+
+  @override
+  void initState() {
+    super.initState();
+    _participantId = widget.initialParticipantId;
+    _searchQuestionId = widget.initialQuestionId;
+  }
 
   @override
   void didUpdateWidget(covariant GuidedSessionPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialQuestionId != widget.initialQuestionId) {
+      _searchQuestionId = widget.initialQuestionId;
+    }
+    if (oldWidget.initialParticipantId != widget.initialParticipantId) {
+      _participantId = widget.initialParticipantId;
+    }
     if (oldWidget.sessionId != widget.sessionId) {
       final drafts = _drafts;
       if (drafts != null) unawaited(Future<void>.microtask(drafts.flush));
       _drafts = null;
-      _participantId = null;
+      _participantId = widget.initialParticipantId;
+      _searchQuestionId = widget.initialQuestionId;
       _saveState = GuidedSaveState.idle;
       _reportMode = false;
       _allParticipantsReport = false;
@@ -402,6 +422,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                       : GuidedFlowView(
                           key: ValueKey((session.id, repository)),
                           questions: session.questions,
+                          searchQuestionId: _searchQuestionId,
+                          onShowAllQuestions: () => setState(() => _searchQuestionId = null),
                           participantId: _participantId,
                           participantName: activeParticipant?.name,
                           readOnly: readOnly,
@@ -1278,6 +1300,8 @@ class GuidedFlowView extends StatelessWidget {
     this.managedDebounce = false,
     this.pendingValues = const {},
     this.questionActions,
+    this.searchQuestionId,
+    this.onShowAllQuestions,
     required this.onEditing,
     required this.onSaveQuestion,
     required this.onSaveAnswer,
@@ -1290,6 +1314,8 @@ class GuidedFlowView extends StatelessWidget {
   });
 
   final Widget? questionActions;
+  final String? searchQuestionId;
+  final VoidCallback? onShowAllQuestions;
   final List<GuidedQuestion> questions;
   final String? participantId;
   final String? participantName;
@@ -1333,7 +1359,8 @@ class GuidedFlowView extends StatelessWidget {
         ),
       );
       final answer = question.answerFor(participantId);
-      if (question.followUps.isEmpty || (answer?.branchesCollapsed ?? false)) {
+      if (question.followUps.isEmpty ||
+          (searchQuestionId == null && (answer?.branchesCollapsed ?? false))) {
         return;
       }
       for (final (index, followUp) in question.followUps.indexed) {
@@ -1349,6 +1376,9 @@ class GuidedFlowView extends StatelessWidget {
     for (final (index, question) in questions.indexed) {
       append(question, depth: 0, path: [index + 1]);
     }
+    final matches = searchQuestionId == null
+        ? visibleQuestions
+        : visibleQuestions.where((item) => item.question.id == searchQuestionId).toList();
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1100),
@@ -1357,7 +1387,15 @@ class GuidedFlowView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
             if (questions.isEmpty) const Text('No questions in this view.'),
-            for (final visible in visibleQuestions)
+            if (searchQuestionId != null)
+              Row(children: [
+                Expanded(child: Text(matches.isEmpty
+                    ? 'The matched question is no longer available.'
+                    : 'Search match')),
+                TextButton(onPressed: onShowAllQuestions,
+                    child: const Text('Show all questions')),
+              ]),
+            for (final visible in matches)
               GuidedQuestionNode(
                 question: visible.question,
                 participantId: participantId!,

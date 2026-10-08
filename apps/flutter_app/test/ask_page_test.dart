@@ -32,6 +32,9 @@ class _MemoryGuestStorage implements GuestStorage {
 }
 
 class _QuestionsRepository extends QuestionsRepository {
+  @override
+  Future<Map<String, dynamic>> searchInteract(String query) async => {'results': <Map<String, dynamic>>[], 'partial': false};
+
   _QuestionsRepository() : super(Dio());
 
   final createdQuestions = <Map<String, String?>>[];
@@ -87,6 +90,9 @@ class _QuestionsRepository extends QuestionsRepository {
 }
 
 class _PersonalRepository extends PersonalWorkspaceRepository {
+  @override
+  Future<Map<String, dynamic>> searchInteract(String query, {required String expectedUid}) async => {'results': <Map<String, dynamic>>[], 'partial': false};
+
   _PersonalRepository() : super(Dio());
 
   final searchQueries = <String>[];
@@ -641,6 +647,6 @@ void main() {
     await tester.enterText(titleField, 'zz');
     await tester.pump(const Duration(milliseconds: 360));
     await tester.pumpAndSettle();
-    expect(find.text('No matching Knowledge found.'), findsOneWidget);
+    expect(find.text('No matching results.'), findsOneWidget);
   });
 }

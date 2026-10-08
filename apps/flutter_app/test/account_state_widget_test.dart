@@ -184,6 +184,9 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
 }
 
 class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+  @override
+  Future<Map<String, dynamic>> searchInteract(String query, {required String expectedUid}) async => {'results': <Map<String, dynamic>>[], 'partial': false};
+
   _TestPersonalWorkspaceRepository(this.items) : super(Dio());
 
   List<Map<String, dynamic>> items;
@@ -1179,7 +1182,7 @@ void main() {
       final searchField = find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&
-            widget.decoration?.labelText == 'Search Knowledge',
+            widget.decoration?.labelText == 'Search Knowledge & Interact',
       );
 
       await tester.pumpWidget(page(userA));
@@ -1264,7 +1267,7 @@ void main() {
     final searchField = find.byWidgetPredicate(
       (widget) =>
           widget is TextField &&
-          widget.decoration?.labelText == 'Search Knowledge',
+          widget.decoration?.labelText == 'Search Knowledge & Interact',
     );
     await tester.enterText(searchField, 'partial');
     await tester.pump(const Duration(milliseconds: 301));
@@ -1373,7 +1376,7 @@ void main() {
       final searchField = find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&
-            widget.decoration?.labelText == 'Search Knowledge',
+            widget.decoration?.labelText == 'Search Knowledge & Interact',
       );
       await tester.enterText(searchField, query);
       await tester.pump(const Duration(milliseconds: 301));
@@ -1945,7 +1948,7 @@ void main() {
       await _ensureVisibleInVerticalList(
         tester,
         find.text('Saved'),
-        anchor: find.text('Search Knowledge'),
+        anchor: find.text('Search Knowledge & Interact'),
       );
       await tester.tap(find.text('Saved').hitTestable());
       await tester.pumpAndSettle();
@@ -2008,7 +2011,7 @@ void main() {
       await _ensureVisibleInVerticalList(
         tester,
         find.widgetWithText(TextFormField, 'Question'),
-        anchor: find.text('Search Knowledge'),
+        anchor: find.text('Search Knowledge & Interact'),
       );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
@@ -2085,7 +2088,7 @@ void main() {
       await _ensureVisibleInVerticalList(
         tester,
         find.widgetWithText(TextFormField, 'Question'),
-        anchor: find.text('Search Knowledge'),
+        anchor: find.text('Search Knowledge & Interact'),
       );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
@@ -2111,7 +2114,7 @@ void main() {
       await _ensureVisibleInVerticalList(
         tester,
         find.widgetWithText(TextFormField, 'Question'),
-        anchor: find.text('Search Knowledge'),
+        anchor: find.text('Search Knowledge & Interact'),
       );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
@@ -2188,7 +2191,7 @@ void main() {
       await _ensureVisibleInVerticalList(
         tester,
         find.text('Saved'),
-        anchor: find.text('Search Knowledge'),
+        anchor: find.text('Search Knowledge & Interact'),
       );
       await tester.tap(find.text('Saved').hitTestable());
       await tester.pumpAndSettle();
@@ -2234,7 +2237,7 @@ void main() {
       await _ensureVisibleInVerticalList(
         tester,
         find.widgetWithText(TextFormField, 'Question'),
-        anchor: find.text('Search Knowledge'),
+        anchor: find.text('Search Knowledge & Interact'),
       );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
@@ -2261,7 +2264,7 @@ void main() {
       await _ensureVisibleInVerticalList(
         tester,
         find.text('Saved'),
-        anchor: find.text('Search Knowledge'),
+        anchor: find.text('Search Knowledge & Interact'),
       );
       await tester.tap(find.text('Saved').hitTestable());
       await tester.pumpAndSettle();

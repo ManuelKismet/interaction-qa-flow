@@ -50,6 +50,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
             path: '/guided/sessions/:sessionId',
             builder: (context, state) => GuidedSessionPage(
               sessionId: state.pathParameters['sessionId']!,
+              initialQuestionId: state.uri.queryParameters['questionId'],
+              initialParticipantId: state.uri.queryParameters['participantId'],
             ),
           ),
           GoRoute(
@@ -66,6 +68,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
               final extra = state.extra;
               final entry = extra is Map ? extra : const {};
               return SharedGuestGroupsPage(
+                initialQuestionId: state.uri.queryParameters['questionId'],
+                initialParticipantId: state.uri.queryParameters['participantId'],
                 initialGroupId:
                     state.uri.queryParameters['groupId'] ??
                     entry['groupId'] as String?,
@@ -143,6 +147,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
             pageBuilder: (context, state) => _personalInteractPage(
               context,
               sessionId: state.pathParameters['sessionId'],
+              questionId: state.uri.queryParameters['questionId'],
+              participantId: state.uri.queryParameters['participantId'],
             ),
           ),
         ],
@@ -156,7 +162,9 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
 /// The personal Interact list and its session editor share one page key so the
 /// workspace state (pending account writes, local save timers) is kept while
 /// the URL switches between the list and a session.
-Page<void> _personalInteractPage(BuildContext context, {String? sessionId}) =>
+Page<void> _personalInteractPage(BuildContext context, {
+  String? sessionId, String? questionId, String? participantId,
+}) =>
     MaterialPage<void>(
       key: const ValueKey('personal-interact-workspace'),
       child: GuestWorkspacePage(
@@ -165,6 +173,8 @@ Page<void> _personalInteractPage(BuildContext context, {String? sessionId}) =>
         membershipStatus: AccountMembershipStatus.active,
         initialWorkspaceTab: 1,
         initialSessionId: sessionId,
+        initialQuestionId: questionId,
+        initialParticipantId: participantId,
         onSessionRouteChanged: (id) => context.go(
           id == null
               ? '/personal/interact'

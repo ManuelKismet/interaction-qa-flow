@@ -26,6 +26,9 @@ class _MemoryGuestStorage implements GuestStorage {
 }
 
 class _QuestionsRepository extends QuestionsRepository {
+  @override
+  Future<Map<String, dynamic>> searchInteract(String query) async => {'results': <Map<String, dynamic>>[], 'partial': false};
+
   _QuestionsRepository(this.results) : super(Dio());
 
   final List<SemanticSearchResult> results;
@@ -46,6 +49,9 @@ class _QuestionsRepository extends QuestionsRepository {
 }
 
 class _PersonalRepository extends PersonalWorkspaceRepository {
+  @override
+  Future<Map<String, dynamic>> searchInteract(String query, {required String expectedUid}) async => {'results': <Map<String, dynamic>>[], 'partial': false};
+
   _PersonalRepository(this.results) : super(Dio());
 
   final List<Map<String, dynamic>> results;

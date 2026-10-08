@@ -11,6 +11,7 @@ class KnowledgeSearchSources {
     this.organisation = const [],
     this.privateAccount = const [],
     this.groups = const [],
+    this.interact = const [],
     this.failedSources = const {},
     this.partialSources = const {},
   });
@@ -18,6 +19,7 @@ class KnowledgeSearchSources {
   final List<SemanticSearchResult> organisation;
   final List<Map<String, dynamic>> privateAccount;
   final List<Map<String, dynamic>> groups;
+  final List<Map<String, dynamic>> interact;
   final Set<String> failedSources;
   final Set<String> partialSources;
 }
@@ -27,14 +29,32 @@ Future<KnowledgeSearchSources> searchKnowledgeSources(
   OrganisationKnowledgeSearch? searchOrganisation,
   PrivateKnowledgeSearch? searchPrivateAccount,
   GroupKnowledgeSearch? searchGroups,
+  PrivateKnowledgeSearch? searchPrivateInteract,
+  PrivateKnowledgeSearch? searchOrganisationInteract,
 }) async {
   List<SemanticSearchResult> organisation = [];
   List<Map<String, dynamic>> privateAccount = [];
   List<Map<String, dynamic>> groups = [];
+  final interact = <Map<String, dynamic>>[];
   final failed = <String>{};
   final partial = <String>{};
 
+  Future<void> interactSource(String name, PrivateKnowledgeSearch search) async {
+    try {
+      final response = await search(query);
+      interact.addAll((response['results'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>());
+      if (response['partial'] == true) partial.add(name);
+    } on Object {
+      failed.add(name);
+    }
+  }
+
   await Future.wait<void>([
+    if (searchPrivateInteract != null)
+      interactSource('Private and Group Interact', searchPrivateInteract),
+    if (searchOrganisationInteract != null)
+      interactSource('Organisation Interact', searchOrganisationInteract),
     if (searchOrganisation != null)
       (() async {
         try {
@@ -74,6 +94,7 @@ Future<KnowledgeSearchSources> searchKnowledgeSources(
     organisation: organisation,
     privateAccount: privateAccount,
     groups: groups,
+    interact: interact,
     failedSources: failed,
     partialSources: partial,
   );

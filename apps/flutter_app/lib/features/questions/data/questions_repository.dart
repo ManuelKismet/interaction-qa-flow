@@ -75,6 +75,18 @@ class QuestionsRepository {
     }
   }
 
+  Future<Map<String, dynamic>> searchInteract(String query) async {
+    try {
+      final response = await _client.get<Map<String, dynamic>>(
+        '/api/v1/guided/sessions/search',
+        queryParameters: {'query': query, 'limit': 25},
+      );
+      return response.data ?? const {'results': [], 'partial': false};
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   Future<List<SemanticSearchResult>> searchQuestions(
     String query, {
     int limit = 5,

@@ -12,6 +12,7 @@ from app.schemas.personal_workspace import (
     PersonalWorkspaceItemUpdate,
 )
 from app.services.personal_workspace import PersonalWorkspaceService
+from app.services.interact_search import InteractSearchService
 
 
 async def reject_identity_overrides(request: Request) -> None:
@@ -57,6 +58,18 @@ async def list_items(
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
     return await PersonalWorkspaceService(session).list_items(identity.firebase_uid)
+
+
+@router.get("/interact/search")
+async def search_interact(
+    query: str = Query(min_length=2, max_length=100),
+    limit: int = Query(default=25, ge=1, le=50),
+    identity: GuestIdentity = Depends(get_guest_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await InteractSearchService(session).personal_and_groups(
+        identity.firebase_uid, query, limit=limit
+    )
 
 
 @router.get("/items/search")

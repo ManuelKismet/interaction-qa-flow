@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/ask/application/ask_suggestions_controller.dart';
 import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
+import 'package:int_qa_flow/features/knowledge/presentation/unified_search_results.dart';
+import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 
 class AskPage extends ConsumerStatefulWidget {
   const AskPage({super.key});
@@ -65,8 +67,9 @@ class _AskPageState extends ConsumerState<AskPage> {
                     });
                   },
                 ),
-                _SuggestionList(
+                UnifiedSearchResults(
                   suggestions: suggestions,
+                  onOpenLocalInteract: (hit) => openLocalInteractSearchResult(context, hit),
                   onRetry: ref.read(askSuggestionsProvider.notifier).retry,
                 ),
                 const SizedBox(height: 12),
@@ -213,206 +216,3 @@ class _AskPageState extends ConsumerState<AskPage> {
   }
 }
 
-class _SuggestionList extends StatelessWidget {
-  const _SuggestionList({required this.suggestions, required this.onRetry});
-
-  final AsyncValue<AskSuggestions> suggestions;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return suggestions.when(
-      data: (items) {
-        if (items.hits.isEmpty &&
-            items.failedSources.isEmpty &&
-            items.partialSources.isEmpty &&
-            !items.hasSearched &&
-            items.notice == null) {
-          return const SizedBox.shrink();
-        }
-        return Padding(
-          padding: const EdgeInsets.only(top: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Related questions and Knowledge',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              if (items.notice != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    items.notice!,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              const SizedBox(height: 8),
-              if (items.hits.isNotEmpty)
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0xFFD5DAD8)),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Column(
-                    children: [
-                      for (
-                        var index = 0;
-                        index < items.hits.length;
-                        index++
-                      ) ...[
-                        _SuggestionRow(result: items.hits[index]),
-                        if (index < items.hits.length - 1)
-                          const Divider(height: 1),
-                      ],
-                    ],
-                  ),
-                ),
-              if (items.failedSources.isNotEmpty ||
-                  items.partialSources.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (items.failedSources.isNotEmpty)
-                        Text(
-                          'Some accessible Knowledge sources could not be '
-                          'searched: ${items.failedSources.join(', ')}.',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      if (items.partialSources.isNotEmpty)
-                        Text(
-                          'Some sources reached their result limit: '
-                          '${items.partialSources.join(', ')}.',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      TextButton(
-                        onPressed: items.isRefreshing ? null : onRetry,
-                        child: const Text('Retry search'),
-                      ),
-                    ],
-                  ),
-                ),
-              if (items.isRefreshing)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: LinearProgressIndicator(),
-                ),
-              if (items.hits.isEmpty &&
-                  items.failedSources.isEmpty &&
-                  items.partialSources.isEmpty &&
-                  items.hasSearched &&
-                  items.notice == null)
-                const Text('No matching Knowledge found.'),
-            ],
-          ),
-        );
-      },
-      loading: () => const Padding(
-        padding: EdgeInsets.only(top: 12),
-        child: LinearProgressIndicator(),
-      ),
-      error: (error, stackTrace) => const Padding(
-        padding: EdgeInsets.only(top: 12),
-        child: Text('Existing answers are temporarily unavailable.'),
-      ),
-    );
-  }
-}
-
-class _SuggestionRow extends StatelessWidget {
-  const _SuggestionRow({required this.result});
-
-  final AskKnowledgeHit result;
-
-  @override
-  Widget build(BuildContext context) {
-    final highRelevance = result.relevance >= 1.2;
-    return InkWell(
-      onTap: () {
-        switch (result.destination) {
-          case 'organisation':
-            context.go('/questions/${result.id}');
-            break;
-          case 'group':
-            context.go(
-              '/guest/groups?groupId=${Uri.encodeQueryComponent(result.groupId ?? '')}'
-              '&entryId=${Uri.encodeQueryComponent(result.id)}',
-            );
-            break;
-          default:
-            context.go(
-              '/personal/questions?knowledgeItemId=${Uri.encodeQueryComponent(result.id)}',
-            );
-        }
-      },
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          result.title,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      Chip(
-                        visualDensity: VisualDensity.compact,
-                        label: Text(result.source),
-                      ),
-                      for (final label in result.attribution)
-                        Chip(
-                          visualDensity: VisualDensity.compact,
-                          label: Text(label),
-                        ),
-                      Text(
-                        result.matchMethod,
-                        style: TextStyle(
-                          color: highRelevance
-                              ? const Color(0xFF255C57)
-                              : const Color(0xFF8A5A00),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (result.snippet != null && result.snippet!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        result.snippet!,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  const SizedBox(height: 6),
-                  Text(
-                    result.status,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-      ),
-    );
-  }
-}

@@ -32,7 +32,7 @@ final currentMembershipProvider = FutureProvider.autoDispose<ActiveMembership>((
   if (!ref.mounted || ref.read(authStateProvider).value?.uid != expectedUid) {
     throw StateError('The signed-in account changed while loading membership.');
   }
-  return ActiveMembership.fromJson(response.data!);
+  return ActiveMembership.fromJson(response.data!, firebaseUid: expectedUid);
 });
 
 enum AccountMembershipStatus { active, noMembership, inactive, unavailable }
@@ -74,6 +74,7 @@ class ActiveMembership {
     required this.email,
     required this.displayName,
     required this.role,
+    this.firebaseUid,
   });
 
   final String userId;
@@ -82,12 +83,17 @@ class ActiveMembership {
   final String displayName;
   final String role;
 
-  factory ActiveMembership.fromJson(Map<String, dynamic> json) =>
+  /// Firebase identity that requested this membership; database user IDs are
+  /// a separate namespace and must never be compared to Firebase UIDs.
+  final String? firebaseUid;
+
+  factory ActiveMembership.fromJson(Map<String, dynamic> json, {String? firebaseUid}) =>
       ActiveMembership(
         userId: json['user_id'] as String,
         organisationId: json['organisation_id'] as String,
         email: json['email'] as String,
         displayName: json['display_name'] as String,
         role: json['role'] as String,
+        firebaseUid: firebaseUid,
       );
 }
