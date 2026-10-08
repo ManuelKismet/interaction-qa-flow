@@ -1,0 +1,221 @@
+00:00 +0: loading /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart
+00:00 +0: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:00 +1: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:00 +2: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:00 +3: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:00 +4: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:00 +5: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:00 +6: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:00 +7: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:00 +8: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:01 +9: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: only verified registered identities can create and join groups
+00:02 +10: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: admin can edit its own shared Interact copy
+00:02 +11: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: admin can edit its own shared Interact copy
+00:02 +12: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: admin can edit its own shared Interact copy
+00:02 +13: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: UID change clears Groups state and ignores stale loads
+00:02 +14: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: editor can edit its own shared Interact copy
+00:02 +15: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: editor can edit its own shared Interact copy
+00:03 +16: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: editor can edit its own shared Interact copy
+00:03 +17: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: group creation validates required fields in place
+00:03 +18: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: contributor can edit its own shared Interact copy
+00:04 +19: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: failed remote forms retain drafts without replaying writes
+00:04 +20: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: failed remote forms retain drafts without replaying writes
+00:04 +21: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: failed remote forms retain drafts without replaying writes
+00:04 +22: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: admin can edit another member shared Interact copy
+00:04 +23: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: failed status refresh is not reported as successful
+00:04 +24: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: editor can edit another member shared Interact copy
+00:05 +25: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: editor can edit another member shared Interact copy
+00:05 +26: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: failed autosave blocks sign-in navigation with warning
+00:05 +27: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: 409 competing edit keeps draft and review never retries
+00:05 +28: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: 409 competing edit keeps draft and review never retries
+00:05 +29: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: 409 competing edit keeps draft and review never retries
+00:06 +30: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: 409 competing edit keeps draft and review never retries
+00:06 +31: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: 409 competing edit keeps draft and review never retries
+00:06 +32: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: removing a member keeps the groups page mounted
+00:06 +33: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: revision changed before save prevents even the first write
+00:06 +34: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: revision changed before save prevents even the first write
+00:06 +35: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: revision changed before save prevents even the first write
+00:06 +36: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: revision changed before save prevents even the first write
+00:06 +37: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: group archive explains same-UID recovery and can be restored
+00:06 +38: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain save applied=true reconciles before safe retry
+00:06 +39: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain save applied=true reconciles before safe retry
+00:06 +40: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain save applied=true reconciles before safe retry
+00:06 +41: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain save applied=true reconciles before safe retry
+00:07 +42: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain save applied=true reconciles before safe retry
+00:07 +43: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain save applied=true reconciles before safe retry
+00:07 +44: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guest_group_dialog_test.dart: does not open History result after the entry dialog is dismissed
+00:07 +45: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain save applied=false reconciles before safe retry
+00:07 +46: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: applied uncertain save after resume clears conflict on confirmation
+00:08 +47: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain save with newer content requires review without retry
+00:08 +48: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: local guest account menu explains local-only work
+00:09 +49: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: local guest account menu explains local-only work
+00:09 +50: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: local guest account menu explains local-only work
+00:09 +51: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: older searched entry opens despite exclusion from newest 50
+00:10 +52: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: older searched entry opens despite exclusion from newest 50
+00:10 +53: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: leaving sign-in keeps the local workspace available
+00:10 +54: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: entry pushed beyond cutoff still reconciles applied=true and exports
+00:10 +55: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: entry pushed beyond cutoff still reconciles applied=true and exports
+00:10 +56: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: anonymous auth is treated as a local guest workspace
+00:10 +57: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: entry pushed beyond cutoff still reconciles applied=false and exports
+00:11 +58: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: entry pushed beyond cutoff still reconciles applied=false and exports
+00:11 +59: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: personal workspace data is cleared between account identities
+00:11 +60: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: direct entry HTTP 403 removes draft after successful group read
+00:11 +61: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: direct entry HTTP 403 removes draft after successful group read
+00:11 +62: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: partial personal search can be retried from the widget
+00:11 +63: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: direct entry HTTP 404 removes draft after successful group read
+00:12 +64: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: direct entry HTTP 404 removes draft after successful group read
+00:12 +65: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: clearing local work does not delete personal account items
+00:12 +66: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: pending direct entry read after signout cannot write or disclose
+00:12 +67: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: personal import retries selected items without removing locals
+00:12 +68: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed entry response after UID switch cannot disclose
+00:12 +69: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed entry response after UID switch cannot disclose
+00:12 +70: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: revision conflicts reload before an explicit pending-edit save
+00:13 +71: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: revision conflicts reload before an explicit pending-edit save
+00:13 +72: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: revision conflicts reload before an explicit pending-edit save
+00:13 +73: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: entry report preview is disposed on UID change
+00:13 +74: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: editing an imported nested session updates the account copy
+00:13 +75: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: editing an imported nested session updates the account copy
+00:13 +76: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: entry report confirmation rechecks actual 403 permission
+00:13 +77: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: local work stays separate until explicit account import
+00:13 +78: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: entry report confirmation rechecks actual 404 permission
+00:13 +79: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: new verified-user Knowledge saves privately and reconciles an uncertain create
+00:14 +80: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: new verified-user Knowledge saves privately and reconciles an uncertain create
+00:14 +81: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: uncertain Save and close keeps editor and admits remote write
+00:14 +82: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: pending private write blocks shell navigation and browser back until saved
+00:14 +83: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: system Back during pending save cannot dismiss editor
+00:14 +84: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: UID transition isolates queued writes while an earlier create is unresolved
+00:14 +85: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: actual 403 write response removes editable draft
+00:15 +86: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: actual 403 write response removes editable draft
+00:15 +87: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: personal refresh overlapping a create cannot replace the acknowledged item
+00:15 +88: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: actual 404 write response removes editable draft
+00:15 +89: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: pending selected account import blocks shell navigation until confirmed
+00:15 +90: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: re-read catches deletion before write
+00:15 +91: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: re-read catches deletion before write
+00:15 +92: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: unconfirmed account import remains guarded and retains its local original
+00:15 +93: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: re-read catches revocation before write
+00:16 +94: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: re-read catches revocation before write
+00:16 +95: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: re-read catches revocation before write
+00:16 +96: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: re-read catches revocation before write
+00:16 +97: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: registered account without membership is not shown as signed out
+00:16 +98: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after signout cannot write
+00:16 +99: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after signout cannot write
+00:16 +100: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after signout cannot write
+00:16 +101: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: anonymous Groups prompt preserves local account flow without API calls
+00:16 +102: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after UID switch cannot write
+00:16 +103: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after UID switch cannot write
+00:16 +104: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after UID switch cannot write
+00:16 +105: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after UID switch cannot write
+00:16 +106: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after UID switch cannot write
+00:17 +107: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after UID switch cannot write
+00:17 +108: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed capability read after UID switch cannot write
+00:17 +109: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: auth errors retain the signed-in status as unavailable
+00:17 +110: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed export capability read after signout cannot disclose JSON
+00:17 +111: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed export capability read after signout cannot disclose JSON
+00:17 +112: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed export capability read after signout cannot disclose JSON
+00:17 +113: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed export capability read after signout cannot disclose JSON
+00:17 +114: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: account creation sends verification email
+00:17 +115: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed export capability read after UID switch cannot disclose JSON
+00:17 +116: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed export capability read after UID switch cannot disclose JSON
+00:17 +117: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed export capability read after UID switch cannot disclose JSON
+00:17 +118: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: delayed export capability read after UID switch cannot disclose JSON
+00:17 +119: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: account creation does not prompt before normal registration
+00:17 +120: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: auth event signout disposes open draft without writing
+00:17 +121: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: auth event signout disposes open draft without writing
+00:17 +122: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: auth event signout disposes open draft without writing
+00:18 +123: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction account session JSON copy uses the backup format only
+00:18 +124: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: actual export menu confirms saved JSON and excludes unsaved draft
+00:18 +125: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: actual export menu confirms saved JSON and excludes unsaved draft
+00:18 +126: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction stale copy confirmation never copies the previous account session (sign-out)
+00:18 +127: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: editor revision history reads persisted saves not draft
+00:18 +128: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: editor revision history reads persisted saves not draft
+00:19 +129: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: editor revision history reads persisted saves not draft
+00:19 +130: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction Undo during a uncertain account DELETE retries to one restored item
+00:19 +131: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: saved Group PDF selected participant preview excludes unsaved draft
+00:19 +132: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: saved Group PDF selected participant preview excludes unsaved draft
+00:19 +133: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: saved Group PDF selected participant preview excludes unsaved draft
+00:20 +134: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction Undo after a queued uncertain DELETE (applied on server) reconciles to one account item
+00:20 +135: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: saved Group PDF all participant preview excludes unsaved draft
+00:20 +136: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: saved Group PDF all participant preview excludes unsaved draft
+00:20 +137: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: saved Group PDF all participant preview excludes unsaved draft
+00:20 +138: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction a lost recreate response does not create a duplicate
+00:20 +139: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: PDF confirmation actual 403 recheck prevents export
+00:20 +140: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction a changed remote record during an uncertain-delete Undo needs explicit review
+00:21 +141: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: PDF confirmation actual 404 recheck prevents export
+00:21 +142: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction a recreated remote record during an uncertain-delete Undo needs explicit review
+00:21 +143: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: export confirmation switch prevents clipboard disclosure
+00:21 +144: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction uncertain-delete reconciliation sends no writes after a UID switch
+00:21 +145: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: export confirmation signout prevents clipboard disclosure
+00:21 +146: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction uncertain-delete reconciliation sends no writes after sign-out
+00:21 +147: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction uncertain-delete reconciliation sends no writes after sign-out
+00:22 +148: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: export confirmation delete prevents clipboard disclosure
+00:22 +149: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/account_state_widget_test.dart: batch3 review correction open personal editor drops delayed old-account reads and writes on UID switch
+00:22 +150: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: close editor Cancel has explicit draft and persistence semantics
+00:22 +151: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: close editor Cancel has explicit draft and persistence semantics
+00:22 +152: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: close editor Discard draft has explicit draft and persistence semantics
+00:22 +153: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: close editor Save and close has explicit draft and persistence semantics
+00:23 +154: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: real guided provider rejects delayed read after uid change
+00:23 +155: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +156: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +157: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +158: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +159: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +160: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +161: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +162: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +163: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +164: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +165: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +166: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +167: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +168: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +169: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:23 +170: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: Group participant management preserves graph and blocks content removal
+00:24 +171: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: blank answer persists, reloads blank, but blank question remains unsaved
+00:24 +172: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: signout disposes nested participant dialog and draft
+00:24 +173: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: clearing an existing collapsed answer uses PATCH and preserves its recursive branch
+00:24 +174: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: signout disposes nested question dialog and draft
+00:25 +175: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: retry of failed new blank answer must create a real answer before reporting Saved
+00:25 +176: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: signout disposes nested history dialog and draft
+00:25 +177: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: rapid route disposal flushes original session and preserves a failed edit for retry
+00:25 +178: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: signout disposes nested review dialog and draft
+00:25 +179: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: signout disposes nested review dialog and draft
+00:25 +180: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: clean external refresh reconciles stable text controllers
+00:25 +181: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: phone long names keeps participant and question controls reachable with answer keyboard
+00:26 +182: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: phone long names keeps participant and question controls reachable with answer keyboard
+00:26 +183: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: phone long names keeps participant and question controls reachable with answer keyboard
+00:26 +184: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: phone long names keeps participant and question controls reachable with answer keyboard
+00:26 +185: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: typing during an in-flight save retains the newest value and revision
+00:26 +186: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: narrow phone keyboard long deep branches keep editing controls reachable
+00:26 +187: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: narrow phone keyboard long deep branches keep editing controls reachable
+00:27 +188: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart: narrow phone keyboard long deep branches keep editing controls reachable
+00:27 +189: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: equivalent same-UID authority refresh preserves pending edits
+00:27 +190: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: delayed same-identity authority refresh pauses saves but retains a visible retry draft
+00:27 +191: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: session visibility revocation stops pending timers without a mutation
+00:27 +192: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: new session route saves pending text to original session only
+00:27 +193: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: delayed write acknowledgement cannot publish Saved under another UID
+00:27 +194: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: open session export clears on identity change
+00:27 +195: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: late export (200) cannot open a dialog or snackbar after navigating to /guided
+00:28 +196: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: late export (503) cannot open a dialog or snackbar after navigating to /guided
+00:28 +197: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: late session read cannot render after navigating to /guided
+00:28 +198: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: late export (200) cannot open a dialog or snackbar after navigating to /guided/sessions/session-2
+00:28 +199: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: late export (503) cannot open a dialog or snackbar after navigating to /guided/sessions/session-2
+00:28 +200: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: late session read cannot render after navigating to /guided/sessions/session-2
+00:28 +201: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: dialog opened by original user cannot mutate after identity switch
+00:28 +202: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: owner authority on organisation session matches backend
+00:28 +203: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: owner authority on private session matches backend
+00:28 +204: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: owner template management uses grants, not role labels
+00:28 +205: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: legacy authority on organisation session matches backend
+00:29 +206: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: legacy authority on private session matches backend
+00:29 +207: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: legacy template management uses grants, not role labels
+00:29 +208: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: role-only authority on organisation session matches backend
+00:29 +209: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: role-only authority on private session matches backend
+00:29 +210: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: role-only template management uses grants, not role labels
+00:29 +211: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: delegate authority on organisation session matches backend
+00:29 +212: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: delegate authority on private session matches backend
+00:29 +213: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: delegate template management uses grants, not role labels
+00:29 +214: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: creator authority on organisation session matches backend
+00:29 +215: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: creator authority on private session matches backend
+00:29 +216: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: creator template management uses grants, not role labels
+00:29 +217: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: organisation import warnings remain visible before opening imported session
+00:29 +218: /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/guided_safety_test.dart: unsupported guest backup import has a visible failure and no navigation
+00:30 +219: All tests passed!
