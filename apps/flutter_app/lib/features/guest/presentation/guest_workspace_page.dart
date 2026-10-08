@@ -2924,7 +2924,7 @@ class _GuestInfoButton extends StatelessWidget {
         ],
       ),
     ),
-    icon: const Icon(Icons.info_outline),
+    icon: const Icon(Icons.info_outline, size: 16),
   );
 }
 
