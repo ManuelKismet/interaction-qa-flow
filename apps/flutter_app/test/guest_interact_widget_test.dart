@@ -1312,19 +1312,71 @@ Future<void> _ensureVisibleInGuestList(
   Finder target, {
   required Finder anchor,
 }) async {
-  final scrollable = find
+  final verticalAncestors = find
       .ancestor(of: anchor, matching: find.byType(Scrollable))
-      .first;
+      .evaluate()
+      .where((element) {
+        final finder = find.byElementPredicate(
+          (candidate) => identical(candidate, element),
+        );
+        return tester.widget<Scrollable>(finder).axisDirection ==
+            AxisDirection.down;
+      })
+      .toList();
+  expect(verticalAncestors, isNotEmpty);
+  verticalAncestors.sort((first, second) {
+    final firstFinder = find.byElementPredicate(
+      (element) => identical(element, first),
+    );
+    final secondFinder = find.byElementPredicate(
+      (element) => identical(element, second),
+    );
+    return tester
+        .state<ScrollableState>(firstFinder)
+        .position
+        .viewportDimension
+        .compareTo(
+          tester
+              .state<ScrollableState>(secondFinder)
+              .position
+              .viewportDimension,
+        );
+  });
+  final outerVerticalScrollable = verticalAncestors.last;
+  final scrollable = find.byElementPredicate(
+    (element) => identical(element, outerVerticalScrollable),
+  );
   expect(
     tester.widget<Scrollable>(scrollable).axisDirection,
     AxisDirection.down,
   );
-  await tester.scrollUntilVisible(
-    target.hitTestable(),
-    180,
-    scrollable: scrollable,
-  );
-  await tester.pumpAndSettle();
+  final position = tester.state<ScrollableState>(scrollable).position;
+  for (var attempt = 0; attempt < 50; attempt++) {
+    await tester.pumpAndSettle();
+    if (target.evaluate().isNotEmpty) {
+      if (target.hitTestable().evaluate().isNotEmpty) return;
+      final targetRect = tester.getRect(target);
+      final listRect = tester.getRect(scrollable);
+      final delta = targetRect.bottom > listRect.bottom
+          ? targetRect.bottom - listRect.bottom
+          : targetRect.top < listRect.top
+          ? targetRect.top - listRect.top
+          : 0.0;
+      if (delta == 0) break;
+      position.jumpTo(
+        (position.pixels + delta)
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble(),
+      );
+      continue;
+    }
+    if (position.pixels >= position.maxScrollExtent) break;
+    position.jumpTo(
+      (position.pixels + 180)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble(),
+    );
+  }
   expect(target.hitTestable(), findsOneWidget);
 }
 

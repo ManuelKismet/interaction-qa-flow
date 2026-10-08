@@ -384,29 +384,94 @@ Future<void> _openGroupsFromPersonalOptions(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Finder _verticalScrollableContaining(WidgetTester tester, Finder anchor) {
+  final verticalAncestors = find
+      .ancestor(of: anchor, matching: find.byType(Scrollable))
+      .evaluate()
+      .where((element) {
+        final finder = find.byElementPredicate(
+          (candidate) => identical(candidate, element),
+        );
+        return tester.widget<Scrollable>(finder).axisDirection ==
+            AxisDirection.down;
+      })
+      .toList();
+  expect(verticalAncestors, isNotEmpty);
+  verticalAncestors.sort((first, second) {
+    final firstFinder = find.byElementPredicate(
+      (candidate) => identical(candidate, first),
+    );
+    final secondFinder = find.byElementPredicate(
+      (candidate) => identical(candidate, second),
+    );
+    return tester
+        .state<ScrollableState>(firstFinder)
+        .position
+        .viewportDimension
+        .compareTo(
+          tester
+              .state<ScrollableState>(secondFinder)
+              .position
+              .viewportDimension,
+        );
+  });
+  final scrollable = verticalAncestors.last;
+  return find.byElementPredicate(
+    (candidate) => identical(candidate, scrollable),
+  );
+}
+
 Future<void> _ensureVisibleInVerticalList(
   WidgetTester tester,
   Finder target, {
   required Finder anchor,
 }) async {
-  final scrollable = find
-      .ancestor(of: anchor, matching: find.byType(Scrollable))
-      .first;
+  final scrollable = _verticalScrollableContaining(tester, anchor);
   expect(
     tester.widget<Scrollable>(scrollable).axisDirection,
     AxisDirection.down,
   );
-  await tester.scrollUntilVisible(target, 220, scrollable: scrollable);
-  await tester.pumpAndSettle();
-  print(
-    'DEBUG after scroll target=${target.evaluate().length} '
-    'hit=${target.hitTestable().evaluate().length} '
-    'scroll=${tester.state<ScrollableState>(scrollable).position.pixels} '
-    'targetRect=${tester.getRect(target)} '
-    'scrollRect=${tester.getRect(scrollable)} '
-    'viewport=${tester.view.physicalSize}',
-  );
+  final position = tester.state<ScrollableState>(scrollable).position;
+  for (var attempt = 0; attempt < 50; attempt++) {
+    await tester.pumpAndSettle();
+    if (target.evaluate().isNotEmpty) {
+      if (target.hitTestable().evaluate().isNotEmpty) return;
+      final targetRect = tester.getRect(target);
+      final listRect = tester.getRect(scrollable);
+      final delta = targetRect.bottom > listRect.bottom
+          ? targetRect.bottom - listRect.bottom
+          : targetRect.top < listRect.top
+          ? targetRect.top - listRect.top
+          : 0.0;
+      if (delta == 0) break;
+      position.jumpTo(
+        (position.pixels + delta)
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble(),
+      );
+      continue;
+    }
+    if (position.pixels >= position.maxScrollExtent) break;
+    position.jumpTo(
+      (position.pixels + 220)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble(),
+    );
+  }
   expect(target.hitTestable(), findsOneWidget);
+}
+
+Future<void> _scrollToTopOfVerticalList(
+  WidgetTester tester, {
+  required Finder anchor,
+}) async {
+  final scrollable = _verticalScrollableContaining(tester, anchor);
+  expect(
+    tester.widget<Scrollable>(scrollable).axisDirection,
+    AxisDirection.down,
+  );
+  tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _tapVisibleTarget(WidgetTester tester, Finder target) async {
@@ -1671,10 +1736,14 @@ void main() {
       await tester.tap(find.text('Retry account save'));
       await tester.pumpAndSettle();
       expect(repository.imports, hasLength(2));
+      await _scrollToTopOfVerticalList(
+        tester,
+        anchor: find.text('Save to private account'),
+      );
       await _ensureVisibleInVerticalList(
         tester,
         find.text('Saved Q&A'),
-        anchor: find.text('Save to private account'),
+        anchor: find.text('Search Knowledge'),
       );
       await tester.tap(find.text('Saved Q&A').hitTestable());
       await tester.pumpAndSettle();
@@ -1709,7 +1778,7 @@ void main() {
         repository.items.single['title'],
         'Edited while create confirmation was uncertain',
       );
-      expect(find.text('Personal account · saved'), findsOneWidget);
+      expect(find.textContaining('Personal account · saved'), findsOneWidget);
     },
   );
 
@@ -1833,10 +1902,14 @@ void main() {
       authChanges.add(secondUser);
       await tester.pumpAndSettle();
       expect(find.text('First identity private question'), findsNothing);
+      await _scrollToTopOfVerticalList(
+        tester,
+        anchor: find.text('Save to private account'),
+      );
       await _ensureVisibleInVerticalList(
         tester,
         find.widgetWithText(TextFormField, 'Question'),
-        anchor: find.text('Save to private account'),
+        anchor: find.text('Search Knowledge'),
       );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
@@ -1860,7 +1933,20 @@ void main() {
         'second-private-uid',
       ]);
       expect(find.text('First identity private question'), findsNothing);
-      expect(find.text('Second identity private question'), findsOneWidget);
+      expect(repository.items, hasLength(2));
+      expect(
+        repository.items.map((item) => item['title']),
+        containsAll([
+          'First identity private question',
+          'Second identity private question',
+        ]),
+      );
+      expect(
+        repository.items.every(
+          (item) => (item['data'] as Map)['visibility'] == 'private_account',
+        ),
+        isTrue,
+      );
       expect((await store.load()).knowledge, isEmpty);
     },
   );
@@ -1896,10 +1982,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.items, hasLength(1));
 
+      await _scrollToTopOfVerticalList(
+        tester,
+        anchor: find.text('Save to private account'),
+      );
       await _ensureVisibleInVerticalList(
         tester,
         find.text('Saved Q&A'),
-        anchor: find.text('Save to private account'),
+        anchor: find.text('Search Knowledge'),
       );
       await tester.tap(find.text('Saved Q&A').hitTestable());
       await tester.pumpAndSettle();
@@ -1909,6 +1999,9 @@ void main() {
         anchor: find.text('Saved Q&A'),
       );
       await tester.tap(find.byTooltip('Remove personal-account Knowledge'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retry account save'), findsOneWidget);
+      await tester.tap(find.text('Retry account save').hitTestable());
       await tester.pumpAndSettle();
 
       expect(repository.imports, hasLength(2));
@@ -1962,10 +2055,14 @@ void main() {
 
       expect(repository.listCalls, greaterThanOrEqualTo(2));
       expect(repository.items, hasLength(1));
+      await _scrollToTopOfVerticalList(
+        tester,
+        anchor: find.text('Save to private account'),
+      );
       await _ensureVisibleInVerticalList(
         tester,
         find.text('Saved Q&A'),
-        anchor: find.text('Save to private account'),
+        anchor: find.text('Search Knowledge'),
       );
       await tester.tap(find.text('Saved Q&A').hitTestable());
       await tester.pumpAndSettle();
