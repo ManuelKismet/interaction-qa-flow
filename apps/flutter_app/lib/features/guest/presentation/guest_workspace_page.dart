@@ -1961,10 +1961,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final compactViewport = viewport.height < 300;
     final narrowViewport = viewport.width < 420;
     final workspaceNotices = <Widget>[
-      _GuestNotice(
-        isRegistered: _hasSignedInNonGuestUser,
-        saveStatus: _saveStatus,
-      ),
       if (_unsavedChanges)
         MaterialBanner(
           forceActionsBelow: narrowViewport,
@@ -2105,7 +2101,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             toolbarHeight: !_hasSignedInNonGuestUser ? 48 : kToolbarHeight,
             title: viewport.width < 320
                 ? null
-                : Text(
+                : Row(
+                    children: [
+                      Flexible(
+                        child: Text(
                     _verifiedPersonalUid != null
                         ? 'Personal workspace'
                         : _hasSignedInNonGuestUser
@@ -2120,8 +2119,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                         : null,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      _GuestNotice(
+                        isRegistered: _hasSignedInNonGuestUser,
+                        saveStatus: _saveStatus,
+                      ),
+                    ],
                   ),
             actions: [
+              if (viewport.width < 320)
+                _GuestNotice(
+                  isRegistered: _hasSignedInNonGuestUser,
+                  saveStatus: _saveStatus,
+                ),
               if (compactViewport)
                 Builder(
                   builder: (context) => PopupMenuButton<int>(
@@ -2185,10 +2196,29 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                 : TabBar(
                     onTap: _handleWorkspaceTabChanged,
                     tabs: [
-                      Tab(text: 'Knowledge', icon: Icon(Icons.search)),
                       Tab(
-                        text: 'Interact',
-                        icon: Icon(Icons.account_tree_outlined),
+                        height: 48,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.search, size: 18),
+                            const SizedBox(width: 4),
+                            const Text('Knowledge'),
+                            _knowledgeInfoButton,
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        height: 48,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.account_tree_outlined, size: 18),
+                            const SizedBox(width: 4),
+                            const Text('Interact'),
+                            _interactInfoButton(_verifiedPersonalUid != null),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -2824,23 +2854,37 @@ class _GuestNotice extends StatelessWidget {
               'profile can see its local work. Groups require a registered '
               'account with a verified email. Clearing browser data or losing '
               'this device can erase local work.';
-    return Container(
-      width: double.infinity,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(status)),
-          _GuestInfoButton(
-            tooltip: 'Workspace storage information',
-            title: 'About this workspace',
-            content: explanation,
-          ),
-        ],
-      ),
+    return _GuestInfoButton(
+      tooltip: 'Workspace storage information',
+      title: 'About this workspace',
+      content: '$status\n\n$explanation',
     );
   }
 }
+
+
+const _knowledgeInfoButton = _GuestInfoButton(
+  tooltip: 'Search help',
+  title: 'About Knowledge search',
+  content:
+      'Search local Knowledge on this device and all '
+      'personal-account Knowledge in your account, plus authorised '
+      'organisation and Group Knowledge when available. Only your '
+      'query is sent to those services; local content is never '
+      'uploaded by search.',
+);
+
+Widget _interactInfoButton(bool privateWorkspace) => _GuestInfoButton(
+  tooltip: 'Interact privacy information',
+  title: 'About Interact storage',
+  content: privateWorkspace
+      ? 'New sessions are private to your account. Imported '
+          'sessions and their edits stay in your personal '
+          'account; group sharing is separate.'
+      : 'New sessions stay on this device unless you explicitly '
+          'import them. Imported sessions and their edits stay '
+          'in your personal account; group sharing is separate.',
+);
 
 class _GuestInfoButton extends StatelessWidget {
   const _GuestInfoButton({
@@ -3474,16 +3518,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
       decoration: InputDecoration(
         labelText: 'Search Knowledge',
         prefixIcon: const Icon(Icons.search),
-        suffixIcon: const _GuestInfoButton(
-          tooltip: 'Search help',
-          title: 'About Knowledge search',
-          content:
-              'Search local Knowledge on this device and all '
-              'personal-account Knowledge in your account, plus authorised '
-              'organisation and Group Knowledge when available. Only your '
-              'query is sent to those services; local content is never '
-              'uploaded by search.',
-        ),
+        suffixIcon: MediaQuery.sizeOf(context).height < 300
+            ? _knowledgeInfoButton
+            : null,
       ),
       onChanged: (value) {
         _selectedKnowledgeItemId = null;
@@ -4098,31 +4135,11 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.privateWorkspace
-                        ? 'New Interact sessions are private to your account.'
-                        : 'New Interact sessions stay local. '
-                              'Imported sessions stay in your personal account.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ),
-                _GuestInfoButton(
-                  tooltip: 'Interact privacy information',
-                  title: 'About Interact storage',
-                  content: widget.privateWorkspace
-                      ? 'New sessions are private to your account. Imported '
-                            'sessions and their edits stay in your personal '
-                            'account; group sharing is separate.'
-                      : 'New sessions stay on this device unless you explicitly '
-                            'import them. Imported sessions and their edits stay '
-                            'in your personal account; group sharing is separate.',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+            if (MediaQuery.sizeOf(context).height < 300)
+              Align(
+                alignment: Alignment.centerRight,
+                child: _interactInfoButton(widget.privateWorkspace),
+              ),
             if (widget.data.templates.isNotEmpty)
               DropdownButtonFormField<String?>(
                 initialValue: _selectedTemplateId,
