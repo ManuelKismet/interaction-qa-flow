@@ -2201,9 +2201,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.search, size: 18),
-                            const SizedBox(width: 4),
-                            const Text('Knowledge'),
+                            const Flexible(
+                              child: Text(
+                                'Knowledge',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                             _knowledgeInfoButton,
                           ],
                         ),
@@ -2213,9 +2217,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.account_tree_outlined, size: 18),
-                            const SizedBox(width: 4),
-                            const Text('Interact'),
+                            const Flexible(
+                              child: Text(
+                                'Interact',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                             _interactInfoButton(_verifiedPersonalUid != null),
                           ],
                         ),
