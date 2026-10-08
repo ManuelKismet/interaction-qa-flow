@@ -13,8 +13,7 @@ class AppShell extends ConsumerWidget {
   final String currentPath;
   final Widget child;
 
-  List<AppDestination> _destinations(
-    String role, {
+  List<AppDestination> _destinations({
     required bool personalWorkspace,
     required bool showGroups,
     required bool showOrganisation,
@@ -264,7 +263,6 @@ class AppShell extends ConsumerWidget {
         currentPath.startsWith('/guest/groups');
     final destinations =
         _destinations(
-          role,
           personalWorkspace: personalWorkspace,
           showGroups: isVerifiedRegisteredFirebaseUser(user),
           showOrganisation: membership != null,

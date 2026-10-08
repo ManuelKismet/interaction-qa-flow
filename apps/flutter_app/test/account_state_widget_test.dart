@@ -247,12 +247,12 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
         continue;
       }
       final record = {
-          ...item,
-          'id': 'record-${item['source_key']}',
-          'revision': 1,
-          'created_at': '2026-10-06T00:00:00+00:00',
-          'updated_at': '2026-10-06T00:00:00+00:00',
-        };
+        ...item,
+        'id': 'record-${item['source_key']}',
+        'revision': 1,
+        'created_at': '2026-10-06T00:00:00+00:00',
+        'updated_at': '2026-10-06T00:00:00+00:00',
+      };
       items = [...items, record];
       imported.add(record);
     }
@@ -1495,6 +1495,64 @@ void main() {
     },
   );
 
+  testWidgets('new verified-user Interact sessions save privately by default', (
+    tester,
+  ) async {
+    final user = _TestUser(
+      isAnonymous: false,
+      isEmailVerified: true,
+      testUid: 'private-interact-user',
+    );
+    final repository = _TestPersonalWorkspaceRepository([]);
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await pumpGuestWorkspace(
+      tester,
+      user: user,
+      personalWorkspaceEnabled: true,
+      personalRepository: repository,
+      store: store,
+    );
+
+    await tester.tap(find.text('Interact').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Interact privacy information'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('New sessions are private to your account.'),
+      findsOneWidget,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('Create private session'), findsOneWidget);
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextFormField &&
+            widget.decoration.labelText == 'New Interact session',
+      ),
+      'Private session',
+    );
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextFormField &&
+            widget.decoration.labelText == 'First participant',
+      ),
+      'Participant One',
+    );
+    await tester.tap(find.text('Create private session'));
+    await tester.pumpAndSettle();
+
+    expect(repository.items, hasLength(1));
+    expect(repository.items.single['kind'], 'interact_session');
+    expect(
+      (repository.items.single['data'] as Map)['visibility'],
+      'private_account',
+    );
+    expect((await store.load()).sessions, isEmpty);
+    expect(find.text('Private session'), findsOneWidget);
+  });
+
   testWidgets('existing-account sign-in errors do not reveal Firebase details', (
     tester,
   ) async {
@@ -1800,6 +1858,46 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
     }
+  });
+
+  testWidgets('Personal workspace navigation omits organisation destinations', (
+    tester,
+  ) async {
+    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMembershipProvider.overrideWith(
+            (ref) async => const ActiveMembership(
+              userId: 'app-user',
+              organisationId: 'org',
+              email: 'member@example.test',
+              displayName: 'Member',
+              role: 'owner',
+            ),
+          ),
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: AppShell(
+              currentPath: '/personal/ask',
+              child: Center(child: Text('Personal content')),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Personal content'), findsOneWidget);
+    expect(find.byTooltip('Switch workspace'), findsOneWidget);
+    expect(find.text('Knowledge'), findsOneWidget);
+    expect(find.text('Interact'), findsOneWidget);
+    expect(find.text('Groups'), findsOneWidget);
+    expect(find.text('My organisation'), findsNothing);
+    expect(find.text('Review'), findsNothing);
+    expect(find.text('Admin'), findsNothing);
   });
 
   testWidgets('registered account with no membership stays in local workspace', (

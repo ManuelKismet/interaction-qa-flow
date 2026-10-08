@@ -16,6 +16,7 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
 
 class _MemoryGuestStorage implements GuestStorage {
   String? value;
@@ -270,14 +271,15 @@ void main() {
           builder: (_, _) => const Scaffold(body: AskPage()),
         ),
         GoRoute(
-          path: '/personal',
+          path: '/personal/questions',
           builder: (_, state) => GuestWorkspacePage(
             firebaseReady: true,
             personalWorkspaceEnabled: true,
             accountUser: user,
             membershipStatus: AccountMembershipStatus.active,
             initialKnowledgeItemId:
-                (state.extra as Map?)?['knowledgeItemId'] as String?,
+                state.uri.queryParameters['knowledgeItemId'],
+            initialKnowledgeSection: KnowledgeSection.questions,
           ),
         ),
         GoRoute(
@@ -287,7 +289,7 @@ void main() {
         GoRoute(
           path: '/guest/groups',
           builder: (_, state) => Text(
-            'Opened group: ${(state.extra as Map)['entryId']}',
+            'Opened group: ${state.uri.queryParameters['entryId']}',
           ),
         ),
       ],

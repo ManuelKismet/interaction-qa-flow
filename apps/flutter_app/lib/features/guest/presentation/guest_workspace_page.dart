@@ -1732,16 +1732,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       !widget.sharedIdentityActive)
                     Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Text(
-                        canUseGroups
-                            ? 'Groups use this signed-in Firebase identity. '
-                                  'Group access is associated with this account; '
-                                  'a separate account does not inherit its group '
-                                  'data.'
-                            : 'Verify this account’s email before using Groups. '
-                                  'Local work remains available, and organisation '
-                                  'membership is not required for Groups.',
-                      ),
+                      child: canUseGroups
+                          ? const Align(
+                              alignment: Alignment.centerLeft,
+                              child: _GuestInfoButton(
+                                tooltip: 'Group identity information',
+                                title: 'About Group identity',
+                                content:
+                                    'Group access is associated with this '
+                                    'signed-in verified identity. A separate '
+                                    'account does not inherit its Group data.',
+                              ),
+                            )
+                          : const Text(
+                              'Verify this account’s email before using Groups. '
+                              'Local work remains available, and organisation '
+                              'membership is not required for Groups.',
+                            ),
                     ),
                   if (guestGroupsState?.hasError == true)
                     MaterialBanner(
