@@ -285,6 +285,7 @@ class AppShell extends ConsumerWidget {
         }).toList();
     final isWide =
         MediaQuery.sizeOf(context).width >= Responsive.navigationRailBreakpoint;
+    final compactToolbar = MediaQuery.sizeOf(context).width < 380;
 
     return PopScope(
       canPop: !pendingWorkspaceChanges,
@@ -298,17 +299,24 @@ class AppShell extends ConsumerWidget {
             ? null
             : AppBar(
                 backgroundColor: const Color(0xFFFFFBF4),
-                title: const Text('IntQAFlow'),
+                title: MediaQuery.sizeOf(context).width < 280
+                    ? null
+                    : const Text('IntQAFlow'),
                 actions: [
                   if (membership != null)
                     _workspaceSwitcher(
                       context,
                       ref: ref,
                       personalWorkspace: personalWorkspace,
-                      showLabel: true,
+                      showLabel: !compactToolbar,
                     ),
                   if (membership != null)
-                    _accountMenu(context, ref, membership, showLabel: true),
+                    _accountMenu(
+                      context,
+                      ref,
+                      membership,
+                      showLabel: !compactToolbar,
+                    ),
                 ],
               ),
         body: Row(

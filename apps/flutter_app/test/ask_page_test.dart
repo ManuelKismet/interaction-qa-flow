@@ -370,6 +370,21 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Private account policy'));
     await tester.pumpAndSettle();
+    final personalQuestionsList = find
+        .ancestor(of: find.text('Saved Q&A'), matching: find.byType(Scrollable))
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Private account policy'),
+      180,
+      scrollable: personalQuestionsList,
+    );
+    await tester.pumpAndSettle();
+    await Scrollable.ensureVisible(
+      tester.element(find.text('Private account policy')),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Private account policy').hitTestable(), findsOneWidget);
     expect(find.text('Saved Q&A'), findsOneWidget);
     expect(find.text('Private account policy'), findsOneWidget);
     _expectKnowledgeSubtitle(

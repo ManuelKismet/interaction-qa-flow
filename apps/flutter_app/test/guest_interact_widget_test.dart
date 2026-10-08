@@ -114,6 +114,11 @@ void main() {
 
       await tester.enterText(localSearch, '');
       await tester.pumpAndSettle();
+      await _ensureVisibleInGuestList(
+        tester,
+        find.text('Incident response'),
+        anchor: find.text('Saved Q&A'),
+      );
       expect(find.text('Password rotation'), findsOneWidget);
       expect(find.text('Incident response'), findsOneWidget);
       final passwordRotationCard = find.ancestor(
@@ -253,6 +258,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Interact').first);
     await tester.pumpAndSettle();
+    await _ensureVisibleInGuestList(
+      tester,
+      find.text('A long session title that should truncate cleanly'),
+      anchor: find.text('Create session locally'),
+    );
     await tester.tap(
       find.text('A long session title that should truncate cleanly'),
     );
@@ -361,7 +371,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Interact').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Legacy session'));
+      await _ensureVisibleInGuestList(
+        tester,
+        find.text('Legacy session'),
+        anchor: find.text('Create session locally'),
+      );
+      await tester.tap(find.text('Legacy session').hitTestable());
       await tester.pumpAndSettle();
 
       expect(find.textContaining('duplicate participant IDs'), findsOneWidget);
@@ -469,14 +484,24 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Interact').first);
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Two-person interview'));
+        await _ensureVisibleInGuestList(
+          tester,
+          find.text('Two-person interview'),
+          anchor: find.text('Create session locally'),
+        );
+        await tester.tap(find.text('Two-person interview').hitTestable());
         await tester.pumpAndSettle();
       }
 
       await showWorkspace();
       expect(find.byTooltip('Active participant help'), findsOneWidget);
       expect(find.byTooltip('Prepared question help'), findsOneWidget);
-      await tester.tap(find.byTooltip('Prepared question help'));
+      await _ensureVisibleInGuestList(
+        tester,
+        find.byTooltip('Prepared question help'),
+        anchor: find.text('Two-person interview'),
+      );
+      await tester.tap(find.byTooltip('Prepared question help').hitTestable());
       await tester.pumpAndSettle();
       expect(
         find.text(
@@ -540,6 +565,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Interact').first);
     await tester.pumpAndSettle();
+    await _ensureVisibleInGuestList(
+      tester,
+      find.text('Two-person interview'),
+      anchor: find.text('Create session locally'),
+    );
     await tester.tap(find.text('Two-person interview'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Download / Share PDF'));
@@ -1270,6 +1300,25 @@ void _registerGuestCleanup(WidgetTester tester) {
 Finder _field(String label) => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.decoration?.labelText == label,
 );
+
+Future<void> _ensureVisibleInGuestList(
+  WidgetTester tester,
+  Finder target, {
+  required Finder anchor,
+}) async {
+  final scrollable = find
+      .ancestor(of: anchor, matching: find.byType(Scrollable))
+      .first;
+  expect(
+    tester.widget<Scrollable>(scrollable).axisDirection,
+    AxisDirection.down,
+  );
+  await tester.scrollUntilVisible(target, 180, scrollable: scrollable);
+  await tester.pumpAndSettle();
+  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
+}
 
 TextField _answerField(WidgetTester tester) =>
     tester.widget<TextField>(_field('Local answer').first);

@@ -403,6 +403,31 @@ Future<void> _ensureVisibleInVerticalList(
   expect(target.hitTestable(), findsOneWidget);
 }
 
+Future<void> _tapVisibleTarget(WidgetTester tester, Finder target) async {
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  final hitTarget = target.hitTestable();
+  expect(hitTarget, findsOneWidget);
+  await tester.tap(hitTarget);
+}
+
+Future<void> _ensureVisibleInDialog(
+  WidgetTester tester,
+  Finder target,
+) async {
+  final scrollable = find
+      .descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  await tester.scrollUntilVisible(target, 140, scrollable: scrollable);
+  await tester.pumpAndSettle();
+  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
+}
+
 Future<void> _tapPersonalNavigation(
   WidgetTester tester,
   String label,
@@ -481,7 +506,11 @@ void main() {
     String initialLocation = '/personal/ask',
   }) async {
     tester.view.physicalSize = const Size(720, 600);
-    addTearDown(tester.view.resetPhysicalSize);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     Widget page({
       int tab = 0,
       KnowledgeSection section = KnowledgeSection.ask,
@@ -800,6 +829,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Saved Q&A'));
     await tester.pumpAndSettle();
+    await _ensureVisibleInVerticalList(
+      tester,
+      find.text('Account A private item'),
+      anchor: find.text('Saved Q&A'),
+    );
     expect(find.text('Account A private item'), findsOneWidget);
     expect((await storage.load()).knowledge, isEmpty);
     await tester.tap(find.text('Back to add a local question'));
@@ -814,6 +848,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Account A private item'), findsNothing);
+    await _ensureVisibleInVerticalList(
+      tester,
+      find.text('Account B private item'),
+      anchor: find.text('Saved Q&A'),
+    );
     expect(find.text('Account B private item'), findsOneWidget);
     expect(repository.listCalls, 2);
     expect((await storage.load()).knowledge, isEmpty);
@@ -1177,6 +1216,11 @@ void main() {
     expect((await store.load()).knowledge, isEmpty);
     await tester.tap(find.text('Saved Q&A'));
     await tester.pumpAndSettle();
+    await _ensureVisibleInVerticalList(
+      tester,
+      find.text('Personal account item'),
+      anchor: find.text('Saved Q&A'),
+    );
     expect(find.text('Personal account item'), findsOneWidget);
     expect(repository.deleteCalls, 0);
   });
@@ -1204,14 +1248,10 @@ void main() {
         repository: repository,
         store: store,
       );
-      await tester.tap(find.text('Import local work'));
+      await _tapVisibleTarget(tester, find.text('Import local work'));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.text('Keep this item local'),
-        ),
-      );
+      await _ensureVisibleInDialog(tester, find.text('Keep this item local'));
+      await tester.tap(find.text('Keep this item local').hitTestable());
       await tester.pumpAndSettle();
       await tester.tap(find.text('Import selected work'));
       await tester.pumpAndSettle();
@@ -1294,7 +1334,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Import local work'));
+    await _tapVisibleTarget(tester, find.text('Import local work'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Import selected work'));
     await tester.pumpAndSettle();
@@ -1369,7 +1409,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Saved Q&A'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.byTooltip('Edit personal-account Knowledge'),
+        anchor: find.text('Saved Q&A'),
+      );
+      await tester.tap(
+        find.byTooltip('Edit personal-account Knowledge').hitTestable(),
+      );
       await tester.pumpAndSettle();
       await tester.enterText(
         find
@@ -1390,7 +1437,7 @@ void main() {
 
       expect(repository.updateRevisions, [1]);
       expect(find.text('My pending edit'), findsOneWidget);
-      await tester.tap(find.text('Review account change'));
+      await _tapVisibleTarget(tester, find.text('Review account change'));
       await tester.pumpAndSettle();
       expect(
         find.textContaining('Latest saved version (revision 2)'),
@@ -1401,7 +1448,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('My pending edit'), findsOneWidget);
 
-      await tester.tap(find.text('Review account change'));
+      await _tapVisibleTarget(tester, find.text('Review account change'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save my pending edit'));
       await tester.pumpAndSettle();
@@ -1539,7 +1586,7 @@ void main() {
       (await store.load()).knowledge.single['id'],
       'local-knowledge',
     );
-    await tester.tap(find.text('Import local work'));
+    await _tapVisibleTarget(tester, find.text('Import local work'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Import selected work'));
     await tester.pumpAndSettle();
@@ -1892,7 +1939,7 @@ void main() {
       );
       unawaited(router.push<void>('/personal/ask'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Import local work'));
+      await _tapVisibleTarget(tester, find.text('Import local work'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Import selected work'));
       await tester.pump();
@@ -1936,7 +1983,7 @@ void main() {
         repository: repository,
         store: store,
       );
-      await tester.tap(find.text('Import local work'));
+      await _tapVisibleTarget(tester, find.text('Import local work'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Import selected work'));
       await tester.pumpAndSettle();
@@ -1973,7 +2020,7 @@ void main() {
         repository: repository,
         store: store,
       );
-      await tester.tap(find.text('Import local work'));
+      await _tapVisibleTarget(tester, find.text('Import local work'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Import selected work'));
       await tester.pumpAndSettle();

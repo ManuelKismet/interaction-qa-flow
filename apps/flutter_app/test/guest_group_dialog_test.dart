@@ -1160,7 +1160,11 @@ void main() {
     );
     await tester.enterText(question, 'Keep this draft');
     final save = find.widgetWithText(FilledButton, 'Save locally');
-    await tester.ensureVisible(save);
+    await _ensureVisibleInVerticalList(
+      tester,
+      save,
+      anchor: question,
+    );
     await tester.pumpAndSettle();
     await tester.tap(save);
     await tester.pump(const Duration(milliseconds: 300));
@@ -1892,6 +1896,25 @@ void main() {
       },
     );
   }
+}
+
+Future<void> _ensureVisibleInVerticalList(
+  WidgetTester tester,
+  Finder target, {
+  required Finder anchor,
+}) async {
+  final scrollable = find
+      .ancestor(of: anchor, matching: find.byType(Scrollable))
+      .first;
+  expect(
+    tester.widget<Scrollable>(scrollable).axisDirection,
+    AxisDirection.down,
+  );
+  await tester.scrollUntilVisible(target, 180, scrollable: scrollable);
+  await tester.pumpAndSettle();
+  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
 }
 
 Future<void> _pumpUntilEnabled(WidgetTester tester, Finder finder) async {
