@@ -1,5 +1,63 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Batches 1 and 2 DEV rollout — 2026-10-08
+
+Founder authorised deploying both independently validated batches before batch3.
+**Exact combined source80f421d1c0ecc907d0d88a8147ccb1f2138fe377 is now deployed
+to DEV.** App subtreefd44cfb309d64bac30b8f4da5ae1caa6b35c9938; source contains
+accepted batch1 plus reviewed batch2. No repository merge or production change.
+
+Independent source gates: fullFlutter264PASS0FAIL, focused98PASS0FAIL,
+format11files0changes, analyzer0errors0warnings12existinginfos (exit1 solely
+infos), configured releasePASS. Backend unchanged since batch1's158PASSincludingPG;
+that evidence is retained, not a fresh backend rerun. Rollout publication build
+PASS54.5s with existing DEV Firebase/AppCheck public defines,
+AUTH_DIAGNOSTICS=true/no-wasm-dry-run/pwa-strategy=none. App/test source unchanged.
+
+Backend Cloud Build f4a55cfe-d964-4c04-95cf-7877b2b06d78 SUCCESS51s.
+Immutable image europe-west2-docker.pkg.dev/intqaflow-dev/cloud-run-source-deploy/intqaflow-dev-api@sha256:7dc630fb5296b040439423c6d7068f9b21b9f80339c2079b8f4b38e08f6ef835.
+Staged revision **intqaflow-dev-api-review80f421d** at0traffic; old/new revision
+runtime specs identical excluding image, ingress/invoker settings preserved,
+tagged health/ready200. Switched to100%traffic and public health/ready200.
+No migration needed or executed; schema0015 retained, no DB/proxy started.
+No IAM/service identity/CloudSQL/VPC/credential/access change.
+
+Firebase Hosting **release1791460845367000/versionfd994b8bd5fe8b22**,36files,
+exit0. Publication verification exit0: BOTH DEV origins match exact publication
+build bytes; unauthenticated personal search401.
+
+| Both origins' file | Bytes | SHA256 |
+|---|---:|---|
+|index.html|1531|a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858|
+|flutter_bootstrap.js|9805|0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67|
+|main.dart.js|4592442|95f6c0fca260cfee2f4f10d4268bd17af11b6c34f5d69d2bba20a13ca076a6ac|
+
+Rollback retained: **intqaflow-dev-api-review7aac21f** and Hosting
+**version8dc80b67398948f1/release1791372154776000**. Publication runner includes
+backend/Hosting rollback if publication fails; rollback was not triggered.
+Always preserve additive schema and account data.
+
+Hosted acceptance IN PROGRESS. Fresh firebaseapp.com origin renders new guest
+workspace controls; previously open web.app page initially showed older cached UI.
+Disposable browser-local Knowledge fixtures saved, answer-only search finds Local
+badge/answer preview, result opens SavedQ&A and items persist after reload.
+Accessibility form values lagged behind canvas render; verified real rendered
+state and fresh result/list, not immediate stale snapshots. A few duplicate
+disposable fixture entries were created while diagnosing input; only their exact
+titles are being cleaned up. Authenticated personal/organisation/Group role,
+conflict/import, multi-device and accessibility acceptance still open; no
+signed-in session available in the current browser yet. No parity completion claim.
+
+Persistent evidence/scripts:
+`/home/vscode/.local/share/intqaflow/batch12-rollout-80f421d`,
+`org-80f421d-stage-verified.json`, `org-80f421d-publication-verified.json`;
+independent test receipts remain `/workspaces/batch2-independent-receipts-20261008`.
+Isolated source `/workspaces/intqaflow-batch2-independent-20261008`;
+original checkout's four dirty docs preserved. Codespace active for final
+acceptance/cleanup. Batch3/4 not started, oldPR13 task remains quarantined,
+monitoring remains cancelled.
+
+
 ## Interact parity review — 2026-10-07
 
 **Analysis/documentation only; no implementation authorised by this review.** [Complete audit](interact-parity-audit-2026-10-07.md) records guest, registered personal, organisation and Groups parity at exact source `7aac21fad638570cf6f60a5dad478b776278c603`. Core flow concepts align; full functional/UI parity is NOT established.
