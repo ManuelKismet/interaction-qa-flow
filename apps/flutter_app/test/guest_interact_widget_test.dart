@@ -10,6 +10,32 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 
 void main() {
+  testWidgets('guest workspace heading is compact and subtle', (tester) async {
+    _registerGuestCleanup(tester);
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('IntQAFlow guest workspace'), findsNothing);
+    final heading = find.text('Guest workspace');
+    expect(heading, findsOneWidget);
+    final label = tester.widget<Text>(heading);
+    final context = tester.element(heading);
+    expect(label.style?.fontSize, 14);
+    expect(label.style?.fontWeight, FontWeight.w400);
+    expect(label.style?.color, Theme.of(context).colorScheme.onSurfaceVariant);
+    expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
+    expect(find.byTooltip('Account'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('local Knowledge search supports prefixes and one bounded typo', () {
     const item = {
       'title': 'Interaction handover',
