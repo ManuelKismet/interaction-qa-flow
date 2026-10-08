@@ -1,0 +1,63 @@
+name: Copilot setup steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install pinned official Flutter SDK
+        shell: bash
+        env:
+          CI: "true"
+          FLUTTER_SUPPRESS_ANALYTICS: "true"
+        run: |
+          set -euo pipefail
+          sdk_dir="$RUNNER_TEMP/copilot-flutter-3.41.4"
+          expected_revision="ff37bef603469fb030f2b72995ab929ccfc227f0"
+          if [ ! -d "$sdk_dir/.git" ]; then
+            git clone --depth 1 --branch 3.41.4 https://github.com/flutter/flutter.git "$sdk_dir"
+          fi
+          test "$(git -C "$sdk_dir" rev-parse HEAD)" = "$expected_revision"
+          echo "$sdk_dir/bin" >> "$GITHUB_PATH"
+          echo "CI=true" >> "$GITHUB_ENV"
+          echo "FLUTTER_SUPPRESS_ANALYTICS=true" >> "$GITHUB_ENV"
+          "$sdk_dir/bin/flutter" --suppress-analytics --version --machine > "$RUNNER_TEMP/copilot-flutter-version.json"
+          python3 - "$RUNNER_TEMP/copilot-flutter-version.json" <<'PY'
+          import json
+          import sys
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              version = json.load(stream)
+          assert version["frameworkVersion"] == "3.41.4", version
+          assert version["frameworkRevision"] == "ff37bef603469fb030f2b72995ab929ccfc227f0", version
+          assert version["dartSdkVersion"].split()[0] == "3.11.1", version
+          print("Verified Flutter 3.41.4 / Dart 3.11.1")
+          PY
+
+      - name: Prepare web tooling and locked application dependencies
+        working-directory: apps/flutter_app
+        shell: bash
+        env:
+          CI: "true"
+          FLUTTER_SUPPRESS_ANALYTICS: "true"
+        run: |
+          set -euo pipefail
+          flutter --suppress-analytics precache --web
+          flutter --suppress-analytics pub get --enforce-lockfile
+          echo "COPILOT_FLUTTER_SETUP_READY: pinned SDK and locked dependencies available"
