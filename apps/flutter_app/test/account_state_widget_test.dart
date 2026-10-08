@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/app.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
@@ -15,6 +16,7 @@ import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 
 class _TestUser extends Fake implements User {
@@ -191,11 +193,14 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
   var failedImports = 0;
   int? importFailureStatus;
   final imports = <List<Map<String, dynamic>>>[];
+  final importUids = <String>[];
   int updateConflicts = 0;
   List<Map<String, dynamic>>? conflictItems;
   final updateRevisions = <int>[];
   var deleteCalls = 0;
   final searches = <(String, String)>[];
+  Completer<List<Map<String, dynamic>>>? nextListResponse;
+  Completer<void>? nextImportGate;
   Future<Map<String, dynamic>> Function(String query, String expectedUid)?
   searchHandler;
 
@@ -204,6 +209,9 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     required String expectedUid,
   }) async {
     listCalls++;
+    final response = nextListResponse;
+    nextListResponse = null;
+    if (response != null) return response.future;
     return items;
   }
 
@@ -223,6 +231,10 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     required String expectedUid,
   }) async {
     imports.add(payload);
+    importUids.add(expectedUid);
+    final gate = nextImportGate;
+    nextImportGate = null;
+    if (gate != null) await gate.future;
     final uncertainOutcome = failedImports > 0;
     if (uncertainOutcome) {
       failedImports--;
@@ -302,6 +314,7 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     required int expectedRevision,
   }) async {
     deleteCalls++;
+    items = items.where((item) => item['id'] != id).toList();
   }
 }
 
@@ -421,6 +434,80 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  Future<GoRouter> pumpPersonalRouter(
+    WidgetTester tester, {
+    required _TestUser user,
+    required _TestPersonalWorkspaceRepository repository,
+    required GuestWorkspaceStore store,
+    Stream<User?>? authChanges,
+    String initialLocation = '/personal/ask',
+  }) async {
+    GuestWorkspacePage page({int tab = 0}) => Consumer(
+      builder: (context, ref, _) => GuestWorkspacePage(
+        firebaseReady: true,
+        personalWorkspaceEnabled: true,
+        accountUser: ref.watch(authStateProvider).value,
+        membershipStatus: AccountMembershipStatus.active,
+        initialWorkspaceTab: tab,
+      ),
+    );
+    final router = GoRouter(
+      initialLocation: initialLocation,
+      routes: [
+        ShellRoute(
+          builder: (context, state, child) =>
+              AppShell(currentPath: state.uri.path, child: child),
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) =>
+                  const Scaffold(body: Text('Organisation route')),
+            ),
+            GoRoute(
+              path: '/personal/ask',
+              builder: (context, state) => page(),
+            ),
+            GoRoute(
+              path: '/personal/interact',
+              builder: (context, state) => page(tab: 1),
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith(
+            (ref) => authChanges ?? Stream.value(user),
+          ),
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          currentMembershipProvider.overrideWith(
+            (ref) async => const ActiveMembership(
+              userId: 'app-user',
+              organisationId: 'org',
+              email: 'member@example.test',
+              displayName: 'Member',
+              role: 'owner',
+            ),
+          ),
+          organisationProfileProvider.overrideWith(
+            (ref) async => throw StateError('Profile not needed in this test.'),
+          ),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+          currentGuestGroupsProvider.overrideWith(
+            (ref) async => const <Map<String, dynamic>>[],
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return router;
   }
 
   testWidgets(
@@ -1482,7 +1569,16 @@ void main() {
       );
       expect((await store.load()).knowledge, isEmpty);
 
-      await tester.tap(find.text('Retry account save'));
+      await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextFormField),
+        ).first,
+        'Edited while create confirmation was uncertain',
+      );
+      await tester.tap(find.text('Save account changes'));
       await tester.pumpAndSettle();
 
       expect(repository.imports, hasLength(2));
@@ -1491,7 +1587,377 @@ void main() {
         repository.imports.last.single['source_key'],
       );
       expect(repository.items, hasLength(1));
+      expect(
+        repository.items.single['title'],
+        'Edited while create confirmation was uncertain',
+      );
       expect(find.text('Personal account · saved'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'pending private write blocks shell navigation and browser back until saved',
+    (tester) async {
+      final user = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'delayed-private-user',
+      );
+      final repository = _TestPersonalWorkspaceRepository([]);
+      final writeGate = Completer<void>();
+      repository.nextImportGate = writeGate;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      final router = await pumpPersonalRouter(
+        tester,
+        user: user,
+        repository: repository,
+        store: store,
+        initialLocation: '/',
+      );
+      unawaited(router.push<void>('/personal/ask'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextFormField &&
+              widget.decoration.labelText == 'Question',
+        ),
+        'Held private question',
+      );
+      await tester.tap(find.text('Save to private account'));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is NavigationDestination && widget.label == 'Interact',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Save to private account'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Save to private account'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Switch workspace'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Organisation workspace'));
+      await tester.pumpAndSettle();
+      expect(find.text('Save to private account'), findsOneWidget);
+
+      writeGate.complete();
+      await tester.pumpAndSettle();
+      expect(repository.items, hasLength(1));
+      expect((await store.load()).knowledge, isEmpty);
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is NavigationDestination && widget.label == 'Interact',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Create private session'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'UID transition isolates queued writes while an earlier create is unresolved',
+    (tester) async {
+      final firstUser = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'first-private-uid',
+      );
+      final secondUser = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'second-private-uid',
+      );
+      final authChanges = StreamController<User?>();
+      addTearDown(authChanges.close);
+      authChanges.add(firstUser);
+      final repository = _TestPersonalWorkspaceRepository([]);
+      final firstWriteGate = Completer<void>();
+      repository.nextImportGate = firstWriteGate;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await pumpPersonalRouter(
+        tester,
+        user: firstUser,
+        repository: repository,
+        store: store,
+        authChanges: authChanges.stream,
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextFormField &&
+              widget.decoration.labelText == 'Question',
+        ),
+        'First identity private question',
+      );
+      await tester.tap(find.text('Save to private account'));
+      await tester.pump();
+      await tester.pump();
+      expect(repository.importUids, ['first-private-uid']);
+
+      authChanges.add(secondUser);
+      await tester.pumpAndSettle();
+      expect(find.text('First identity private question'), findsNothing);
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextFormField &&
+              widget.decoration.labelText == 'Question',
+        ),
+        'Second identity private question',
+      );
+      await tester.tap(find.text('Save to private account'));
+      await tester.pump();
+      await tester.pump();
+      expect(repository.importUids, ['first-private-uid']);
+
+      firstWriteGate.complete();
+      await tester.pumpAndSettle();
+
+      expect(repository.importUids, [
+        'first-private-uid',
+        'second-private-uid',
+      ]);
+      expect(find.text('First identity private question'), findsNothing);
+      expect(find.text('Second identity private question'), findsOneWidget);
+      expect((await store.load()).knowledge, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'deleting during uncertain create confirms creation before account deletion',
+    (tester) async {
+      final user = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'uncertain-delete-user',
+      );
+      final repository = _TestPersonalWorkspaceRepository([])
+        ..failedImports = 1;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await pumpGuestWorkspace(
+        tester,
+        user: user,
+        personalWorkspaceEnabled: true,
+        personalRepository: repository,
+        store: store,
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextFormField &&
+              widget.decoration.labelText == 'Question',
+        ),
+        'Remove uncertain private create',
+      );
+      await tester.tap(find.text('Save to private account'));
+      await tester.pumpAndSettle();
+      expect(repository.items, hasLength(1));
+
+      await tester.tap(
+        find.byTooltip('Remove personal-account Knowledge'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(repository.imports, hasLength(2));
+      expect(repository.deleteCalls, 1);
+      expect(repository.items, isEmpty);
+      expect((await store.load()).knowledge, isEmpty);
+      expect(find.text('Retry account save'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'personal refresh overlapping a create cannot replace the acknowledged item',
+    (tester) async {
+      final user = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'refresh-race-user',
+      );
+      final repository = _TestPersonalWorkspaceRepository([]);
+      final staleRefresh = Completer<List<Map<String, dynamic>>>();
+      repository.nextListResponse = staleRefresh;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await pumpGuestWorkspace(
+        tester,
+        user: user,
+        personalWorkspaceEnabled: true,
+        personalRepository: repository,
+        store: store,
+      );
+      expect(repository.listCalls, 1);
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextFormField &&
+              widget.decoration.labelText == 'Question',
+        ),
+        'Refresh race question',
+      );
+      await tester.tap(find.text('Save to private account'));
+      await tester.pumpAndSettle();
+      expect(repository.items, hasLength(1));
+
+      staleRefresh.complete(const []);
+      await tester.pumpAndSettle();
+
+      expect(repository.listCalls, greaterThanOrEqualTo(2));
+      expect(repository.items, hasLength(1));
+      expect(find.text('Refresh race question'), findsOneWidget);
+      expect(find.text('Personal account · saved'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'pending selected account import blocks shell navigation until confirmed',
+    (tester) async {
+      final user = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'delayed-import-user',
+      );
+      final repository = _TestPersonalWorkspaceRepository([]);
+      final importGate = Completer<void>();
+      repository.nextImportGate = importGate;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        const GuestWorkspaceData(
+          knowledge: [
+            {'id': 'selected-local', 'title': 'Selected local work'},
+          ],
+        ),
+      );
+      final router = await pumpPersonalRouter(
+        tester,
+        user: user,
+        repository: repository,
+        store: store,
+        initialLocation: '/',
+      );
+      unawaited(router.push<void>('/personal/ask'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import local work'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import selected work'));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is NavigationDestination && widget.label == 'Interact',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Import local work'), findsOneWidget);
+
+      importGate.complete();
+      await tester.pumpAndSettle();
+      expect(repository.items, hasLength(1));
+      expect((await store.load()).knowledge.single['id'], 'selected-local');
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is NavigationDestination && widget.label == 'Interact',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Create private session'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'permanent import rejection releases navigation while transient failure stays guarded',
+    (tester) async {
+      final user = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'rejected-import-user',
+      );
+      final repository = _TestPersonalWorkspaceRepository([])
+        ..failedImports = 1
+        ..importFailureStatus = 413;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        const GuestWorkspaceData(
+          knowledge: [
+            {'id': 'local-original', 'title': 'Original stays local'},
+          ],
+        ),
+      );
+      await pumpPersonalRouter(
+        tester,
+        user: user,
+        repository: repository,
+        store: store,
+      );
+      await tester.tap(find.text('Import local work'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import selected work'));
+      await tester.pumpAndSettle();
+      expect(find.text('Change selection'), findsOneWidget);
+      expect((await store.load()).knowledge.single['id'], 'local-original');
+
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is NavigationDestination && widget.label == 'Interact',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Create private session'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'unconfirmed account import remains guarded and retains its local original',
+    (tester) async {
+      final user = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'uncertain-import-user',
+      );
+      final repository = _TestPersonalWorkspaceRepository([])
+        ..failedImports = 1
+        ..importFailureStatus = 500;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        const GuestWorkspaceData(
+          knowledge: [
+            {'id': 'retry-local', 'title': 'Retry keeps original'},
+          ],
+        ),
+      );
+      await pumpPersonalRouter(
+        tester,
+        user: user,
+        repository: repository,
+        store: store,
+      );
+      await tester.tap(find.text('Import local work'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import selected work'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retry import'), findsOneWidget);
+      expect((await store.load()).knowledge.single['id'], 'retry-local');
+
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is NavigationDestination && widget.label == 'Interact',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Create private session'), findsNothing);
+      expect(find.text('Import local work'), findsOneWidget);
     },
   );
 

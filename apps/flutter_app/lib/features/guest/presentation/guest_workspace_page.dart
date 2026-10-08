@@ -39,6 +39,8 @@ void _showPdfFontFallbackNotice(BuildContext context) {
   );
 }
 
+var _personalWorkspaceStatusOwnerSequence = 0;
+
 class _PersonalWorkspaceWrite {
   const _PersonalWorkspaceWrite({
     required this.action,
@@ -125,7 +127,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   bool _personalSaving = false;
   bool _personalImportSaving = false;
   int _personalWriteGeneration = 0;
-  final Object _workspaceStatusOwner = Object();
+  final int _workspaceStatusOwner = ++_personalWorkspaceStatusOwnerSequence;
   late final PersonalWorkspaceStatusController _workspaceStatusController;
   int _workspaceStatusRevision = 0;
   bool _workspaceStatusClaimed = false;
@@ -134,7 +136,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   void initState() {
     super.initState();
     _store = ref.read(guestWorkspaceStoreProvider);
-    _workspaceStatusController = ref.read(personalWorkspaceStatusProvider.notifier);
+    _workspaceStatusController = ref.read(
+      personalWorkspaceStatusProvider.notifier,
+    );
     _personalOwnerUid = _verifiedPersonalUid;
     WidgetsBinding.instance.addObserver(this);
     _load();
@@ -207,7 +211,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || revision != _workspaceStatusRevision) return;
       _workspaceStatusController.publish(
-        owner: _workspaceStatusOwner,
+        ownerGeneration: _workspaceStatusOwner,
         uid: uid,
         hasPendingChanges: _hasPendingWorkspaceChanges,
         claim: shouldClaim,
@@ -581,6 +585,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             sourceId: write.sourceId,
             title: _personalTitle(write.kind, replacement),
             data: replacement,
+            deleteAfterCreate: write.deleteAfterCreate,
           ),
         );
       }
@@ -649,7 +654,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               .firstOrNull;
           if (current == null && write.action == 'delete') {
             saved = null;
-          } else if (current == null && write.action == 'create') {
+          } else if (write.action == 'create') {
             saved = await repository.createItem(
               kind: write.kind,
               sourceKey: write.sourceKey,
@@ -657,6 +662,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               data: write.data!,
               expectedUid: uid,
             );
+            final savedData = saved['data'];
+            if (saved['title'] != write.title ||
+                savedData is! Map ||
+                jsonEncode(savedData) != jsonEncode(write.data)) {
+              if (!mounted ||
+                  generation != _personalGeneration ||
+                  uid != _verifiedPersonalUid) {
+                return;
+              }
+              saved = await repository.updateItem(
+                id: saved['id'] as String,
+                expectedUid: uid,
+                expectedRevision: saved['revision'] as int,
+                title: write.title!,
+                data: write.data!,
+              );
+            }
           } else if (current == null) {
             throw StateError('The personal item is not loaded.');
           } else if (write.action != 'delete') {
@@ -1501,7 +1523,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       });
       _publishWorkspaceSaveStatus();
     } finally {
-      if (mounted && uid == _verifiedPersonalUid && generation == _personalGeneration) {
+      if (mounted &&
+          uid == _verifiedPersonalUid &&
+          generation == _personalGeneration) {
         _personalImportSaving = false;
         _publishWorkspaceSaveStatus();
       }

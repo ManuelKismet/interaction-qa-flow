@@ -7,12 +7,12 @@ final personalWorkspaceStatusProvider =
 
 class PersonalWorkspaceStatus {
   const PersonalWorkspaceStatus({
-    this.owner,
+    this.ownerGeneration = 0,
     this.uid,
     this.hasPendingChanges = false,
   });
 
-  final Object? owner;
+  final int ownerGeneration;
   final String? uid;
   final bool hasPendingChanges;
 }
@@ -23,21 +23,24 @@ class PersonalWorkspaceStatusController
   PersonalWorkspaceStatus build() => const PersonalWorkspaceStatus();
 
   void publish({
-    required Object owner,
+    required int ownerGeneration,
     required String? uid,
     required bool hasPendingChanges,
     bool claim = false,
   }) {
-    if (!claim && state.owner != owner) return;
+    if (ownerGeneration < state.ownerGeneration ||
+        (!claim && state.ownerGeneration != ownerGeneration)) {
+      return;
+    }
     state = PersonalWorkspaceStatus(
-      owner: owner,
+      ownerGeneration: ownerGeneration,
       uid: uid,
       hasPendingChanges: hasPendingChanges,
     );
   }
 
-  void clear(Object owner) {
-    if (state.owner != owner) return;
+  void clear(int ownerGeneration) {
+    if (state.ownerGeneration != ownerGeneration) return;
     state = const PersonalWorkspaceStatus();
   }
 }
