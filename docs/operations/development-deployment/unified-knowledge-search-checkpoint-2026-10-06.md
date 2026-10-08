@@ -1,5 +1,25 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Guest session controls tested and deployed — 2026-10-08
+
+Founder authorised “Test all changes made and deploy to dev”. This rollout includes all pending guest UI changes since the earlier compact-heading deployment. Exact source `1e124f8d1ac271eba0373a8fb73497da63468228` on `copilot/fixinteract-parity-batch4-edit-shared-copy`; repository tree `05ba347c4bbf40a9004a39066173a2c957d8a249`, Flutter subtree `e829373700e89b1b23766b9d35e60ca09ce6d82c`.
+
+- Shared guest information icons are 16px; tap areas remain unchanged.
+- Destination and Download / Share PDF share the session title row when space permits, ahead of the three-dot menu. Narrow layouts wrap them below. Medium-width actions use flexible constraints and destination text can ellipsize without changing the full label.
+- Removed the generic “Add a question” shortcut and inline “New question” composer. Shared/active-participant add controls follow all visible question cards and open required-text dialogs. Submission scrolls to the list end. Participant scope captures the active participant at dialog opening and revalidates session/participant availability before writing. Question guidance remains beside these controls.
+- Root and recursive follow-up question text use bordered inline editable fields. Removed their Edit buttons/dialog callback. Nonempty edits use the existing local/private/Group draft save flow and preserve graph IDs, targets, answers and branches. Temporarily blank input shows validation while retaining the last saved question.
+
+Independent Flutter 3.41.4/Dart 3.11.1 checks in isolated `/workspaces/intqaflow-guest-ui-20261008`: locked offline pubget PASS (1.6s), touched-file format PASS (0.4s), **full suite 368 PASS, zero skips, exit0** (160.3s), analysis zero errors/warnings and unchanged 12 baseline infos (6.7s, exit1 solely infos), configured DEV release PASS/exit0 (43.2s). Five added regressions cover dialog blank/cancel behavior, shared versus participant ownership, controls following newly added questions, 360/800/832/1200px layouts, 16px icons, inline edit persistence and graph preservation. Existing recursive edit, Group save/reload, sign-out/UID disposal, narrow keyboard, Undo, conflict and delayed-save tests remain enabled. A real overflow at the medium-width header breakpoint was found and fixed; the final exact-source full rerun passed. Three new style notes were cleaned up before final validation.
+
+Validation/build receipts: `/workspaces/guest-ui-controls-validation-20261008/release`; earlier diagnostic runs remain under the parent folder. DEV defines SHA-256 `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`. Main bundle: 4,678,332 bytes, SHA-256 `ae64db84528d51246c01b05e70ba454e6788d3e488a354db05de0fd19f157103`. Index (1,531 bytes) and bootstrap (9,805 bytes) retain the previously recorded hashes.
+
+DEV Hosting **release `1791492119078000`, version `44c9f7632273ee36`**, 36 files. Every served file on BOTH `https://intqaflow-dev.web.app/` and `https://intqaflow-dev.firebaseapp.com/` matched the tested build's byte lengths and SHA-256. API health/readiness HTTP200; `intqaflow-dev-api-review80f421d` retains 100% traffic. Rollback target is the prior compact-UI release `1791488795550000` / version `6dc9f6083d4bb7a4`. Publication receipts: `/workspaces/guest-ui-controls-dev-publication-20261008`. Live DEV guest Knowledge page loaded with compact heading and 16px inline help icons; session behavior was verified by the widget suite. No backend deployment, hosted data/schema, IAM, credentials, production change or merge.
+
+The root worktree's four dirty documentation files were hash-checked before/after validation and preserved; isolated release source is clean. GitHub confirmed **Codespace “bookish happiness” stopped** after publication and verification; the editor tab was closed. Source, receipts and prior worktree/stash material remain retained.
+
+Only the guest UI source and two Flutter test files changed relative to the prior DEV source. Backend/schema/dependencies unchanged; prior 198 PostgreSQL-enabled backend passes are retained unchanged-code evidence, not a fresh backend rerun. Founder external authenticated/device/native acceptance remains OPEN; no authenticated live acceptance is claimed. Cloud-browser authentication investigation remains paused. Guest reload-to-session-list remains accepted, IP19 CLOSED.
+
+
 ## Guest workspace compact UI tested and deployed — 2026-10-08
 
 Founder requested the shorter subtle “Guest workspace” heading, inline module/workspace information, and clearer Interact creation fields, then explicitly authorised “Test and deploy”. Final exact source `4d42c812f4df8b6d1f22040901170ea85974eb05` on `copilot/fixinteract-parity-batch4-edit-shared-copy`; repository tree `0068dc1f5cd36ec2dd4546140d673ed808bc3295`, Flutter subtree `b4a65e03f5006a66dd0d6180a7c8e524a1076546`. This supersedes the previous Hosting status below, not the outstanding manual acceptance gates.
