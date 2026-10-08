@@ -186,15 +186,16 @@ void main() {
       expect(find.text('What happened?'), findsOneWidget);
       expect(find.text('The shipment arrived.'), findsOneWidget);
       expect(find.byType(TextField), findsNothing);
-      expect(find.byTooltip('Active participant report'), findsOneWidget);
-      expect(find.byTooltip('All participants report'), findsOneWidget);
-      expect(find.byTooltip('Export'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Active participant report'));
+      expect(find.byTooltip('Reports and export'), findsOneWidget);
+      await tester.tap(find.byTooltip('Reports and export'));
+      await tester.pumpAndSettle();
+      expect(find.text('Active participant report'), findsOneWidget);
+      expect(find.text('All participants report'), findsOneWidget);
+      await tester.tap(find.text('Active participant report'));
       await tester.pumpAndSettle();
       expect(find.text('What happened?'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Export'));
+      await tester.tap(find.byTooltip('Reports and export'));
       await tester.pumpAndSettle();
       expect(find.text('JSON'), findsOneWidget);
       expect(find.text('CSV'), findsOneWidget);
@@ -252,8 +253,23 @@ void main() {
       findsNothing,
     );
     expect(find.text('Add participant'), findsOneWidget);
-    expect(find.text('Shared question'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
     expect(find.byType(TextField), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('Shared question'),
+      200,
+      scrollable: find.descendant(
+        of: find.byKey(const ValueKey('guided-flow-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('guided-flow-list')),
+        matching: find.text('Shared question'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 }
