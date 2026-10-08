@@ -48,7 +48,6 @@ class _PersonalWorkspaceWrite {
     this.title,
     this.data,
   });
-  _publishWorkspaceSaveStatus();
 
   final String action;
   final String kind;
@@ -78,7 +77,6 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
     this.onRetryAccount,
     super.key,
   });
-  _publishWorkspaceSaveStatus();
 
   final bool firebaseReady;
   final String? initialKnowledgeItemId;
@@ -337,7 +335,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           record['kind'] == kind && (record['data'] as Map?)?['id'] == id,
     );
     if (!isPersonal) return 'Local on this device';
-    if (write?.action == 'update') {
+    if (write != null) {
       return _personalError == null
           ? 'Personal account · saving changes'
           : 'Personal account · save not confirmed';
@@ -345,7 +343,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     return 'Personal account · saved';
   }
 
-  void _save(GuestWorkspaceData submitted) {
+  void _save(
+    GuestWorkspaceData submitted, {
+    Set<String> accountPrivateKeys = const {},
+  }) {
     final previousLocal = _data ?? const GuestWorkspaceData();
     final uid = _verifiedPersonalUid;
     final remoteKeys = {
@@ -354,6 +355,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             record['data'] is Map &&
             (record['data'] as Map)['id'] is String)
           '${record['kind']}:${(record['data'] as Map)['id']}',
+      for (final write in _pendingPersonalWrites.values)
+        if (write.action != 'delete') '${write.kind}:${write.sourceId}',
     };
 
     List<Map<String, dynamic>> keepLocal(
@@ -379,7 +382,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       }
       for (final entry in nextById.entries) {
         if (!previousById.containsKey(entry.key) &&
-            !remoteKeys.contains('$kind:${entry.key}')) {
+            !remoteKeys.contains('$kind:${entry.key}') &&
+            !accountPrivateKeys.contains('$kind:${entry.key}')) {
           local.add(entry.value);
         }
       }
@@ -463,7 +467,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             ),
             _ => updated,
           };
-    _save(submitted);
+    _save(
+      submitted,
+      accountPrivateKeys: uid == null
+          ? const {}
+          : {'$kind:${item['id']}'},
+    );
     if (uid == null) return;
     final sourceId = item['id'] as String;
     final write = _PersonalWorkspaceWrite(
@@ -3520,18 +3529,23 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
             children: [
               Expanded(
                 child: Text(
-                  'New Interact sessions stay local. '
-                  'Imported sessions stay in your personal account.',
+                  widget.privateWorkspace
+                      ? 'New Interact sessions are private to your account.'
+                      : 'New Interact sessions stay local. '
+                            'Imported sessions stay in your personal account.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ),
-              const _GuestInfoButton(
+              _GuestInfoButton(
                 tooltip: 'Interact privacy information',
                 title: 'About Interact storage',
-                content:
-                    'New sessions stay on this device unless you explicitly '
-                    'import them. Imported sessions and their edits stay in '
-                    'your personal account; group sharing is separate.',
+                content: widget.privateWorkspace
+                    ? 'New sessions are private to your account. Imported '
+                          'sessions and their edits stay in your personal '
+                          'account; group sharing is separate.'
+                    : 'New sessions stay on this device unless you explicitly '
+                          'import them. Imported sessions and their edits stay '
+                          'in your personal account; group sharing is separate.',
               ),
             ],
           ),
@@ -3619,7 +3633,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
           if (widget.data.sessions.isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
-              child: Text('Create a local session to start capturing answers.'),
+              child: Text('Create a session to start capturing answers.'),
             ),
           for (final session in widget.data.sessions)
             _GuestSessionEditor(
