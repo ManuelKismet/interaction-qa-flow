@@ -3576,6 +3576,8 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                 KnowledgeSectionTabs(
                   selected: KnowledgeSection.questions,
                   onChanged: _selectKnowledgeSection,
+                  searchLabel: 'Search',
+                  savedLabel: 'Saved',
                 ),
                 const SizedBox(height: 12),
               ],
@@ -3596,14 +3598,18 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                   label: Text(
                     _selectedKnowledgeItemId == null
                         ? widget.privateWorkspace
-                              ? 'Back to Ask & search'
+                              ? 'Back to Search'
                               : 'Back to add a local question'
+                        : widget.privateWorkspace
+                        ? 'Back to Saved'
                         : 'Back to all Saved Q&A',
                   ),
                 ),
               ),
-              Text('Saved Q&A', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
+              if (!widget.privateWorkspace) ...[
+                Text('Saved Q&A', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+              ],
               if (matches
                   .where(
                     (item) =>
@@ -3673,6 +3679,8 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
               KnowledgeSectionTabs(
                 selected: KnowledgeSection.ask,
                 onChanged: _selectKnowledgeSection,
+                searchLabel: 'Search',
+                savedLabel: 'Saved',
               ),
               const SizedBox(height: 12),
             ],
@@ -3689,11 +3697,12 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                OutlinedButton.icon(
-                  onPressed: () => setState(() => _showSavedQuestions = true),
-                  icon: const Icon(Icons.bookmark_outline),
-                  label: const Text('Saved Q&A'),
-                ),
+                if (!widget.privateWorkspace)
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _showSavedQuestions = true),
+                    icon: const Icon(Icons.bookmark_outline),
+                    label: const Text('Saved Q&A'),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
@@ -7716,7 +7725,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                     'Approved Group members can access this content. '
                     'Only Group admins manage membership and invitations. '
                     'Search accessible Group Knowledge from Personal '
-                    'workspace Ask & search.',
+                    'workspace Search.',
               ),
             ],
           ),
