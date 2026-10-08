@@ -4184,7 +4184,8 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                           focusNode: _sessionTitleFocus,
                           decoration: const InputDecoration(
                             labelText: 'New Interact session',
-                            hintText: 'e.g. Onboarding interview',
+                            floatingLabelBehavior: FloatingLabelBehavior.always,
+                            hintText: 'Session title',
                           ),
                           validator: (value) =>
                               value == null || value.trim().isEmpty
@@ -4198,8 +4199,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
                           controller: _newSessionParticipant,
                           focusNode: _participantFocus,
                           decoration: const InputDecoration(
-                            labelText: 'First participant',
-                            hintText: 'e.g. Alex',
+                            hintText: 'Participant',
                           ),
                           validator: (value) =>
                               value == null || value.trim().isEmpty
