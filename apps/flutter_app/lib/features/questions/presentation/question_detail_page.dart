@@ -41,8 +41,10 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
         question,
         ref.watch(currentMembershipProvider).value,
       ),
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stackTrace) => Center(
+      loading: () => _withBackNavigation(
+        const Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stackTrace) => _withBackNavigation(Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -55,9 +57,28 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
             ),
           ],
         ),
-      ),
+      )),
     );
   }
+
+  Widget _backToQuestions() => IconButton(
+    tooltip: 'Back to Questions',
+    icon: const Icon(Icons.arrow_back, size: 20),
+    onPressed: () => context.go('/questions'),
+  );
+
+  Widget _withBackNavigation(Widget child) => Column(
+    children: [
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 16, top: 8),
+          child: _backToQuestions(),
+        ),
+      ),
+      Expanded(child: child),
+    ],
+  );
 
   Widget _buildDetail(QuestionDetail question, ActiveMembership? membership) {
     final isAdmin = membership?.role == 'admin';
@@ -102,6 +123,8 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      _backToQuestions(),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           question.title,
