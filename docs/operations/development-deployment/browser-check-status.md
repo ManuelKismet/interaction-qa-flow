@@ -1,0 +1,27 @@
+# Browser acceptance status
+
+The user chose cloud-browser testing to avoid adding more Codespace browser dependencies. Codespace Playwright and Chromium downloads completed, but Chromium launch failed before visiting the app because required Linux shared libraries are missing. No system-library installation was performed, and the Codespace browser path is paused. No sign-in credentials were emitted by the probe.
+
+Cloud browser: hosted sign-in screen renders, accessibility controls are present, and direct /guided navigation renders the signed-out sign-in gate. The secure sign-in request was declined; the browser remains signed out. Signed-in participant switching, separate answers, nested follow-ups, autosave, reports, exports, and real Enterprise App Check verification are still pending. Existing passing backend and Flutter evidence does not constitute completion of these browser checks.
+
+Next step: user supplies the disposable development account credentials through the cloud browser secure sign-in request. Password remains in the private Codespace credential file and is not stored in repository records.
+
+The user requested cleanup. The agent-created /tmp/intqaflow-browser-venv and the newly downloaded ~/.cache/ms-playwright browser cache were removed and absence verified. No system libraries had been installed. The source probe and recorded failed-launch evidence were retained; the private credential file and application/backend environments were preserved.
+
+Secure browser sign-in was requested again and returned submitted. The deployed app displayed its generic sign-in failure message and remained signed out. A separate Firebase REST check using the saved synthetic credentials returned HTTP 200. The account remains valid; browser failure cause has not been established. No retry was automatically submitted after that failure. All signed-in browser acceptance remains pending.
+
+Auth failure diagnosis: current sign-in code suppresses FirebaseAuthException.code and displays a credential warning for all Firebase failures. No useful browser console error was available. Cloud Run log lookup returned only the earlier independent API probe requests; no browser membership request was found in that result. Cloud configuration reads confirm email/password enabled, empty App Check services list, and no Authentication reCAPTCHA enforcement fields. API-key restriction lookup was blocked because its administration API is disabled (this is not the application Authentication API).
+
+Safe diagnostics change is pushed on fix/development-auth-diagnostics at 4ba2933: sanitized Firebase error codes only, with targeted user-facing errors. Development AUTH_DIAGNOSTICS=true enables an error-code suffix and console entry, without exception messages or credential values. Analysis and all 20 Flutter tests passed. The first release build was terminated with exit -15; a retry at optimization level 1 with no Wasm dry run succeeded in 45.4 seconds. Hosting diagnostic release 1790975158224000 (version 3fa7c27eb9520559) is published to development. Underlying browser sign-in cause remains unproven pending a fresh instrumented attempt.
+
+### Instrumented secure browser attempt
+
+The refreshed diagnostic development release returned `auth/missing-password` after the secure credential submission. Firebase received no password; this is not evidence of an incorrect saved password. Source review confirms the password TextField uses `_password` and sign-in passes `_password.text` unchanged. Whether the value was omitted by the secure fill or lost in Flutter input handling is unresolved; no credential values were inspected. Stop automated sign-in retries. Browser acceptance and real App Check remain blocked pending direct user entry on the instrumented form.
+
+### Direct user entry and membership-loading regression
+
+Direct user sign-in progressed past the sign-in form but remained at the membership loading spinner. Cloud Run logs showed repeated GET /api/v1/auth/me responses of 400. The client globally sets Content-Type application/json; tenant enforcement attempted to parse an empty body. Independently reproduced with a freshly verified synthetic ID token: empty GET without JSON header = 200; same request with JSON header = 400 Malformed request body. This establishes successful identity verification followed by a body-parsing failure. Fix b9befa4 skips JSON parsing only for absent bodies, retaining nonempty malformed-body and cross-tenant rejection. All 57 backend tests pass (including three new regression cases). Development-only API rebuild is in progress; browser acceptance is not signed off.
+
+### Browser recovery verified
+
+Development API revision intqaflow-dev-api-00002-bm6 is Ready and serving all traffic from fix b9befa4. Reloading the existing user-authenticated hosted browser session now displays the signed-in IntQAFlow Knowledge screen with Ask & search, Questions and the application navigation. No credentials were re-entered or inspected by the agent. Browser sign-in and membership loading are verified; real App Check attestation and Phase 6 flows are not yet signed off. Draft corrective PR: https://github.com/ManuelKismet/interaction-qa-flow/pull/6 (no merge or production deployment).

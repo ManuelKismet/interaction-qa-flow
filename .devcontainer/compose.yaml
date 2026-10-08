@@ -1,0 +1,21 @@
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
+    command: sleep infinity
+    volumes:
+      - ..:/workspaces/intqaflow:cached
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cloud_connection_not_configured@127.0.0.1:6543/intqaflow_dev
+      APP_ENV: development
+      DEBUG: "false"
+      EMBEDDING_PROVIDER: fake
+      EMBEDDING_MODEL: text-embedding-3-small
+      EMBEDDING_DIMENSIONS: "1536"
+      EMBEDDING_API_KEY: ""
+      EMBEDDING_BASE_URL: http://127.0.0.1:9
+      HIGH_MATCH_THRESHOLD: "0.82"
+      RELATED_MATCH_THRESHOLD: "0.68"
+      DEFAULT_REVIEW_DAYS: "180"
+      REVIEW_DUE_SOON_DAYS: "30"
+# Hosted Cloud SQL is the development database. Configure a private Cloud SQL
+# Auth Proxy/connector before launching; this placeholder intentionally fails closed.

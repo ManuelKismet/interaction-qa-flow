@@ -1,0 +1,30 @@
+{
+  "name": "IntQAFlow isolated development",
+  "dockerComposeFile": "compose.yaml",
+  "service": "workspace",
+  "workspaceFolder": "/workspaces/intqaflow",
+  "remoteUser": "vscode",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [],
+  "otherPortsAttributes": {
+    "onAutoForward": "ignore"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "remote.autoForwardPorts": false,
+        "python.defaultInterpreterPath": "/workspaces/intqaflow/backend/.venv/bin/python",
+        "dart.flutterSdkPath": "/home/vscode/.local/share/intqaflow/flutter"
+      },
+      "extensions": [
+        "ms-python.python",
+        "Dart-Code.dart-code",
+        "Dart-Code.flutter"
+      ]
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/bootstrap.sh",
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/home/vscode/.local/share/intqaflow/flutter/bin"
+  }
+}

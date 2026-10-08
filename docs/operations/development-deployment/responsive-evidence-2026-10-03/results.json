@@ -1,0 +1,370 @@
+[
+  {
+    "viewport": "phone390",
+    "width": 390,
+    "height": 844,
+    "views": [
+      {
+        "view": "knowledge",
+        "geometry": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      },
+      {
+        "view": "interact-empty",
+        "geometry": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      },
+      {
+        "view": "interact-editor",
+        "geometry": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      },
+      {
+        "view": "pdf-preview",
+        "geometry": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      },
+      {
+        "view": "template-dialog",
+        "geometry": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      },
+      {
+        "view": "account-menu",
+        "geometry": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      },
+      {
+        "view": "sign-in",
+        "geometry": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      },
+      {
+        "view": "sign-up",
+        "geometry": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      }
+    ],
+    "errors": [],
+    "preview_buttons": [
+      "Print / Save PDF fallback",
+      "Share PDF",
+      "Download PDF"
+    ],
+    "outside_click_dismissed": true,
+    "escape_or_outside_returned": true,
+    "template_dialog_text": "Save local template\nCancel\nSave template",
+    "account_menu_text": "",
+    "signin_text": "Sign in\nCreate account or link guest recovery\nForgot password?",
+    "signin_buttons": [
+      "Sign in",
+      "Create account or link guest recovery",
+      "Forgot password?"
+    ],
+    "signup_text": "Create account\nBack to sign in",
+    "signup_buttons": [
+      "Create account",
+      "Back to sign in"
+    ]
+  },
+  {
+    "viewport": "phone360",
+    "width": 360,
+    "height": 800,
+    "views": [
+      {
+        "view": "knowledge",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "interact-empty",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "interact-editor",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "pdf-preview",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "template-dialog",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "account-menu",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "sign-in",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "sign-up",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      }
+    ],
+    "errors": [],
+    "preview_buttons": [
+      "Print / Save PDF fallback",
+      "Share PDF",
+      "Download PDF"
+    ],
+    "outside_click_dismissed": true,
+    "escape_or_outside_returned": true,
+    "template_dialog_text": "Save local template\nCancel\nSave template",
+    "account_menu_text": "",
+    "signin_text": "Sign in\nCreate account or link guest recovery\nForgot password?",
+    "signin_buttons": [
+      "Sign in",
+      "Create account or link guest recovery",
+      "Forgot password?"
+    ],
+    "signup_text": "Create account\nBack to sign in",
+    "signup_buttons": [
+      "Create account",
+      "Back to sign in"
+    ]
+  },
+  {
+    "viewport": "ipadportrait",
+    "width": 820,
+    "height": 1180,
+    "views": [
+      {
+        "view": "knowledge",
+        "geometry": {
+          "width": 820,
+          "height": 1180,
+          "scrollWidth": 820
+        }
+      },
+      {
+        "view": "interact-empty",
+        "geometry": {
+          "width": 820,
+          "height": 1180,
+          "scrollWidth": 820
+        }
+      },
+      {
+        "view": "interact-editor",
+        "geometry": {
+          "width": 820,
+          "height": 1180,
+          "scrollWidth": 820
+        }
+      },
+      {
+        "view": "pdf-preview",
+        "geometry": {
+          "width": 820,
+          "height": 1180,
+          "scrollWidth": 820
+        }
+      },
+      {
+        "view": "template-dialog",
+        "geometry": {
+          "width": 820,
+          "height": 1180,
+          "scrollWidth": 820
+        }
+      },
+      {
+        "view": "account-menu",
+        "geometry": {
+          "width": 820,
+          "height": 1180,
+          "scrollWidth": 820
+        }
+      },
+      {
+        "view": "sign-in",
+        "geometry": {
+          "width": 820,
+          "height": 1180,
+          "scrollWidth": 820
+        }
+      },
+      {
+        "view": "sign-up",
+        "geometry": {
+          "width": 820,
+          "height": 1180,
+          "scrollWidth": 820
+        }
+      }
+    ],
+    "errors": [],
+    "preview_buttons": [
+      "Print / Save PDF fallback",
+      "Share PDF",
+      "Download PDF"
+    ],
+    "outside_click_dismissed": true,
+    "escape_or_outside_returned": true,
+    "template_dialog_text": "Save local template\nCancel\nSave template",
+    "account_menu_text": "",
+    "signin_text": "Sign in\nCreate account or link guest recovery\nForgot password?",
+    "signin_buttons": [
+      "Sign in",
+      "Create account or link guest recovery",
+      "Forgot password?"
+    ],
+    "signup_text": "Create account\nBack to sign in",
+    "signup_buttons": [
+      "Create account",
+      "Back to sign in"
+    ]
+  },
+  {
+    "viewport": "ipadlandscape",
+    "width": 1180,
+    "height": 820,
+    "views": [
+      {
+        "view": "knowledge",
+        "geometry": {
+          "width": 1180,
+          "height": 820,
+          "scrollWidth": 1180
+        }
+      },
+      {
+        "view": "interact-empty",
+        "geometry": {
+          "width": 1180,
+          "height": 820,
+          "scrollWidth": 1180
+        }
+      },
+      {
+        "view": "interact-editor",
+        "geometry": {
+          "width": 1180,
+          "height": 820,
+          "scrollWidth": 1180
+        }
+      },
+      {
+        "view": "pdf-preview",
+        "geometry": {
+          "width": 1180,
+          "height": 820,
+          "scrollWidth": 1180
+        }
+      },
+      {
+        "view": "template-dialog",
+        "geometry": {
+          "width": 1180,
+          "height": 820,
+          "scrollWidth": 1180
+        }
+      },
+      {
+        "view": "account-menu",
+        "geometry": {
+          "width": 1180,
+          "height": 820,
+          "scrollWidth": 1180
+        }
+      },
+      {
+        "view": "sign-in",
+        "geometry": {
+          "width": 1180,
+          "height": 820,
+          "scrollWidth": 1180
+        }
+      },
+      {
+        "view": "sign-up",
+        "geometry": {
+          "width": 1180,
+          "height": 820,
+          "scrollWidth": 1180
+        }
+      }
+    ],
+    "errors": [],
+    "preview_buttons": [
+      "Print / Save PDF fallback",
+      "Share PDF",
+      "Download PDF"
+    ],
+    "outside_click_dismissed": true,
+    "escape_or_outside_returned": true,
+    "template_dialog_text": "Save local template\nCancel\nSave template",
+    "account_menu_text": "",
+    "signin_text": "Sign in\nCreate account or link guest recovery\nForgot password?",
+    "signin_buttons": [
+      "Sign in",
+      "Create account or link guest recovery",
+      "Forgot password?"
+    ],
+    "signup_text": "Create account\nBack to sign in",
+    "signup_buttons": [
+      "Create account",
+      "Back to sign in"
+    ]
+  }
+]
