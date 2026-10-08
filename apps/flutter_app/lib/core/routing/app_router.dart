@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
@@ -135,13 +136,13 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
           ),
           GoRoute(
             path: '/personal/interact',
-            builder: (context, state) => GuestWorkspacePage(
-              firebaseReady: true,
-              personalWorkspaceEnabled: true,
-              membershipStatus: AccountMembershipStatus.active,
-              initialWorkspaceTab: 1,
-              onWorkspaceTabChanged: (index) =>
-                  context.go(index == 0 ? '/personal' : '/personal/interact'),
+            pageBuilder: (context, state) => _personalInteractPage(context),
+          ),
+          GoRoute(
+            path: '/personal/interact/sessions/:sessionId',
+            pageBuilder: (context, state) => _personalInteractPage(
+              context,
+              sessionId: state.pathParameters['sessionId'],
             ),
           ),
         ],
@@ -151,3 +152,25 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
   ref.onDispose(router.dispose);
   return router;
 });
+
+/// The personal Interact list and its session editor share one page key so the
+/// workspace state (pending account writes, local save timers) is kept while
+/// the URL switches between the list and a session.
+Page<void> _personalInteractPage(BuildContext context, {String? sessionId}) =>
+    MaterialPage<void>(
+      key: const ValueKey('personal-interact-workspace'),
+      child: GuestWorkspacePage(
+        firebaseReady: true,
+        personalWorkspaceEnabled: true,
+        membershipStatus: AccountMembershipStatus.active,
+        initialWorkspaceTab: 1,
+        initialSessionId: sessionId,
+        onSessionRouteChanged: (id) => context.go(
+          id == null
+              ? '/personal/interact'
+              : '/personal/interact/sessions/${Uri.encodeComponent(id)}',
+        ),
+        onWorkspaceTabChanged: (index) =>
+            context.go(index == 0 ? '/personal' : '/personal/interact'),
+      ),
+    );

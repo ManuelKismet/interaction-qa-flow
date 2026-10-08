@@ -79,6 +79,8 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
     this.membershipStatus,
     this.authUnavailable = false,
     this.onRetryAccount,
+    this.initialSessionId,
+    this.onSessionRouteChanged,
     super.key,
   });
 
@@ -94,6 +96,14 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
   final AccountMembershipStatus? membershipStatus;
   final bool authUnavailable;
   final VoidCallback? onRetryAccount;
+
+  /// Interact session opened in the dedicated session editor.
+  final String? initialSessionId;
+
+  /// Called when the session editor opens (`id`) or closes (`null`) so a
+  /// router can reflect the editor in the URL. Without it the editor is
+  /// in-page state only.
+  final ValueChanged<String?>? onSessionRouteChanged;
 
   @override
   ConsumerState<GuestWorkspacePage> createState() => _GuestWorkspacePageState();
@@ -124,6 +134,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   int _personalRefreshGeneration = 0;
   String? _personalOwnerUid;
   bool _personalLoading = false;
+  String? _personalLoadedUid;
+  String? _openSessionId;
+  _PersonalWorkspaceWrite? _inFlightPersonalWrite;
   bool _personalSaving = false;
   bool _personalImportSaving = false;
   int _personalWriteGeneration = 0;
@@ -140,6 +153,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       personalWorkspaceStatusProvider.notifier,
     );
     _personalOwnerUid = _verifiedPersonalUid;
+    _openSessionId = widget.initialSessionId;
     WidgetsBinding.instance.addObserver(this);
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -151,8 +165,20 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   @override
   void didUpdateWidget(covariant GuestWorkspacePage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.initialSessionId != oldWidget.initialSessionId) {
+      _openSessionId = widget.initialSessionId;
+    }
     final uid = _verifiedPersonalUid;
     if (uid == _personalOwnerUid) return;
+    if (_openSessionId != null) {
+      _openSessionId = null;
+      final onRouteChanged = widget.onSessionRouteChanged;
+      if (onRouteChanged != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _openSessionId == null) onRouteChanged(null);
+        });
+      }
+    }
     _personalGeneration++;
     _personalRefreshGeneration++;
     _personalOwnerUid = uid;
@@ -291,6 +317,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       setState(() {
         _personalItems = items;
         _personalLoading = false;
+        _personalLoadedUid = uid;
       });
     } on Object {
       if (!mounted ||
@@ -301,6 +328,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       }
       setState(() {
         _personalLoading = false;
+        _personalLoadedUid = uid;
         _personalError =
             'Personal account work could not be loaded. Local work is unchanged; retry when connected.';
       });
@@ -565,7 +593,29 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 
     for (final entry in _pendingPersonalWrites.entries.toList()) {
       final write = entry.value;
-      if (write.action == 'delete') continue;
+      if (write.action == 'delete') {
+        // An undo restored an item whose account removal is still pending:
+        // replace the removal so the restored item is kept in the account.
+        final replacement = submittedByKey['${write.kind}:${write.sourceId}'];
+        if (replacement == null) continue;
+        final current = _personalItems
+            .where((item) => item['source_key'] == write.sourceKey)
+            .firstOrNull;
+        _enqueuePersonalWrite(
+          _PersonalWorkspaceWrite(
+            action:
+                current == null || identical(_inFlightPersonalWrite, write)
+                ? 'create'
+                : 'update',
+            kind: write.kind,
+            sourceKey: write.sourceKey,
+            sourceId: write.sourceId,
+            title: _personalTitle(write.kind, replacement),
+            data: replacement,
+          ),
+        );
+        continue;
+      }
       final replacement = submittedByKey['${write.kind}:${write.sourceId}'];
       if (replacement == null) {
         _enqueuePersonalWrite(
@@ -650,6 +700,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                   .firstOrNull;
         final entry = priorityEntry ?? _pendingPersonalWrites.entries.first;
         final write = entry.value;
+        _inFlightPersonalWrite = write;
         try {
           Map<String, dynamic>? saved;
           final current = _personalItems
@@ -760,6 +811,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       }
     } finally {
       _personalSaving = false;
+      _inFlightPersonalWrite = null;
       if (mounted) {
         _publishWorkspaceSaveStatus();
         final nextUid = _verifiedPersonalUid;
@@ -1128,6 +1180,74 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     );
   }
 
+  void _openSession(String id) {
+    if (!mounted) return;
+    setState(() => _openSessionId = id);
+    widget.onSessionRouteChanged?.call(id);
+  }
+
+  void _closeSession() {
+    if (!mounted || _openSessionId == null) return;
+    setState(() => _openSessionId = null);
+    widget.onSessionRouteChanged?.call(null);
+  }
+
+  Future<void> _copySessionJson(Map<String, dynamic> session) async {
+    final isAccount = _storageStatus(
+      'interact_session',
+      session,
+    ).startsWith('Personal account');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Copy session JSON backup'),
+        content: SingleChildScrollView(
+          child: Text(
+            'Copies only “${session['title'] ?? 'this session'}” as a JSON '
+            'backup to your clipboard, including its participants, answers '
+            'and follow-ups. Nothing is uploaded or shared. '
+            '${isAccount ? 'This session is stored in your private account, so the full local JSON backup does not include it. ' : ''}'
+            'It uses the local JSON backup format: “Import local JSON backup” '
+            'previews it and only adds selected items whose ID is not already '
+            'stored on this device.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Copy JSON'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final backup = GuestWorkspaceData(
+      sessions: [session],
+    ).encodeBackup();
+    try {
+      await Clipboard.setData(ClipboardData(text: backup));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Session JSON backup copied. Nothing was uploaded.'),
+        ),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The session JSON backup could not be copied. Nothing was changed.',
+          ),
+        ),
+      );
+    }
+  }
+
   void _handleWorkspaceTabChanged(int index) {
     final onChanged = widget.onWorkspaceTabChanged;
     if (onChanged == null) return;
@@ -1339,10 +1459,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Copy local JSON backup?'),
-        content: const Text(
+        content: Text(
           'The backup includes local Knowledge, participant names, answers, '
           'follow-ups and templates. It is copied to this device’s clipboard; '
-          'nothing is uploaded.',
+          'nothing is uploaded.'
+          '${_verifiedPersonalUid != null ? ' Items stored only in your private account are not included; use “Copy session JSON backup” in a session for an account-only session.' : ''}',
         ),
         actions: [
           TextButton(
@@ -1780,9 +1901,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ),
     ];
     return PopScope(
-      canPop: !_hasPendingWorkspaceChanges,
+      canPop: !_hasPendingWorkspaceChanges && _openSessionId == null,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _hasPendingWorkspaceChanges) {
+        if (didPop) return;
+        if (_openSessionId != null) {
+          _closeSession();
+        } else if (_hasPendingWorkspaceChanges) {
           _showPendingWorkspaceChanges();
         }
       },
@@ -1988,6 +2112,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                       updated: updated,
                                     ),
                                 onPrint: _printReport,
+                                localSaveStatus: _saveStatus,
+                                openSessionId: _openSessionId,
+                                sessionLoading:
+                                    _personalLoading ||
+                                    (_verifiedPersonalUid != null &&
+                                        _personalLoadedUid !=
+                                            _verifiedPersonalUid),
+                                onOpenSession: _openSession,
+                                onCloseSession: _closeSession,
+                                onCopySessionJson: _copySessionJson,
                               ),
                             ],
                           ),
@@ -3520,14 +3654,21 @@ class _GuestInteractTab extends StatefulWidget {
     required this.data,
     required this.privateWorkspace,
     required this.storageStatus,
+    required this.localSaveStatus,
     required this.onChange,
     required this.onCreateItem,
     required this.onPrint,
+    required this.openSessionId,
+    required this.sessionLoading,
+    required this.onOpenSession,
+    required this.onCloseSession,
+    required this.onCopySessionJson,
   });
 
   final GuestWorkspaceData data;
   final bool privateWorkspace;
   final String Function(String, Map<String, dynamic>) storageStatus;
+  final String localSaveStatus;
   final ValueChanged<GuestWorkspaceData> onChange;
   final void Function(
     String kind,
@@ -3536,6 +3677,11 @@ class _GuestInteractTab extends StatefulWidget {
   )
   onCreateItem;
   final void Function(Map<String, dynamic>, String?) onPrint;
+  final String? openSessionId;
+  final bool sessionLoading;
+  final ValueChanged<String> onOpenSession;
+  final VoidCallback onCloseSession;
+  final ValueChanged<Map<String, dynamic>> onCopySessionJson;
 
   @override
   State<_GuestInteractTab> createState() => _GuestInteractTabState();
@@ -3557,6 +3703,10 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
     _participantFocus.dispose();
     super.dispose();
   }
+
+  bool _isPersonal(Map<String, dynamic> session) => widget
+      .storageStatus('interact_session', session)
+      .startsWith('Personal account');
 
   void _createSession() {
     if (!_sessionFormKey.currentState!.validate()) {
@@ -3594,6 +3744,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
       widget.data.copyWith(sessions: [session, ...widget.data.sessions]),
     );
     _newSessionTitle.clear();
+    widget.onOpenSession(session['id'] as String);
   }
 
   Map<String, dynamic> _newQuestion(String text, List<String> participantIds) =>
@@ -3624,9 +3775,8 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
   }
 
   void _deleteSession(Map<String, dynamic> session) {
-    final isPersonalAccount = widget
-        .storageStatus('interact_session', session)
-        .startsWith('Personal account');
+    final isPersonalAccount = _isPersonal(session);
+    if (widget.openSessionId == session['id']) widget.onCloseSession();
     widget.onChange(
       widget.data.copyWith(
         sessions: widget.data.sessions
@@ -3634,7 +3784,8 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
             .toList(),
       ),
     );
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
       SnackBar(
         content: Text(
           isPersonalAccount
@@ -3644,9 +3795,28 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
         ),
         action: SnackBarAction(
           label: 'Undo',
-          onPressed: () => widget.onChange(
-            widget.data.copyWith(sessions: [session, ...widget.data.sessions]),
-          ),
+          onPressed: () {
+            if (!mounted) return;
+            widget.onChange(
+              widget.data.copyWith(
+                sessions: [session, ...widget.data.sessions],
+              ),
+            );
+            final restoredToAccount = _isPersonal(session);
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text(
+                  restoredToAccount
+                      ? 'Session restore queued for your private account. '
+                            'Check the save status.'
+                      : isPersonalAccount
+                      ? 'Session restored as a local copy on this device. '
+                            'The private account removal is not undone.'
+                      : 'Local session restored.',
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -3662,9 +3832,15 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
         submitLabel: widget.privateWorkspace
             ? 'Save to private account'
             : 'Save template',
+        description:
+            'Answers and participant names are not included. Participants '
+            'become numbered slots; questions, shared or participant targets '
+            'and follow-up branches are kept. '
+            '${widget.privateWorkspace ? 'The template is saved privately in your account.' : 'The template stays on this device.'}',
         fields: [
           _GuestRequiredTextField(
             label: 'Template name',
+            hintText: 'e.g. Weekly check-in',
             errorText: 'Enter a template name.',
           ),
         ],
@@ -3681,153 +3857,265 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
       template,
       widget.data.copyWith(templates: [template, ...widget.data.templates]),
     );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          widget.privateWorkspace
+              ? 'Template save queued for your private account. Answers were '
+                    'not included.'
+              : 'Local template saved on this device. Answers were not '
+                    'included.',
+        ),
+      ),
+    );
+  }
+
+  String _editorStatus(Map<String, dynamic> session) {
+    final status = widget.storageStatus('interact_session', session);
+    if (status != 'Local on this device') return status;
+    return switch (widget.localSaveStatus) {
+      'Saved on this device' => 'Local · saved on this device',
+      'Saving locally…' => 'Local · saving on this device…',
+      _ => 'Local · not saved on this device; retry saving',
+    };
   }
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.topCenter,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 1040),
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.privateWorkspace
-                      ? 'New Interact sessions are private to your account.'
-                      : 'New Interact sessions stay local. '
-                            'Imported sessions stay in your personal account.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-              _GuestInfoButton(
-                tooltip: 'Interact privacy information',
-                title: 'About Interact storage',
-                content: widget.privateWorkspace
-                    ? 'New sessions are private to your account. Imported '
-                          'sessions and their edits stay in your personal '
-                          'account; group sharing is separate.'
-                    : 'New sessions stay on this device unless you explicitly '
-                          'import them. Imported sessions and their edits stay '
-                          'in your personal account; group sharing is separate.',
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (widget.data.templates.isNotEmpty)
-            DropdownButtonFormField<String?>(
-              initialValue: _selectedTemplateId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Optional template'),
-              items: [
-                const DropdownMenuItem<String>(
-                  value: null,
-                  child: Text('Start blank'),
-                ),
-                for (final template in widget.data.templates)
-                  DropdownMenuItem(
-                    value: template['id'] as String,
-                    child: Text(
-                      '${template['name'] as String? ?? 'Template'} · '
-                      '${widget.storageStatus('template', template)}',
-                    ),
+  Widget build(BuildContext context) {
+    final openId = widget.openSessionId;
+    if (openId != null) {
+      final session = widget.data.sessions
+          .where((item) => item['id'] == openId)
+          .firstOrNull;
+      if (session != null) {
+        final isPersonalAccount = _isPersonal(session);
+        return _GuestSessionEditor(
+          key: ValueKey('guest-session-editor-$openId'),
+          session: session,
+          storageStatus: _editorStatus(session),
+          isPersonalAccount: isPersonalAccount,
+          privateWorkspace: widget.privateWorkspace,
+          onBack: widget.onCloseSession,
+          onChange: _updateSession,
+          onDelete: () => _deleteSession(session),
+          onSaveTemplate: () => _saveTemplate(session),
+          onPrint: (participantId) => widget.onPrint(session, participantId),
+          onCopyJson: () => widget.onCopySessionJson(session),
+          makeQuestion: _newQuestion,
+        );
+      }
+      return _GuestMissingSession(
+        loading: widget.sessionLoading,
+        onBack: widget.onCloseSession,
+      );
+    }
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1040),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.privateWorkspace
+                        ? 'New Interact sessions are private to your account.'
+                        : 'New Interact sessions stay local. '
+                              'Imported sessions stay in your personal account.',
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
+                ),
+                _GuestInfoButton(
+                  tooltip: 'Interact privacy information',
+                  title: 'About Interact storage',
+                  content: widget.privateWorkspace
+                      ? 'New sessions are private to your account. Imported '
+                            'sessions and their edits stay in your personal '
+                            'account; group sharing is separate.'
+                      : 'New sessions stay on this device unless you explicitly '
+                            'import them. Imported sessions and their edits stay '
+                            'in your personal account; group sharing is separate.',
+                ),
               ],
-              onChanged: (value) => setState(() => _selectedTemplateId = value),
             ),
-          const SizedBox(height: 12),
-          Form(
-            key: _sessionFormKey,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final width = constraints.maxWidth >= 680
-                    ? (constraints.maxWidth - 12) / 2
-                    : constraints.maxWidth;
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(
-                      width: width,
-                      child: TextFormField(
-                        controller: _newSessionTitle,
-                        focusNode: _sessionTitleFocus,
-                        decoration: const InputDecoration(
-                          labelText: 'New Interact session',
-                        ),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                            ? 'Enter a session title.'
-                            : null,
+            const SizedBox(height: 12),
+            if (widget.data.templates.isNotEmpty)
+              DropdownButtonFormField<String?>(
+                initialValue: _selectedTemplateId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Optional template',
+                  hintText: 'Start blank or choose a template',
+                ),
+                items: [
+                  const DropdownMenuItem<String>(
+                    value: null,
+                    child: Text('Start blank'),
+                  ),
+                  for (final template in widget.data.templates)
+                    DropdownMenuItem(
+                      value: template['id'] as String,
+                      child: Text(
+                        '${template['name'] as String? ?? 'Template'} · '
+                        '${widget.storageStatus('template', template)}',
                       ),
                     ),
-                    SizedBox(
-                      width: width,
-                      child: TextFormField(
-                        controller: _newSessionParticipant,
-                        focusNode: _participantFocus,
-                        decoration: const InputDecoration(
-                          labelText: 'First participant',
+                ],
+                onChanged: (value) =>
+                    setState(() => _selectedTemplateId = value),
+              ),
+            const SizedBox(height: 12),
+            Form(
+              key: _sessionFormKey,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.maxWidth >= 680
+                      ? (constraints.maxWidth - 12) / 2
+                      : constraints.maxWidth;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SizedBox(
+                        width: width,
+                        child: TextFormField(
+                          controller: _newSessionTitle,
+                          focusNode: _sessionTitleFocus,
+                          decoration: const InputDecoration(
+                            labelText: 'New Interact session',
+                            hintText: 'e.g. Onboarding interview',
+                          ),
+                          validator: (value) =>
+                              value == null || value.trim().isEmpty
+                              ? 'Enter a session title.'
+                              : null,
                         ),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                            ? 'Enter a participant name.'
-                            : null,
                       ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.icon(
-              onPressed: _createSession,
-              icon: const Icon(Icons.add),
-              label: Text(
-                widget.privateWorkspace
-                    ? 'Create private session'
-                    : 'Create session locally',
+                      SizedBox(
+                        width: width,
+                        child: TextFormField(
+                          controller: _newSessionParticipant,
+                          focusNode: _participantFocus,
+                          decoration: const InputDecoration(
+                            labelText: 'First participant',
+                            hintText: 'e.g. Alex',
+                          ),
+                          validator: (value) =>
+                              value == null || value.trim().isEmpty
+                              ? 'Enter a participant name.'
+                              : null,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
-          ),
-          const Divider(height: 28),
-          if (widget.data.sessions.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('Create a session to start capturing answers.'),
-            ),
-          for (final session in widget.data.sessions)
-            _GuestSessionEditor(
-              key: ValueKey(session['id']),
-              session: session,
-              storageStatus: widget.storageStatus('interact_session', session),
-              onChange: _updateSession,
-              onDelete: () => _deleteSession(session),
-              onSaveTemplate: () => _saveTemplate(session),
-              onPrint: (participantId) =>
-                  widget.onPrint(session, participantId),
-              makeQuestion: _newQuestion,
-            ),
-          if (widget.data.templates.isNotEmpty) ...[
-            const Divider(height: 28),
-            Text('Templates', style: Theme.of(context).textTheme.titleMedium),
-            for (final template in widget.data.templates)
-              ListTile(
-                leading: const Icon(Icons.description_outlined),
-                title: Text(template['name'] as String? ?? 'Template'),
-                subtitle: Text(
-                  '${widget.storageStatus('template', template)} · '
-                  '${(template['questions'] as List? ?? const []).length} '
-                  'prepared questions',
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: _createSession,
+                icon: const Icon(Icons.add),
+                label: Text(
+                  widget.privateWorkspace
+                      ? 'Create private session'
+                      : 'Create session locally',
                 ),
               ),
+            ),
+            const Divider(height: 28),
+            Text('Sessions', style: Theme.of(context).textTheme.titleMedium),
+            if (widget.data.sessions.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Create a session to start capturing answers.'),
+              ),
+            for (final session in widget.data.sessions)
+              Card(
+                key: ValueKey('guest-session-tile-${session['id']}'),
+                margin: const EdgeInsets.only(top: 8),
+                child: ListTile(
+                  leading: Icon(
+                    _isPersonal(session)
+                        ? Icons.lock_person_outlined
+                        : Icons.phone_android_outlined,
+                  ),
+                  title: Text(
+                    session['title'] as String? ?? 'Interact session',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    '${(session['participants'] as List? ?? const []).length} '
+                    'participants · '
+                    '${widget.storageStatus('interact_session', session)}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: session['id'] is String
+                      ? () => widget.onOpenSession(session['id'] as String)
+                      : null,
+                ),
+              ),
+            if (widget.data.templates.isNotEmpty) ...[
+              const Divider(height: 28),
+              Text('Templates', style: Theme.of(context).textTheme.titleMedium),
+              for (final template in widget.data.templates)
+                ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: Text(template['name'] as String? ?? 'Template'),
+                  subtitle: Text(
+                    '${widget.storageStatus('template', template)} · '
+                    '${(template['questions'] as List? ?? const []).length} '
+                    'questions',
+                  ),
+                ),
+            ],
           ],
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GuestMissingSession extends StatelessWidget {
+  const _GuestMissingSession({required this.loading, required this.onBack});
+
+  final bool loading;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (loading) ...[
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Loading this session…'),
+            ] else
+              const Text(
+                'This session is not available. It may have been removed, or '
+                'it belongs to another account, device or workspace. Nothing '
+                'was changed.',
+                textAlign: TextAlign.center,
+              ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back to sessions'),
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -3837,20 +4125,28 @@ class _GuestSessionEditor extends StatefulWidget {
   const _GuestSessionEditor({
     required this.session,
     required this.storageStatus,
+    required this.isPersonalAccount,
+    required this.privateWorkspace,
+    required this.onBack,
     required this.onChange,
     required this.onDelete,
     required this.onSaveTemplate,
     required this.onPrint,
+    required this.onCopyJson,
     required this.makeQuestion,
     super.key,
   });
 
   final Map<String, dynamic> session;
   final String storageStatus;
+  final bool isPersonalAccount;
+  final bool privateWorkspace;
+  final VoidCallback onBack;
   final ValueChanged<Map<String, dynamic>> onChange;
   final VoidCallback onDelete;
   final VoidCallback onSaveTemplate;
   final ValueChanged<String?> onPrint;
+  final VoidCallback onCopyJson;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
 
   @override
@@ -3860,6 +4156,8 @@ class _GuestSessionEditor extends StatefulWidget {
 class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   final _participantFormKey = GlobalKey<FormState>();
   final _questionFormKey = GlobalKey<FormState>();
+  final _composerKey = GlobalKey();
+  final _scrollController = ScrollController();
   final _participant = TextEditingController();
   final _question = TextEditingController();
   final _participantFocus = FocusNode();
@@ -3885,6 +4183,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _participant.dispose();
     _question.dispose();
     _participantFocus.dispose();
@@ -3897,11 +4196,23 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
 
+  String get _storageLabel =>
+      widget.isPersonalAccount ? 'your private account' : 'this device';
+
   void _editSession(void Function(Map<String, dynamic>) update) {
     final session = _copyMap(widget.session);
     update(session);
     widget.onChange(session);
   }
+
+  void _notify(String message, {SnackBarAction? action}) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.removeCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(message), action: action));
+  }
+
+  String _storageFeedback({required String local, required String account}) =>
+      widget.isPersonalAccount ? account : local;
 
   void _addParticipant() {
     if (!_participantFormKey.currentState!.validate()) {
@@ -3933,12 +4244,13 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
       context: context,
       builder: (context) => _GuestRequiredTextDialog(
         title: 'Rename participant',
-        submitLabel: widget.storageStatus.startsWith('Personal account')
+        submitLabel: widget.isPersonalAccount
             ? 'Save account changes'
             : 'Save name locally',
         fields: [
           _GuestRequiredTextField(
             label: 'Participant name',
+            hintText: 'e.g. Alex',
             initialValue: participant['name'] as String? ?? '',
             errorText: 'Enter a participant name.',
           ),
@@ -3956,6 +4268,126 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
         if (current['id'] == participantId) current['name'] = updatedName;
       }
     });
+  }
+
+  Future<void> _removeActiveParticipant() async {
+    final participants = _participants;
+    final participantIndex = participants.indexWhere(
+      (item) => item['id'] == _selectedParticipantId,
+    );
+    if (participantIndex < 0) return;
+    final participant = participants[participantIndex];
+    final participantId = participant['id'] as String;
+    final name = participant['name'] as String? ?? 'Participant';
+    final blocked =
+        participants.length < 2 ||
+        guestParticipantHasContent(widget.session, participantId);
+    if (blocked) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Participant cannot be removed'),
+          content: Text(
+            participants.length < 2
+                ? 'A session needs at least one participant. Add another '
+                      'participant before removing $name.'
+                : '$name has answers, follow-ups or participant questions in '
+                      'this session. Their content is kept; nothing was '
+                      'changed.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove participant?'),
+        content: Text(
+          'Remove $name from this session? They have no answers or '
+          'questions, so other participants’ answers and branches are '
+          'unchanged. You can undo straight afterwards.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove participant'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _editSession(
+      (session) => removeGuestParticipantWithoutContent(session, participantId),
+    );
+    _notify(
+      _storageFeedback(
+        local: 'Participant removed locally.',
+        account:
+            'Participant removal queued for your private account. Check the '
+            'save status.',
+      ),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () {
+          if (!mounted) return;
+          _editSession((session) {
+            final current = session['participants'] as List;
+            if (current.any((item) => (item as Map)['id'] == participantId)) {
+              return;
+            }
+            current.insert(
+              participantIndex.clamp(0, current.length).toInt(),
+              participant,
+            );
+            for (final root in session['questions'] as List) {
+              final question = root as Map<String, dynamic>;
+              if (question['scope'] != 'participant') {
+                _ensureAnswer(question, participantId);
+              }
+            }
+          });
+          _notify(
+            _storageFeedback(
+              local: 'Participant restored locally.',
+              account: 'Participant restore queued for your private account.',
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _renameSession() async {
+    final values = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _GuestRequiredTextDialog(
+        title: 'Rename session',
+        submitLabel: widget.isPersonalAccount
+            ? 'Save account changes'
+            : 'Save title locally',
+        fields: [
+          _GuestRequiredTextField(
+            label: 'Session title',
+            hintText: 'e.g. Onboarding interview',
+            initialValue: widget.session['title'] as String? ?? '',
+            errorText: 'Enter a session title.',
+          ),
+        ],
+      ),
+    );
+    if (values == null || !mounted) return;
+    _editSession((session) => session['title'] = values.single);
   }
 
   void _addQuestion({required bool shared}) {
@@ -3984,6 +4416,439 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     _question.clear();
   }
 
+  Future<void> _showComposer() async {
+    final composer = _composerKey.currentContext;
+    if (composer != null) {
+      await Scrollable.ensureVisible(
+        composer,
+        duration: const Duration(milliseconds: 200),
+      );
+    }
+    if (mounted) _questionFocus.requestFocus();
+  }
+
+  Future<void> _editQuestionText(String questionId) async {
+    final question = _findGuestQuestion(
+      widget.session['questions'] as List? ?? const [],
+      questionId,
+    );
+    if (question == null) return;
+    final nested = !(widget.session['questions'] as List? ?? const []).any(
+      (item) => item is Map && item['id'] == questionId,
+    );
+    final values = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _GuestRequiredTextDialog(
+        title: nested ? 'Edit follow-up question' : 'Edit question',
+        submitLabel: widget.isPersonalAccount
+            ? 'Save account changes'
+            : 'Save question locally',
+        description:
+            'Only the question text changes. Answers, targets and follow-up '
+            'branches are kept.',
+        fields: [
+          _GuestRequiredTextField(
+            label: 'Question text',
+            hintText: 'e.g. What would you like to discuss today?',
+            initialValue: question['text'] as String? ?? '',
+            errorText: 'Enter a question.',
+            maxLines: 4,
+          ),
+        ],
+      ),
+    );
+    if (values == null || !mounted) return;
+    var changed = false;
+    _editSession((session) {
+      final current = _findGuestQuestion(
+        session['questions'] as List,
+        questionId,
+      );
+      if (current == null) return;
+      current['text'] = values.single;
+      changed = true;
+    });
+    if (!changed) {
+      _notify('This question was removed before the edit was saved.');
+    }
+  }
+
+  void _removeRootQuestion(Map<String, dynamic> question) {
+    final removed = _copyMap(question);
+    final questions = widget.session['questions'] as List? ?? const [];
+    final index = questions.indexWhere(
+      (item) => (item as Map<String, dynamic>)['id'] == question['id'],
+    );
+    _editSession(
+      (session) => (session['questions'] as List).removeWhere(
+        (item) => (item as Map<String, dynamic>)['id'] == question['id'],
+      ),
+    );
+    _notify(
+      _storageFeedback(
+        local: 'Local question removed.',
+        account:
+            'Question removal queued for your private account. Check the '
+            'save status.',
+      ),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () {
+          if (!mounted) return;
+          _editSession((session) {
+            final current = session['questions'] as List;
+            if (current.any((item) => (item as Map)['id'] == removed['id'])) {
+              return;
+            }
+            current.insert(index.clamp(0, current.length).toInt(), removed);
+          });
+          _notify(
+            _storageFeedback(
+              local: 'Local question restored.',
+              account: 'Question restore queued for your private account.',
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _removeFollowUp(
+    String parentQuestionId,
+    String participantId,
+    String branchId,
+  ) {
+    Map<String, dynamic>? removed;
+    var index = -1;
+    _editSession((session) {
+      final answer = _guestAnswerFor(
+        session['questions'] as List,
+        parentQuestionId,
+        participantId,
+      );
+      final followUps = answer?['follow_ups'] as List?;
+      if (followUps == null) return;
+      index = followUps.indexWhere((item) => (item as Map)['id'] == branchId);
+      if (index < 0) return;
+      removed = _copyMap(followUps.removeAt(index) as Map<String, dynamic>);
+    });
+    final removedBranch = removed;
+    if (removedBranch == null) return;
+    _notify(
+      _storageFeedback(
+        local: 'Local follow-up removed.',
+        account:
+            'Follow-up removal queued for your private account. Check the '
+            'save status.',
+      ),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () {
+          if (!mounted) return;
+          var restored = false;
+          _editSession((session) {
+            final answer = _guestAnswerFor(
+              session['questions'] as List,
+              parentQuestionId,
+              participantId,
+            );
+            if (answer == null) return;
+            final followUps =
+                answer['follow_ups'] as List? ?? <Map<String, dynamic>>[];
+            answer['follow_ups'] = followUps;
+            if (followUps.any((item) => (item as Map)['id'] == branchId)) {
+              return;
+            }
+            followUps.insert(
+              index.clamp(0, followUps.length).toInt(),
+              removedBranch,
+            );
+            restored = true;
+          });
+          _notify(
+            restored
+                ? _storageFeedback(
+                    local: 'Local follow-up restored.',
+                    account:
+                        'Follow-up restore queued for your private account.',
+                  )
+                : 'The parent answer was removed, so the follow-up could not '
+                      'be restored.',
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _header(BuildContext context, {required bool duplicateIds}) {
+    final theme = Theme.of(context);
+    final title = widget.session['title'] as String? ?? 'Interact session';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            IconButton(
+              tooltip: 'Back to sessions',
+              onPressed: widget.onBack,
+              icon: const Icon(Icons.arrow_back),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Semantics(
+                  header: true,
+                  child: Text(
+                    title,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ),
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'More session actions',
+              onSelected: (value) {
+                switch (value) {
+                  case 'rename':
+                    _renameSession();
+                  case 'json':
+                    widget.onCopyJson();
+                  case 'delete':
+                    widget.onDelete();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'rename', child: Text('Rename session')),
+                PopupMenuItem(
+                  value: 'json',
+                  child: Text('Copy session JSON backup'),
+                ),
+                PopupMenuDivider(),
+                PopupMenuItem(value: 'delete', child: Text('Delete session')),
+              ],
+              icon: const Icon(Icons.more_vert),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Chip(
+              avatar: Icon(
+                widget.isPersonalAccount
+                    ? Icons.lock_person_outlined
+                    : Icons.phone_android_outlined,
+                size: 18,
+              ),
+              label: Text(
+                widget.isPersonalAccount
+                    ? 'Destination: Private account'
+                    : 'Destination: Local · this device',
+              ),
+            ),
+            Semantics(
+              liveRegion: true,
+              child: Text(widget.storageStatus),
+            ),
+            const _GuestInfoButton(
+              tooltip: 'Session lifecycle information',
+              title: 'About session lifecycle',
+              content:
+                  'Local and private account sessions stay editable. They '
+                  'have no draft, active, completed or archived status. '
+                  'Delete removes a session with Undo while the message is '
+                  'shown; private account changes are confirmed by the save '
+                  'status. Organisation sessions use their own server '
+                  'lifecycle.',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: duplicateIds ? null : widget.onSaveTemplate,
+              icon: const Icon(Icons.bookmark_add_outlined),
+              label: Text(
+                widget.privateWorkspace
+                    ? 'Save as private template'
+                    : 'Save as local template',
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => widget.onPrint(_selectedParticipantId),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Download / Share PDF'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _participantsSection(
+    BuildContext context,
+    List<Map<String, dynamic>> participants,
+    String? activeParticipantId,
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text('1. Participants', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      Form(
+        key: _participantFormKey,
+        child: Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _participant,
+                focusNode: _participantFocus,
+                decoration: const InputDecoration(
+                  labelText: 'Add participant',
+                  hintText: 'e.g. Sam (interviewee)',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter a participant name.'
+                    : null,
+                onFieldSubmitted: (_) => _addParticipant(),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Add participant',
+              onPressed: _addParticipant,
+              icon: const Icon(Icons.person_add_alt_1),
+            ),
+          ],
+        ),
+      ),
+      if (participants.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text(
+          '2. Active participant',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          key: ValueKey(activeParticipantId),
+          initialValue: activeParticipantId,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Active participant',
+            suffixIcon: _GuestInfoButton(
+              tooltip: 'Active participant help',
+              title: 'About the active participant',
+              content:
+                  'Answers and individual questions are shown for this participant.',
+            ),
+          ),
+          items: [
+            for (final participant in participants)
+              DropdownMenuItem(
+                value: participant['id'] as String,
+                child: Text(
+                  participant['name'] as String? ?? 'Participant',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: (value) => setState(() => _selectedParticipantId = value),
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          children: [
+            TextButton.icon(
+              onPressed: _renameActiveParticipant,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Rename active participant'),
+            ),
+            TextButton.icon(
+              onPressed: _removeActiveParticipant,
+              icon: const Icon(Icons.person_remove_outlined),
+              label: const Text('Remove active participant'),
+            ),
+          ],
+        ),
+      ],
+    ],
+  );
+
+  Widget _composer(BuildContext context, bool hasParticipants) => KeyedSubtree(
+    key: _composerKey,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 12),
+        Text('3. Questions', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Form(
+          key: _questionFormKey,
+          child: TextFormField(
+            controller: _question,
+            focusNode: _questionFocus,
+            minLines: 1,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'New question',
+              hintText: 'e.g. What would you like to discuss today?',
+              suffixIcon: _GuestInfoButton(
+                tooltip: 'Question help',
+                title: 'About shared and participant questions',
+                content:
+                    'Shared questions get separate answers from each '
+                    'participant. Participant questions are asked only of '
+                    'the active participant. Templates are optional.',
+              ),
+            ),
+            validator: (value) => value == null || value.trim().isEmpty
+                ? 'Enter a question.'
+                : null,
+          ),
+        ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 440;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonal(
+                  onPressed: hasParticipants
+                      ? () => _addQuestion(shared: true)
+                      : null,
+                  child: const Text('Add shared question'),
+                ),
+                Tooltip(
+                  message: 'Add question for the active participant',
+                  child: FilledButton.tonal(
+                    onPressed: hasParticipants
+                        ? () => _addQuestion(shared: false)
+                        : null,
+                    child: Text(
+                      compact
+                          ? 'Add participant question'
+                          : 'Add question for active participant',
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final participants = _participants;
@@ -4006,200 +4871,76 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           return targetId == activeParticipantId;
         })
         .toList();
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ExpansionTile(
-        initiallyExpanded: false,
-        title: Text(
-          widget.session['title'] as String? ?? 'Local session',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          '${participants.length} participants · ${widget.storageStatus}',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: hasDuplicateParticipantIds
-                    ? null
-                    : widget.onSaveTemplate,
-                icon: const Icon(Icons.bookmark_add_outlined),
-                label: const Text('Save as local template'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => widget.onPrint(activeParticipantId),
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('Download / Share PDF'),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'More session actions',
-                onSelected: (value) {
-                  if (value == 'delete') widget.onDelete();
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'delete', child: Text('Delete session')),
-                ],
-                icon: const Icon(Icons.more_vert),
-              ),
-            ],
+    Widget padded(Widget child) => SliverToBoxAdapter(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1040),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: child,
           ),
-          if (hasDuplicateParticipantIds)
+        ),
+      ),
+    );
+    return CustomScrollView(
+      key: const ValueKey('guest-session-editor-scroll'),
+      controller: _scrollController,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+      slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
+        padded(_header(context, duplicateIds: hasDuplicateParticipantIds)),
+        if (hasDuplicateParticipantIds) ...[
+          padded(
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Text(
                 'This saved session has duplicate participant IDs. Existing data is unchanged; participant editing and selected-participant reports are unavailable because answer ownership cannot be determined safely. Use All participants to view answers marked as ambiguous, and make a local backup before any manual repair.',
               ),
             ),
-          if (participants.isNotEmpty && !hasDuplicateParticipantIds) ...[
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              key: ValueKey(activeParticipantId),
-              initialValue: activeParticipantId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Active participant',
-                suffixIcon: _GuestInfoButton(
-                  tooltip: 'Active participant help',
-                  title: 'About the active participant',
-                  content:
-                      'Answers and individual questions are shown for this participant.',
-                ),
-              ),
-              items: [
-                for (final participant in participants)
-                  DropdownMenuItem(
-                    value: participant['id'] as String,
-                    child: Text(
-                      participant['name'] as String? ?? 'Participant',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-              onChanged: (value) =>
-                  setState(() => _selectedParticipantId = value),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _renameActiveParticipant,
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Rename active participant'),
-              ),
-            ),
-            const SizedBox(height: 4),
-          ],
-          if (!hasDuplicateParticipantIds)
-            Form(
-              key: _participantFormKey,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _participant,
-                      focusNode: _participantFocus,
-                      decoration: const InputDecoration(
-                        labelText: 'Add participant',
-                      ),
-                      validator: (value) =>
-                          value == null || value.trim().isEmpty
-                          ? 'Enter a participant name.'
-                          : null,
-                      onFieldSubmitted: (_) => _addParticipant(),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Add participant',
-                    onPressed: _addParticipant,
-                    icon: const Icon(Icons.person_add_alt_1),
-                  ),
-                ],
-              ),
-            ),
-          if (!hasDuplicateParticipantIds) ...[
-            const SizedBox(height: 12),
-            Form(
-              key: _questionFormKey,
-              child: TextFormField(
-                controller: _question,
-                focusNode: _questionFocus,
-                decoration: const InputDecoration(
-                  labelText: 'Prepared question',
-                  suffixIcon: _GuestInfoButton(
-                    tooltip: 'Prepared question help',
-                    title: 'About shared questions',
-                    content:
-                        'Shared questions get separate answers from each participant.',
-                  ),
-                ),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Enter a question.'
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 8),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxWidth < 440;
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.tonal(
-                      onPressed: participants.isEmpty
-                          ? null
-                          : () => _addQuestion(shared: true),
-                      child: const Text('Add shared question'),
-                    ),
-                    Tooltip(
-                      message: 'Add question for selected participant',
-                      child: FilledButton.tonal(
-                        onPressed: participants.isEmpty
-                            ? null
-                            : () => _addQuestion(shared: false),
-                        child: Text(
-                          compact
-                              ? 'Add participant question'
-                              : 'Add question for selected participant',
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-          if (hasDuplicateParticipantIds)
+          ),
+          padded(
             const Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text(
                 'Question and answer editing is paused for this session.',
               ),
-            )
-          else ...[
-            if (questions.isEmpty && participants.isNotEmpty)
+            ),
+          ),
+        ] else ...[
+          padded(const Divider(height: 24)),
+          padded(
+            _participantsSection(context, participants, activeParticipantId),
+          ),
+          if (activeParticipant != null)
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _GuestActiveParticipantBarDelegate(
+                name: activeParticipant['name'] as String? ?? 'Participant',
+                onAddQuestion: _showComposer,
+                background: Theme.of(context).colorScheme.surface,
+              ),
+            ),
+          padded(_composer(context, participants.isNotEmpty)),
+          if (questions.isEmpty && participants.isNotEmpty)
+            padded(
               const Padding(
                 padding: EdgeInsets.only(top: 12),
-                child: Text('No prepared questions for this participant yet.'),
+                child: Text('No questions for this participant yet.'),
               ),
-            for (final question in questions)
+            ),
+          for (final question in questions)
+            padded(
               _GuestQuestionEditor(
                 key: ValueKey(question['id']),
                 question: question,
-                isPersonalAccount: widget.storageStatus.startsWith(
-                  'Personal account',
-                ),
+                isPersonalAccount: widget.isPersonalAccount,
                 participants: activeParticipant == null
                     ? const []
                     : [activeParticipant],
                 onRemove: () => _removeRootQuestion(question),
+                onEditText: _editQuestionText,
+                onRemoveFollowUp: _removeFollowUp,
                 onUpdate: (updated) => _replaceQuestion(
                   widget.session,
                   updated,
@@ -4207,36 +4948,107 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 ),
                 makeQuestion: widget.makeQuestion,
               ),
-          ],
+            ),
         ],
-      ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        padded(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Text(
+              'Changes are saved to $_storageLabel as you type.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ),
+      ],
     );
   }
+}
 
-  void _removeRootQuestion(Map<String, dynamic> question) {
-    final removed = _copyMap(question);
-    final questions = widget.session['questions'] as List? ?? const [];
-    final index = questions.indexWhere(
-      (item) => (item as Map<String, dynamic>)['id'] == question['id'],
-    );
-    _editSession(
-      (session) => (session['questions'] as List).removeWhere(
-        (item) => (item as Map<String, dynamic>)['id'] == question['id'],
-      ),
-    );
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Local question removed.'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () => _editSession((session) {
-            final current = session['questions'] as List;
-            current.insert(index.clamp(0, current.length).toInt(), removed);
-          }),
+class _GuestActiveParticipantBarDelegate
+    extends SliverPersistentHeaderDelegate {
+  const _GuestActiveParticipantBarDelegate({
+    required this.name,
+    required this.onAddQuestion,
+    required this.background,
+  });
+
+  final String name;
+  final VoidCallback onAddQuestion;
+  final Color background;
+
+  static const double _height = 56;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) => Material(
+    color: background,
+    elevation: overlapsContent || shrinkOffset > 0 ? 2 : 0,
+    child: ClipRect(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1040),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 360;
+                return SizedBox(
+                  height: _height,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person_pin_outlined),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            'Active participant: $name',
+                            key: const ValueKey('guest-active-participant-bar'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                      ),
+                      if (compact)
+                        IconButton(
+                          tooltip: 'Add a question',
+                          onPressed: onAddQuestion,
+                          icon: const Icon(Icons.add_comment_outlined),
+                        )
+                      else
+                        TextButton.icon(
+                          onPressed: onAddQuestion,
+                          icon: const Icon(Icons.add_comment_outlined),
+                          label: const Text('Add a question'),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
         ),
       ),
-    );
-  }
+    ),
+  );
+
+  @override
+  bool shouldRebuild(covariant _GuestActiveParticipantBarDelegate oldDelegate) =>
+      oldDelegate.name != name ||
+      oldDelegate.onAddQuestion != onAddQuestion ||
+      oldDelegate.background != background;
 }
 
 class _GuestQuestionEditor extends StatefulWidget {
@@ -4246,6 +5058,8 @@ class _GuestQuestionEditor extends StatefulWidget {
     required this.participants,
     required this.onUpdate,
     required this.onRemove,
+    required this.onEditText,
+    required this.onRemoveFollowUp,
     required this.makeQuestion,
     this.nested = false,
     super.key,
@@ -4256,6 +5070,9 @@ class _GuestQuestionEditor extends StatefulWidget {
   final List<Map<String, dynamic>> participants;
   final ValueChanged<Map<String, dynamic>> onUpdate;
   final VoidCallback onRemove;
+  final ValueChanged<String> onEditText;
+  final void Function(String parentQuestionId, String participantId, String id)
+  onRemoveFollowUp;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
   final bool nested;
 
@@ -4348,10 +5165,21 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
                 Text(text, style: Theme.of(context).textTheme.titleSmall),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: IconButton(
-                    tooltip: 'Delete question and undo',
-                    onPressed: widget.onRemove,
-                    icon: const Icon(Icons.delete_outline),
+                  child: Wrap(
+                    children: [
+                      IconButton(
+                        tooltip: widget.nested
+                            ? 'Edit follow-up question'
+                            : 'Edit question',
+                        onPressed: () => widget.onEditText(id),
+                        icon: const Icon(Icons.edit_note_outlined),
+                      ),
+                      IconButton(
+                        tooltip: 'Delete question and undo',
+                        onPressed: widget.onRemove,
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ],
                   ),
                 ),
                 Text(
@@ -4364,6 +5192,7 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
                 for (final participant in applicable)
                   _GuestAnswerEditor(
                     key: ValueKey('${id}_${participant['id']}'),
+                    questionId: id,
                     participant: participant,
                     isPersonalAccount: widget.isPersonalAccount,
                     answer: _answers
@@ -4377,6 +5206,8 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
                     onAddFollowUp: (text) =>
                         _addFollowUp(participant['id'] as String, text),
                     onUpdate: _replaceAnswer,
+                    onEditText: widget.onEditText,
+                    onRemoveFollowUp: widget.onRemoveFollowUp,
                     makeQuestion: widget.makeQuestion,
                   ),
               ],
@@ -4419,22 +5250,29 @@ Map<String, dynamic>? _answerForParticipant(
 
 class _GuestAnswerEditor extends StatefulWidget {
   const _GuestAnswerEditor({
+    required this.questionId,
     required this.participant,
     required this.isPersonalAccount,
     required this.answer,
     required this.onAnswerChanged,
     required this.onAddFollowUp,
     required this.onUpdate,
+    required this.onEditText,
+    required this.onRemoveFollowUp,
     required this.makeQuestion,
     super.key,
   });
 
+  final String questionId;
   final Map<String, dynamic> participant;
   final bool isPersonalAccount;
   final Map<String, dynamic>? answer;
   final ValueChanged<String> onAnswerChanged;
   final ValueChanged<String> onAddFollowUp;
   final ValueChanged<Map<String, dynamic>> onUpdate;
+  final ValueChanged<String> onEditText;
+  final void Function(String parentQuestionId, String participantId, String id)
+  onRemoveFollowUp;
   final Map<String, dynamic> Function(String, List<String>) makeQuestion;
 
   @override
@@ -4487,6 +5325,7 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
   Widget build(BuildContext context) {
     final branches = widget.answer?['follow_ups'] as List? ?? const [];
     final collapsed = widget.answer?['branches_collapsed'] as bool? ?? false;
+    final participantName = widget.participant['name'] as String? ?? 'Participant';
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: LayoutBuilder(
@@ -4513,7 +5352,7 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Participant answer · ${widget.participant['name']}',
+                    'Participant answer · $participantName',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   const SizedBox(height: 4),
@@ -4526,6 +5365,7 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                       labelText: widget.isPersonalAccount
                           ? 'Personal-account answer'
                           : 'Local answer',
+                      hintText: 'Record $participantName’s answer…',
                       alignLabelWithHint: true,
                     ),
                     onChanged: widget.onAnswerChanged,
@@ -4575,6 +5415,7 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                           focusNode: _followUpFocus,
                           decoration: const InputDecoration(
                             labelText: 'Follow-up question',
+                            hintText: 'e.g. Can you give an example?',
                           ),
                           validator: (value) =>
                               value == null || value.trim().isEmpty
@@ -4626,7 +5467,13 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
                                 isPersonalAccount: widget.isPersonalAccount,
                                 participants: [widget.participant],
                                 nested: true,
-                                onRemove: () => _removeNestedBranch(branch),
+                                onRemove: () => widget.onRemoveFollowUp(
+                                  widget.questionId,
+                                  widget.participant['id'] as String,
+                                  branch['id'] as String,
+                                ),
+                                onEditText: widget.onEditText,
+                                onRemoveFollowUp: widget.onRemoveFollowUp,
                                 onUpdate: (updated) {
                                   final answer = _copyMap(widget.answer!);
                                   _replaceInQuestions(
@@ -4646,33 +5493,6 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  void _removeNestedBranch(Map<String, dynamic> branch) {
-    final removed = _copyMap(branch);
-    final answer = _copyMap(widget.answer!);
-    final followUps = answer['follow_ups'] as List;
-    final index = followUps.indexWhere(
-      (item) => (item as Map<String, dynamic>)['id'] == branch['id'],
-    );
-    answer['follow_ups'] = followUps
-        .where((item) => (item as Map<String, dynamic>)['id'] != branch['id'])
-        .toList();
-    widget.onUpdate(answer);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Local follow-up removed.'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            final restored = _copyMap(widget.answer!);
-            final current = restored['follow_ups'] as List;
-            current.insert(index.clamp(0, current.length).toInt(), removed);
-            widget.onUpdate(restored);
-          },
-        ),
       ),
     );
   }
@@ -5589,11 +6409,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         fields: [
           _GuestRequiredTextField(
             label: 'Title',
+            hintText: 'e.g. How do we book the meeting room?',
             errorText: 'Enter a title.',
             initialValue: draft['title'] ?? '',
           ),
           _GuestRequiredTextField(
             label: 'Knowledge / answer',
+            hintText: 'Write the answer the group should find later.',
             errorText: 'Enter the Knowledge or answer.',
             initialValue: draft['body'] ?? '',
             minLines: 3,
@@ -6607,6 +7429,7 @@ class _GuestRequiredTextField {
   const _GuestRequiredTextField({
     required this.label,
     required this.errorText,
+    this.hintText,
     this.initialValue = '',
     this.minLines = 1,
     this.maxLines = 1,
@@ -6614,6 +7437,9 @@ class _GuestRequiredTextField {
 
   final String label;
   final String errorText;
+
+  /// Example shown only while the field is empty; never saved as a value.
+  final String? hintText;
   final String initialValue;
   final int minLines;
   final int maxLines;
@@ -6681,9 +7507,13 @@ class _GuestRequiredTextDialogState extends State<_GuestRequiredTextDialog> {
     return TextFormField(
       controller: _controllers[index],
       focusNode: _focusNodes[index],
+      autofocus: index == 0,
       minLines: field.minLines,
       maxLines: field.maxLines,
-      decoration: InputDecoration(labelText: field.label),
+      decoration: InputDecoration(
+        labelText: field.label,
+        hintText: field.hintText,
+      ),
       validator: (value) =>
           value == null || value.trim().isEmpty ? field.errorText : null,
     );
@@ -7222,4 +8052,37 @@ bool _replaceInQuestions(List questions, Map<String, dynamic> updated) {
     }
   }
   return false;
+}
+
+Map<String, dynamic>? _findGuestQuestion(List questions, String questionId) {
+  for (final item in questions) {
+    if (item is! Map<String, dynamic>) continue;
+    if (item['id'] == questionId) return item;
+    for (final answer in (item['answers'] as List? ?? const [])) {
+      if (answer is! Map) continue;
+      final found = _findGuestQuestion(
+        answer['follow_ups'] as List? ?? const [],
+        questionId,
+      );
+      if (found != null) return found;
+    }
+  }
+  return null;
+}
+
+Map<String, dynamic>? _guestAnswerFor(
+  List questions,
+  String questionId,
+  String participantId,
+) {
+  final question = _findGuestQuestion(questions, questionId);
+  final answers = question?['answers'] as List?;
+  if (answers == null) return null;
+  for (final answer in answers) {
+    if (answer is Map<String, dynamic> &&
+        answer['participant_id'] == participantId) {
+      return answer;
+    }
+  }
+  return null;
 }

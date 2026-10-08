@@ -266,3 +266,71 @@ List<Map<String, String>> _templateSlots(Map<String, dynamic> template) {
   }
   return slots;
 }
+
+/// Whether [participantId] owns any recorded content in [session]: a
+/// non-blank answer, an answer-owned follow-up, or a question targeted at them.
+bool guestParticipantHasContent(
+  Map<String, dynamic> session,
+  String participantId,
+) => _questionsHaveParticipantContent(
+  session['questions'] as List? ?? const [],
+  participantId,
+);
+
+bool _questionsHaveParticipantContent(List questions, String participantId) {
+  for (final question in questions) {
+    if (question is! Map) continue;
+    if (question['scope'] == 'participant' &&
+        question['target_participant_id'] == participantId) {
+      return true;
+    }
+    for (final answer in question['answers'] as List? ?? const []) {
+      if (answer is! Map) continue;
+      final followUps = answer['follow_ups'] as List? ?? const [];
+      if (answer['participant_id'] == participantId &&
+          ((answer['body'] as String? ?? '').trim().isNotEmpty ||
+              followUps.isNotEmpty)) {
+        return true;
+      }
+      if (_questionsHaveParticipantContent(followUps, participantId)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Removes a participant that has no content (see
+/// [guestParticipantHasContent]) together with their empty answer stubs.
+/// Other participants' answers and branches are left unchanged.
+void removeGuestParticipantWithoutContent(
+  Map<String, dynamic> session,
+  String participantId,
+) {
+  if (guestParticipantHasContent(session, participantId)) {
+    throw StateError('Participant has recorded content.');
+  }
+  (session['participants'] as List? ?? []).removeWhere(
+    (item) => item is Map && item['id'] == participantId,
+  );
+  _removeEmptyAnswers(session['questions'] as List? ?? [], participantId);
+}
+
+void _removeEmptyAnswers(List questions, String participantId) {
+  for (final question in questions) {
+    if (question is! Map) continue;
+    final answers = question['answers'] as List?;
+    if (answers == null) continue;
+    answers.removeWhere(
+      (answer) => answer is Map && answer['participant_id'] == participantId,
+    );
+    for (final answer in answers) {
+      if (answer is Map) {
+        _removeEmptyAnswers(
+          answer['follow_ups'] as List? ?? const [],
+          participantId,
+        );
+      }
+    }
+  }
+}

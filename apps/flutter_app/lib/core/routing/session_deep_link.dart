@@ -1,4 +1,6 @@
-final _sessionRoutePattern = RegExp(r'^/guided/sessions/[^/]+/?$');
+final _sessionRoutePattern = RegExp(
+  r'^/(guided/sessions|personal/interact/sessions)/[^/]+/?$',
+);
 
 String sessionDeepLinkInitialLocation(Uri uri) {
   if (_sessionRoutePattern.hasMatch(uri.path)) {
