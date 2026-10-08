@@ -104,7 +104,7 @@ independent gate.
 
 Automatic setup lives on default branch main in
 `.github/workflows/copilot-setup-steps.yml`, tooling-only commit
-`0627a2dde8797116e17eefa0d81bc2392559b800`. It uses official Flutter tag
+`f6b1c9e7b0841fa6182d2dcf278e701498712026` (corrected setup). It uses official Flutter tag
 3.41.4, verifies revision ff37bef603469fb030f2b72995ab929ccfc227f0 and
 Dart3.11.1, prepares web tooling and enforces the existing pubspec lockfile.
 The checkout action is SHA-pinned and does not persist credentials; workflow
@@ -140,3 +140,15 @@ reviews behavior and meaningful coverage, then independently runs scoped/full
 acceptance checks as appropriate. Preserve the two-stage workflow and separate
 deployment authorisation. Batch2 remains unaccepted and DEV remains unchanged
 until its runtime failures are resolved.
+
+
+Hosted setup verified: Actions run37766017527/job113273759089 succeeded,
+including exact Flutter3.41.4/Dart3.11.1 verification, web precache and enforced
+lockfile pubget; logs emitted COPILOT_FLUTTER_SETUP_READY. Initial run37765832906
+failed JSON parsing because first-launch output preceded machine JSON; corrected
+setup initializes Flutter before the machine-version check. This is environment
+readiness, not batch2 application acceptance. SAME task tenth session started
+for actual formatter/analyzer/focused tests and subsequent repairs; setup
+correction was visibly delivered to the active session. Config pushes also
+triggered existing GitHub Pages build/deployment; no app source changed and no
+Cloud Run/Firebase DEV rollout was performed.
