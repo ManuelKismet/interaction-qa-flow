@@ -4203,6 +4203,15 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     messenger.showSnackBar(SnackBar(content: Text(message), action: action));
   }
 
+  /// Used inside a [SnackBarAction]: the action hides the current snack bar
+  /// after its callback, so the follow-up message is queued instead of
+  /// replacing (and then being hidden with) the current one.
+  void _notifyAfterAction(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   String _storageFeedback({required String local, required String account}) =>
       widget.isPersonalAccount ? account : local;
 
@@ -4364,7 +4373,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               }
             }
           });
-          _notify(
+          _notifyAfterAction(
             _storageFeedback(
               local: 'Participant restored locally.',
               account: 'Participant restore queued for your private account.',
@@ -4509,7 +4518,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             }
             current.insert(index.clamp(0, current.length).toInt(), removed);
           });
-          _notify(
+          _notifyAfterAction(
             _storageFeedback(
               local: 'Local question restored.',
               account: 'Question restore queued for your private account.',
@@ -4572,7 +4581,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             );
             restored = true;
           });
-          _notify(
+          _notifyAfterAction(
             restored
                 ? _storageFeedback(
                     local: 'Local follow-up restored.',

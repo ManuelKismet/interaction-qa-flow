@@ -297,8 +297,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                   SizedBox(
                     width: 230,
                     child: DropdownButtonFormField<String?>(
-                      key: ValueKey(_participantId),
-                      initialValue: _participantId,
+                      key: ValueKey(activeParticipant?.id),
+                      initialValue: activeParticipant?.id,
                       isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Active participant',

@@ -2,10 +2,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/core/routing/session_deep_link.dart';
 
 void main() {
+  test('retains personal Interact session links in path and hash form', () {
+    expect(
+      sessionDeepLinkInitialLocation(
+        Uri.parse('https://example.test/personal/interact/sessions/abc-1'),
+      ),
+      '/personal/interact/sessions/abc-1',
+    );
+    expect(
+      sessionDeepLinkInitialLocation(
+        Uri.parse(
+          'https://intqaflow-dev.web.app/#/personal/interact/sessions/abc-1',
+        ),
+      ),
+      '/personal/interact/sessions/abc-1',
+    );
+    expect(
+      sessionDeepLinkInitialLocation(
+        Uri.parse('https://example.test/personal/interact/sessions/a/b'),
+      ),
+      '/',
+    );
+  });
+
   test('retains a valid session deep link and query across initialization', () {
     expect(
       sessionDeepLinkInitialLocation(
-        Uri.parse('https://example.test/guided/sessions/session-123?tab=report'),
+        Uri.parse(
+          'https://example.test/guided/sessions/session-123?tab=report',
+        ),
       ),
       '/guided/sessions/session-123?tab=report',
     );
@@ -33,25 +58,31 @@ void main() {
     );
   });
 
-  test('retains unknown session identifiers for normal authorization handling', () {
-    expect(
-      sessionDeepLinkInitialLocation(
-        Uri.parse('https://example.test/guided/sessions/unknown-id'),
-      ),
-      '/guided/sessions/unknown-id',
-    );
-  });
-
-  test('retains unknown hash session identifiers for authorization handling', () {
-    expect(
-      sessionDeepLinkInitialLocation(
-        Uri.parse(
-          'https://intqaflow-dev.web.app/guided#/guided/sessions/unknown-id',
+  test(
+    'retains unknown session identifiers for normal authorization handling',
+    () {
+      expect(
+        sessionDeepLinkInitialLocation(
+          Uri.parse('https://example.test/guided/sessions/unknown-id'),
         ),
-      ),
-      '/guided/sessions/unknown-id',
-    );
-  });
+        '/guided/sessions/unknown-id',
+      );
+    },
+  );
+
+  test(
+    'retains unknown hash session identifiers for authorization handling',
+    () {
+      expect(
+        sessionDeepLinkInitialLocation(
+          Uri.parse(
+            'https://intqaflow-dev.web.app/guided#/guided/sessions/unknown-id',
+          ),
+        ),
+        '/guided/sessions/unknown-id',
+      );
+    },
+  );
 
   test('does not preserve unrelated or malformed path or hash routes', () {
     expect(

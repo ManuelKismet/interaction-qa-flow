@@ -238,6 +238,223 @@ void main() {
     },
   );
 
+  testWidgets(
+    'deep-linked editor edits follow-up text and guards participant removal',
+    (tester) async {
+      _registerGuestCleanup(tester);
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        GuestWorkspaceData(sessions: [_twoParticipantSession()]),
+      );
+      final routes = <String?>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+          child: MaterialApp(
+            home: GuestWorkspacePage(
+              firebaseReady: false,
+              initialWorkspaceTab: 1,
+              initialSessionId: 'two-person-session',
+              onSessionRouteChanged: routes.add,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Back to sessions'), findsWidgets);
+      expect(find.text('Destination: Local · this device'), findsOneWidget);
+      await _selectParticipant(tester, 'Bob');
+      expect(find.textContaining('Active participant: Bob'), findsOneWidget);
+
+      final edit = find.byTooltip('Edit follow-up question');
+      await _ensureVisibleInGuestList(
+        tester,
+        edit,
+        anchor: _activeParticipantBar,
+      );
+      await tester.tap(edit.first);
+      await tester.pumpAndSettle();
+      final field = find.widgetWithText(TextFormField, 'Question text');
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(of: field, matching: find.byType(TextField)),
+            )
+            .decoration
+            ?.hintText,
+        startsWith('e.g.'),
+      );
+      await tester.enterText(field, '   ');
+      await tester.tap(find.text('Save question locally'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a question.'), findsOneWidget);
+      await tester.enterText(field, 'Bob follow-up, reworded');
+      await tester.tap(find.text('Save question locally'));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+
+      final saved = (await store.load()).sessions.single;
+      final shared = (saved['questions'] as List).first as Map;
+      expect(shared['id'], 'shared-root');
+      expect(shared['text'], 'Shared prompt');
+      final bobAnswer =
+          (shared['answers'] as List).firstWhere(
+                (item) => (item as Map)['participant_id'] == 'bob-id',
+              )
+              as Map;
+      expect(bobAnswer['body'], 'Bob answer');
+      final branch = (bobAnswer['follow_ups'] as List).single as Map;
+      expect(branch['id'], 'bob-branch');
+      expect(branch['text'], 'Bob follow-up, reworded');
+      expect(branch['target_participant_id'], 'bob-id');
+      expect(
+        ((branch['answers'] as List).single as Map)['body'],
+        'Bob branch answer',
+      );
+      final aliceAnswer =
+          (shared['answers'] as List).firstWhere(
+                (item) => (item as Map)['participant_id'] == 'alice-id',
+              )
+              as Map;
+      expect(aliceAnswer['body'], 'Alice answer');
+
+      final actions = find.byTooltip('Active participant actions');
+      await _ensureVisibleInGuestList(
+        tester,
+        actions,
+        anchor: _activeParticipantBar,
+      );
+      await tester.tap(actions);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove active participant'));
+      await tester.pumpAndSettle();
+      expect(find.text('Participant cannot be removed'), findsOneWidget);
+      expect(find.textContaining('nothing was changed'), findsOneWidget);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(
+        ((await store.load()).sessions.single['participants'] as List).length,
+        2,
+      );
+
+      await tester.tap(find.byTooltip('Back to sessions').first);
+      await tester.pumpAndSettle();
+      expect(routes.last, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('empty participant removal is confirmed and can be undone', (
+    tester,
+  ) async {
+    _registerGuestCleanup(tester);
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    final session = _twoParticipantSession();
+    (session['participants'] as List).add({'id': 'cara-id', 'name': 'Cara'});
+    await store.save(GuestWorkspaceData(sessions: [session]));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: false,
+            initialWorkspaceTab: 1,
+            initialSessionId: 'two-person-session',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _selectParticipant(tester, 'Cara');
+    final actions = find.byTooltip('Active participant actions');
+    await _ensureVisibleInGuestList(
+      tester,
+      actions,
+      anchor: _activeParticipantBar,
+    );
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove active participant'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove participant?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Remove participant'));
+    await tester.pumpAndSettle();
+    expect(find.text('Participant removed locally.'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+    var participants =
+        (await store.load()).sessions.single['participants'] as List;
+    expect(participants.map((item) => (item as Map)['id']), [
+      'alice-id',
+      'bob-id',
+    ]);
+    await tester.tap(find.text('Undo').hitTestable());
+    await tester.pumpAndSettle();
+    expect(find.text('Participant restored locally.'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+    participants = (await store.load()).sessions.single['participants'] as List;
+    expect(participants.map((item) => (item as Map)['id']), [
+      'alice-id',
+      'bob-id',
+      'cara-id',
+    ]);
+    final shared =
+        ((await store.load()).sessions.single['questions'] as List).first
+            as Map;
+    final bodies = {
+      for (final answer in shared['answers'] as List)
+        (answer as Map)['participant_id']: answer['body'],
+    };
+    expect(bodies, {
+      'alice-id': 'Alice answer',
+      'bob-id': 'Bob answer',
+      'cara-id': '',
+    });
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('missing deep-linked session offers a safe return', (
+    tester,
+  ) async {
+    _registerGuestCleanup(tester);
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(GuestWorkspaceData(sessions: [_twoParticipantSession()]));
+    final routes = <String?>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: false,
+            initialWorkspaceTab: 1,
+            initialSessionId: 'deleted-session',
+            onSessionRouteChanged: routes.add,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('This session is not available.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Back to sessions').hitTestable().first);
+    await tester.pumpAndSettle();
+    expect(routes.last, isNull);
+    expect(find.text('Two-person interview'), findsWidgets);
+    expect(
+      (await store.load()).sessions.single['id'],
+      'two-person-session',
+      reason: 'Opening a missing link never creates or deletes local data.',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('long labels and nested branches fit a narrow guest layout', (
     tester,
   ) async {
