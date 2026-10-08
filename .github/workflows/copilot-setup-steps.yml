@@ -52,7 +52,7 @@ jobs:
           print("Verified Flutter 3.41.4 / Dart 3.11.1")
           PY
 
-      - name: Prepare web tooling and locked application dependencies
+      - name: Prepare test assets, web tooling and locked dependencies
         working-directory: apps/flutter_app
         shell: bash
         env:
@@ -60,6 +60,29 @@ jobs:
           FLUTTER_SUPPRESS_ANALYTICS: "true"
         run: |
           set -euo pipefail
-          flutter --suppress-analytics precache --web
+          flutter --suppress-analytics precache --universal --linux --web
           flutter --suppress-analytics pub get --enforce-lockfile
-          echo "COPILOT_FLUTTER_SETUP_READY: pinned SDK and locked dependencies available"
+          sdk_dir="$RUNNER_TEMP/copilot-flutter-3.41.4"
+          test -s "$sdk_dir/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf"
+          test -x "$sdk_dir/bin/cache/artifacts/engine/linux-x64/flutter_tester"
+          # Verify the actual widget-test engine and Material assets before the agent starts.
+          smoke_test="$(mktemp test/copilot_setup_XXXXXX_test.dart)"
+          trap 'rm -f "$smoke_test"' EXIT
+          cat > "$smoke_test" <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_test/flutter_test.dart';
+
+          void main() {
+            testWidgets('Copilot setup renders Material widgets', (tester) async {
+              await tester.pumpWidget(
+                const MaterialApp(
+                  home: Scaffold(body: Text('Copilot Flutter ready')),
+                ),
+              );
+              expect(find.text('Copilot Flutter ready'), findsOneWidget);
+              expect(tester.takeException(), isNull);
+            });
+          }
+          DART
+          flutter --suppress-analytics test --no-pub --reporter expanded "$smoke_test"
+          echo "COPILOT_FLUTTER_SETUP_READY: pinned SDK, fonts, test engine, web tools and locked dependencies verified"
