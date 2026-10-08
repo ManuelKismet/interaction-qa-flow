@@ -20,14 +20,11 @@ class QuestionsPage extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () => ref.refresh(questionsProvider.future),
       child: ListView(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(16),
         children: [
-          Text('IntQAFlow Knowledge', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 12),
+
           const KnowledgeSectionTabs(selected: KnowledgeSection.questions),
-          const SizedBox(height: 28),
-          Text('Questions', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           SegmentedButton<QuestionFilter>(
             segments: [
               for (final filter in QuestionFilter.values)
@@ -39,7 +36,22 @@ class QuestionsPage extends ConsumerWidget {
                 .select(selection.first),
           ),
           const SizedBox(height: 16),
-          Wrap(
+          ExpansionTile(
+            key: const PageStorageKey('organisation-question-filters'),
+            tilePadding: EdgeInsets.zero,
+            maintainState: true,
+            initiallyExpanded: scope.departmentId != null || scope.teamId != null,
+            title: const Text('Filters'),
+            subtitle: Text([
+              if (scope.departmentId != null)
+                'Department: ${departments.value?.where((item) => item.id == scope.departmentId).firstOrNull?.name ?? 'Selected'}',
+              if (scope.teamId != null)
+                'Team: ${teams.value?.where((item) => item.id == scope.teamId).firstOrNull?.name ?? 'Selected'}',
+              if (scope.departmentId == null && scope.teamId == null)
+                'All departments and teams',
+            ].join(' · ')),
+            children: [
+Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
@@ -85,7 +97,9 @@ class QuestionsPage extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+            ],
+          ),
+          const SizedBox(height: 12),
           questions.when(
             data: (items) => items.isEmpty
                 ? const Padding(
