@@ -47,6 +47,7 @@ class _PersonalWorkspaceWrite {
     required this.sourceId,
     this.title,
     this.data,
+    this.deleteAfterCreate = false,
   });
 
   final String action;
@@ -55,6 +56,7 @@ class _PersonalWorkspaceWrite {
   final String sourceId;
   final String? title;
   final Map<String, dynamic>? data;
+  final bool deleteAfterCreate;
 }
 
 String _pdfFontPreviewMessage() => kIsWeb
@@ -117,22 +119,29 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   String? _personalConflictSourceKey;
   bool _personalConflictReloadFailed = false;
   int _personalGeneration = 0;
+  int _personalRefreshGeneration = 0;
   String? _personalOwnerUid;
   bool _personalLoading = false;
   bool _personalSaving = false;
+  bool _personalImportSaving = false;
   int _personalWriteGeneration = 0;
+  final Object _workspaceStatusOwner = Object();
+  late final PersonalWorkspaceStatusController _workspaceStatusController;
+  int _workspaceStatusRevision = 0;
+  bool _workspaceStatusClaimed = false;
 
   @override
   void initState() {
     super.initState();
     _store = ref.read(guestWorkspaceStoreProvider);
+    _workspaceStatusController = ref.read(personalWorkspaceStatusProvider.notifier);
     _personalOwnerUid = _verifiedPersonalUid;
     WidgetsBinding.instance.addObserver(this);
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_refreshPersonalWorkspace());
     });
-    _publishWorkspaceSaveStatus();
+    _publishWorkspaceSaveStatus(claim: true);
   }
 
   @override
@@ -141,6 +150,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final uid = _verifiedPersonalUid;
     if (uid == _personalOwnerUid) return;
     _personalGeneration++;
+    _personalRefreshGeneration++;
     _personalOwnerUid = uid;
     _personalItems = [];
     _pendingPersonalItems = [];
@@ -151,7 +161,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     _personalConflictReloadFailed = false;
     _personalError = null;
     _personalLoading = false;
-    _publishWorkspaceSaveStatus();
+    _personalImportSaving = false;
+    _publishWorkspaceSaveStatus(claim: true);
     if (uid != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_refreshPersonalWorkspace());
@@ -175,11 +186,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (_savedRevision < _dataRevision) {
       unawaited(_flushPendingSave());
     }
-    if (!_hasPendingWorkspaceChanges) {
-      ref
-          .read(personalWorkspaceStatusProvider.notifier)
-          .update(uid: null, hasPendingChanges: false);
-    }
+    _workspaceStatusRevision++;
+    _workspaceStatusController.clear(_workspaceStatusOwner);
     super.dispose();
   }
 
@@ -188,16 +196,24 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       _unsavedChanges ||
       _pendingPersonalWrites.isNotEmpty ||
       _pendingPersonalImport.isNotEmpty ||
+      _personalImportSaving ||
       _personalSaving ||
       _personalConflictSourceKey != null;
 
-  void _publishWorkspaceSaveStatus() {
-    ref
-        .read(personalWorkspaceStatusProvider.notifier)
-        .update(
-          uid: _verifiedPersonalUid,
-          hasPendingChanges: _hasPendingWorkspaceChanges,
-        );
+  void _publishWorkspaceSaveStatus({bool claim = false}) {
+    final revision = ++_workspaceStatusRevision;
+    final uid = _verifiedPersonalUid;
+    final shouldClaim = claim || !_workspaceStatusClaimed;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || revision != _workspaceStatusRevision) return;
+      _workspaceStatusController.publish(
+        owner: _workspaceStatusOwner,
+        uid: uid,
+        hasPendingChanges: _hasPendingWorkspaceChanges,
+        claim: shouldClaim,
+      );
+      if (shouldClaim) _workspaceStatusClaimed = true;
+    });
   }
 
   Future<void> _load() async {
@@ -236,7 +252,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   Future<void> _refreshPersonalWorkspace() async {
     final uid = _verifiedPersonalUid;
     if (uid == null || !mounted) return;
-    final generation = ++_personalGeneration;
+    final generation = _personalGeneration;
+    final refreshGeneration = ++_personalRefreshGeneration;
     final writeGeneration = _personalWriteGeneration;
     setState(() {
       _personalLoading = true;
@@ -249,6 +266,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           .listItems(expectedUid: uid);
       if (!mounted ||
           generation != _personalGeneration ||
+          refreshGeneration != _personalRefreshGeneration ||
           uid != _verifiedPersonalUid) {
         return;
       }
@@ -269,6 +287,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     } on Object {
       if (!mounted ||
           generation != _personalGeneration ||
+          refreshGeneration != _personalRefreshGeneration ||
           uid != _verifiedPersonalUid) {
         return;
       }
@@ -571,15 +590,32 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }
 
   void _enqueuePersonalWrite(_PersonalWorkspaceWrite write) {
+    final key = '${write.kind}:${write.sourceId}';
+    final previous = _pendingPersonalWrites[key];
+    final nextWrite =
+        write.action == 'delete' && previous?.action == 'create'
+        ? _PersonalWorkspaceWrite(
+            action: 'create',
+            kind: previous!.kind,
+            sourceKey: previous.sourceKey,
+            sourceId: previous.sourceId,
+            title: previous.title,
+            data: previous.data,
+            deleteAfterCreate: true,
+          )
+        : write;
     setState(() {
-      _pendingPersonalWrites['${write.kind}:${write.sourceId}'] = write;
+      _pendingPersonalWrites[key] = nextWrite;
       _pendingPersonalItems.removeWhere(
         (item) =>
-            item['kind'] == write.kind &&
-            (item['data'] as Map?)?['id'] == write.sourceId,
+            item['kind'] == nextWrite.kind &&
+            (item['data'] as Map?)?['id'] == nextWrite.sourceId,
       );
-      if (write.action != 'delete') {
-        _pendingPersonalItems.add({'kind': write.kind, 'data': write.data});
+      if (nextWrite.action != 'delete') {
+        _pendingPersonalItems.add({
+          'kind': nextWrite.kind,
+          'data': nextWrite.data,
+        });
       }
       _personalError = null;
     });
@@ -664,6 +700,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               );
             }
           });
+          if (write.deleteAfterCreate) {
+            _enqueuePersonalWrite(
+              _PersonalWorkspaceWrite(
+                action: 'delete',
+                kind: write.kind,
+                sourceKey: write.sourceKey,
+                sourceId: write.sourceId,
+              ),
+            );
+          }
         } on DioException catch (error) {
           if (error.response?.statusCode == 409) {
             await _reloadPersonalConflict(uid, generation, write);
@@ -689,7 +735,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       }
     } finally {
       _personalSaving = false;
-      if (mounted) _publishWorkspaceSaveStatus();
+      if (mounted) {
+        _publishWorkspaceSaveStatus();
+        final nextUid = _verifiedPersonalUid;
+        if (nextUid != null && _pendingPersonalWrites.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && nextUid == _verifiedPersonalUid) {
+              unawaited(
+                _processPersonalWrites(
+                  nextUid,
+                  _personalGeneration,
+                  ref.read(personalWorkspaceRepositoryProvider),
+                ),
+              );
+            }
+          });
+        }
+      }
     }
   }
 
@@ -1374,7 +1436,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }
 
   Future<void> _submitPersonalImport(String uid, int generation) async {
+    if (_personalImportSaving) return;
     final payload = _pendingPersonalImport;
+    _personalImportSaving = true;
+    _publishWorkspaceSaveStatus();
     try {
       final items = await ref
           .read(personalWorkspaceRepositoryProvider)
@@ -1395,6 +1460,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         _personalImportNeedsReselection = false;
         _personalError = null;
       });
+      _publishWorkspaceSaveStatus();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -1415,12 +1481,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           _personalError =
               'This selection exceeds account import limits or contains invalid content. Select fewer items or smaller items and try again. Your local originals are unchanged.';
         });
+        _publishWorkspaceSaveStatus();
         return;
       }
       setState(() {
         _personalError =
             'The account import was not confirmed. Local copies remain on this device; retry safely.';
       });
+      _publishWorkspaceSaveStatus();
     } on Object {
       if (!mounted ||
           uid != _verifiedPersonalUid ||
@@ -1431,6 +1499,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         _personalError =
             'The account import was not confirmed. Local copies remain on this device; retry safely.';
       });
+      _publishWorkspaceSaveStatus();
+    } finally {
+      if (mounted && uid == _verifiedPersonalUid && generation == _personalGeneration) {
+        _personalImportSaving = false;
+        _publishWorkspaceSaveStatus();
+      }
     }
   }
 
@@ -6266,7 +6340,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           ),
           const SizedBox(height: 8),
           if (_entries.isEmpty)
-            const Text('No shared Knowledge or Interact items are available.'),
+            const Text('No shared Knowledge or Interact items are available.')
           else
             for (final entry in _entries)
               Card(

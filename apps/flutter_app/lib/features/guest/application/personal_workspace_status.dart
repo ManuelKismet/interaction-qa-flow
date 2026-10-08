@@ -6,8 +6,13 @@ final personalWorkspaceStatusProvider =
     );
 
 class PersonalWorkspaceStatus {
-  const PersonalWorkspaceStatus({this.uid, this.hasPendingChanges = false});
+  const PersonalWorkspaceStatus({
+    this.owner,
+    this.uid,
+    this.hasPendingChanges = false,
+  });
 
+  final Object? owner;
   final String? uid;
   final bool hasPendingChanges;
 }
@@ -17,10 +22,22 @@ class PersonalWorkspaceStatusController
   @override
   PersonalWorkspaceStatus build() => const PersonalWorkspaceStatus();
 
-  void update({required String? uid, required bool hasPendingChanges}) {
+  void publish({
+    required Object owner,
+    required String? uid,
+    required bool hasPendingChanges,
+    bool claim = false,
+  }) {
+    if (!claim && state.owner != owner) return;
     state = PersonalWorkspaceStatus(
+      owner: owner,
       uid: uid,
       hasPendingChanges: hasPendingChanges,
     );
+  }
+
+  void clear(Object owner) {
+    if (state.owner != owner) return;
+    state = const PersonalWorkspaceStatus();
   }
 }
