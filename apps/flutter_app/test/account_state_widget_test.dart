@@ -434,7 +434,7 @@ void main() {
     Stream<User?>? authChanges,
     String initialLocation = '/personal/ask',
   }) async {
-    GuestWorkspacePage page({int tab = 0}) => Consumer(
+    Widget page({int tab = 0}) => Consumer(
       builder: (context, ref, _) => GuestWorkspacePage(
         firebaseReady: true,
         personalWorkspaceEnabled: true,
@@ -1543,11 +1543,7 @@ void main() {
 
       expect(find.text('Save to private account'), findsOneWidget);
       await tester.enterText(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextFormField &&
-              widget.decoration.labelText == 'Question',
-        ),
+        find.widgetWithText(TextFormField, 'Question'),
         'Private default question',
       );
       await tester.enterText(
@@ -1626,11 +1622,7 @@ void main() {
       unawaited(router.push<void>('/personal/ask'));
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextFormField &&
-              widget.decoration.labelText == 'Question',
-        ),
+        find.widgetWithText(TextFormField, 'Question'),
         'Held private question',
       );
       await tester.tap(find.text('Save to private account'));
@@ -1703,11 +1695,7 @@ void main() {
         authChanges: authChanges.stream,
       );
       await tester.enterText(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextFormField &&
-              widget.decoration.labelText == 'Question',
-        ),
+        find.widgetWithText(TextFormField, 'Question'),
         'First identity private question',
       );
       await tester.tap(find.text('Save to private account'));
@@ -1719,11 +1707,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('First identity private question'), findsNothing);
       await tester.enterText(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextFormField &&
-              widget.decoration.labelText == 'Question',
-        ),
+        find.widgetWithText(TextFormField, 'Question'),
         'Second identity private question',
       );
       await tester.tap(find.text('Save to private account'));
@@ -1763,11 +1747,7 @@ void main() {
         store: store,
       );
       await tester.enterText(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextFormField &&
-              widget.decoration.labelText == 'Question',
-        ),
+        find.widgetWithText(TextFormField, 'Question'),
         'Remove uncertain private create',
       );
       await tester.tap(find.text('Save to private account'));
@@ -1806,11 +1786,7 @@ void main() {
       );
       expect(repository.listCalls, 1);
       await tester.enterText(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is TextFormField &&
-              widget.decoration.labelText == 'Question',
-        ),
+        find.widgetWithText(TextFormField, 'Question'),
         'Refresh race question',
       );
       await tester.tap(find.text('Save to private account'));
@@ -2003,19 +1979,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Create private session'), findsOneWidget);
     await tester.enterText(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is TextFormField &&
-            widget.decoration.labelText == 'New Interact session',
-      ),
+      find.widgetWithText(TextFormField, 'New Interact session'),
       'Private session',
     );
     await tester.enterText(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is TextFormField &&
-            widget.decoration.labelText == 'First participant',
-      ),
+      find.widgetWithText(TextFormField, 'First participant'),
       'Participant One',
     );
     await tester.tap(find.text('Create private session'));

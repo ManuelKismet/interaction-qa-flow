@@ -1484,7 +1484,7 @@ void main() {
     expect(ownerRepository.transferRequests, 1);
     expect(find.textContaining('Waiting for Invited viewer to accept'), findsOneWidget);
     expect(
-      find.textContaining('Role: admin'),
+      find.textContaining('Your group role: admin'),
       findsOneWidget,
       reason: 'The requester keeps the current role until the recipient accepts.',
     );
@@ -1519,7 +1519,7 @@ void main() {
       find.textContaining('asked to accept group administration'),
       findsNothing,
     );
-    expect(find.textContaining('Role: admin'), findsOneWidget);
+    expect(find.textContaining('Your group role: admin'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
