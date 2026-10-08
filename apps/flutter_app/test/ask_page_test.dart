@@ -341,6 +341,10 @@ void main() {
     expect(find.widgetWithText(Chip, 'Team: Identity'), findsOneWidget);
     expect(find.text('Keep account passwords unique.'), findsOneWidget);
     expect(find.text('Ask as new question'), findsOneWidget);
+    expect(find.text('Department (optional)'), findsNothing);
+    await tester.ensureVisible(find.text('Details and assignment (optional)'));
+    await tester.tap(find.text('Details and assignment (optional)'));
+    await tester.pumpAndSettle();
     expect(find.text('Department (optional)'), findsOneWidget);
     expect(find.text('Team (optional)'), findsOneWidget);
 
@@ -487,6 +491,9 @@ void main() {
       expect(find.text('Local-only secret phrase.'), findsOneWidget);
       expect(find.text('Private-only account detail.'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Details and assignment (optional)'));
+      await tester.tap(find.text('Details and assignment (optional)'));
+      await tester.pumpAndSettle();
       final detailField = find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&
