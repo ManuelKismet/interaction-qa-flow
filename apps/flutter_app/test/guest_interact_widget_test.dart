@@ -1134,9 +1134,7 @@ void main() {
       );
       await tester.tap(find.byTooltip('Workspace storage information'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Saved on this device'), findsOneWidget);
+      expect(find.textContaining('Saved on this device'), findsOneWidget);
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -1467,7 +1465,11 @@ void main() {
       'First change',
     ]);
     expect(store.writeSnapshots.last, ['Latest change', 'First change']);
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('Saved on this device'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets(
