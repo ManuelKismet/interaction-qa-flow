@@ -2298,7 +2298,7 @@ void main() {
       'Private session',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'First participant'),
+      find.widgetWithText(TextFormField, 'Participant'),
       'Participant One',
     );
     await tester.tap(find.text('Create private session'));
