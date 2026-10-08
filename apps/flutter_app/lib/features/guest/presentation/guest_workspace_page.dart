@@ -4841,27 +4841,63 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
         final inlineActions =
             constraints.maxWidth >= 800 &&
             MediaQuery.textScalerOf(context).scale(14) <= 20;
-        final destination = Chip(
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          avatar: Icon(
-            widget.isPersonalAccount
-                ? Icons.lock_person_outlined
-                : Icons.phone_android_outlined,
-            size: 18,
+        final actionHeight = (MediaQuery.textScalerOf(context).scale(13) + 20)
+            .clamp(40.0, double.infinity)
+            .toDouble();
+        final actionTextStyle = theme.textTheme.labelLarge?.copyWith(
+          fontSize: 13,
+        );
+        final destination = Container(
+          key: const ValueKey('guest-session-destination'),
+          height: actionHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            border: Border.all(color: theme.colorScheme.outline),
+            borderRadius: BorderRadius.circular(20),
           ),
-          label: Text(
-            widget.isPersonalAccount
-                ? 'Destination: Private account'
-                : 'Destination: Local · this device',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.isPersonalAccount
+                    ? Icons.lock_person_outlined
+                    : Icons.phone_android_outlined,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  widget.isPersonalAccount
+                      ? 'Destination: Private account'
+                      : 'Destination: Local · this device',
+                  style: actionTextStyle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         );
-        final pdfAction = OutlinedButton.icon(
-          onPressed: () => widget.onPrint(_selectedParticipantId),
-          icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: const Text('Download / Share PDF'),
+        final pdfAction = SizedBox(
+          key: const ValueKey('guest-session-pdf-action'),
+          height: actionHeight,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              minimumSize: Size(0, actionHeight),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              visualDensity: VisualDensity.standard,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: actionTextStyle,
+            ),
+            onPressed: () => widget.onPrint(_selectedParticipantId),
+            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+            label: const Text(
+              'Download / Share PDF',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
