@@ -5038,6 +5038,14 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           spacing: 8,
           runSpacing: 8,
           children: [
+            const _GuestInfoButton(
+              tooltip: 'Question help',
+              title: 'About shared and participant questions',
+              content:
+                  'Shared questions get separate answers from each '
+                  'participant. Participant questions are asked only of '
+                  'the active participant. Templates are optional.',
+            ),
             FilledButton.tonal(
               onPressed: hasParticipants
                   ? () => _addQuestion(shared: true)
