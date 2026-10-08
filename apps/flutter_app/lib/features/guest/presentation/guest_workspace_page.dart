@@ -5903,6 +5903,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     }
     final uid = user.uid;
     final generation = ++_loadGeneration;
+    _closeGroupDialogs();
     setState(() {
       _busy = true;
       _error = null;
@@ -6820,20 +6821,28 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         ),
         actions: [
           TextButton(
-            onPressed: () => _run(() async {
-              final result = await _repository.exportEntry(
-                groupId: groupId,
-                entryId: entry['id'] as String,
-              );
-              if (current() &&
+            onPressed: () async {
+              Map<String, dynamic>? result;
+              await _run(() async {
+                result = await _repository.exportEntry(
+                  groupId: groupId,
+                  entryId: entry['id'] as String,
+                );
+              });
+              if (result != null &&
+                  current() &&
                   entryDialogActive &&
                   entryDialogContext.mounted &&
                   (ModalRoute.of(entryDialogContext)?.isCurrent ?? false)) {
                 entryDialogActive = false;
                 Navigator.pop(entryDialogContext);
-                await _exportAuthorizedGroupEntry(result);
+                await _exportAuthorizedGroupEntry(
+                  result!,
+                  groupId: groupId,
+                  current: current,
+                );
               }
-            }),
+            },
             child: const Text('Download / Share PDF'),
           ),
           TextButton(
@@ -6910,7 +6919,29 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     await entryDialog.whenComplete(() => entryDialogActive = false);
   }
 
-  Future<void> _exportAuthorizedGroupEntry(Map<String, dynamic> entry) async {
+  Future<void> _exportAuthorizedGroupEntry(
+    Map<String, dynamic> entry, {
+    required String groupId,
+    required bool Function() current,
+  }) async {
+    Future<bool> authorize() async {
+      if (!current()) return false;
+      try {
+        await _repository.exportEntry(
+          groupId: groupId,
+          entryId: entry['id'] as String,
+        );
+        return current();
+      } on Object {
+        if (current()) {
+          _closeGroupDialogs();
+          setState(() => _error = 'Group export unavailable. Refresh access.');
+        }
+        return false;
+      }
+    }
+
+    if (!current()) return;
     final title = entry['title'] as String? ?? 'Group entry';
     final data = entry['data'] is Map
         ? Map<String, dynamic>.from(entry['data'] as Map)
@@ -6920,8 +6951,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
-      final scope = await showDialog<String>(
-        context: context,
+      final scope = await _showScopedGroupDialog<String>(
         builder: (context) => SimpleDialog(
           title: const Text('Choose report scope'),
           children: [
@@ -6940,7 +6970,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           ],
         ),
       );
-      if (scope == null || !mounted) return;
+      if (scope == null || !await authorize()) return;
       final allParticipants = scope == '*';
       final Object? firstParticipantId = participants.firstOrNull?['id'];
       final String? participantId;
@@ -6958,8 +6988,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         participantId: participantId,
         exportedAt: DateTime.now().toUtc(),
       );
-      await showDialog<void>(
-        context: context,
+      await _showScopedGroupDialog<void>(
         builder: (context) => _GuestReportPreviewDialog(
           report: report,
           onDownload: () => _downloadAuthorizedReport(
@@ -6967,21 +6996,26 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
             session,
             allParticipants,
             participantId,
+            authorize,
           ),
           onShare: () => _shareAuthorizedReport(
             report,
             session,
             allParticipants,
             participantId,
+            authorize,
           ),
-          onPrintFallback: () => openPrintableReport(
-            buildGuestReportDocument(
-              session: session,
-              allParticipants: allParticipants,
-              participantId: participantId,
-              generatedAt: report.exportedAt,
-            ),
-          ),
+          onPrintFallback: () async {
+            if (!await authorize()) return;
+            openPrintableReport(
+              buildGuestReportDocument(
+                session: session,
+                allParticipants: allParticipants,
+                participantId: participantId,
+                generatedAt: report.exportedAt,
+              ),
+            );
+          },
         ),
       );
       return;
@@ -7004,14 +7038,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           ),
       ],
     );
-    await showDialog<void>(
-      context: context,
+    if (!await authorize()) return;
+    await _showScopedGroupDialog<void>(
       builder: (context) => _GuestPortablePreviewDialog(
         document: document,
-        onDownload: () => _downloadPortableDocument(document),
-        onShare: () => _sharePortableDocument(document),
-        onPrintFallback: () =>
-            openPrintableReport(buildGuestPortableHtml(document)),
+        onDownload: () => _downloadPortableDocument(document, authorize),
+        onShare: () => _sharePortableDocument(document, authorize),
+        onPrintFallback: () async {
+          if (!await authorize()) return;
+          openPrintableReport(buildGuestPortableHtml(document));
+        },
       ),
     );
   }
@@ -7021,6 +7057,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     Map<String, dynamic> session,
     bool allParticipants,
     String? participantId,
+    Future<bool> Function() authorize,
   ) async {
     final document = buildGuestReportDocument(
       session: session,
@@ -7029,9 +7066,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       generatedAt: report.exportedAt,
     );
     try {
+      final bytes = await buildGuestReportPdf(report);
+      if (!await authorize()) return;
       final status = await _downloadPdfOrShareFile(
-        await buildGuestReportPdf(report),
+        bytes,
         guestReportFilename(report),
+        authorize: authorize,
       );
       if (status == ShareResultStatus.success ||
           status == ShareResultStatus.dismissed) {
@@ -7042,7 +7082,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     } on Object {
       // Fall through to the print-to-PDF fallback.
     }
-    if (kIsWeb) openPrintableReport(document);
+    if (kIsWeb && await authorize()) openPrintableReport(document);
   }
 
   Future<void> _shareAuthorizedReport(
@@ -7050,12 +7090,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     Map<String, dynamic> session,
     bool allParticipants,
     String? participantId,
+    Future<bool> Function() authorize,
   ) async {
     final confirmed = await _confirmPortableCopy();
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !await authorize()) return;
     try {
       final bytes = await buildGuestReportPdf(report);
-      if (!mounted) return;
+      if (!await authorize() || !mounted) return;
       final renderBox = context.findRenderObject() as RenderBox?;
       final result = await SharePlus.instance.share(
         ShareParams(
@@ -7077,6 +7118,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           session,
           allParticipants,
           participantId,
+          authorize,
         );
       }
     } on Object {
@@ -7086,16 +7128,23 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           session,
           allParticipants,
           participantId,
+          authorize,
         );
       }
     }
   }
 
-  Future<void> _downloadPortableDocument(GuestPortableDocument document) async {
+  Future<void> _downloadPortableDocument(
+    GuestPortableDocument document,
+    Future<bool> Function() authorize,
+  ) async {
     try {
+      final bytes = await buildGuestPortablePdf(document);
+      if (!await authorize()) return;
       final status = await _downloadPdfOrShareFile(
-        await buildGuestPortablePdf(document),
+        bytes,
         guestPortableFilename(document),
+        authorize: authorize,
       );
       if (status == ShareResultStatus.success ||
           status == ShareResultStatus.dismissed) {
@@ -7106,15 +7155,20 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     } on Object {
       // Fall through to the print-to-PDF fallback.
     }
-    if (kIsWeb) openPrintableReport(buildGuestPortableHtml(document));
+    if (kIsWeb && await authorize()) {
+      openPrintableReport(buildGuestPortableHtml(document));
+    }
   }
 
-  Future<void> _sharePortableDocument(GuestPortableDocument document) async {
+  Future<void> _sharePortableDocument(
+    GuestPortableDocument document,
+    Future<bool> Function() authorize,
+  ) async {
     final confirmed = await _confirmPortableCopy();
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !await authorize()) return;
     try {
       final bytes = await buildGuestPortablePdf(document);
-      if (!mounted) return;
+      if (!await authorize() || !mounted) return;
       final renderBox = context.findRenderObject() as RenderBox?;
       final result = await SharePlus.instance.share(
         ShareParams(
@@ -7131,18 +7185,17 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (result.status == ShareResultStatus.dismissed) return;
       if (!mounted) return;
       if (result.status == ShareResultStatus.unavailable) {
-        await _downloadPortableDocument(document);
+        await _downloadPortableDocument(document, authorize);
       }
     } on UnsupportedPdfCharactersException {
-      if (mounted) await _downloadPortableDocument(document);
+      if (mounted) await _downloadPortableDocument(document, authorize);
       return;
     } on Object {
-      if (mounted) await _downloadPortableDocument(document);
+      if (mounted) await _downloadPortableDocument(document, authorize);
     }
   }
 
-  Future<bool?> _confirmPortableCopy() => showDialog<bool>(
-    context: context,
+  Future<bool?> _confirmPortableCopy() => _showScopedGroupDialog<bool>(
     builder: (context) => AlertDialog(
       title: const Text('Share a PDF copy?'),
       content: const Text(
@@ -7660,10 +7713,13 @@ String _safeGuestError(Object error) {
 
 Future<ShareResultStatus?> _downloadPdfOrShareFile(
   Uint8List bytes,
-  String filename,
-) async {
+  String filename, {
+  Future<bool> Function()? authorize,
+}) async {
+  if (authorize != null && !await authorize()) return null;
   if (await downloadPdf(bytes, filename)) return ShareResultStatus.success;
   if (kIsWeb) return null;
+  if (authorize != null && !await authorize()) return null;
   final result = await SharePlus.instance.share(
     ShareParams(
       title: 'Save PDF',

@@ -277,11 +277,13 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
       setState(() {
         _uncertain = false;
         if (_matches(remote, _draft)) {
+          _conflict = false;
           _baseline = _copyMap(remote);
           _status =
               'Saved Group copy confirmed · revision ${remote['revision']}';
         } else if (remote['revision'] == _baseline['revision'] &&
             _matches(remote, _session(_baseline))) {
+          _conflict = false;
           _status = 'Not saved. Draft kept; safe to retry Save Group copy.';
         } else {
           _conflict = true;
@@ -700,150 +702,153 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _close();
         },
-        child: Navigator(
-          key: _navigator,
-          onDidRemovePage: (_) {},
-          pages: [
-            MaterialPage<void>(
-              child: Builder(
-                builder: (context) {
-                  if (_closing || !_current) return const SizedBox.shrink();
-                  _editorContext = context;
-                  return Scaffold(
-                    appBar: AppBar(
-                      automaticallyImplyLeading: false,
-                      title: const Text('Edit shared copy'),
-                      actions: [
-                        IconButton(
-                          tooltip: 'Group copy revision history',
-                          onPressed: _busy || _unavailable ? null : _history,
-                          icon: const Icon(Icons.history),
-                        ),
-                        IconButton(
-                          tooltip: 'Close Group editor',
-                          onPressed: _busy ? null : _close,
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                    body: SafeArea(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) => Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxHeight: constraints.maxHeight * 0.4,
-                              ),
-                              child: SingleChildScrollView(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Text(
-                                        'Group: ${widget.groupName} · Shared copy\nEdits affect this Group copy only. Personal/local originals stay separate.',
-                                      ),
-                                      Semantics(
-                                        liveRegion: true,
-                                        child: Text(_status),
-                                      ),
-                                      if (!_unavailable)
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 4,
-                                          crossAxisAlignment:
-                                              WrapCrossAlignment.center,
-                                          children: [
-                                            FilledButton(
-                                              onPressed:
-                                                  _busy ||
-                                                      _conflict ||
-                                                      _uncertain ||
-                                                      !_dirty
-                                                  ? null
-                                                  : _save,
-                                              child: const Text(
-                                                'Save Group copy',
-                                              ),
-                                            ),
-                                            if (_uncertain)
-                                              OutlinedButton(
-                                                onPressed: _busy
-                                                    ? null
-                                                    : _reconcile,
-                                                child: const Text(
-                                                  'Check save status',
-                                                ),
-                                              ),
-                                            if (_conflict)
-                                              OutlinedButton(
-                                                onPressed: _busy
-                                                    ? null
-                                                    : _review,
-                                                child: const Text(
-                                                  'Review latest copy',
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                    ],
-                                  ),
+        child: ScaffoldMessenger(
+          child: Navigator(
+            key: _navigator,
+            onDidRemovePage: (_) {},
+            pages: [
+              MaterialPage<void>(
+                child: Builder(
+                  builder: (context) {
+                    if (_closing || !_current) return const SizedBox.shrink();
+                    _editorContext = context;
+                    return Scaffold(
+                      appBar: AppBar(
+                        automaticallyImplyLeading: false,
+                        title: const Text('Edit shared copy'),
+                        actions: [
+                          IconButton(
+                            tooltip: 'Group copy revision history',
+                            onPressed: _busy || _unavailable ? null : _history,
+                            icon: const Icon(Icons.history),
+                          ),
+                          IconButton(
+                            tooltip: 'Close Group editor',
+                            onPressed: _busy ? null : _close,
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      body: SafeArea(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) => Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxHeight: constraints.maxHeight * 0.4,
                                 ),
-                              ),
-                            ),
-                            if (_unavailable)
-                              Expanded(child: Center(child: Text(_status)))
-                            else ...[
-                              Expanded(
-                                child: AbsorbPointer(
-                                  absorbing: _busy || _uncertain,
-                                  child: _GuestSessionEditor(
-                                    key: ValueKey(
-                                      '${widget.uid}/${widget.groupId}/${widget.entry['id']}/$_editorGeneration',
+                                child: SingleChildScrollView(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 8,
                                     ),
-                                    session: _draft,
-                                    storageStatus: _status,
-                                    isPersonalAccount: false,
-                                    privateWorkspace: false,
-                                    groupName: widget.groupName,
-                                    onBack: _close,
-                                    onChange: (session) {
-                                      if (!_current ||
-                                          _busy ||
-                                          _uncertain ||
-                                          _unavailable) {
-                                        return;
-                                      }
-                                      setState(() {
-                                        _draft = _copyMap(session);
-                                        if (!_conflict) {
-                                          _status = 'Unsaved Group copy draft';
-                                        }
-                                      });
-                                    },
-                                    onDelete: () {},
-                                    onSaveTemplate: () {},
-                                    onPrint: _report,
-                                    onCopyJson: _export,
-                                    makeQuestion: _newGuestQuestion,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Text(
+                                          'Group: ${widget.groupName} · Shared copy\nEdits affect this Group copy only. Personal/local originals stay separate.',
+                                        ),
+                                        Semantics(
+                                          liveRegion: true,
+                                          child: Text(_status),
+                                        ),
+                                        if (!_unavailable)
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 4,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            children: [
+                                              FilledButton(
+                                                onPressed:
+                                                    _busy ||
+                                                        _conflict ||
+                                                        _uncertain ||
+                                                        !_dirty
+                                                    ? null
+                                                    : _save,
+                                                child: const Text(
+                                                  'Save Group copy',
+                                                ),
+                                              ),
+                                              if (_uncertain)
+                                                OutlinedButton(
+                                                  onPressed: _busy
+                                                      ? null
+                                                      : _reconcile,
+                                                  child: const Text(
+                                                    'Check save status',
+                                                  ),
+                                                ),
+                                              if (_conflict)
+                                                OutlinedButton(
+                                                  onPressed: _busy
+                                                      ? null
+                                                      : _review,
+                                                  child: const Text(
+                                                    'Review latest copy',
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
+                              if (_unavailable)
+                                Expanded(child: Center(child: Text(_status)))
+                              else ...[
+                                Expanded(
+                                  child: AbsorbPointer(
+                                    absorbing: _busy || _uncertain,
+                                    child: _GuestSessionEditor(
+                                      key: ValueKey(
+                                        '${widget.uid}/${widget.groupId}/${widget.entry['id']}/$_editorGeneration',
+                                      ),
+                                      session: _draft,
+                                      storageStatus: _status,
+                                      isPersonalAccount: false,
+                                      privateWorkspace: false,
+                                      groupName: widget.groupName,
+                                      onBack: _close,
+                                      onChange: (session) {
+                                        if (!_current ||
+                                            _busy ||
+                                            _uncertain ||
+                                            _unavailable) {
+                                          return;
+                                        }
+                                        setState(() {
+                                          _draft = _copyMap(session);
+                                          if (!_conflict) {
+                                            _status =
+                                                'Unsaved Group copy draft';
+                                          }
+                                        });
+                                      },
+                                      onDelete: () {},
+                                      onSaveTemplate: () {},
+                                      onPrint: _report,
+                                      onCopyJson: _export,
+                                      makeQuestion: _newGuestQuestion,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

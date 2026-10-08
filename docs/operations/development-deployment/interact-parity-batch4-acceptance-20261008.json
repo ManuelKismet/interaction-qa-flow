@@ -5,6 +5,12 @@
   "base_repository_tree": "46e373deec7f3351dd307d5b68d3e7042d75122b",
   "base_flutter_tree": "1a3642d9fde6dd377300c056966712174dcae89a",
   "status": "Implementation evidence only. Independent Codex acceptance, configured DEV compile, hosted authenticated and physical-device/accessibility acceptance remain OPEN.",
+  "completion_scope": {
+    "retained": "Original batch4 editor/API integration, 35 editor widgets and all batches 1–3; no backend production/schema changes.",
+    "corrections": "Confirming a response-lost applied save clears a lifecycle-induced conflict. Existing entry-dialog report previews/confirmations and output callbacks are origin/generation scoped, with fresh server authorization after asynchronous PDF work and before native download fallback.",
+    "additional_automated_evidence": "Delayed PATCH/list/export responses, uncertain newer-content review, pending system Back and failed Save-and-close, report UID/generation/revocation boundaries, nested-dialog signout, participant management and long-name phone keyboard controls.",
+    "limits": "Automated tests are not hosted auth, configured DEV build, physical device, native OS sharing/printing, enlarged text or screen-reader acceptance. See final validation receipt for actual commands/counts/exits and the oversized original mailbox blocker."
+  },
   "runtime": {
     "dev_frontend": "5a2dd26410a428b6a0b516efe53afc37d89362b7",
     "hosting": "f2b2a3b33b4acd94",

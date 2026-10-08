@@ -95,16 +95,21 @@ class _Repository extends GuestGroupRepository {
   final writes = <Map<String, dynamic>>[];
   int exports = 0;
   int histories = 0;
+  int entryReads = 0;
   int? denied;
   int? writeDenied;
   bool deleted = false;
   bool uncertain = false;
   bool applyUncertain = false;
+  String groupName = 'Study group';
   Completer<Map<String, dynamic>>? pendingGroup;
+  Completer<List<Map<String, dynamic>>>? pendingEntries;
+  Completer<Map<String, dynamic>>? pendingExport;
+  Completer<void>? pendingWrite;
 
   Map<String, dynamic> get group => {
     'id': 'group-1',
-    'name': 'Study group',
+    'name': groupName,
     'role': role,
     'members': [],
   };
@@ -118,6 +123,9 @@ class _Repository extends GuestGroupRepository {
       [];
   @override
   Future<Map<String, dynamic>> getGroup(String groupId) async {
+    if (groupId != 'group-1') {
+      throw const ApiException('Wrong group', statusCode: 404);
+    }
     if (pendingGroup != null) return pendingGroup!.future;
     if (denied != null) throw ApiException('Denied', statusCode: denied);
     return _copy(group);
@@ -128,6 +136,11 @@ class _Repository extends GuestGroupRepository {
     required String groupId,
     String query = '',
   }) async {
+    entryReads++;
+    if (groupId != 'group-1') {
+      throw const ApiException('Wrong group', statusCode: 404);
+    }
+    if (pendingEntries != null) return pendingEntries!.future;
     if (denied != null) throw ApiException('Denied', statusCode: denied);
     return deleted ? [] : [_copy(entry)];
   }
@@ -147,6 +160,10 @@ class _Repository extends GuestGroupRepository {
       'title': title,
       'data': _copy(data),
     });
+    if (groupId != 'group-1' || entryId != entry['id']) {
+      throw const ApiException('Wrong copy', statusCode: 404);
+    }
+    if (denied != null) throw ApiException('Denied', statusCode: denied);
     if (writeDenied != null) {
       throw ApiException('Write denied', statusCode: writeDenied);
     }
@@ -166,6 +183,7 @@ class _Repository extends GuestGroupRepository {
       };
       history.add(_copy(entry));
     }
+    if (pendingWrite != null) await pendingWrite!.future;
     if (uncertain) throw const ApiException('Connection lost');
     return _copy(entry);
   }
@@ -176,6 +194,10 @@ class _Repository extends GuestGroupRepository {
     required String entryId,
   }) async {
     exports++;
+    if (groupId != 'group-1' || entryId != entry['id'] || deleted) {
+      throw const ApiException('Wrong copy', statusCode: 404);
+    }
+    if (pendingExport != null) return pendingExport!.future;
     if (denied != null) throw ApiException('Denied', statusCode: denied);
     return _copy(entry);
   }
@@ -186,6 +208,10 @@ class _Repository extends GuestGroupRepository {
     required String entryId,
   }) async {
     histories++;
+    if (groupId != 'group-1' || entryId != entry['id'] || deleted) {
+      throw const ApiException('Wrong copy', statusCode: 404);
+    }
+    if (denied != null) throw ApiException('Denied', statusCode: denied);
     return history.map(_copy).toList();
   }
 }
@@ -256,9 +282,19 @@ Future<void> _export(WidgetTester tester) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final clipboard = <String>[];
+  final sharedFiles = <MethodCall>[];
 
   setUp(() {
     clipboard.clear();
+    sharedFiles.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('dev.fluttercommunity.plus/share'),
+          (call) async {
+            sharedFiles.add(call);
+            return 'success';
+          },
+        );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
           if (call.method == 'Clipboard.setData') {
@@ -268,6 +304,12 @@ void main() {
         });
   });
   tearDown(() {
+    expect(sharedFiles, isEmpty);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('dev.fluttercommunity.plus/share'),
+          null,
+        );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
@@ -481,6 +523,220 @@ void main() {
     );
   }
 
+  testWidgets(
+    'applied uncertain save after resume clears conflict on confirmation',
+    (tester) async {
+      final repository = _Repository()
+        ..uncertain = true
+        ..applyUncertain = true;
+      await _mount(tester, repository);
+      await _rename(tester, 'Lost response');
+      await _tap(tester, find.text('Save Group copy'));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Conflict: draft kept'), findsWidgets);
+      await _tap(tester, find.text('Check save status'));
+      expect(find.textContaining('Saved Group copy confirmed'), findsWidgets);
+      repository.uncertain = false;
+      await _rename(tester, 'Next edit');
+      await _tap(tester, find.text('Save Group copy'));
+      expect(repository.entry['title'], 'Next edit');
+      expect(repository.entry['revision'], 3);
+      expect(repository.writes, hasLength(2));
+    },
+  );
+
+  testWidgets(
+    'uncertain save with newer content requires review without retry',
+    (tester) async {
+      final repository = _Repository()..uncertain = true;
+      await _mount(tester, repository);
+      await _rename(tester, 'Unconfirmed draft');
+      await _tap(tester, find.text('Save Group copy'));
+      repository.entry
+        ..['revision'] = 2
+        ..['title'] = 'Newer remote content';
+      await _tap(tester, find.text('Check save status'));
+      expect(find.textContaining('Conflict: draft kept'), findsWidgets);
+      await _tap(tester, find.text('Review latest copy'));
+      expect(find.textContaining('Newer remote content'), findsWidgets);
+      await _tap(tester, find.text('Keep draft'));
+      expect(find.text('Unconfirmed draft'), findsOneWidget);
+      expect(repository.writes, hasLength(1));
+      expect(repository.entry['title'], 'Newer remote content');
+    },
+  );
+
+  for (final signOut in [true, false]) {
+    testWidgets(
+      'delayed PATCH completion after signout=$signOut never restores draft',
+      (tester) async {
+        final auth = _Auth();
+        final repository = _Repository();
+        await _mount(tester, repository, auth: auth);
+        await _rename(tester, 'Origin draft');
+        final pending = Completer<void>();
+        repository.pendingWrite = pending;
+        await tester.tap(find.text('Save Group copy'));
+        await tester.pump();
+        expect(repository.writes, hasLength(1));
+        auth.user = signOut ? null : _User('new-account');
+        pending.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('Edit shared copy'), findsNothing);
+        expect(find.text('Origin draft'), findsNothing);
+        expect(repository.writes.single['group_id'], 'group-1');
+        expect(repository.writes.single['entry_id'], 'entry-1');
+        expect(clipboard, isEmpty);
+      },
+    );
+  }
+
+  for (final operation in ['entries', 'export']) {
+    testWidgets(
+      'delayed $operation response after UID switch cannot disclose',
+      (tester) async {
+        final auth = _Auth();
+        final repository = _Repository();
+        await _mount(tester, repository, auth: auth);
+        final entries = Completer<List<Map<String, dynamic>>>();
+        final exported = Completer<Map<String, dynamic>>();
+        final before = repository.entryReads;
+        if (operation == 'entries') {
+          await _rename(tester, 'Delayed draft');
+          repository.pendingEntries = entries;
+          await tester.tap(find.text('Save Group copy'));
+        } else {
+          repository.pendingExport = exported;
+          await _tap(tester, find.byTooltip('More session actions'));
+          await tester.tap(find.text('Copy session JSON backup'));
+        }
+        await tester.pump();
+        if (operation == 'entries') {
+          expect(repository.entryReads, before + 1);
+        } else {
+          expect(repository.exports, 1);
+        }
+        auth.user = _User('new-account');
+        if (operation == 'entries') {
+          entries.complete([_copy(repository.entry)]);
+        } else {
+          exported.complete(_copy(repository.entry));
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('Copy saved Group session JSON?'), findsNothing);
+        expect(find.text('Edit shared copy'), findsNothing);
+        expect(repository.writes, isEmpty);
+        expect(clipboard, isEmpty);
+      },
+    );
+  }
+
+  for (final stage in ['scope', 'preview', 'confirmation']) {
+    testWidgets('entry report $stage is disposed on UID change', (
+      tester,
+    ) async {
+      final auth = _Auth();
+      final events = StreamController<User?>.broadcast();
+      addTearDown(events.close);
+      final repository = _Repository();
+      await _mount(
+        tester,
+        repository,
+        auth: auth,
+        events: events.stream,
+        edit: false,
+      );
+      await _tap(tester, find.text('Download / Share PDF'));
+      if (stage != 'scope') {
+        await _tap(tester, find.text('All participants'));
+      }
+      if (stage == 'confirmation') {
+        await _tap(tester, find.text('Share PDF'));
+      }
+      auth.user = _User('new-account');
+      events.add(auth.user);
+      await tester.pumpAndSettle();
+      expect(find.text('Choose report scope'), findsNothing);
+      expect(find.text('Preview PDF'), findsNothing);
+      expect(find.text('Share a PDF copy?'), findsNothing);
+      expect(repository.writes, isEmpty);
+      expect(clipboard, isEmpty);
+    });
+  }
+
+  for (final code in [403, 404]) {
+    testWidgets('entry report confirmation rechecks actual $code permission', (
+      tester,
+    ) async {
+      final repository = _Repository();
+      await _mount(tester, repository, edit: false);
+      await _tap(tester, find.text('Download / Share PDF'));
+      await _tap(tester, find.text('All participants'));
+      await _tap(tester, find.text('Share PDF'));
+      repository.denied = code;
+      await _tap(tester, find.text('Continue'));
+      expect(find.text('Preview PDF'), findsNothing);
+      expect(find.textContaining('Group export unavailable'), findsOneWidget);
+      expect(repository.writes, isEmpty);
+      expect(clipboard, isEmpty);
+    });
+  }
+
+  testWidgets('same UID lifecycle refresh invalidates report generation', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _mount(tester, repository, edit: false);
+    await _tap(tester, find.text('Download / Share PDF'));
+    await _tap(tester, find.text('All participants'));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.text('Preview PDF'), findsNothing);
+    expect(repository.writes, isEmpty);
+  });
+
+  testWidgets('uncertain Save and close keeps editor and admits remote write', (
+    tester,
+  ) async {
+    final repository = _Repository()
+      ..uncertain = true
+      ..applyUncertain = true;
+    await _mount(tester, repository);
+    await _rename(tester, 'Uncertain closing draft');
+    await _tap(tester, find.byTooltip('Close Group editor'));
+    await _tap(tester, find.text('Save and close'));
+    expect(find.text('Edit shared copy'), findsOneWidget);
+    await _tap(tester, find.byTooltip('Close Group editor'));
+    expect(find.textContaining('may have applied'), findsOneWidget);
+    expect(find.text('Save and close'), findsNothing);
+    await _tap(tester, find.text('Discard draft'));
+    expect(find.text('Edit shared copy'), findsNothing);
+    expect(repository.entry['title'], 'Uncertain closing draft');
+    expect(repository.writes, hasLength(1));
+  });
+
+  testWidgets('system Back during pending save cannot dismiss editor', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _mount(tester, repository);
+    await _rename(tester, 'Pending draft');
+    final pending = Completer<void>();
+    repository.pendingWrite = pending;
+    await tester.tap(find.text('Save Group copy'));
+    await tester.pump();
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.text('Edit shared copy'), findsOneWidget);
+    expect(find.text('Leave Group copy editor?'), findsNothing);
+    pending.complete();
+    await tester.pumpAndSettle();
+    expect(repository.entry['title'], 'Pending draft');
+    expect(repository.writes, hasLength(1));
+  });
   for (final code in [403, 404]) {
     testWidgets('actual $code write response removes editable draft', (
       tester,
@@ -770,6 +1026,200 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'Group participant management preserves graph and blocks content removal',
+    (tester) async {
+      final repository = _Repository();
+      await _mount(tester, repository);
+      final originalQuestions = _copy(
+        repository.entry['data'] as Map<String, dynamic>,
+      )['questions'];
+      await _tap(tester, find.byTooltip('Active participant actions'));
+      await _tap(tester, find.text('Remove active participant'));
+      expect(find.textContaining('cannot be removed'), findsWidgets);
+      await _tap(tester, find.text('Close'));
+      await _tap(tester, find.byTooltip('Add participant'));
+      await tester.enterText(_field('Participant name'), 'Carol');
+      await _tap(tester, find.text('Add to Group draft'));
+      await _tap(tester, find.byTooltip('Active participant actions'));
+      await _tap(tester, find.text('Rename active participant'));
+      await tester.enterText(_field('Participant name'), 'Carol renamed');
+      await _tap(tester, find.text('Update Group draft'));
+      await _tap(tester, find.text('Save Group copy'));
+      final data = repository.entry['data'] as Map<String, dynamic>;
+      final participants = data['participants'] as List;
+      expect(participants, hasLength(3));
+      final carol = participants.last as Map;
+      expect(carol['name'], 'Carol renamed');
+      final root = (data['questions'] as List).first as Map;
+      expect((root['answers'] as List).last, {
+        'participant_id': carol['id'],
+        'body': '',
+        'branches_collapsed': false,
+        'follow_ups': [],
+      });
+      expect(
+        (root['answers'] as List).take(2).toList(),
+        (((originalQuestions as List).first as Map)['answers']),
+      );
+      expect((data['questions'] as List)[1], originalQuestions[1]);
+      expect(repository.original['data']['participants'], hasLength(2));
+      await _tap(tester, find.byTooltip('Active participant actions'));
+      await _tap(tester, find.text('Remove active participant'));
+      await _tap(tester, find.text('Remove participant'));
+      await _tap(tester, find.text('Undo'));
+      await _tap(tester, find.text('Save Group copy'));
+      expect(repository.entry['data']['participants'].last['id'], carol['id']);
+      await _tap(tester, find.byTooltip('Close Group editor'));
+      await _openEntry(tester, 'Shared interview');
+      await _tap(tester, find.widgetWithText(TextButton, 'Edit'));
+      await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+      await _tap(tester, find.text('Carol renamed').last);
+      await _tap(tester, find.byTooltip('Active participant actions'));
+      await _tap(tester, find.text('Remove active participant'));
+      await _tap(tester, find.text('Remove participant'));
+      await _tap(tester, find.text('Save Group copy'));
+      expect(repository.entry['data']['participants'], hasLength(2));
+      expect(repository.entry['data']['questions'], originalQuestions);
+    },
+  );
+
+  for (final dialog in ['participant', 'question', 'history', 'review']) {
+    testWidgets('signout disposes nested $dialog dialog and draft', (
+      tester,
+    ) async {
+      final auth = _Auth();
+      final events = StreamController<User?>.broadcast();
+      addTearDown(events.close);
+      final repository = _Repository();
+      await _mount(tester, repository, auth: auth, events: events.stream);
+      if (dialog == 'participant') {
+        await _tap(tester, find.byTooltip('Add participant'));
+      } else if (dialog == 'question') {
+        await tester.scrollUntilVisible(
+          find.text('Root question'),
+          160,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('guest-session-editor-scroll')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        await _tap(tester, find.byTooltip('Edit question').first);
+      } else if (dialog == 'history') {
+        await _tap(tester, find.byTooltip('Group copy revision history'));
+      } else {
+        await _rename(tester, 'Scoped draft');
+        repository.entry['revision'] = 2;
+        await _tap(tester, find.text('Save Group copy'));
+        await _tap(tester, find.text('Review latest copy'));
+      }
+      expect(find.byType(AlertDialog), findsWidgets);
+      auth.user = null;
+      events.add(null);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Edit shared copy'), findsNothing);
+      expect(repository.writes, isEmpty);
+      expect(clipboard, isEmpty);
+    });
+  }
+
+  testWidgets(
+    'phone long names keeps participant and question controls reachable with answer keyboard',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      final repository = _Repository(depth: 4)
+        ..groupName = List.filled(6, 'Long shared research group').join(' ');
+      repository.entry['data']['participants'][0]['name'] = List.filled(
+        8,
+        'Long participant name',
+      ).join(' ');
+      await _mount(tester, repository);
+      final scrollable = find
+          .descendant(
+            of: find.byKey(const ValueKey('guest-session-editor-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.text('Follow-up 1'),
+        160,
+        scrollable: scrollable,
+        maxScrolls: 100,
+      );
+      final deepAnswer = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.controller?.text == 'Answer root-child-child-child-child',
+      );
+      await tester.scrollUntilVisible(
+        deepAnswer,
+        160,
+        scrollable: scrollable,
+        maxScrolls: 100,
+      );
+      final controller = tester.widget<TextField>(deepAnswer).controller;
+      final answer = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && identical(widget.controller, controller),
+      );
+      await _tap(tester, answer);
+      await tester.enterText(answer, 'Phone deep answer');
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(answer);
+      await tester.pumpAndSettle();
+      final activeBar = find.byKey(
+        const ValueKey('guest-active-participant-bar'),
+      );
+      expect(activeBar, findsOneWidget);
+      expect(tester.getRect(activeBar).bottom, lessThanOrEqualTo(420));
+      await _tap(tester, find.byTooltip('Add a question'));
+      await tester.scrollUntilVisible(
+        find.byTooltip('Add participant'),
+        -160,
+        scrollable: scrollable,
+      );
+      await _tap(tester, find.byTooltip('Add participant'));
+      await tester.enterText(
+        _field('Participant name'),
+        'Keyboard participant',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Add to Group draft'), findsNothing);
+      await _tap(tester, find.byTooltip('Add a question'));
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        'Keyboard question',
+      );
+      await _tap(tester, find.text('Add shared question'));
+      await _tap(tester, find.text('Save Group copy'));
+      expect(repository.entry['data']['participants'], hasLength(3));
+      expect(
+        jsonEncode(repository.entry['data']),
+        contains('Keyboard question'),
+      );
+      expect(
+        jsonEncode(repository.entry['data']),
+        contains('Phone deep answer'),
+      );
+      expect(repository.writes, hasLength(1));
+      await _tap(tester, find.byTooltip('Close Group editor'));
+      expect(find.text('Edit shared copy'), findsNothing);
+    },
+  );
 
   testWidgets(
     'narrow phone keyboard long deep branches keep editing controls reachable',
