@@ -1,5 +1,36 @@
 # Unified Knowledge search workflow checkpoint — 2026-10-06
 
+## Compact guest and personal UI tested and deployed — 2026-10-08
+
+The pending UI changes are now deployed to DEV from `bd713485d01eaa13a7bf3d5159d2215e22e13616` on `copilot/fixinteract-parity-batch4-edit-shared-copy`. This entry supersedes the earlier pending UI checks/deployment status; older entries below retain their historical receipts.
+
+Guest/personal session Destination and Download / Share PDF controls share a centered 40px height with 13px labels, growing together for larger accessibility text; wide-header title/actions center together and narrow headers wrap safely. Root/follow-up question fields are compact and keep Delete beside the field, preserving inline edits, blank-text protection, graph ownership and Undo. Personal workspace heading is subtle at 14px with a 48px toolbar; private/local storage, Group identity and no-membership information move behind its workspace info icon. Optional local-to-account import stays in Workspace options with busy-state protection; save/access errors, verification gates and retry actions remain visible. Routed personal pages remove redundant Knowledge/Interact tabs where AppShell navigation already exists, keep contextual help by the heading, and disable in-page tab swipes; standalone workspaces retain their navigation. Personal Knowledge sections are Search and Saved, with the duplicate Saved Q&A heading/button removed. Shared KnowledgeSectionTabs defaults remain unchanged for other workspaces.
+
+Validation on the exact final commit:
+
+- Offline locked dependency resolution PASS (1.5s); formatting of six relevant Dart files PASS (0.5s).
+- Full Flutter suite: **370 passed, zero skips, exit 0** (153.2s). The guest/personal/Group focused suite previously passed all 158 tests with unchanged implementation; the final search-to-personal result test also passed (6.7s). Coverage retains graph IDs/ownership, inline question editing, blank-text protection, Delete/Undo, delayed writes/account switches, import retry/navigation guards, nested Group copies and responsive layouts.
+- Analysis: **0 errors, 0 warnings, 12 baseline infos** (15.1s). The info messages match the preceding release exactly after normalizing line/column numbers. Exit 1 is solely those existing infos.
+- Configured DEV web release build PASS (48.7s), using the existing pinned environment and public DEV defines SHA256 `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`; release/no-pub/no-wasm-dry-run/PWA-none and AUTH_DIAGNOSTICS=true.
+- Repository tree `57ffc348265809167d9dd8e029f80ac9d4dfc204`; Flutter app tree `c4e83d11a6bd3abde8a171b95b86b593ca7561db`.
+- The initial checks exposed two outdated layout/navigation expectations, then an organisation-search test still using the removed personal Saved Q&A heading. They were updated for safe narrow-screen wrapping, the retained Search/Saved section tabs and the new Saved label. All final checks pass; no tests were skipped or disabled.
+
+DEV release `sites/intqaflow-dev/releases/1791496524947000`, version `sites/intqaflow-dev/versions/f8aeac736e8b0655`, Hosting exit 0. All **36 files** matched byte lengths and SHA256 on **both** `https://intqaflow-dev.web.app` and `https://intqaflow-dev.firebaseapp.com`; the live guest landing page also loaded after reload.
+
+Key build receipts:
+
+| File | Bytes | SHA256 |
+| --- | ---: | --- |
+| main.dart.js | 4680903 | `8b481947e5b37a1f498efa05409fca832dedb23bb96546e6a2c265d1fa6c99b6` |
+| index.html | 1531 | `a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858` |
+| flutter_bootstrap.js | 9805 | `0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67` |
+
+API revision `intqaflow-dev-api-review80f421d` remains at 100% traffic, unchanged; /health and /ready returned 200. The previous Hosting release was `sites/intqaflow-dev/releases/1791492119078000`; rollback target is `sites/intqaflow-dev/versions/44c9f7632273ee36`.
+
+Receipts: `/workspaces/guest-ui-compact-validation-20261008/release/` and `/workspaces/guest-ui-compact-dev-publication-20261008/`. Existing root worktree documents were hash-checked and preserved before/after validation, before publication and before shutdown; the isolated source remains clean. The editor tab was closed and GitHub explicitly confirmed **Codespace "bookish happiness" stopped**; shutdown proof: `/workspace/scratch/intqaflow-compact-ui-codespace-stopped-1791496657484.jpg`.
+
+No backend/schema/dependency, production, IAM/credential or merge changes. Earlier 198-test PostgreSQL/backend evidence remains unchanged-code evidence, not a fresh backend run. External authenticated/device/native acceptance remains **OPEN**; the cloud-browser authentication investigation remains paused. Guest reload returning to the session list remains accepted (IP-19 CLOSED).
+
 ## Guest session controls tested and deployed — 2026-10-08
 
 Founder authorised “Test all changes made and deploy to dev”. This rollout includes all pending guest UI changes since the earlier compact-heading deployment. Exact source `1e124f8d1ac271eba0373a8fb73497da63468228` on `copilot/fixinteract-parity-batch4-edit-shared-copy`; repository tree `05ba347c4bbf40a9004a39066173a2c957d8a249`, Flutter subtree `e829373700e89b1b23766b9d35e60ca09ce6d82c`.
