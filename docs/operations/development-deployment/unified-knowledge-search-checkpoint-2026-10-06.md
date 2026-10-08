@@ -37,24 +37,28 @@ Rollback retained: **intqaflow-dev-api-review7aac21f** and Hosting
 backend/Hosting rollback if publication fails; rollback was not triggered.
 Always preserve additive schema and account data.
 
-Hosted acceptance IN PROGRESS. Fresh firebaseapp.com origin renders new guest
-workspace controls; previously open web.app page initially showed older cached UI.
-Disposable browser-local Knowledge fixtures saved, answer-only search finds Local
-badge/answer preview, result opens SavedQ&A and items persist after reload.
-Accessibility form values lagged behind canvas render; verified real rendered
-state and fresh result/list, not immediate stale snapshots. A few duplicate
-disposable fixture entries were created while diagnosing input; only their exact
-titles are being cleaned up. Authenticated personal/organisation/Group role,
-conflict/import, multi-device and accessibility acceptance still open; no
-signed-in session available in the current browser yet. No parity completion claim.
+Hosted guest acceptance completed: local Knowledge creation/save, answer-only search
+with Local badge and answer preview, result-to-SavedQ&A navigation, reload
+persistence, answer editing and storage-specific removal feedback PASS.
+Three disposable browser-local fixture entries were created during accessibility
+input diagnosis; only exact DEV acceptance80f421d fixture titles removed.
+Final SavedQ&A displays “No saved Q&A yet” and saved-on-device status.
+No user data/account upload. Initial stale accessibility text/input and immediate
+snapshots were corrected using rendered field focus and settled visible states;
+no product failure or pass inferred from those intermediate states.
+Authenticated personal/organisation/Group role, conflicts/imports, multi-device
+and accessibility acceptance remains OPEN and requires DEV sign-in. Current browser
+shows existing-account Email/Password/Sign in form; secure browserAuth sign-in
+handoff will collect credentials without exposing them to Codex. No full parity
+claim; batch3/4 not started.
 
 Persistent evidence/scripts:
 `/home/vscode/.local/share/intqaflow/batch12-rollout-80f421d`,
 `org-80f421d-stage-verified.json`, `org-80f421d-publication-verified.json`;
 independent test receipts remain `/workspaces/batch2-independent-receipts-20261008`.
 Isolated source `/workspaces/intqaflow-batch2-independent-20261008`;
-original checkout's four dirty docs preserved. Codespace active for final
-acceptance/cleanup. Batch3/4 not started, oldPR13 task remains quarantined,
+original checkout's four dirty docs preserved. Codespace shutdown confirmed after completed rollout runners; GitHub shows Last used
+instead of Active. No temporary database/proxy was started. Batch3/4 not started, oldPR13 task remains quarantined,
 monitoring remains cancelled.
 
 
