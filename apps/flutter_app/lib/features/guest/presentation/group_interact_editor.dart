@@ -182,15 +182,15 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
       _invalidate();
       return null;
     }
-    final entries = await _repository.searchEntries(groupId: widget.groupId);
+    final entry = await _repository.getEntry(
+      groupId: widget.groupId,
+      entryId: widget.entry['id'] as String,
+    );
     if (!_current) {
       _invalidate();
       return null;
     }
-    final entry = entries
-        .where((e) => e['id'] == widget.entry['id'])
-        .firstOrNull;
-    if (entry == null || !_canEdit(group, entry)) {
+    if (entry['id'] != widget.entry['id'] || !_canEdit(group, entry)) {
       _unavailableNow();
       return null;
     }

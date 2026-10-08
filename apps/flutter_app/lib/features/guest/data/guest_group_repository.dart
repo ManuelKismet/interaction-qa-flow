@@ -221,6 +221,16 @@ class GuestGroupRepository {
         .toList();
   });
 
+  Future<Map<String, dynamic>> getEntry({
+    required String groupId,
+    required String entryId,
+  }) => _request(() async {
+    final response = await _client.get<Map<String, dynamic>>(
+      '/api/v1/guest/groups/$groupId/entries/$entryId',
+    );
+    return response.data!;
+  });
+
   Future<Map<String, dynamic>> searchKnowledge(String query) =>
       _request(() async {
         final response = await _client.get<Map<String, dynamic>>(

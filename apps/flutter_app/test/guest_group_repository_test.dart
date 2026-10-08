@@ -8,109 +8,157 @@ import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 
 void main() {
-  test('selected Interact import explicitly shares only chosen session copies', () async {
-    final adapter = _RecordingAdapter();
+  test('entry read uses the exact Group and entry endpoint', () async {
+    final adapter = _RecordingAdapter(
+      responseBody: '{"id":"entry-id","revision":7,"data":{"questions":[]}}',
+    );
     final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
       ..httpClientAdapter = adapter;
-    final sourceSession = <String, dynamic>{
-      'id': 'local-session',
-      'title': 'Synthetic interview',
-      'visibility': 'private_local',
-      'participants': [
-        {'id': 'p1', 'name': 'Synthetic participant'},
-      ],
-      'questions': [
-        {
-          'id': 'q1',
-          'text': 'Primary question',
-          'answers': [
-            {
-              'participant_id': 'p1',
-              'body': 'Local answer',
-              'follow_ups': [
-                {'id': 'q2', 'text': 'Answer-owned follow-up'},
-              ],
-            },
-          ],
-        },
-      ],
-    };
-    final workspace = GuestWorkspaceData(
-      knowledge: [
-        {'id': 'not-selected', 'title': 'Keep local'},
-      ],
-      sessions: [sourceSession],
+    final entry = await GuestGroupRepository(
+      client,
+    ).getEntry(groupId: 'group-id', entryId: 'entry-id');
+    expect(
+      adapter.requestPath,
+      '/api/v1/guest/groups/group-id/entries/entry-id',
     );
-
-    await GuestGroupRepository(client).importSelected(
-      groupId: 'group-id',
-      data: workspace,
-      knowledgeIds: const {},
-      sessionIds: const {'local-session'},
-    );
-
-    final entries = adapter.requestBody!['entries'] as List;
-    expect(entries, hasLength(1));
-    final entry = entries.single as Map<String, dynamic>;
-    expect(entry['kind'], 'interact_session');
-    expect(entry['share_with_group'], isTrue);
-    expect(entry['client_import_key'], 'local-local-session');
-    final sharedCopy = entry['data'] as Map<String, dynamic>;
-    expect(sharedCopy['visibility'], 'guest_group');
-    final root =
-        (sharedCopy['questions'] as List).single as Map<String, dynamic>;
-    final answer = (root['answers'] as List).single as Map<String, dynamic>;
-    final followUp =
-        (answer['follow_ups'] as List).single as Map<String, dynamic>;
-    expect(answer['body'], 'Local answer');
-    expect(followUp['text'], 'Answer-owned follow-up');
-    expect(sourceSession['visibility'], 'private_local');
+    expect(entry, {
+      'id': 'entry-id',
+      'revision': 7,
+      'data': {'questions': []},
+    });
     client.close();
   });
 
-  test('group listing uses the guest endpoint and decodes group membership', () async {
-    final adapter = _RecordingAdapter();
-    final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
-      ..httpClientAdapter = adapter;
-
-    final groups = await GuestGroupRepository(client).listGroups();
-
-    expect(adapter.requestPath, '/api/v1/guest/groups');
-    expect(groups, [
-      {'id': 'shared-entry'},
-    ]);
-    client.close();
-  });
-
-  test(
-    'entry updates send the revision used to make the edit',
-    () async {
+  for (final code in [403, 404]) {
+    test('direct entry read retains HTTP $code', () async {
       final adapter = _RecordingAdapter(
-        responseBody: '{"id":"entry-id","revision":2}',
+        statusCode: code,
+        responseBody: '{"detail":"unavailable"}',
       );
       final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
         ..httpClientAdapter = adapter;
+      await expectLater(
+        GuestGroupRepository(
+          client,
+        ).getEntry(groupId: 'group-id', entryId: 'entry-id'),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            code,
+          ),
+        ),
+      );
+      client.close();
+    });
+  }
 
-      await GuestGroupRepository(client).updateEntry(
+  test(
+    'selected Interact import explicitly shares only chosen session copies',
+    () async {
+      final adapter = _RecordingAdapter();
+      final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+        ..httpClientAdapter = adapter;
+      final sourceSession = <String, dynamic>{
+        'id': 'local-session',
+        'title': 'Synthetic interview',
+        'visibility': 'private_local',
+        'participants': [
+          {'id': 'p1', 'name': 'Synthetic participant'},
+        ],
+        'questions': [
+          {
+            'id': 'q1',
+            'text': 'Primary question',
+            'answers': [
+              {
+                'participant_id': 'p1',
+                'body': 'Local answer',
+                'follow_ups': [
+                  {'id': 'q2', 'text': 'Answer-owned follow-up'},
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      final workspace = GuestWorkspaceData(
+        knowledge: [
+          {'id': 'not-selected', 'title': 'Keep local'},
+        ],
+        sessions: [sourceSession],
+      );
+
+      await GuestGroupRepository(client).importSelected(
         groupId: 'group-id',
-        entryId: 'entry-id',
-        expectedRevision: 1,
-        title: 'Updated title',
-        data: const {'answer': 'Updated answer'},
+        data: workspace,
+        knowledgeIds: const {},
+        sessionIds: const {'local-session'},
       );
 
-      expect(
-        adapter.requestPath,
-        '/api/v1/guest/groups/group-id/entries/entry-id',
-      );
-      expect(adapter.requestBody, {
-        'expected_revision': 1,
-        'title': 'Updated title',
-        'data': {'answer': 'Updated answer'},
-      });
+      final entries = adapter.requestBody!['entries'] as List;
+      expect(entries, hasLength(1));
+      final entry = entries.single as Map<String, dynamic>;
+      expect(entry['kind'], 'interact_session');
+      expect(entry['share_with_group'], isTrue);
+      expect(entry['client_import_key'], 'local-local-session');
+      final sharedCopy = entry['data'] as Map<String, dynamic>;
+      expect(sharedCopy['visibility'], 'guest_group');
+      final root =
+          (sharedCopy['questions'] as List).single as Map<String, dynamic>;
+      final answer = (root['answers'] as List).single as Map<String, dynamic>;
+      final followUp =
+          (answer['follow_ups'] as List).single as Map<String, dynamic>;
+      expect(answer['body'], 'Local answer');
+      expect(followUp['text'], 'Answer-owned follow-up');
+      expect(sourceSession['visibility'], 'private_local');
       client.close();
     },
   );
+
+  test(
+    'group listing uses the guest endpoint and decodes group membership',
+    () async {
+      final adapter = _RecordingAdapter();
+      final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+        ..httpClientAdapter = adapter;
+
+      final groups = await GuestGroupRepository(client).listGroups();
+
+      expect(adapter.requestPath, '/api/v1/guest/groups');
+      expect(groups, [
+        {'id': 'shared-entry'},
+      ]);
+      client.close();
+    },
+  );
+
+  test('entry updates send the revision used to make the edit', () async {
+    final adapter = _RecordingAdapter(
+      responseBody: '{"id":"entry-id","revision":2}',
+    );
+    final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+      ..httpClientAdapter = adapter;
+
+    await GuestGroupRepository(client).updateEntry(
+      groupId: 'group-id',
+      entryId: 'entry-id',
+      expectedRevision: 1,
+      title: 'Updated title',
+      data: const {'answer': 'Updated answer'},
+    );
+
+    expect(
+      adapter.requestPath,
+      '/api/v1/guest/groups/group-id/entries/entry-id',
+    );
+    expect(adapter.requestBody, {
+      'expected_revision': 1,
+      'title': 'Updated title',
+      'data': {'answer': 'Updated answer'},
+    });
+    client.close();
+  });
 
   test(
     'stale entry update conflicts ask the user to refresh before saving',
@@ -142,28 +190,35 @@ void main() {
     },
   );
 
-  test('group listing errors are sanitized and distinguish unauthorized requests', () async {
-    final adapter = _RecordingAdapter(
-      statusCode: 401,
-      responseBody: '{"detail":"private server detail"}',
-    );
-    final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
-      ..httpClientAdapter = adapter;
+  test(
+    'group listing errors are sanitized and distinguish unauthorized requests',
+    () async {
+      final adapter = _RecordingAdapter(
+        statusCode: 401,
+        responseBody: '{"detail":"private server detail"}',
+      );
+      final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+        ..httpClientAdapter = adapter;
 
-    await expectLater(
-      GuestGroupRepository(client).listGroups(),
-      throwsA(
-        isA<ApiException>()
-            .having((error) => error.message, 'message', contains('not authorized'))
-            .having(
-              (error) => error.message,
-              'message',
-              isNot(contains('private server detail')),
-            ),
-      ),
-    );
-    client.close();
-  });
+      await expectLater(
+        GuestGroupRepository(client).listGroups(),
+        throwsA(
+          isA<ApiException>()
+              .having(
+                (error) => error.message,
+                'message',
+                contains('not authorized'),
+              )
+              .having(
+                (error) => error.message,
+                'message',
+                isNot(contains('private server detail')),
+              ),
+        ),
+      );
+      client.close();
+    },
+  );
 }
 
 class _RecordingAdapter implements HttpClientAdapter {
@@ -193,7 +248,9 @@ class _RecordingAdapter implements HttpClientAdapter {
     return ResponseBody.fromString(
       responseBody,
       statusCode,
-      headers: {Headers.contentTypeHeader: ['application/json']},
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
     );
   }
 

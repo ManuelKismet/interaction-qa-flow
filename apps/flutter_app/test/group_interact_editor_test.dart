@@ -96,6 +96,9 @@ class _Repository extends GuestGroupRepository {
   int exports = 0;
   int histories = 0;
   int entryReads = 0;
+  int searches = 0;
+  bool excludeFromEmptySearch = false;
+  int? entryDenied;
   int? denied;
   int? writeDenied;
   bool deleted = false;
@@ -103,7 +106,7 @@ class _Repository extends GuestGroupRepository {
   bool applyUncertain = false;
   String groupName = 'Study group';
   Completer<Map<String, dynamic>>? pendingGroup;
-  Completer<List<Map<String, dynamic>>>? pendingEntries;
+  Completer<Map<String, dynamic>>? pendingEntry;
   Completer<Map<String, dynamic>>? pendingExport;
   Completer<void>? pendingWrite;
 
@@ -136,13 +139,37 @@ class _Repository extends GuestGroupRepository {
     required String groupId,
     String query = '',
   }) async {
-    entryReads++;
+    searches++;
     if (groupId != 'group-1') {
       throw const ApiException('Wrong group', statusCode: 404);
     }
-    if (pendingEntries != null) return pendingEntries!.future;
     if (denied != null) throw ApiException('Denied', statusCode: denied);
+    if (excludeFromEmptySearch && query.isEmpty) {
+      return List.generate(
+        50,
+        (index) => {
+          ..._copy(entry),
+          'id': 'newer-entry-$index',
+          'title': 'Newer entry $index',
+        },
+      );
+    }
     return deleted ? [] : [_copy(entry)];
+  }
+
+  @override
+  Future<Map<String, dynamic>> getEntry({
+    required String groupId,
+    required String entryId,
+  }) async {
+    entryReads++;
+    if (groupId != 'group-1' || entryId != entry['id'] || deleted) {
+      throw const ApiException('Missing copy', statusCode: 404);
+    }
+    if (pendingEntry != null) return pendingEntry!.future;
+    final code = entryDenied ?? denied;
+    if (code != null) throw ApiException('Denied', statusCode: code);
+    return _copy(entry);
   }
 
   @override
@@ -593,19 +620,130 @@ void main() {
     );
   }
 
-  for (final operation in ['entries', 'export']) {
+  testWidgets('older searched entry opens despite exclusion from newest 50', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _mount(tester, repository, edit: false);
+    repository.excludeFromEmptySearch = true;
+    expect(await repository.searchEntries(groupId: 'group-1'), hasLength(50));
+    expect(
+      (await repository.searchEntries(
+        groupId: 'group-1',
+      )).any((entry) => entry['id'] == 'entry-1'),
+      isFalse,
+    );
+    expect(
+      (await repository.searchEntries(
+        groupId: 'group-1',
+        query: 'Shared interview',
+      )).single['id'],
+      'entry-1',
+    );
+    final searches = repository.searches;
+    await _tap(tester, find.widgetWithText(TextButton, 'Edit'));
+    expect(find.text('Edit shared copy'), findsOneWidget);
+    expect(find.textContaining('Group copy unavailable'), findsNothing);
+    expect(repository.entryReads, 1);
+    expect(repository.searches, searches);
+    await _rename(tester, 'Older saved copy');
+    await _tap(tester, find.text('Save Group copy'));
+    expect(repository.entry['title'], 'Older saved copy');
+    expect(repository.entry['revision'], 2);
+    expect(repository.writes, hasLength(1));
+    expect(repository.searches, searches);
+  });
+
+  for (final applied in [true, false]) {
+    testWidgets(
+      'entry pushed beyond cutoff still reconciles applied=$applied and exports',
+      (tester) async {
+        final repository = _Repository()
+          ..uncertain = true
+          ..applyUncertain = applied;
+        await _mount(tester, repository);
+        final searches = repository.searches;
+        repository.excludeFromEmptySearch = true;
+        await _rename(tester, 'Beyond cutoff draft');
+        await _tap(tester, find.text('Save Group copy'));
+        expect(find.text('Check save status'), findsOneWidget);
+        await _tap(tester, find.text('Check save status'));
+        if (!applied) {
+          expect(find.textContaining('safe to retry'), findsWidgets);
+          repository.uncertain = false;
+          await _tap(tester, find.text('Save Group copy'));
+        } else {
+          expect(
+            find.textContaining('Saved Group copy confirmed'),
+            findsWidgets,
+          );
+        }
+        expect(repository.entry['title'], 'Beyond cutoff draft');
+        expect(repository.entry['revision'], 2);
+        await _export(tester);
+        await _tap(tester, find.text('Copy saved JSON'));
+        expect(jsonDecode(clipboard.single), repository.entry);
+        expect(repository.searches, searches);
+        expect(find.textContaining('Group copy unavailable'), findsNothing);
+      },
+    );
+  }
+
+  for (final code in [403, 404]) {
+    testWidgets(
+      'direct entry HTTP $code removes draft after successful group read',
+      (tester) async {
+        final repository = _Repository();
+        await _mount(tester, repository);
+        await _rename(tester, 'Denied draft');
+        repository.entryDenied = code;
+        final reads = repository.entryReads;
+        await _tap(tester, find.text('Save Group copy'));
+        expect(repository.entryReads, reads + 1);
+        expect(find.textContaining('Group copy unavailable'), findsWidgets);
+        expect(find.text('Denied draft'), findsNothing);
+        expect(repository.writes, isEmpty);
+        expect(clipboard, isEmpty);
+      },
+    );
+  }
+
+  testWidgets(
+    'pending direct entry read after signout cannot write or disclose',
+    (tester) async {
+      final auth = _Auth();
+      final repository = _Repository();
+      await _mount(tester, repository, auth: auth);
+      await _rename(tester, 'Pending direct draft');
+      final pending = Completer<Map<String, dynamic>>();
+      repository.pendingEntry = pending;
+      final reads = repository.entryReads;
+      await tester.tap(find.text('Save Group copy'));
+      await tester.pump();
+      expect(repository.entryReads, reads + 1);
+      auth.user = null;
+      pending.complete(_copy(repository.entry));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit shared copy'), findsNothing);
+      expect(find.text('Pending direct draft'), findsNothing);
+      expect(repository.writes, isEmpty);
+      expect(clipboard, isEmpty);
+    },
+  );
+
+  for (final operation in ['entry', 'export']) {
     testWidgets(
       'delayed $operation response after UID switch cannot disclose',
       (tester) async {
         final auth = _Auth();
         final repository = _Repository();
         await _mount(tester, repository, auth: auth);
-        final entries = Completer<List<Map<String, dynamic>>>();
+        final entry = Completer<Map<String, dynamic>>();
         final exported = Completer<Map<String, dynamic>>();
         final before = repository.entryReads;
-        if (operation == 'entries') {
+        if (operation == 'entry') {
           await _rename(tester, 'Delayed draft');
-          repository.pendingEntries = entries;
+          repository.pendingEntry = entry;
           await tester.tap(find.text('Save Group copy'));
         } else {
           repository.pendingExport = exported;
@@ -613,14 +751,14 @@ void main() {
           await tester.tap(find.text('Copy session JSON backup'));
         }
         await tester.pump();
-        if (operation == 'entries') {
+        if (operation == 'entry') {
           expect(repository.entryReads, before + 1);
         } else {
           expect(repository.exports, 1);
         }
         auth.user = _User('new-account');
-        if (operation == 'entries') {
-          entries.complete([_copy(repository.entry)]);
+        if (operation == 'entry') {
+          entry.complete(_copy(repository.entry));
         } else {
           exported.complete(_copy(repository.entry));
         }
