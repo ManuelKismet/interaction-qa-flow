@@ -6871,38 +6871,71 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     }
   }
 
-  Future<void> _shareSelectedLocalWork() async {
+  Future<void> _shareSelectedInteract() async {
     final groupId = _groupId;
-    if (groupId == null) return;
+    final uid = _activeUid;
+    final generation = _loadGeneration;
+    if (groupId == null || uid == null || !_canCreate || _busy) return;
+    bool current() => _isCurrentLoad(uid, generation) &&
+        _groupId == groupId && _canCreate;
     await _run(() async {
       final local = await ref.read(guestWorkspaceStoreProvider).load();
-      if (!mounted) return;
+      if (!current()) return;
+      final privateItems = await ref
+          .read(personalWorkspaceRepositoryProvider)
+          .listItems(expectedUid: uid);
+      if (!current()) return;
+      final sessions = <Map<String, dynamic>>[];
+      final originals = <String, Map<String, dynamic>>{};
+      final sources = <String, String>{};
+      void add(String key, Map<String, dynamic> session, String source) {
+        originals[key] = _copyMap(session);
+        sources[key] = source;
+        sessions.add({...session, 'id': key});
+      }
+      for (final session in local.sessions) {
+        add('local-${session['id']}', session, 'Local');
+      }
+      for (final item in privateItems) {
+        if (item['kind'] != 'interact_session') continue;
+        final data = item['data'];
+        if (data is! Map<String, dynamic> || item['id'] is! String) {
+          throw const FormatException('A private Interact session could not be loaded.');
+        }
+        add('private-${item['id']}', {
+          ...data,
+          'title': item['title'] ?? data['title'],
+        }, 'Private account');
+      }
       final groupName = _group?['name'] as String? ?? 'this group';
-      final selection = await showDialog<_GuestImportSelection>(
-        context: context,
+      final selection = await _showScopedGroupDialog<_GuestImportSelection>(
         builder: (context) => _GuestImportPreview(
-          data: local,
+          data: GuestWorkspaceData(sessions: sessions),
           title: 'Preview sharing to $groupName',
           confirmLabel: 'Share selected with group',
           includeTemplates: false,
           shareWithGroup: true,
           groupName: groupName,
+          sessionSources: sources,
         ),
       );
-      if (selection == null || !mounted) return;
-      await _repository.importSelected(
+      if (selection == null || !current()) return;
+      await _repository.shareInteract(
         groupId: groupId,
-        data: local,
-        knowledgeIds: selection.knowledgeIds,
-        sessionIds: selection.sessionIds,
+        expectedUid: uid,
+        sessions: {
+          for (final key in selection.sessionIds)
+            key: originals[key]!,
+        },
       );
+      if (!current()) return;
       final refreshed = await _loadGroup(groupId);
-      if (mounted) {
+      if (mounted && _activeUid == uid && _groupId == groupId) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               refreshed
-                  ? 'Selected copies were shared. Your local work remains on this device.'
+                  ? 'Selected copies were shared. Your local and private account originals remain unchanged.'
                   : 'The share request completed, but the group could not be refreshed. Refresh status before sharing again.',
             ),
           ),
@@ -7595,7 +7628,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                   _showMembers();
                 case 'share':
                   if (_canCreate) {
-                    _shareSelectedLocalWork();
+                    _shareSelectedInteract();
                   }
                 case 'invite':
                   if (_group?['role'] == 'admin') {
@@ -7628,7 +7661,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
               if (_canCreate)
                 const PopupMenuItem(
                   value: 'share',
-                  child: Text('Preview and share local work'),
+                  child: Text('Preview & share Interact'),
                 ),
               if (_group?['role'] == 'admin') ...[
                 const PopupMenuItem(value: 'invite', child: Text('Invite')),
@@ -8438,6 +8471,7 @@ class _GuestImportPreview extends StatefulWidget {
     this.shareWithGroup = false,
     this.personalAccountImport = false,
     this.groupName,
+    this.sessionSources,
   });
 
   final GuestWorkspaceData data;
@@ -8447,6 +8481,7 @@ class _GuestImportPreview extends StatefulWidget {
   final bool shareWithGroup;
   final bool personalAccountImport;
   final String? groupName;
+  final Map<String, String>? sessionSources;
 
   @override
   State<_GuestImportPreview> createState() => _GuestImportPreviewState();
@@ -8478,7 +8513,7 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
                   ? 'Sharing uploads selected copies online to '
                         '${widget.groupName ?? 'this group'}. '
                         'Approved group members may be able to access them. '
-                        'Your local originals stay on this device. If an item '
+                        'Your local originals stay on this device and private account originals remain private and unchanged. If an item '
                         'from this identity was already shared to this group, '
                         'its existing group copy is reused without being '
                         'overwritten.'
@@ -8501,7 +8536,7 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
               title: Text(item['title'] as String? ?? 'Interact session'),
               subtitle: Text(
                 widget.shareWithGroup
-                    ? 'Sharing uploads all participants and answer-owned branches'
+                    ? '${widget.sessionSources?[item['id']] ?? 'Local'} · Sharing uploads all participants and answer-owned branches'
                     : 'Includes all participants and answer-owned branches',
               ),
               onChanged: (selected) => setState(() {
