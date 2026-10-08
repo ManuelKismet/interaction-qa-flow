@@ -15,6 +15,8 @@ class AskPage extends ConsumerStatefulWidget {
 class _AskPageState extends ConsumerState<AskPage> {
   final _titleController = TextEditingController();
   final _detailController = TextEditingController();
+  final _detailFocus = FocusNode();
+  final _optionsController = ExpansibleController();
   String? _departmentId;
   String? _teamId;
 
@@ -22,6 +24,8 @@ class _AskPageState extends ConsumerState<AskPage> {
   void dispose() {
     _titleController.dispose();
     _detailController.dispose();
+    _detailFocus.dispose();
+    _optionsController.dispose();
     super.dispose();
   }
 
@@ -41,31 +45,45 @@ class _AskPageState extends ConsumerState<AskPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'IntQAFlow Knowledge',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 12),
+
                 const KnowledgeSectionTabs(selected: KnowledgeSection.ask),
-                const SizedBox(height: 28),
+                const SizedBox(height: 12),
                 Text(
                   'What do you need to know?',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _titleController,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(hintText: 'Ask a question'),
                   onChanged: (_) => _questionChanged(),
+                  onSubmitted: (_) {
+                    _optionsController.expand();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _detailFocus.requestFocus();
+                    });
+                  },
                 ),
                 _SuggestionList(
                   suggestions: suggestions,
                   onRetry: ref.read(askSuggestionsProvider.notifier).retry,
                 ),
                 const SizedBox(height: 12),
+                ExpansionTile(
+                  key: const PageStorageKey('organisation-question-options'),
+                  controller: _optionsController,
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 12),
+                  maintainState: true,
+                  title: const Text('Details and assignment (optional)'),
+                  subtitle: _departmentId != null || _teamId != null
+                      ? const Text('Assignment selected')
+                      : null,
+                  children: [
                 TextField(
                   controller: _detailController,
+                  focusNode: _detailFocus,
                   textInputAction: TextInputAction.newline,
                   minLines: 3,
                   maxLines: 6,
@@ -134,6 +152,8 @@ class _AskPageState extends ConsumerState<AskPage> {
                   ),
                   loading: () => const LinearProgressIndicator(),
                   error: (_, _) => const Text('Teams are unavailable.'),
+                ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 Align(
