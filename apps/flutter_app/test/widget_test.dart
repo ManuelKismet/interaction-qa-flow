@@ -13,7 +13,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+    expect(find.text('Guest workspace'), findsOneWidget);
     expect(find.text('Knowledge'), findsOneWidget);
     expect(find.text('Interact'), findsOneWidget);
     expect(find.text('Sign in to IntQAFlow'), findsNothing);
