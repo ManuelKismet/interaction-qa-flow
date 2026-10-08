@@ -398,8 +398,14 @@ Future<void> _ensureVisibleInVerticalList(
   );
   await tester.scrollUntilVisible(target, 220, scrollable: scrollable);
   await tester.pumpAndSettle();
-  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
-  await tester.pumpAndSettle();
+  print(
+    'DEBUG after scroll target=${target.evaluate().length} '
+    'hit=${target.hitTestable().evaluate().length} '
+    'scroll=${tester.state<ScrollableState>(scrollable).position.pixels} '
+    'targetRect=${tester.getRect(target)} '
+    'scrollRect=${tester.getRect(scrollable)} '
+    'viewport=${tester.view.physicalSize}',
+  );
   expect(target.hitTestable(), findsOneWidget);
 }
 
@@ -830,7 +836,12 @@ void main() {
     );
     expect(find.text('Account A private item'), findsOneWidget);
     expect((await storage.load()).knowledge, isEmpty);
-    await tester.tap(find.text('Back to add a local question'));
+    await _ensureVisibleInVerticalList(
+      tester,
+      find.text('Back to Ask & search'),
+      anchor: find.text('Saved Q&A'),
+    );
+    await _tapVisibleTarget(tester, find.text('Back to Ask & search'));
     await tester.pumpAndSettle();
 
     repository.items = [personalItem('b', 'Account B private item')];
@@ -1526,7 +1537,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Interact'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Imported nested session'));
+    await _ensureVisibleInVerticalList(
+      tester,
+      find.text('Imported nested session'),
+      anchor: find.text('Create private session'),
+    );
+    await tester.tap(find.text('Imported nested session').hitTestable());
     await tester.pumpAndSettle();
 
     expect(find.text('Existing nested follow-up'), findsOneWidget);
@@ -1634,6 +1650,11 @@ void main() {
         ),
         'Account-only answer',
       );
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.text('Save to private account'),
+        anchor: find.widgetWithText(TextFormField, 'Question'),
+      );
       await tester.tap(find.text('Save to private account').hitTestable());
       await tester.pumpAndSettle();
 
@@ -1650,7 +1671,21 @@ void main() {
       await tester.tap(find.text('Retry account save'));
       await tester.pumpAndSettle();
       expect(repository.imports, hasLength(2));
-      await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.text('Saved Q&A'),
+        anchor: find.text('Save to private account'),
+      );
+      await tester.tap(find.text('Saved Q&A').hitTestable());
+      await tester.pumpAndSettle();
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.byTooltip('Edit personal-account Knowledge'),
+        anchor: find.text('Saved Q&A'),
+      );
+      await tester.tap(
+        find.byTooltip('Edit personal-account Knowledge').hitTestable(),
+      );
       await tester.pumpAndSettle();
       await tester.enterText(
         find
@@ -1699,6 +1734,11 @@ void main() {
       );
       unawaited(router.push<void>('/personal/ask'));
       await tester.pumpAndSettle();
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.widgetWithText(TextFormField, 'Question'),
+        anchor: find.text('Search Knowledge'),
+      );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
         'Held private question',
@@ -1771,6 +1811,11 @@ void main() {
         store: store,
         authChanges: authChanges.stream,
       );
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.widgetWithText(TextFormField, 'Question'),
+        anchor: find.text('Search Knowledge'),
+      );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
         'First identity private question',
@@ -1788,6 +1833,11 @@ void main() {
       authChanges.add(secondUser);
       await tester.pumpAndSettle();
       expect(find.text('First identity private question'), findsNothing);
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.widgetWithText(TextFormField, 'Question'),
+        anchor: find.text('Save to private account'),
+      );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
         'Second identity private question',
@@ -1846,6 +1896,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.items, hasLength(1));
 
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.text('Saved Q&A'),
+        anchor: find.text('Save to private account'),
+      );
+      await tester.tap(find.text('Saved Q&A').hitTestable());
+      await tester.pumpAndSettle();
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.byTooltip('Remove personal-account Knowledge'),
+        anchor: find.text('Saved Q&A'),
+      );
       await tester.tap(find.byTooltip('Remove personal-account Knowledge'));
       await tester.pumpAndSettle();
 
@@ -1877,6 +1939,11 @@ void main() {
         store: store,
       );
       expect(repository.listCalls, 1);
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.widgetWithText(TextFormField, 'Question'),
+        anchor: find.text('Search Knowledge'),
+      );
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Question'),
         'Refresh race question',
@@ -1895,6 +1962,18 @@ void main() {
 
       expect(repository.listCalls, greaterThanOrEqualTo(2));
       expect(repository.items, hasLength(1));
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.text('Saved Q&A'),
+        anchor: find.text('Save to private account'),
+      );
+      await tester.tap(find.text('Saved Q&A').hitTestable());
+      await tester.pumpAndSettle();
+      await _ensureVisibleInVerticalList(
+        tester,
+        find.text('Refresh race question'),
+        anchor: find.text('Saved Q&A'),
+      );
       expect(find.text('Refresh race question'), findsOneWidget);
       expect(find.text('Personal account · saved'), findsOneWidget);
     },

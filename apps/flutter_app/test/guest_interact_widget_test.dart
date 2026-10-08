@@ -804,8 +804,11 @@ void main() {
       expect(tester.takeException(), isNull);
 
       await tester.enterText(_field('Question'), 'Latest work after failure');
-      await tester.ensureVisible(saveButton);
-      await tester.pumpAndSettle();
+      await _ensureVisibleInGuestList(
+        tester,
+        saveButton,
+        anchor: _field('Question'),
+      );
       await tester.tap(saveButton);
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
@@ -934,8 +937,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
       await tester.enterText(_field('Question'), 'Latest rescue work');
-      await tester.ensureVisible(saveButton);
-      await tester.pumpAndSettle();
+      await _ensureVisibleInGuestList(
+        tester,
+        saveButton,
+        anchor: _field('Question'),
+      );
       await tester.tap(saveButton);
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
@@ -1313,9 +1319,11 @@ Future<void> _ensureVisibleInGuestList(
     tester.widget<Scrollable>(scrollable).axisDirection,
     AxisDirection.down,
   );
-  await tester.scrollUntilVisible(target, 180, scrollable: scrollable);
-  await tester.pumpAndSettle();
-  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
+  await tester.scrollUntilVisible(
+    target.hitTestable(),
+    180,
+    scrollable: scrollable,
+  );
   await tester.pumpAndSettle();
   expect(target.hitTestable(), findsOneWidget);
 }
