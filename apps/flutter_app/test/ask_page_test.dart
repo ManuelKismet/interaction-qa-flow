@@ -371,7 +371,7 @@ void main() {
     await tester.tap(find.text('Private account policy'));
     await tester.pumpAndSettle();
     final personalQuestionsList = find
-        .ancestor(of: find.text('Saved Q&A'), matching: find.byType(Scrollable))
+        .ancestor(of: find.text('Saved'), matching: find.byType(Scrollable))
         .first;
     await tester.scrollUntilVisible(
       find.text('Private account policy'),
@@ -385,7 +385,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Private account policy').hitTestable(), findsOneWidget);
-    expect(find.text('Saved Q&A'), findsOneWidget);
+    expect(find.text('Saved'), findsOneWidget);
     expect(find.text('Private account policy'), findsOneWidget);
     _expectKnowledgeSubtitle(
       tester: tester,
@@ -399,7 +399,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Password local guide'));
     await tester.pumpAndSettle();
-    expect(find.text('Saved Q&A'), findsOneWidget);
+    expect(find.text('Saved'), findsOneWidget);
     expect(find.text('Password local guide'), findsOneWidget);
     _expectKnowledgeSubtitle(
       tester: tester,
