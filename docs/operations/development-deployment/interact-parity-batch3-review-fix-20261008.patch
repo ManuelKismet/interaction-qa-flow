@@ -1,0 +1,818 @@
+From 49f5a1a345947d807f3db0dfdbb075b4fd949240 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 14:17:19 +0000
+Subject: [PATCH 1/2] Scope session JSON copy confirmation to originating
+ account; add review-correction tests
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../presentation/guest_workspace_page.dart    | 112 +++-
+ .../test/account_state_widget_test.dart       | 507 ++++++++++++++++++
+ 2 files changed, 594 insertions(+), 25 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 17156b9..5431682 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -131,6 +131,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   String? _personalConflictSourceKey;
+   bool _personalConflictReloadFailed = false;
+   int _personalGeneration = 0;
++  final Set<VoidCallback> _accountScopedDialogClosers = {};
+   int _personalRefreshGeneration = 0;
+   String? _personalOwnerUid;
+   bool _personalLoading = false;
+@@ -182,6 +183,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     _personalGeneration++;
+     _personalRefreshGeneration++;
+     _personalOwnerUid = uid;
++    WidgetsBinding.instance.addPostFrameCallback(
++      (_) => _closeAccountScopedDialogs(),
++    );
+     _personalItems = [];
+     _pendingPersonalItems = [];
+     _pendingPersonalWrites.clear();
+@@ -1191,40 +1195,97 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     widget.onSessionRouteChanged?.call(null);
+   }
+ 
++  void _closeAccountScopedDialogs() {
++    final closers = _accountScopedDialogClosers.toList();
++    _accountScopedDialogClosers.clear();
++    for (final close in closers) {
++      close();
++    }
++  }
++
++  Map<String, dynamic>? _currentSessionSnapshot(String id) {
++    final local = _data;
++    if (local == null) return null;
++    return _withPersonalWorkspace(
++      local,
++    ).sessions.where((item) => item['id'] == id).firstOrNull;
++  }
++
+   Future<void> _copySessionJson(Map<String, dynamic> session) async {
++    final sessionId = session['id'];
++    final uid = _verifiedPersonalUid;
++    final generation = _personalGeneration;
+     final isAccount = _storageStatus(
+       'interact_session',
+       session,
+     ).startsWith('Personal account');
++    VoidCallback? closeDialog;
+     final confirmed = await showDialog<bool>(
+       context: context,
+-      builder: (context) => AlertDialog(
+-        title: const Text('Copy session JSON backup'),
+-        content: SingleChildScrollView(
+-          child: Text(
+-            'Copies only “${session['title'] ?? 'this session'}” as a JSON '
+-            'backup to your clipboard, including its participants, answers '
+-            'and follow-ups. Nothing is uploaded or shared. '
+-            '${isAccount ? 'This session is stored in your private account, so the full local JSON backup does not include it. ' : ''}'
+-            'It uses the local JSON backup format: “Import local JSON backup” '
+-            'previews it and only adds selected items whose ID is not already '
+-            'stored on this device.',
+-          ),
+-        ),
+-        actions: [
+-          TextButton(
+-            onPressed: () => Navigator.pop(context, false),
+-            child: const Text('Cancel'),
+-          ),
+-          FilledButton(
+-            onPressed: () => Navigator.pop(context, true),
+-            child: const Text('Copy JSON'),
++      builder: (dialogContext) {
++        if (closeDialog == null) {
++          final route = ModalRoute.of(dialogContext);
++          final navigator = Navigator.of(dialogContext);
++          closeDialog = () {
++            if (route != null && route.isActive) {
++              navigator.removeRoute(route, false);
++            }
++          };
++          _accountScopedDialogClosers.add(closeDialog!);
++        }
++        return AlertDialog(
++          title: const Text('Copy session JSON backup'),
++          content: SingleChildScrollView(
++            child: Text(
++              'Copies only “${session['title'] ?? 'this session'}” as a JSON '
++              'backup to your clipboard, including its participants, answers '
++              'and follow-ups. Nothing is uploaded or shared. '
++              '${isAccount ? 'This session is stored in your private account, so the full local JSON backup does not include it. ' : ''}'
++              'It uses the local JSON backup format: “Import local JSON backup” '
++              'previews it and only adds selected items whose ID is not already '
++              'stored on this device.',
++            ),
+           ),
+-        ],
+-      ),
++          actions: [
++            TextButton(
++              onPressed: () => Navigator.pop(dialogContext, false),
++              child: const Text('Cancel'),
++            ),
++            FilledButton(
++              onPressed: () => Navigator.pop(dialogContext, true),
++              child: const Text('Copy JSON'),
++            ),
++          ],
++        );
++      },
+     );
+-    if (confirmed != true || !mounted) return;
+-    final backup = GuestWorkspaceData(sessions: [session]).encodeBackup();
++    if (closeDialog != null) _accountScopedDialogClosers.remove(closeDialog);
++    if (!mounted) return;
++    final scopeUnchanged =
++        uid == _verifiedPersonalUid && generation == _personalGeneration;
++    if (confirmed != true && scopeUnchanged) return;
++    final current = sessionId is String && scopeUnchanged
++        ? _currentSessionSnapshot(sessionId)
++        : null;
++    final sameDestination =
++        current != null &&
++        _storageStatus(
++              'interact_session',
++              current,
++            ).startsWith('Personal account') ==
++            isAccount;
++    if (!scopeUnchanged || !sameDestination) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text(
++            'The account or session changed before copying. '
++            'Nothing was copied.',
++          ),
++        ),
++      );
++      return;
++    }
++    final backup = GuestWorkspaceData(sessions: [current]).encodeBackup();
+     try {
+       await Clipboard.setData(ClipboardData(text: backup));
+       if (!mounted) return;
+@@ -1361,6 +1422,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       try {
+         await ref.read(firebaseAuthProvider).signOut();
+         _personalGeneration++;
++        _closeAccountScopedDialogs();
+         if (mounted) {
+           setState(() {
+             _personalItems = [];
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 1a3c76d..8d6311b 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -1,4 +1,5 @@
+ import 'dart:async';
++import 'dart:convert';
+ 
+ import 'package:dio/dio.dart';
+ import 'package:firebase_auth/firebase_auth.dart';
+@@ -198,6 +199,14 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+   final searches = <(String, String)>[];
+   Completer<List<Map<String, dynamic>>>? nextListResponse;
+   Completer<void>? nextImportGate;
++  Completer<void>? nextDeleteGate;
++  Completer<void>? nextUpdateGate;
++  var deleteFailures = 0;
++  var deleteFailureAppliesOnServer = false;
++  final updateUids = <String>[];
++  final deleteUids = <String>[];
++  final listUids = <String>[];
++  Future<List<Map<String, dynamic>>> Function(String expectedUid)? listHandler;
+   Future<Map<String, dynamic>> Function(String query, String expectedUid)?
+   searchHandler;
+ 
+@@ -206,6 +215,9 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     required String expectedUid,
+   }) async {
+     listCalls++;
++    listUids.add(expectedUid);
++    final handler = listHandler;
++    if (handler != null) return handler(expectedUid);
+     final response = nextListResponse;
+     nextListResponse = null;
+     if (response != null) return response.future;
+@@ -278,6 +290,10 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     required Map<String, dynamic> data,
+   }) async {
+     updateRevisions.add(expectedRevision);
++    updateUids.add(expectedUid);
++    final gate = nextUpdateGate;
++    nextUpdateGate = null;
++    if (gate != null) await gate.future;
+     if (updateConflicts > 0) {
+       updateConflicts--;
+       items = conflictItems ?? items;
+@@ -308,6 +324,17 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     required int expectedRevision,
+   }) async {
+     deleteCalls++;
++    deleteUids.add(expectedUid);
++    final gate = nextDeleteGate;
++    nextDeleteGate = null;
++    if (gate != null) await gate.future;
++    if (deleteFailures > 0) {
++      deleteFailures--;
++      if (deleteFailureAppliesOnServer) {
++        items = items.where((item) => item['id'] != id).toList();
++      }
++      throw StateError('Simulated failed or uncertain delete response.');
++    }
+     items = items.where((item) => item['id'] != id).toList();
+   }
+ }
+@@ -3023,4 +3050,484 @@ void main() {
+     expect(find.text('Keep this group identity'), findsNothing);
+     expect(identical(auth.currentUser, guest), isTrue);
+   });
++
++  group('batch3 review correction', () {
++    Map<String, dynamic> accountSession(String id, String title) => {
++      'id': id,
++      'title': title,
++      'participants': [
++        {'id': 'alice-$id', 'name': 'Alice $title'},
++      ],
++      'questions': [
++        {
++          'id': 'root-$id',
++          'text': 'Root question for $title',
++          'scope': 'shared',
++          'answers': [
++            {
++              'participant_id': 'alice-$id',
++              'body': 'Answer owned by $title',
++              'branches_collapsed': false,
++              'follow_ups': [
++                {
++                  'id': 'nested-$id',
++                  'text': 'Nested follow-up for $title',
++                  'scope': 'participant',
++                  'target_participant_id': 'alice-$id',
++                  'answers': <Map<String, dynamic>>[],
++                },
++              ],
++            },
++          ],
++        },
++      ],
++    };
++
++    Map<String, dynamic> accountRecord(Map<String, dynamic> session) => {
++      'id': 'remote-${session['id']}',
++      'kind': 'interact_session',
++      'source_key': 'interact_session:${session['id']}',
++      'title': session['title'],
++      'data': session,
++      'revision': 1,
++      'created_at': '2026-10-06T00:00:00+00:00',
++      'updated_at': '2026-10-06T00:00:00+00:00',
++    };
++
++    User verified(String uid) =>
++        _TestUser(isAnonymous: false, isEmailVerified: true, testUid: uid);
++
++    Widget accountPage({
++      required User? user,
++      required GuestWorkspaceStore store,
++      required _TestPersonalWorkspaceRepository repository,
++      String? initialSessionId,
++      ValueChanged<String?>? onSessionRouteChanged,
++    }) => ProviderScope(
++      overrides: [
++        firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++        guestWorkspaceStoreProvider.overrideWithValue(store),
++        personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++      ],
++      child: MaterialApp(
++        home: GuestWorkspacePage(
++          firebaseReady: true,
++          personalWorkspaceEnabled: true,
++          accountUser: user,
++          initialWorkspaceTab: 1,
++          initialSessionId: initialSessionId,
++          onSessionRouteChanged: onSessionRouteChanged,
++        ),
++      ),
++    );
++
++    List<String> mockClipboard(WidgetTester tester) {
++      final copied = <String>[];
++      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
++        SystemChannels.platform,
++        (call) async {
++          if (call.method == 'Clipboard.setData') {
++            copied.add((call.arguments as Map)['text'] as String);
++          }
++          return null;
++        },
++      );
++      addTearDown(
++        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
++          SystemChannels.platform,
++          null,
++        ),
++      );
++      return copied;
++    }
++
++    Future<void> openCopyDialog(WidgetTester tester) async {
++      await tester.tap(find.byTooltip('More session actions').first);
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Copy session JSON backup').last);
++      await tester.pumpAndSettle();
++      expect(find.text('Copy JSON'), findsOneWidget);
++    }
++
++    Future<void> deleteOpenSession(WidgetTester tester) async {
++      await tester.tap(find.byTooltip('More session actions').first);
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Delete session').last);
++      await tester.pump();
++    }
++
++    Future<void> tapUndo(WidgetTester tester) async {
++      await tester.pump(const Duration(milliseconds: 300));
++      await tester.tap(find.text('Undo').hitTestable().first);
++      await tester.pump();
++    }
++
++    void expectSingleRestored(
++      _TestPersonalWorkspaceRepository repository,
++      Map<String, dynamic> session, {
++      required int revision,
++    }) {
++      final matching = repository.items
++          .where((item) => item['source_key'] == 'interact_session:s1')
++          .toList();
++      expect(matching, hasLength(1));
++      expect(repository.items, hasLength(1));
++      expect(matching.single['revision'], revision);
++      expect(jsonEncode(matching.single['data']), jsonEncode(session));
++    }
++
++    testWidgets('account session JSON copy uses the backup format only', (
++      tester,
++    ) async {
++      final copied = mockClipboard(tester);
++      final session = accountSession('s1', 'Account A session');
++      final repository = _TestPersonalWorkspaceRepository([
++        accountRecord(session),
++      ]);
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await tester.pumpWidget(
++        accountPage(
++          user: verified('a'),
++          store: store,
++          repository: repository,
++          initialSessionId: 's1',
++        ),
++      );
++      await tester.pumpAndSettle();
++      await openCopyDialog(tester);
++      expect(
++        find.textContaining('stored in your private account'),
++        findsOneWidget,
++      );
++      await tester.tap(find.text('Copy JSON'));
++      await tester.pumpAndSettle();
++
++      expect(copied, hasLength(1));
++      final decoded = GuestWorkspaceData.decodeBackup(copied.single);
++      expect(decoded.sessions, hasLength(1));
++      expect(jsonEncode(decoded.sessions.single), jsonEncode(session));
++      expect(decoded.knowledge, isEmpty);
++      expect(decoded.templates, isEmpty);
++      expect(
++        find.text('Session JSON backup copied. Nothing was uploaded.'),
++        findsOneWidget,
++      );
++      expect(repository.imports, isEmpty);
++      expect(repository.updateRevisions, isEmpty);
++      expect(repository.deleteCalls, 0);
++      expect((await store.load()).sessions, isEmpty);
++    });
++
++    for (final signOut in [false, true]) {
++      testWidgets(
++        'stale copy confirmation never copies the previous account session '
++        '(${signOut ? 'sign-out' : 'UID switch'})',
++        (tester) async {
++          final copied = mockClipboard(tester);
++          final sessionA = accountSession('s1', 'Account A secret');
++          final repository = _TestPersonalWorkspaceRepository([
++            accountRecord(sessionA),
++          ]);
++          final store = GuestWorkspaceStore(_MemoryGuestStorage());
++          await tester.pumpWidget(
++            accountPage(
++              user: verified('a'),
++              store: store,
++              repository: repository,
++              initialSessionId: 's1',
++            ),
++          );
++          await tester.pumpAndSettle();
++          await openCopyDialog(tester);
++
++          // The second account owns a session with the same local ID.
++          repository.items = signOut
++              ? []
++              : [accountRecord(accountSession('s1', 'Account B session'))];
++          await tester.pumpWidget(
++            accountPage(
++              user: signOut ? null : verified('b'),
++              store: store,
++              repository: repository,
++              initialSessionId: 's1',
++            ),
++          );
++          await tester.pumpAndSettle();
++
++          // The stale confirmation is dismissed rather than left actionable.
++          expect(find.text('Copy JSON'), findsNothing);
++          expect(copied, isEmpty);
++          expect(
++            find.text('Session JSON backup copied. Nothing was uploaded.'),
++            findsNothing,
++          );
++          expect(
++            find.text(
++              'The account or session changed before copying. '
++              'Nothing was copied.',
++            ),
++            findsOneWidget,
++          );
++          expect(find.textContaining('Account A secret'), findsNothing);
++          expect(repository.imports, isEmpty);
++          expect((await store.load()).sessions, isEmpty);
++        },
++      );
++    }
++
++    testWidgets('local guest session JSON copy works without Firebase', (
++      tester,
++    ) async {
++      final copied = mockClipboard(tester);
++      final session = accountSession('local-1', 'Local guest session');
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await store.save(GuestWorkspaceData(sessions: [session]));
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
++          child: const MaterialApp(
++            home: GuestWorkspacePage(
++              firebaseReady: false,
++              initialWorkspaceTab: 1,
++              initialSessionId: 'local-1',
++            ),
++          ),
++        ),
++      );
++      await tester.pumpAndSettle();
++      await openCopyDialog(tester);
++      expect(
++        find.textContaining('stored in your private account'),
++        findsNothing,
++      );
++      await tester.tap(find.text('Copy JSON'));
++      await tester.pumpAndSettle();
++
++      expect(copied, hasLength(1));
++      expect(
++        jsonEncode(
++          GuestWorkspaceData.decodeBackup(copied.single).sessions.single,
++        ),
++        jsonEncode(session),
++      );
++      expect(
++        find.text('Session JSON backup copied. Nothing was uploaded.'),
++        findsOneWidget,
++      );
++    });
++
++    testWidgets('Undo during an in-flight account DELETE restores one item', (
++      tester,
++    ) async {
++      final session = accountSession('s1', 'Removable account session');
++      final repository = _TestPersonalWorkspaceRepository([
++        accountRecord(session),
++      ]);
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      final gate = Completer<void>();
++      repository.nextDeleteGate = gate;
++      await tester.pumpWidget(
++        accountPage(
++          user: verified('a'),
++          store: store,
++          repository: repository,
++          initialSessionId: 's1',
++        ),
++      );
++      await tester.pumpAndSettle();
++      await deleteOpenSession(tester);
++      expect(repository.deleteCalls, 1);
++      await tapUndo(tester);
++      gate.complete();
++      await tester.pumpAndSettle();
++
++      expect(repository.deleteUids, ['a']);
++      expect(repository.importUids, ['a']);
++      expectSingleRestored(repository, session, revision: 1);
++      expect(repository.items.single['id'], 'record-interact_session:s1');
++      expect((await store.load()).sessions, isEmpty);
++      expect(find.textContaining('not confirmed'), findsNothing);
++    });
++
++    for (final appliedOnServer in [true, false]) {
++      testWidgets(
++        'Undo during a ${appliedOnServer ? 'uncertain' : 'failing'} account '
++        'DELETE retries to one restored item',
++        (tester) async {
++          final session = accountSession('s1', 'Removable account session');
++          final repository = _TestPersonalWorkspaceRepository([
++            accountRecord(session),
++          ]);
++          final store = GuestWorkspaceStore(_MemoryGuestStorage());
++          final gate = Completer<void>();
++          repository
++            ..nextDeleteGate = gate
++            ..deleteFailures = 1
++            ..deleteFailureAppliesOnServer = appliedOnServer;
++          await tester.pumpWidget(
++            accountPage(
++              user: verified('a'),
++              store: store,
++              repository: repository,
++              initialSessionId: 's1',
++            ),
++          );
++          await tester.pumpAndSettle();
++          await deleteOpenSession(tester);
++          await tapUndo(tester);
++          gate.complete();
++          await tester.pumpAndSettle();
++
++          expect(find.text('Retry account save'), findsOneWidget);
++          expect(repository.imports, isEmpty);
++          await _tapVisibleTarget(tester, find.text('Retry account save'));
++          await tester.pumpAndSettle();
++
++          expect(repository.deleteCalls, 1);
++          expect(repository.importUids, ['a']);
++          expect(repository.updateRevisions, isEmpty);
++          expectSingleRestored(repository, session, revision: 1);
++          expect(
++            repository.items.single['id'],
++            appliedOnServer ? 'record-interact_session:s1' : 'remote-s1',
++          );
++          expect(find.text('Retry account save'), findsNothing);
++          expect((await store.load()).sessions, isEmpty);
++        },
++      );
++    }
++
++    testWidgets(
++      'Undo of a queued failed account DELETE keeps the account item',
++      (tester) async {
++        final session = accountSession('s1', 'Removable account session');
++        final repository = _TestPersonalWorkspaceRepository([
++          accountRecord(session),
++        ])..deleteFailures = 1;
++        final store = GuestWorkspaceStore(_MemoryGuestStorage());
++        await tester.pumpWidget(
++          accountPage(
++            user: verified('a'),
++            store: store,
++            repository: repository,
++            initialSessionId: 's1',
++          ),
++        );
++        await tester.pumpAndSettle();
++        await deleteOpenSession(tester);
++        await tester.pump();
++        // The failed removal remains queued (not in flight) until retried.
++        expect(repository.deleteCalls, 1);
++        await tapUndo(tester);
++        await tester.pumpAndSettle();
++        expect(repository.deleteCalls, 1);
++
++        await _tapVisibleTarget(tester, find.text('Retry account save'));
++        await tester.pumpAndSettle();
++
++        expect(repository.deleteCalls, 1);
++        expect(repository.imports, isEmpty);
++        expect(repository.updateRevisions, [1]);
++        expectSingleRestored(repository, session, revision: 2);
++        expect(repository.items.single['id'], 'remote-s1');
++        expect((await store.load()).sessions, isEmpty);
++      },
++    );
++
++    for (final signOut in [false, true]) {
++      testWidgets(
++        'open personal editor drops delayed old-account reads and writes on '
++        '${signOut ? 'sign-out' : 'UID switch'}',
++        (tester) async {
++          final routes = <String?>[];
++          final sessionA = accountSession('s1', 'Account A secret');
++          final sessionB = accountSession('s1', 'Account B session');
++          final repository = _TestPersonalWorkspaceRepository([
++            accountRecord(sessionA),
++          ]);
++          final store = GuestWorkspaceStore(_MemoryGuestStorage());
++          await tester.pumpWidget(
++            accountPage(
++              user: verified('a'),
++              store: store,
++              repository: repository,
++              initialSessionId: 's1',
++              onSessionRouteChanged: routes.add,
++            ),
++          );
++          await tester.pumpAndSettle();
++          expect(find.text('Destination: Private account'), findsOneWidget);
++
++          // Delay the old account's write.
++          final writeGate = Completer<void>();
++          repository.nextUpdateGate = writeGate;
++          await _ensureVisibleInVerticalList(
++            tester,
++            find.text('Nested follow-up for Account A secret'),
++            anchor: find.byTooltip('Back to sessions'),
++          );
++          final answer = find
++              .byWidgetPredicate(
++                (widget) =>
++                    widget is TextField &&
++                    widget.decoration?.labelText == 'Personal-account answer',
++              )
++              .first;
++          await tester.ensureVisible(answer);
++          await tester.enterText(answer, 'Late account A edit');
++          await tester.pump(const Duration(seconds: 2));
++          expect(repository.updateUids, ['a']);
++
++          // Delay reads for both the old and the next account.
++          final oldRead = Completer<List<Map<String, dynamic>>>();
++          final nextRead = Completer<List<Map<String, dynamic>>>();
++          repository.listHandler = (uid) =>
++              uid == 'a' ? oldRead.future : nextRead.future;
++          await tester.pumpWidget(
++            accountPage(
++              user: signOut ? null : verified('b'),
++              store: store,
++              repository: repository,
++              initialSessionId: 's1',
++              onSessionRouteChanged: routes.add,
++            ),
++          );
++          await tester.pump();
++          await tester.pump();
++          expect(routes.last, isNull);
++          expect(find.text('Destination: Private account'), findsNothing);
++
++          // Old-account responses arrive after the identity change.
++          writeGate.complete();
++          oldRead.complete([
++            accountRecord({...sessionA, 'title': 'Account A late read'}),
++          ]);
++          await tester.pump();
++          if (!signOut) {
++            nextRead.complete([accountRecord(sessionB)]);
++          }
++          await tester.pumpAndSettle();
++
++          expect(find.textContaining('Account A'), findsNothing);
++          expect(find.textContaining('Late account A edit'), findsNothing);
++          expect(find.text('Destination: Private account'), findsNothing);
++          expect(routes.last, isNull);
++          expect(repository.updateUids, ['a']);
++          expect(repository.importUids, isEmpty);
++          expect(repository.deleteUids, isEmpty);
++          expect((await store.load()).sessions, isEmpty);
++          if (signOut) {
++            expect(repository.listUids.where((uid) => uid != 'a'), isEmpty);
++          } else {
++            expect(repository.listUids.last, 'b');
++            await _ensureVisibleInVerticalList(
++              tester,
++              find.text('Account B session'),
++              anchor: find.text('Create private session'),
++            );
++          }
++        },
++      );
++    }
++  });
+ }
+-- 
+2.55.0
+
+
+From 1e2947ed4fe647c074e32c7ff313ad988b57564e Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 14:19:39 +0000
+Subject: [PATCH 2/2] Batch3 review correction: receipts, OPEN guest reload
+ decision, intentional server differences
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ ...act-parity-batch3-review-fix-2026-10-08.md | 79 +++++++++++++++++++
+ 1 file changed, 79 insertions(+)
+ create mode 100644 docs/operations/development-deployment/interact-parity-batch3-review-fix-2026-10-08.md
+
+diff --git a/docs/operations/development-deployment/interact-parity-batch3-review-fix-2026-10-08.md b/docs/operations/development-deployment/interact-parity-batch3-review-fix-2026-10-08.md
+new file mode 100644
+index 0000000..2c38ff5
+--- /dev/null
++++ b/docs/operations/development-deployment/interact-parity-batch3-review-fix-2026-10-08.md
+@@ -0,0 +1,79 @@
++# Interact parity batch 3 – Codex review correction (2026-10-08)
++
++Branch: `copilot/fixinteract-parity-batch3`. Base: artifact commit
++`05ec5386181fe39b9a2bc5f3a21c2d94e8f7f96d` (tree `5e82d87de40d9964f62140d8f37d9bc7e0c5544e`,
++app subtree `320f74e08d8dd2f974aacbe31fe2ca5853feb909`). The original batch 3 mailbox
++`interact-parity-batch3-20261008.patch` and its receipt are unchanged.
++
++No backend, schema, production, IAM, credential, firewall, deployment or authentication-code
++changes. Hosted authenticated personal/organisation/Group acceptance remains **pending**
++(cloud-browser auth), and nothing here claims it passed.
++
++## 1. Privacy fix: account-scoped session JSON copy
++
++`_copySessionJson` (`guest_workspace_page.dart`) previously held an account session
++snapshot across a plain `showDialog` and checked only `confirmed` and `mounted` before
++`Clipboard.setData`. Now:
++
++- The originating verified UID (null for local guests), the personal generation, the
++  session ID and its destination (Local or Private account) are captured when the dialog opens.
++- The dialog route is registered as account-scoped. When the UID changes in `didUpdateWidget`
++  or the user signs out in-app (`_signOut`), the dialog is removed, so a stale confirmation
++  cannot be acted on.
++- After the dialog closes, the copy proceeds only if the page is mounted, the UID and
++  generation are unchanged, and the same session ID still exists with the same destination.
++  It copies the **current** session, not the earlier snapshot.
++- Otherwise it shows "The account or session changed before copying. Nothing was copied."
++  No success toast is shown, and nothing reaches the clipboard. The export destination is
++  never silently switched.
++- A legitimate copy still uses the existing local JSON backup format
++  (`GuestWorkspaceData.encodeBackup`) and uploads nothing. Local guests work without Firebase.
++
++## 2. New targeted tests (`test/account_state_widget_test.dart`, group "batch3 review correction")
++
++| Test | Proves |
++| --- | --- |
++| account session JSON copy uses the backup format only | Copied text decodes with `GuestWorkspaceData.decodeBackup` to exactly the selected account session. There are no import, update or delete calls, and the local store is unchanged. |
++| stale copy confirmation … (UID switch) / (sign-out) | The dialog is held open while the identity changes. A mocked platform clipboard receives nothing, the dialog is dismissed, there is no success toast, the "Nothing was copied" notice is shown, and no old-account text is displayed. Negative control: both tests fail against the pre-fix source. |
++| local guest session JSON copy works without Firebase | `firebaseReady: false`; the local session copies in backup format. |
++| Undo during an in-flight account DELETE restores one item | DELETE is gated, Undo is tapped mid-flight, then DELETE completes. Result: exactly one account item for the source key, recreated (revision 1, full answers and nested branches), with no duplicate and no local copy. |
++| Undo during an uncertain / failing account DELETE retries to one restored item | A gated DELETE throws, with or without the server having applied it. "Retry account save" leads to exactly one item: recreated when the server had deleted it, or the original record (`remote-s1`, revision 1, no update) when it had not. No duplicate. |
++| Undo of a queued failed account DELETE keeps the account item | The DELETE fails and stays queued (not in flight). Undo replaces it with an update; Retry gives a single item at revision 2 with identical data, and DELETE is not re-sent. |
++| open personal editor drops delayed old-account reads and writes on UID switch / sign-out | The personal editor is deep-linked and open, with an account-A update gated and the account-A and account-B lists delayed, then the identity changes. The route callback receives `null` and the editor closes. The late A write and late A read never render A content. No write is sent under B's UID (`updateUids == ['a']`, no imports or deletes), local storage stays empty, and B sees only its own session. |
++
++## 3. Decisions recorded (not completed features)
++
++- **OPEN – guest reload/open-session routing:** for guests, a browser reload of an open
++  session returns to the session list. A guest dedicated-editor deep link that survives
++  reload would need an auth/router change or a local route-persistence decision. That is a
++  founder product decision and is not implemented here.
++- **Intentional server difference – organisation archive is final:** the existing server
++  has no reopen transition for archived organisation sessions, so none is advertised.
++- **Intentional server difference – participant Add back:** restoring a removed organisation
++  participant uses the existing add endpoint, which creates a new participant ID. Earlier
++  answers stay with the removed participant. No new backend feature was added.
++- **Residual, not separately tested:** a *queued* (not in-flight) DELETE whose failure was
++  in fact applied on the server, followed by Undo, is replaced with an update against a
++  record that no longer exists. Retry then reports "not confirmed" and the local Undo state
++  is kept, rather than losing data silently. This case is not separately exercised by the
++  tests above.
++- The configured DEV release build is left for Codex to validate in its normal configured
++  environment. A default release compile alone is not configured-DEV acceptance.
++
++## 4. Validation receipts
++
++Environment: official Flutter 3.41.4 / Dart 3.11.1, `CI=true FLUTTER_SUPPRESS_ANALYTICS=true`,
++`--suppress-analytics`. These were run on the source after commit
++`49f5a1a345947d807f3db0dfdbb075b4fd949240` (tree `c4a2ab53eb63aa13b5fae4c1bea355d0649e0c31`,
++app subtree `56768f0d721cc43b75363450478ba0ae920e61ea`). This document is the only later
++change.
++
++| Command (in `apps/flutter_app`) | Exit | Result |
++| --- | --- | --- |
++| `dart format --output=none --set-exit-if-changed lib/features/guest/presentation/guest_workspace_page.dart test/account_state_widget_test.dart` | 0 | 2 files, 0 changed |
++| `flutter analyze --suppress-analytics` | 1 | 0 errors, 0 warnings, 12 baseline infos (unchanged) |
++| `flutter test --suppress-analytics test/account_state_widget_test.dart --plain-name 'stale copy confirmation'` against pre-fix `lib/` (negative control) | 1 | 2 failed, as expected |
++| `flutter test --suppress-analytics test/account_state_widget_test.dart test/guest_interact_widget_test.dart test/guided_batch3_test.dart test/session_deep_link_test.dart` | 0 | 100 passed |
++| `flutter test --suppress-analytics` (full) | 0 | 290 passed (280 baseline + 10 new) |
++
++Backend: unchanged, so no backend or PostgreSQL regressions were run.
+-- 
+2.55.0
+
