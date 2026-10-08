@@ -11,6 +11,7 @@ import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/core/routing/app_router.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
+import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
@@ -319,11 +320,54 @@ class _PendingGroupsRepository extends GuestGroupRepository {
   }
 }
 
+class _SharePersonalRepository extends PersonalWorkspaceRepository {
+  _SharePersonalRepository() : super(Dio());
+
+  String? requestedUid;
+
+  @override
+  Future<List<Map<String, dynamic>>> listItems({
+    required String expectedUid,
+  }) async {
+    requestedUid = expectedUid;
+    return [
+      {
+        'id': 'private-record-1',
+        'kind': 'interact_session',
+        'title': 'Account interview',
+        'data': {
+          'id': 'session-1',
+          'title': 'Account interview',
+          'participants': [
+            {'id': 'participant-1', 'name': 'Alice'},
+          ],
+          'questions': [
+            {
+              'id': 'question-1',
+              'text': 'Account prompt',
+              'answers': [
+                {
+                  'participant_id': 'participant-1',
+                  'body': 'Account answer',
+                  'follow_ups': [
+                    {'id': 'branch-1', 'text': 'Nested prompt', 'answers': []},
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {'id': 'private-knowledge-1', 'kind': 'knowledge', 'title': 'Account Knowledge'},
+    ];
+  }
+}
+
 class _ShareRepository extends GuestGroupRepository {
   _ShareRepository() : super(Dio());
 
-  Set<String>? sharedKnowledgeIds;
-  Set<String>? sharedSessionIds;
+  Map<String, Map<String, dynamic>>? sharedSessions;
+  String? sharedUid;
 
   @override
   Future<List<Map<String, dynamic>>> listGroups() async => [
@@ -348,14 +392,13 @@ class _ShareRepository extends GuestGroupRepository {
   }) async => [];
 
   @override
-  Future<List<Map<String, dynamic>>> importSelected({
+  Future<List<Map<String, dynamic>>> shareInteract({
     required String groupId,
-    required GuestWorkspaceData data,
-    required Set<String> knowledgeIds,
-    required Set<String> sessionIds,
+    required String expectedUid,
+    required Map<String, Map<String, dynamic>> sessions,
   }) async {
-    sharedKnowledgeIds = knowledgeIds;
-    sharedSessionIds = sessionIds;
+    sharedUid = expectedUid;
+    sharedSessions = sessions;
     return const [];
   }
 }
@@ -1216,6 +1259,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final repository = _ShareRepository();
+    final personal = _SharePersonalRepository();
     final store = GuestWorkspaceStore(_MemoryGuestStorage());
     await store.save(
       const GuestWorkspaceData(
@@ -1260,12 +1304,13 @@ void main() {
         overrides: [
           firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
           guestGroupRepositoryProvider.overrideWithValue(repository),
+          personalWorkspaceRepositoryProvider.overrideWithValue(personal),
           guestWorkspaceStoreProvider.overrideWithValue(store),
         ],
         child: const MaterialApp(home: SharedGuestGroupsPage()),
       ),
     );
-    await _openGroupAction(tester, 'Preview and share local work');
+    await _openGroupAction(tester, 'Preview & share Interact');
     await _pumpUntilFound(
       tester,
       find.text('Preview sharing to Local Safety Team'),
@@ -1283,10 +1328,13 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('Sharing uploads all participants and answer-owned branches'),
-      findsOneWidget,
+      find.textContaining('Sharing uploads all participants and answer-owned branches'),
+      findsNWidgets(2),
     );
-    expect(find.text('Local templates remain on this device'), findsOneWidget);
+    expect(find.text('Local templates remain on this device'), findsNothing);
+    expect(find.text('Account Knowledge'), findsNothing);
+    expect(find.text('Account interview'), findsOneWidget);
+    expect(personal.requestedUid, 'test-anonymous-uid');
     expect(
       find.textContaining(
         'existing group copy is reused without being overwritten',
@@ -1294,17 +1342,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('added locally'), findsNothing);
-    expect(
-      tester
-          .widget<CheckboxListTile>(
-            find.ancestor(
-              of: find.text('Local knowledge'),
-              matching: find.byType(CheckboxListTile),
-            ),
-          )
-          .value,
-      isFalse,
-    );
+    expect(find.text('Local knowledge'), findsNothing);
     expect(
       tester
           .widget<CheckboxListTile>(
@@ -1330,21 +1368,27 @@ void main() {
       tester,
       find.text('Preview sharing to Local Safety Team'),
     );
-    expect(repository.sharedKnowledgeIds, isNull);
+    expect(repository.sharedSessions, isNull);
     expect((await store.load()).sessions.single['title'], 'Private interview');
 
-    await _openGroupAction(tester, 'Preview and share local work');
+    await _openGroupAction(tester, 'Preview & share Interact');
     await _pumpUntilFound(
       tester,
       find.text('Preview sharing to Local Safety Team'),
     );
-    await tester.tap(find.text('Local knowledge'));
+    await tester.tap(find.text('Private interview'));
+    await tester.tap(find.text('Account interview'));
     await tester.pump();
     await tester.tap(find.text('Share selected with group'));
     await tester.pumpAndSettle();
 
-    expect(repository.sharedKnowledgeIds, {'knowledge-1'});
-    expect(repository.sharedSessionIds, isEmpty);
+    expect(repository.sharedSessions!.keys.toSet(), {'local-session-1', 'private-private-record-1'});
+    expect(repository.sharedUid, 'test-anonymous-uid');
+    final account = repository.sharedSessions!['private-private-record-1']!;
+    expect(account['id'], 'session-1');
+    final question = (account['questions'] as List).single as Map;
+    final answer = (question['answers'] as List).single as Map;
+    expect((answer['follow_ups'] as List).single['id'], 'branch-1');
     expect((await store.load()).knowledge.single['title'], 'Local knowledge');
     expect((await store.load()).sessions.single['title'], 'Private interview');
   });
