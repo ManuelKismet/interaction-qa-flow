@@ -43,3 +43,20 @@ Same task received one consolidated correction request. It must retain all deliv
 - Session-to-template is explicit organisation-wide publication of question structure; confirmation states destination and answers/names are stripped. Sessions remain private by default. Shared-only template participant-slot reduction is documented as existing server behaviour, not identical local parity.
 - Hosted authenticated personal/organisation/Groups/device acceptance remains OPEN due earlier cloud-browser auth blocker. Do not retry credentials or claim it passed.
 - Batches1+2 remain deployed on DEV at80f421d; production/schema/IAM/credential/firewall unchanged. Codespace remains stopped; none started for these local checks.
+
+
+## Review-fix delivery independently validated; uncertain-delete follow-up authorised
+
+Founder authorised "Action next steps and uncertainty edge case" at15:35BST on2026-10-08.
+
+- Review-fix source `1e2947ed4fe647c074e32c7ff313ad988b57564e`; artifact `8728b802654e8507aabb63b9c38625c678ac8626`.
+- Original incremental mailbox34935UTF8bytes SHA256`c6f9c648b4cdf662bf701868387865bc4ee23e74acb6719b999d4a10326b7b94` independently matches.
+- Clean proof checkout at exact05ec538 applies2commits unchanged and reproduces repository tree`a87b5d94e80993e58e2d0514b7f2c4779795ee42` and app subtree`56768f0d721cc43b75363450478ba0ae920e61ea`.
+- Independent locked offline pubget exit0; fullFlutter --no-pub -r expanded **290PASS exit0** elapsed35s; 2changedDartfiles format0changes exit0; analyze --no-pub exit1solely12baselineinfos,0errors0warnings. Logs in isolated scratch review-fix checkout, not Codespace. No backend changes or backend rerun.
+- Local checkout preparation initially overlapped a still-running worktree checkout, causing an index-lock/aborted git-am setup failure. After checkout completed, own failed am was aborted and clean unchanged am succeeded; this was local tooling, not a delivered patch defect. First --no-pub test attempt before dependency setup was not a source test failure; locked pubget then actual full suite passed.
+
+**Open recovery defect, actioned:** a queued failed DELETE that did succeed remotely can be replaced by Undo with update because stale personalItems still contains the old record. It retries an absent record indefinitely instead of recreating. Copilot's own receipt explicitly admits this edge, and independent source inspection confirms the decision path. No live hosted user deletion performed.
+
+Same task received one follow-up requiring authoritative same-UID reconciliation and existing source-key idempotency, preserving pending Undo on read failure, recreate only when missing, no duplicate/repeated delete, no blind overwrite of newer changed/recreated remote record (explicit conflict required), UID/generation guards for delayed reads/writes, and meaningful404/409 fakes/negative-control coverage. New mailbox must be incremental ONLY from exact8728b802 through new source, named interact-parity-batch3-uncertain-delete-fix-20261008.patch, with separate artifact commit and unchanged clean git-am proof. Original two mailboxes remain immutable.
+
+Clipboard fix/new10tests are retained. ConfiguredDEV release is intentionally deferred to coherent corrected source. Guest reload/product decision and hosted authenticated acceptance remain OPEN. No merge/deployment/schema/production/security access change; batches1+2 remain deployed80f421d.
