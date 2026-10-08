@@ -38,6 +38,8 @@ jobs:
           echo "$sdk_dir/bin" >> "$GITHUB_PATH"
           echo "CI=true" >> "$GITHUB_ENV"
           echo "FLUTTER_SUPPRESS_ANALYTICS=true" >> "$GITHUB_ENV"
+          # Complete first-launch initialization before requesting JSON output.
+          "$sdk_dir/bin/flutter" --suppress-analytics --version
           "$sdk_dir/bin/flutter" --suppress-analytics --version --machine > "$RUNNER_TEMP/copilot-flutter-version.json"
           python3 - "$RUNNER_TEMP/copilot-flutter-version.json" <<'PY'
           import json
