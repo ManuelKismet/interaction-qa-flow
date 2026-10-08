@@ -4712,8 +4712,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted ||
         widget.session['id'] != sessionId ||
-        !_scrollController.hasClients)
+        !_scrollController.hasClients) {
       return;
+    }
     await _scrollController.animateTo(
       _scrollController.position.maxScrollExtent,
       duration: const Duration(milliseconds: 200),

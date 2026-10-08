@@ -128,7 +128,7 @@ void main() {
         'bob-id',
       ]);
       final addedField = find.byKey(
-        ValueKey('guest-question-text-' + (added['id'] as String)),
+        ValueKey('guest-question-text-${added['id']}'),
       );
       await _ensureVisibleInGuestList(
         tester,
@@ -164,9 +164,7 @@ void main() {
       expect(bob['scope'], 'participant');
       expect(bob['target_participant_id'], 'bob-id');
       expect((bob['answers'] as List).single['participant_id'], 'bob-id');
-      final bobField = find.byKey(
-        ValueKey('guest-question-text-' + (bob['id'] as String)),
-      );
+      final bobField = find.byKey(ValueKey('guest-question-text-${bob['id']}'));
       await _ensureVisibleInGuestList(
         tester,
         participantAction,
