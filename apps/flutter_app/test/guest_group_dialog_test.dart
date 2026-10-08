@@ -1921,9 +1921,7 @@ Future<void> _openGroupAction(WidgetTester tester, String label) async {
     }
     final button = find.byWidgetPredicate(
       (widget) =>
-          (widget is FilledButton || widget is OutlinedButton) &&
-          widget is ButtonStyleButton &&
-          widget.onPressed != null,
+          widget is ButtonStyleButton && widget.onPressed != null,
     );
     final directAction = find
         .descendant(of: button, matching: find.text(label))
