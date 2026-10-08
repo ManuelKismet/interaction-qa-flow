@@ -4384,11 +4384,7 @@ class _GuestSessionEditor extends StatefulWidget {
 }
 
 class _GuestSessionEditorState extends State<_GuestSessionEditor> {
-  final _questionFormKey = GlobalKey<FormState>();
-  final _composerKey = GlobalKey();
   final _scrollController = ScrollController();
-  final _question = TextEditingController();
-  final _questionFocus = FocusNode();
   String? _selectedParticipantId;
 
   @override
@@ -4411,8 +4407,6 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _question.dispose();
-    _questionFocus.dispose();
     super.dispose();
   }
 
@@ -4657,41 +4651,67 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     _editSession((session) => session['title'] = values.single);
   }
 
-  void _addQuestion({required bool shared}) {
-    if (!_questionFormKey.currentState!.validate()) {
-      _questionFocus.requestFocus();
+  Future<void> _addQuestion({required bool shared}) async {
+    final sessionId = widget.session['id'];
+    final initialParticipantIds =
+        _participants.map((item) => item['id'] as String).toList();
+    if (initialParticipantIds.isEmpty) return;
+    final targetParticipantId =
+        initialParticipantIds.contains(_selectedParticipantId)
+        ? _selectedParticipantId!
+        : initialParticipantIds.first;
+    final values = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _GuestRequiredTextDialog(
+        title: shared
+            ? 'Add shared question'
+            : 'Add question for active participant',
+        submitLabel: 'Add question',
+        description: shared
+            ? 'Each participant gets a separate answer to this shared question.'
+            : 'This question is for the active participant selected when you opened this dialog.',
+        fields: const [
+          _GuestRequiredTextField(
+            label: 'Question text',
+            hintText: 'e.g. What would you like to discuss today?',
+            errorText: 'Enter a question.',
+            maxLines: 4,
+          ),
+        ],
+      ),
+      useRootNavigator: widget.groupName == null,
+    );
+    if (values == null || !mounted || widget.session['id'] != sessionId) return;
+    if (duplicateGuestParticipantIds(widget.session).isNotEmpty) {
+      _notify('Question editing is paused because participant IDs are duplicated.');
       return;
     }
-    final text = _question.text.trim();
-    final participantIds = _participants
-        .map((item) => item['id'] as String)
-        .toList();
-    if (participantIds.isEmpty) return;
-    final selectedParticipantId =
-        participantIds.contains(_selectedParticipantId)
-        ? _selectedParticipantId!
-        : participantIds.first;
+    final participantIds =
+        _participants.map((item) => item['id'] as String).toList();
+    if (participantIds.isEmpty) {
+      _notify('Add a participant before adding a question.');
+      return;
+    }
+    if (!shared && !participantIds.contains(targetParticipantId)) {
+      _notify('The selected participant is no longer available. Choose a participant and try again.');
+      return;
+    }
     final question = widget.makeQuestion(
-      text,
-      shared ? participantIds : [selectedParticipantId],
+      values.single.trim(),
+      shared ? participantIds : [targetParticipantId],
     );
     question['scope'] = shared ? 'shared' : 'participant';
-    if (!shared) {
-      question['target_participant_id'] = selectedParticipantId;
-    }
+    if (!shared) question['target_participant_id'] = targetParticipantId;
     _editSession((session) => (session['questions'] as List).add(question));
-    _question.clear();
-  }
-
-  Future<void> _showComposer() async {
-    final composer = _composerKey.currentContext;
-    if (composer != null) {
-      await Scrollable.ensureVisible(
-        composer,
-        duration: const Duration(milliseconds: 200),
-      );
-    }
-    if (mounted) _questionFocus.requestFocus();
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted ||
+        widget.session['id'] != sessionId ||
+        !_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _editQuestionText(String questionId) async {
@@ -5058,68 +5078,37 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
     ],
   );
 
-  Widget _composer(BuildContext context, bool hasParticipants) => KeyedSubtree(
-    key: _composerKey,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 12),
-        Form(
-          key: _questionFormKey,
-          child: TextFormField(
-            controller: _question,
-            focusNode: _questionFocus,
-            minLines: 1,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'New question',
-              hintText: 'e.g. What would you like to discuss today?',
-              suffixIcon: _GuestInfoButton(
-                tooltip: 'Question help',
-                title: 'About shared and participant questions',
-                content:
-                    'Shared questions get separate answers from each '
-                    'participant. Participant questions are asked only of '
-                    'the active participant. Templates are optional.',
+  Widget _questionActions(BuildContext context, bool hasParticipants) => Padding(
+    padding: const EdgeInsets.only(top: 12),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 440;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.tonal(
+              onPressed: hasParticipants
+                  ? () => _addQuestion(shared: true)
+                  : null,
+              child: const Text('Add shared question'),
+            ),
+            Tooltip(
+              message: 'Add question for the active participant',
+              child: FilledButton.tonal(
+                onPressed: hasParticipants
+                    ? () => _addQuestion(shared: false)
+                    : null,
+                child: Text(
+                  compact
+                      ? 'Add participant question'
+                      : 'Add question for active participant',
+                ),
               ),
             ),
-            validator: (value) => value == null || value.trim().isEmpty
-                ? 'Enter a question.'
-                : null,
-          ),
-        ),
-        const SizedBox(height: 8),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 440;
-            return Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.tonal(
-                  onPressed: hasParticipants
-                      ? () => _addQuestion(shared: true)
-                      : null,
-                  child: const Text('Add shared question'),
-                ),
-                Tooltip(
-                  message: 'Add question for the active participant',
-                  child: FilledButton.tonal(
-                    onPressed: hasParticipants
-                        ? () => _addQuestion(shared: false)
-                        : null,
-                    child: Text(
-                      compact
-                          ? 'Add participant question'
-                          : 'Add question for active participant',
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ],
+          ],
+        );
+      },
     ),
   );
 
@@ -5200,11 +5189,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               delegate: _GuestActiveParticipantBarDelegate(
                 name: activeParticipant['name'] as String? ?? 'Participant',
                 status: widget.storageStatus,
-                onAddQuestion: _showComposer,
                 background: Theme.of(context).colorScheme.surface,
               ),
             ),
-          padded(_composer(context, participants.isNotEmpty)),
           if (questions.isEmpty && participants.isNotEmpty)
             padded(
               const Padding(
@@ -5233,6 +5220,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 makeQuestion: widget.makeQuestion,
               ),
             ),
+          padded(_questionActions(context, participants.isNotEmpty)),
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
         padded(
@@ -5256,13 +5244,11 @@ class _GuestActiveParticipantBarDelegate
   const _GuestActiveParticipantBarDelegate({
     required this.name,
     required this.status,
-    required this.onAddQuestion,
     required this.background,
   });
 
   final String name;
   final String status;
-  final VoidCallback onAddQuestion;
   final Color background;
 
   static const double _height = 64;
@@ -5290,7 +5276,6 @@ class _GuestActiveParticipantBarDelegate
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final compact = constraints.maxWidth < 360;
                 return SizedBox(
                   height: _height,
                   child: Row(
@@ -5323,18 +5308,6 @@ class _GuestActiveParticipantBarDelegate
                           ],
                         ),
                       ),
-                      if (compact)
-                        IconButton(
-                          tooltip: 'Add a question',
-                          onPressed: onAddQuestion,
-                          icon: const Icon(Icons.add_comment_outlined),
-                        )
-                      else
-                        TextButton.icon(
-                          onPressed: onAddQuestion,
-                          icon: const Icon(Icons.add_comment_outlined),
-                          label: const Text('Add a question'),
-                        ),
                     ],
                   ),
                 );
@@ -5352,7 +5325,6 @@ class _GuestActiveParticipantBarDelegate
   ) =>
       oldDelegate.name != name ||
       oldDelegate.status != status ||
-      oldDelegate.onAddQuestion != onAddQuestion ||
       oldDelegate.background != background;
 }
 
