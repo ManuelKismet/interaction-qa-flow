@@ -131,6 +131,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   String? _personalConflictSourceKey;
   bool _personalConflictReloadFailed = false;
   int _personalGeneration = 0;
+  final Set<VoidCallback> _accountScopedDialogClosers = {};
   int _personalRefreshGeneration = 0;
   String? _personalOwnerUid;
   bool _personalLoading = false;
@@ -182,6 +183,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     _personalGeneration++;
     _personalRefreshGeneration++;
     _personalOwnerUid = uid;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _closeAccountScopedDialogs(),
+    );
     _personalItems = [];
     _pendingPersonalItems = [];
     _pendingPersonalWrites.clear();
@@ -1191,40 +1195,97 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     widget.onSessionRouteChanged?.call(null);
   }
 
+  void _closeAccountScopedDialogs() {
+    final closers = _accountScopedDialogClosers.toList();
+    _accountScopedDialogClosers.clear();
+    for (final close in closers) {
+      close();
+    }
+  }
+
+  Map<String, dynamic>? _currentSessionSnapshot(String id) {
+    final local = _data;
+    if (local == null) return null;
+    return _withPersonalWorkspace(
+      local,
+    ).sessions.where((item) => item['id'] == id).firstOrNull;
+  }
+
   Future<void> _copySessionJson(Map<String, dynamic> session) async {
+    final sessionId = session['id'];
+    final uid = _verifiedPersonalUid;
+    final generation = _personalGeneration;
     final isAccount = _storageStatus(
       'interact_session',
       session,
     ).startsWith('Personal account');
+    VoidCallback? closeDialog;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Copy session JSON backup'),
-        content: SingleChildScrollView(
-          child: Text(
-            'Copies only “${session['title'] ?? 'this session'}” as a JSON '
-            'backup to your clipboard, including its participants, answers '
-            'and follow-ups. Nothing is uploaded or shared. '
-            '${isAccount ? 'This session is stored in your private account, so the full local JSON backup does not include it. ' : ''}'
-            'It uses the local JSON backup format: “Import local JSON backup” '
-            'previews it and only adds selected items whose ID is not already '
-            'stored on this device.',
+      builder: (dialogContext) {
+        if (closeDialog == null) {
+          final route = ModalRoute.of(dialogContext);
+          final navigator = Navigator.of(dialogContext);
+          closeDialog = () {
+            if (route != null && route.isActive) {
+              navigator.removeRoute(route, false);
+            }
+          };
+          _accountScopedDialogClosers.add(closeDialog!);
+        }
+        return AlertDialog(
+          title: const Text('Copy session JSON backup'),
+          content: SingleChildScrollView(
+            child: Text(
+              'Copies only “${session['title'] ?? 'this session'}” as a JSON '
+              'backup to your clipboard, including its participants, answers '
+              'and follow-ups. Nothing is uploaded or shared. '
+              '${isAccount ? 'This session is stored in your private account, so the full local JSON backup does not include it. ' : ''}'
+              'It uses the local JSON backup format: “Import local JSON backup” '
+              'previews it and only adds selected items whose ID is not already '
+              'stored on this device.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Copy JSON'),
+            ),
+          ],
+        );
+      },
+    );
+    if (closeDialog != null) _accountScopedDialogClosers.remove(closeDialog);
+    if (!mounted) return;
+    final scopeUnchanged =
+        uid == _verifiedPersonalUid && generation == _personalGeneration;
+    if (confirmed != true && scopeUnchanged) return;
+    final current = sessionId is String && scopeUnchanged
+        ? _currentSessionSnapshot(sessionId)
+        : null;
+    final sameDestination =
+        current != null &&
+        _storageStatus(
+              'interact_session',
+              current,
+            ).startsWith('Personal account') ==
+            isAccount;
+    if (!scopeUnchanged || !sameDestination) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The account or session changed before copying. '
+            'Nothing was copied.',
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Copy JSON'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    final backup = GuestWorkspaceData(sessions: [session]).encodeBackup();
+      );
+      return;
+    }
+    final backup = GuestWorkspaceData(sessions: [current]).encodeBackup();
     try {
       await Clipboard.setData(ClipboardData(text: backup));
       if (!mounted) return;
@@ -1361,6 +1422,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       try {
         await ref.read(firebaseAuthProvider).signOut();
         _personalGeneration++;
+        _closeAccountScopedDialogs();
         if (mounted) {
           setState(() {
             _personalItems = [];

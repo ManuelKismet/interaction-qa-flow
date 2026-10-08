@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -198,6 +199,14 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
   final searches = <(String, String)>[];
   Completer<List<Map<String, dynamic>>>? nextListResponse;
   Completer<void>? nextImportGate;
+  Completer<void>? nextDeleteGate;
+  Completer<void>? nextUpdateGate;
+  var deleteFailures = 0;
+  var deleteFailureAppliesOnServer = false;
+  final updateUids = <String>[];
+  final deleteUids = <String>[];
+  final listUids = <String>[];
+  Future<List<Map<String, dynamic>>> Function(String expectedUid)? listHandler;
   Future<Map<String, dynamic>> Function(String query, String expectedUid)?
   searchHandler;
 
@@ -206,6 +215,9 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     required String expectedUid,
   }) async {
     listCalls++;
+    listUids.add(expectedUid);
+    final handler = listHandler;
+    if (handler != null) return handler(expectedUid);
     final response = nextListResponse;
     nextListResponse = null;
     if (response != null) return response.future;
@@ -278,6 +290,10 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     required Map<String, dynamic> data,
   }) async {
     updateRevisions.add(expectedRevision);
+    updateUids.add(expectedUid);
+    final gate = nextUpdateGate;
+    nextUpdateGate = null;
+    if (gate != null) await gate.future;
     if (updateConflicts > 0) {
       updateConflicts--;
       items = conflictItems ?? items;
@@ -308,6 +324,17 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     required int expectedRevision,
   }) async {
     deleteCalls++;
+    deleteUids.add(expectedUid);
+    final gate = nextDeleteGate;
+    nextDeleteGate = null;
+    if (gate != null) await gate.future;
+    if (deleteFailures > 0) {
+      deleteFailures--;
+      if (deleteFailureAppliesOnServer) {
+        items = items.where((item) => item['id'] != id).toList();
+      }
+      throw StateError('Simulated failed or uncertain delete response.');
+    }
     items = items.where((item) => item['id'] != id).toList();
   }
 }
@@ -3022,5 +3049,485 @@ void main() {
     expect(auth.signInAttempts, 1);
     expect(find.text('Keep this group identity'), findsNothing);
     expect(identical(auth.currentUser, guest), isTrue);
+  });
+
+  group('batch3 review correction', () {
+    Map<String, dynamic> accountSession(String id, String title) => {
+      'id': id,
+      'title': title,
+      'participants': [
+        {'id': 'alice-$id', 'name': 'Alice $title'},
+      ],
+      'questions': [
+        {
+          'id': 'root-$id',
+          'text': 'Root question for $title',
+          'scope': 'shared',
+          'answers': [
+            {
+              'participant_id': 'alice-$id',
+              'body': 'Answer owned by $title',
+              'branches_collapsed': false,
+              'follow_ups': [
+                {
+                  'id': 'nested-$id',
+                  'text': 'Nested follow-up for $title',
+                  'scope': 'participant',
+                  'target_participant_id': 'alice-$id',
+                  'answers': <Map<String, dynamic>>[],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    Map<String, dynamic> accountRecord(Map<String, dynamic> session) => {
+      'id': 'remote-${session['id']}',
+      'kind': 'interact_session',
+      'source_key': 'interact_session:${session['id']}',
+      'title': session['title'],
+      'data': session,
+      'revision': 1,
+      'created_at': '2026-10-06T00:00:00+00:00',
+      'updated_at': '2026-10-06T00:00:00+00:00',
+    };
+
+    User verified(String uid) =>
+        _TestUser(isAnonymous: false, isEmailVerified: true, testUid: uid);
+
+    Widget accountPage({
+      required User? user,
+      required GuestWorkspaceStore store,
+      required _TestPersonalWorkspaceRepository repository,
+      String? initialSessionId,
+      ValueChanged<String?>? onSessionRouteChanged,
+    }) => ProviderScope(
+      overrides: [
+        firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+        guestWorkspaceStoreProvider.overrideWithValue(store),
+        personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+      ],
+      child: MaterialApp(
+        home: GuestWorkspacePage(
+          firebaseReady: true,
+          personalWorkspaceEnabled: true,
+          accountUser: user,
+          initialWorkspaceTab: 1,
+          initialSessionId: initialSessionId,
+          onSessionRouteChanged: onSessionRouteChanged,
+        ),
+      ),
+    );
+
+    List<String> mockClipboard(WidgetTester tester) {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied.add((call.arguments as Map)['text'] as String);
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      return copied;
+    }
+
+    Future<void> openCopyDialog(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('More session actions').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Copy session JSON backup').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Copy JSON'), findsOneWidget);
+    }
+
+    Future<void> deleteOpenSession(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('More session actions').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete session').last);
+      await tester.pump();
+    }
+
+    Future<void> tapUndo(WidgetTester tester) async {
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('Undo').hitTestable().first);
+      await tester.pump();
+    }
+
+    void expectSingleRestored(
+      _TestPersonalWorkspaceRepository repository,
+      Map<String, dynamic> session, {
+      required int revision,
+    }) {
+      final matching = repository.items
+          .where((item) => item['source_key'] == 'interact_session:s1')
+          .toList();
+      expect(matching, hasLength(1));
+      expect(repository.items, hasLength(1));
+      expect(matching.single['revision'], revision);
+      expect(jsonEncode(matching.single['data']), jsonEncode(session));
+    }
+
+    testWidgets('account session JSON copy uses the backup format only', (
+      tester,
+    ) async {
+      final copied = mockClipboard(tester);
+      final session = accountSession('s1', 'Account A session');
+      final repository = _TestPersonalWorkspaceRepository([
+        accountRecord(session),
+      ]);
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await tester.pumpWidget(
+        accountPage(
+          user: verified('a'),
+          store: store,
+          repository: repository,
+          initialSessionId: 's1',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await openCopyDialog(tester);
+      expect(
+        find.textContaining('stored in your private account'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Copy JSON'));
+      await tester.pumpAndSettle();
+
+      expect(copied, hasLength(1));
+      final decoded = GuestWorkspaceData.decodeBackup(copied.single);
+      expect(decoded.sessions, hasLength(1));
+      expect(jsonEncode(decoded.sessions.single), jsonEncode(session));
+      expect(decoded.knowledge, isEmpty);
+      expect(decoded.templates, isEmpty);
+      expect(
+        find.text('Session JSON backup copied. Nothing was uploaded.'),
+        findsOneWidget,
+      );
+      expect(repository.imports, isEmpty);
+      expect(repository.updateRevisions, isEmpty);
+      expect(repository.deleteCalls, 0);
+      expect((await store.load()).sessions, isEmpty);
+    });
+
+    for (final signOut in [false, true]) {
+      testWidgets(
+        'stale copy confirmation never copies the previous account session '
+        '(${signOut ? 'sign-out' : 'UID switch'})',
+        (tester) async {
+          final copied = mockClipboard(tester);
+          final sessionA = accountSession('s1', 'Account A secret');
+          final repository = _TestPersonalWorkspaceRepository([
+            accountRecord(sessionA),
+          ]);
+          final store = GuestWorkspaceStore(_MemoryGuestStorage());
+          await tester.pumpWidget(
+            accountPage(
+              user: verified('a'),
+              store: store,
+              repository: repository,
+              initialSessionId: 's1',
+            ),
+          );
+          await tester.pumpAndSettle();
+          await openCopyDialog(tester);
+
+          // The second account owns a session with the same local ID.
+          repository.items = signOut
+              ? []
+              : [accountRecord(accountSession('s1', 'Account B session'))];
+          await tester.pumpWidget(
+            accountPage(
+              user: signOut ? null : verified('b'),
+              store: store,
+              repository: repository,
+              initialSessionId: 's1',
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // The stale confirmation is dismissed rather than left actionable.
+          expect(find.text('Copy JSON'), findsNothing);
+          expect(copied, isEmpty);
+          expect(
+            find.text('Session JSON backup copied. Nothing was uploaded.'),
+            findsNothing,
+          );
+          expect(
+            find.text(
+              'The account or session changed before copying. '
+              'Nothing was copied.',
+            ),
+            findsOneWidget,
+          );
+          expect(find.textContaining('Account A secret'), findsNothing);
+          expect(repository.imports, isEmpty);
+          expect((await store.load()).sessions, isEmpty);
+        },
+      );
+    }
+
+    testWidgets('local guest session JSON copy works without Firebase', (
+      tester,
+    ) async {
+      final copied = mockClipboard(tester);
+      final session = accountSession('local-1', 'Local guest session');
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(GuestWorkspaceData(sessions: [session]));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+          child: const MaterialApp(
+            home: GuestWorkspacePage(
+              firebaseReady: false,
+              initialWorkspaceTab: 1,
+              initialSessionId: 'local-1',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await openCopyDialog(tester);
+      expect(
+        find.textContaining('stored in your private account'),
+        findsNothing,
+      );
+      await tester.tap(find.text('Copy JSON'));
+      await tester.pumpAndSettle();
+
+      expect(copied, hasLength(1));
+      expect(
+        jsonEncode(
+          GuestWorkspaceData.decodeBackup(copied.single).sessions.single,
+        ),
+        jsonEncode(session),
+      );
+      expect(
+        find.text('Session JSON backup copied. Nothing was uploaded.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Undo during an in-flight account DELETE restores one item', (
+      tester,
+    ) async {
+      final session = accountSession('s1', 'Removable account session');
+      final repository = _TestPersonalWorkspaceRepository([
+        accountRecord(session),
+      ]);
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      final gate = Completer<void>();
+      repository.nextDeleteGate = gate;
+      await tester.pumpWidget(
+        accountPage(
+          user: verified('a'),
+          store: store,
+          repository: repository,
+          initialSessionId: 's1',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await deleteOpenSession(tester);
+      expect(repository.deleteCalls, 1);
+      await tapUndo(tester);
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(repository.deleteUids, ['a']);
+      expect(repository.importUids, ['a']);
+      expectSingleRestored(repository, session, revision: 1);
+      expect(repository.items.single['id'], 'record-interact_session:s1');
+      expect((await store.load()).sessions, isEmpty);
+      expect(find.textContaining('not confirmed'), findsNothing);
+    });
+
+    for (final appliedOnServer in [true, false]) {
+      testWidgets(
+        'Undo during a ${appliedOnServer ? 'uncertain' : 'failing'} account '
+        'DELETE retries to one restored item',
+        (tester) async {
+          final session = accountSession('s1', 'Removable account session');
+          final repository = _TestPersonalWorkspaceRepository([
+            accountRecord(session),
+          ]);
+          final store = GuestWorkspaceStore(_MemoryGuestStorage());
+          final gate = Completer<void>();
+          repository
+            ..nextDeleteGate = gate
+            ..deleteFailures = 1
+            ..deleteFailureAppliesOnServer = appliedOnServer;
+          await tester.pumpWidget(
+            accountPage(
+              user: verified('a'),
+              store: store,
+              repository: repository,
+              initialSessionId: 's1',
+            ),
+          );
+          await tester.pumpAndSettle();
+          await deleteOpenSession(tester);
+          await tapUndo(tester);
+          gate.complete();
+          await tester.pumpAndSettle();
+
+          expect(find.text('Retry account save'), findsOneWidget);
+          expect(repository.imports, isEmpty);
+          await _tapVisibleTarget(tester, find.text('Retry account save'));
+          await tester.pumpAndSettle();
+
+          expect(repository.deleteCalls, 1);
+          expect(repository.importUids, ['a']);
+          expect(repository.updateRevisions, isEmpty);
+          expectSingleRestored(repository, session, revision: 1);
+          expect(
+            repository.items.single['id'],
+            appliedOnServer ? 'record-interact_session:s1' : 'remote-s1',
+          );
+          expect(find.text('Retry account save'), findsNothing);
+          expect((await store.load()).sessions, isEmpty);
+        },
+      );
+    }
+
+    testWidgets(
+      'Undo of a queued failed account DELETE keeps the account item',
+      (tester) async {
+        final session = accountSession('s1', 'Removable account session');
+        final repository = _TestPersonalWorkspaceRepository([
+          accountRecord(session),
+        ])..deleteFailures = 1;
+        final store = GuestWorkspaceStore(_MemoryGuestStorage());
+        await tester.pumpWidget(
+          accountPage(
+            user: verified('a'),
+            store: store,
+            repository: repository,
+            initialSessionId: 's1',
+          ),
+        );
+        await tester.pumpAndSettle();
+        await deleteOpenSession(tester);
+        await tester.pump();
+        // The failed removal remains queued (not in flight) until retried.
+        expect(repository.deleteCalls, 1);
+        await tapUndo(tester);
+        await tester.pumpAndSettle();
+        expect(repository.deleteCalls, 1);
+
+        await _tapVisibleTarget(tester, find.text('Retry account save'));
+        await tester.pumpAndSettle();
+
+        expect(repository.deleteCalls, 1);
+        expect(repository.imports, isEmpty);
+        expect(repository.updateRevisions, [1]);
+        expectSingleRestored(repository, session, revision: 2);
+        expect(repository.items.single['id'], 'remote-s1');
+        expect((await store.load()).sessions, isEmpty);
+      },
+    );
+
+    for (final signOut in [false, true]) {
+      testWidgets(
+        'open personal editor drops delayed old-account reads and writes on '
+        '${signOut ? 'sign-out' : 'UID switch'}',
+        (tester) async {
+          final routes = <String?>[];
+          final sessionA = accountSession('s1', 'Account A secret');
+          final sessionB = accountSession('s1', 'Account B session');
+          final repository = _TestPersonalWorkspaceRepository([
+            accountRecord(sessionA),
+          ]);
+          final store = GuestWorkspaceStore(_MemoryGuestStorage());
+          await tester.pumpWidget(
+            accountPage(
+              user: verified('a'),
+              store: store,
+              repository: repository,
+              initialSessionId: 's1',
+              onSessionRouteChanged: routes.add,
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Destination: Private account'), findsOneWidget);
+
+          // Delay the old account's write.
+          final writeGate = Completer<void>();
+          repository.nextUpdateGate = writeGate;
+          await _ensureVisibleInVerticalList(
+            tester,
+            find.text('Nested follow-up for Account A secret'),
+            anchor: find.byTooltip('Back to sessions'),
+          );
+          final answer = find
+              .byWidgetPredicate(
+                (widget) =>
+                    widget is TextField &&
+                    widget.decoration?.labelText == 'Personal-account answer',
+              )
+              .first;
+          await tester.ensureVisible(answer);
+          await tester.enterText(answer, 'Late account A edit');
+          await tester.pump(const Duration(seconds: 2));
+          expect(repository.updateUids, ['a']);
+
+          // Delay reads for both the old and the next account.
+          final oldRead = Completer<List<Map<String, dynamic>>>();
+          final nextRead = Completer<List<Map<String, dynamic>>>();
+          repository.listHandler = (uid) =>
+              uid == 'a' ? oldRead.future : nextRead.future;
+          await tester.pumpWidget(
+            accountPage(
+              user: signOut ? null : verified('b'),
+              store: store,
+              repository: repository,
+              initialSessionId: 's1',
+              onSessionRouteChanged: routes.add,
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(routes.last, isNull);
+          expect(find.text('Destination: Private account'), findsNothing);
+
+          // Old-account responses arrive after the identity change.
+          writeGate.complete();
+          oldRead.complete([
+            accountRecord({...sessionA, 'title': 'Account A late read'}),
+          ]);
+          await tester.pump();
+          if (!signOut) {
+            nextRead.complete([accountRecord(sessionB)]);
+          }
+          await tester.pumpAndSettle();
+
+          expect(find.textContaining('Account A'), findsNothing);
+          expect(find.textContaining('Late account A edit'), findsNothing);
+          expect(find.text('Destination: Private account'), findsNothing);
+          expect(routes.last, isNull);
+          expect(repository.updateUids, ['a']);
+          expect(repository.importUids, isEmpty);
+          expect(repository.deleteUids, isEmpty);
+          expect((await store.load()).sessions, isEmpty);
+          if (signOut) {
+            expect(repository.listUids.where((uid) => uid != 'a'), isEmpty);
+          } else {
+            expect(repository.listUids.last, 'b');
+            await _ensureVisibleInVerticalList(
+              tester,
+              find.text('Account B session'),
+              anchor: find.text('Create private session'),
+            );
+          }
+        },
+      );
+    }
   });
 }
