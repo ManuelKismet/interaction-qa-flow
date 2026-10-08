@@ -49,7 +49,9 @@ no product failure or pass inferred from those intermediate states.
 Authenticated personal/organisation/Group role, conflicts/imports, multi-device
 and accessibility acceptance remains OPEN and requires DEV sign-in. Current browser
 shows existing-account Email/Password/Sign in form; secure browserAuth sign-in
-handoff will collect credentials without exposing them to Codex. No full parity
+request submitted, then fresh DEV UI reported auth/invalid-email. Authentication
+NOT established; no credential value inspected/logged, no automated retry.
+Manual browser sign-in handoff offered to unblock the remaining acceptance. No full parity
 claim; batch3/4 not started.
 
 Persistent evidence/scripts:
