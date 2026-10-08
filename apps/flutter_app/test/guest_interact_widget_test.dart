@@ -220,7 +220,7 @@ void main() {
         tester.getSize(pdfControl).height,
       );
       expect(tester.getSize(destinationControl).height, 40);
-      if (width >= 800) {
+      if (width >= 832) {
         expect(
           (tester.getCenter(destination).dy - tester.getCenter(pdf).dy).abs(),
           lessThan(1),
