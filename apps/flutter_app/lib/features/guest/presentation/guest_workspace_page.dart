@@ -5264,17 +5264,16 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
           padded(_questionActions(context, participants.isNotEmpty)),
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        padded(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Text(
-              widget.groupName != null
-                  ? 'Edits affect this Group copy only, not the original. Use Save Group copy to confirm changes.'
-                  : 'Changes are saved to $_storageLabel as you type.',
-              style: Theme.of(context).textTheme.bodySmall,
+        if (widget.groupName == null)
+          padded(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Text(
+                'Changes are saved to $_storageLabel as you type.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -7549,13 +7548,97 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 
   Widget _buildGroupsScaffold() => Scaffold(
     appBar: AppBar(
-      title: const Text('Groups'),
+      toolbarHeight: 48,
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              'Groups',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          _GuestInfoButton(
+            tooltip: 'Groups information',
+            title: 'About groups',
+            content:
+                'Groups require a registered Firebase account with a verified '
+                'email, but do not require organisation membership. Group '
+                'membership does not grant organisation, department, or '
+                'private-session access. Group data remains associated with '
+                'its Firebase UID; another account does not inherit it.\n\n'
+                'Approved Group members can access shared content. '
+                'Only Group admins manage membership and invitations. '
+                'Search accessible Group Knowledge from Personal workspace Search.'
+                '${_group == null ? '' : '\n\nYour group role: ${_group!['role']}.'}',
+          ),
+        ],
+      ),
       actions: [
-        IconButton(
-          tooltip: 'Manage members and invitations',
-          onPressed: _group == null ? null : _showMembers,
-          icon: const Icon(Icons.group_outlined),
-        ),
+        if (_group != null)
+          PopupMenuButton<String>(
+            tooltip: 'Group options',
+            enabled: !_busy,
+            onSelected: (value) {
+              if (_busy || !_canCreateOrJoin) {
+                return;
+              }
+              switch (value) {
+                case 'create':
+                  _createGroup();
+                case 'join':
+                  _joinByInvitation();
+                case 'members':
+                  _showMembers();
+                case 'share':
+                  if (_canCreate) {
+                    _shareSelectedLocalWork();
+                  }
+                case 'invite':
+                  if (_group?['role'] == 'admin') {
+                    _createInvitation();
+                  }
+                case 'archive':
+                  if (_group?['role'] == 'admin') {
+                    _archiveGroup();
+                  }
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'create',
+                child: Text('Create group'),
+              ),
+              const PopupMenuItem(
+                value: 'join',
+                child: Text('Join with invitation'),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'members',
+                child: Text(
+                  _group?['role'] == 'admin'
+                      ? 'Manage members and invitations'
+                      : 'Group members',
+                ),
+              ),
+              if (_canCreate)
+                const PopupMenuItem(
+                  value: 'share',
+                  child: Text('Preview and share local work'),
+                ),
+              if (_group?['role'] == 'admin') ...[
+                const PopupMenuItem(value: 'invite', child: Text('Invite')),
+                const PopupMenuItem(
+                  value: 'archive',
+                  child: Text('Archive group'),
+                ),
+              ],
+            ],
+          ),
         IconButton(
           tooltip: 'Refresh',
           onPressed: _busy ? null : _loadGroups,
@@ -7566,44 +7649,25 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     body: ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Groups require a registered account with a verified email, but '
-                'do not require organisation membership. Group membership does '
-                'not grant organisation, department, or private-session access.',
+        if (_group == null) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _busy || !_canCreateOrJoin ? null : _createGroup,
+                icon: const Icon(Icons.add),
+                label: const Text('Create group'),
               ),
-            ),
-            const _GuestInfoButton(
-              tooltip: 'Groups information',
-              title: 'About groups',
-              content:
-                  'Groups require a registered Firebase account with a verified '
-                  'email, but do not require organisation membership. Group '
-                  'membership does not grant organisation, department, or '
-                  'private-session access. Group data remains associated with '
-                  'its Firebase UID; another account does not inherit it.',
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton.icon(
-              onPressed: _busy || !_canCreateOrJoin ? null : _createGroup,
-              icon: const Icon(Icons.add),
-              label: const Text('Create group'),
-            ),
-            OutlinedButton.icon(
-              onPressed: _busy || !_canCreateOrJoin ? null : _joinByInvitation,
-              icon: const Icon(Icons.link),
-              label: const Text('Join with invitation'),
-            ),
-          ],
-        ),
+              OutlinedButton.icon(
+                onPressed: _busy || !_canCreateOrJoin ? null : _joinByInvitation,
+                icon: const Icon(Icons.link),
+                label: const Text('Join with invitation'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
         if (!_canCreateOrJoin)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -7713,55 +7777,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         ],
         if (_group != null) ...[
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Your group role: ${_group!['role']}.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              const _GuestInfoButton(
-                tooltip: 'Group access information',
-                title: 'About Group access',
-                content:
-                    'Approved Group members can access this content. '
-                    'Only Group admins manage membership and invitations. '
-                    'Search accessible Group Knowledge from Personal '
-                    'workspace Search.',
-              ),
-            ],
-          ),
           _adminTransferCard(),
-          Wrap(
-            spacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: _canCreate ? _createKnowledge : null,
+          if (_canCreate)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _busy ? null : _createKnowledge,
                 icon: const Icon(Icons.note_add_outlined),
                 label: const Text('Add shared Knowledge'),
               ),
-              OutlinedButton.icon(
-                onPressed: _canCreate ? _shareSelectedLocalWork : null,
-                icon: const Icon(Icons.cloud_upload_outlined),
-                label: const Text('Preview and share local work'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _group?['role'] == 'admin'
-                    ? _createInvitation
-                    : null,
-                icon: const Icon(Icons.person_add_alt_1),
-                label: const Text('Invite'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _busy || _group?['role'] != 'admin'
-                    ? null
-                    : _archiveGroup,
-                icon: const Icon(Icons.archive_outlined),
-                label: const Text('Archive group'),
-              ),
-            ],
-          ),
+            ),
           const SizedBox(height: 8),
           if (_entries.isEmpty)
             const Text('No shared Knowledge or Interact items are available.')
@@ -7775,8 +7800,18 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                         : Icons.menu_book_outlined,
                   ),
                   title: Text(entry['title'] as String? ?? 'Shared content'),
+                  dense: true,
                   subtitle: Text(
-                    '${entry['kind']} · revision ${entry['revision']} · updated by a group member',
+                    entry['kind'] == 'interact_session' ? 'Interact' : 'Knowledge',
+                  ),
+                  trailing: _GuestInfoButton(
+                    tooltip: 'Shared item details',
+                    title: 'About this shared item',
+                    content:
+                        '${entry['title'] ?? 'Shared content'}\n'
+                        'Revision ${entry['revision']} · updated by a group member.\n\n'
+                        'This copy is shared with approved Group members. '
+                        'Personal and local originals remain separate.',
                   ),
                   onTap: () => _openEntry(entry),
                 ),
