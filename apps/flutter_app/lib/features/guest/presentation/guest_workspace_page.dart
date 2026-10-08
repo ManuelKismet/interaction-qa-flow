@@ -5480,36 +5480,43 @@ class _GuestQuestionEditorState extends State<_GuestQuestionEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  key: ValueKey('guest-question-text-$id'),
-                  controller: _questionText,
-                  focusNode: _questionFocus,
-                  minLines: 1,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    labelText: widget.nested
-                        ? 'Follow-up question text'
-                        : 'Question text',
-                    hintText: 'e.g. What would you like to discuss today?',
-                    alignLabelWithHint: true,
-                    border: const OutlineInputBorder(),
-                    errorText: _questionText.text.trim().isEmpty
-                        ? 'Enter a question. The last saved text is kept.'
-                        : null,
-                  ),
-                  onChanged: _updateQuestionText,
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Wrap(
-                    children: [
-                      IconButton(
-                        tooltip: 'Delete question and undo',
-                        onPressed: widget.onRemove,
-                        icon: const Icon(Icons.delete_outline),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: ValueKey('guest-question-text-$id'),
+                        controller: _questionText,
+                        focusNode: _questionFocus,
+                        minLines: 1,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          labelText: widget.nested
+                              ? 'Follow-up question text'
+                              : 'Question text',
+                          hintText: 'e.g. What would you like to discuss today?',
+                          alignLabelWithHint: true,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          border: const OutlineInputBorder(),
+                          errorText: _questionText.text.trim().isEmpty
+                              ? 'Enter a question. The last saved text is kept.'
+                              : null,
+                        ),
+                        onChanged: _updateQuestionText,
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      key: ValueKey('guest-question-delete-$id'),
+                      tooltip: 'Delete question and undo',
+                      onPressed: widget.onRemove,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ],
                 ),
                 Text(
                   widget.nested
