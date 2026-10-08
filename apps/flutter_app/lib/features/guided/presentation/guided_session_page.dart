@@ -290,8 +290,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
               child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
+                spacing: 8,
+                runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   SizedBox(
@@ -357,26 +357,14 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                         setState(() => _viewMode = selection.first),
                   ),
                   Text(
-                    '$answered of ${session.preparedQuestionCount} questions answered',
+                    '$answered/${session.preparedQuestionCount} answered · ${session.followUpCount} follow-ups',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  Text('${session.followUpCount} follow-ups'),
                   if (canEditSession) ...[
                     OutlinedButton.icon(
                       icon: const Icon(Icons.person_add_alt_1_outlined),
                       label: const Text('Add participant'),
                       onPressed: () => _addParticipant(),
-                    ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Shared question'),
-                      onPressed: () => _addQuestion('shared'),
-                    ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.person_outline),
-                      label: const Text('Participant question'),
-                      onPressed: activeParticipant == null
-                          ? null
-                          : () => _addQuestion('participant'),
                     ),
                   ],
                 ],
@@ -444,6 +432,29 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                           onDelete: _deleteQuestion,
                           onKnowledgeSearch: _knowledgeSearch,
                           onPropose: _propose,
+                          questionActions: canEditSession
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Shared question'),
+                      onPressed: () => _addQuestion('shared'),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.person_outline),
+                      label: const Text('Participant question'),
+                      onPressed: activeParticipant == null
+                          ? null
+                          : () => _addQuestion('participant'),
+                    ),
+                                    ],
+                                  ),
+                                )
+                              : null,
                         ),
                 ),
               ],
@@ -1119,7 +1130,7 @@ class _SessionHeader extends StatelessWidget {
           session.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.headlineSmall,
+          style: Theme.of(context).textTheme.titleMedium,
         ),
         Text(
           [
@@ -1146,30 +1157,58 @@ class _SessionHeader extends StatelessWidget {
           ),
         ),
       IconButton(
-        tooltip: 'Active participant report',
-        icon: Icon(
-          reportMode && !allParticipantsReport
-              ? Icons.edit_outlined
-              : Icons.description_outlined,
-        ),
-        onPressed: () => onToggleReport(false),
-      ),
-      IconButton(
-        tooltip: 'All participants report',
-        icon: const Icon(Icons.groups_outlined),
-        onPressed: () => onToggleReport(true),
-      ),
-      IconButton(
         tooltip: 'Lifecycle and recovery',
-        icon: const Icon(Icons.info_outline),
+        icon: const Icon(Icons.info_outline, size: 20),
         onPressed: onLifecycleInfo,
       ),
-      if (onSessionAction != null)
-        PopupMenuButton<String>(
-          tooltip: 'Session actions',
-          icon: const Icon(Icons.more_vert),
-          onSelected: onSessionAction,
-          itemBuilder: (_) => [
+      PopupMenuButton<String>(
+        tooltip: 'Reports and export',
+        icon: const Icon(Icons.download_outlined, size: 20),
+        onSelected: (action) {
+          switch (action) {
+            case 'participant':
+              onToggleReport(false);
+            case 'all':
+              onToggleReport(true);
+            case 'pdf':
+              onPrint?.call();
+            default:
+              onExport(action);
+          }
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'participant',
+            child: Text(reportMode && !allParticipantsReport
+                ? 'Return to editing'
+                : 'Active participant report'),
+          ),
+          PopupMenuItem(
+            value: 'all',
+            child: Text(reportMode && allParticipantsReport
+                ? 'Return to editing'
+                : 'All participants report'),
+          ),
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 'json', child: Text('JSON')),
+          const PopupMenuItem(value: 'csv', child: Text('CSV')),
+          if (onPrint != null)
+            const PopupMenuItem(value: 'pdf', child: Text('Print / Save PDF')),
+        ],
+      ),
+      PopupMenuButton<String>(
+        tooltip: 'Session actions',
+        icon: const Icon(Icons.more_vert, size: 20),
+        onSelected: (action) {
+          if (action == 'history') {
+            onHistory();
+          } else {
+            onSessionAction?.call(action);
+          }
+        },
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: 'history', child: Text('Save history')),
+          if (onSessionAction != null) ...[
             const PopupMenuItem(
               value: 'details',
               child: Text('Edit session details'),
@@ -1184,27 +1223,8 @@ class _SessionHeader extends StatelessWidget {
                 child: Text('Archive session'),
               ),
           ],
-        ),
-      PopupMenuButton<String>(
-        tooltip: 'Export',
-        icon: const Icon(Icons.download_outlined),
-        onSelected: onExport,
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: 'json', child: Text('JSON')),
-          PopupMenuItem(value: 'csv', child: Text('CSV')),
         ],
       ),
-      IconButton(
-        tooltip: 'Save history',
-        icon: const Icon(Icons.history),
-        onPressed: onHistory,
-      ),
-      if (onPrint != null)
-        IconButton(
-          tooltip: 'Print / Save PDF',
-          icon: const Icon(Icons.print_outlined),
-          onPressed: onPrint,
-        ),
       if (onTransition != null)
         FilledButton(
           onPressed: onTransition,
@@ -1212,10 +1232,10 @@ class _SessionHeader extends StatelessWidget {
         ),
     ];
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 24, 12),
+      padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth < 900) {
+          if (constraints.maxWidth < 650) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1257,6 +1277,7 @@ class GuidedFlowView extends StatelessWidget {
     this.readOnly = false,
     this.managedDebounce = false,
     this.pendingValues = const {},
+    this.questionActions,
     required this.onEditing,
     required this.onSaveQuestion,
     required this.onSaveAnswer,
@@ -1268,6 +1289,7 @@ class GuidedFlowView extends StatelessWidget {
     super.key,
   });
 
+  final Widget? questionActions;
   final List<GuidedQuestion> questions;
   final String? participantId;
   final String? participantName;
@@ -1287,10 +1309,13 @@ class GuidedFlowView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (participantId == null) {
-      return const Center(child: Text('Add or select a participant to begin.'));
-    }
-    if (questions.isEmpty) {
-      return const Center(child: Text('No questions in this view.'));
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text('Add or select a participant to begin.'),
+          if (questionActions != null) questionActions!,
+        ],
+      );
     }
     final visibleQuestions = <_VisibleGuidedQuestion>[];
     void append(
@@ -1329,8 +1354,9 @@ class GuidedFlowView extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 1100),
         child: ListView(
           key: const ValueKey('guided-flow-list'),
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 60),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
+            if (questions.isEmpty) const Text('No questions in this view.'),
             for (final visible in visibleQuestions)
               GuidedQuestionNode(
                 question: visible.question,
@@ -1351,6 +1377,7 @@ class GuidedFlowView extends StatelessWidget {
                 onKnowledgeSearch: onKnowledgeSearch,
                 onPropose: onPropose,
               ),
+            if (questionActions != null) questionActions!,
           ],
         ),
       ),
