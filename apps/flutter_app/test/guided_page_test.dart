@@ -98,7 +98,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('IntQAFlow Interact'), findsOneWidget);
+    expect(find.text('Interact'), findsOneWidget);
+    expect(find.text('Active'), findsOneWidget);
+    expect(find.byTooltip('Interact options'), findsOneWidget);
     expect(find.text('New session'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
