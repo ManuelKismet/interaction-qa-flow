@@ -346,7 +346,7 @@ void main() {
     (tester) async {
       final repository = _Repository();
       await _mount(tester, repository);
-      final questionEdit = find.byTooltip('Edit question');
+      final questionEdit = find.byKey(const ValueKey('guest-question-text-root'));
       await tester.scrollUntilVisible(
         questionEdit,
         180,
@@ -359,7 +359,7 @@ void main() {
       );
       await _tap(tester, questionEdit.first);
       await tester.enterText(_field('Question text'), 'Revised root question');
-      await _tap(tester, find.text('Update Group draft'));
+      await tester.pumpAndSettle();
       await _tap(tester, _field('Group copy answer').first);
       await tester.enterText(_field('Group copy answer').first, '');
       await _tap(tester, find.text('Save Group copy'));
@@ -1236,7 +1236,7 @@ void main() {
         await _tap(tester, find.byTooltip('Add participant'));
       } else if (dialog == 'question') {
         await tester.scrollUntilVisible(
-          find.text('Root question'),
+          find.text('Add shared question'),
           160,
           scrollable: find
               .descendant(
@@ -1245,7 +1245,7 @@ void main() {
               )
               .first,
         );
-        await _tap(tester, find.byTooltip('Edit question').first);
+        await _tap(tester, find.text('Add shared question'));
       } else if (dialog == 'history') {
         await _tap(tester, find.byTooltip('Group copy revision history'));
       } else {
@@ -1319,7 +1319,7 @@ void main() {
       );
       expect(activeBar, findsOneWidget);
       expect(tester.getRect(activeBar).bottom, lessThanOrEqualTo(420));
-      await _tap(tester, find.byTooltip('Add a question'));
+      expect(find.byTooltip('Add a question'), findsNothing);
       await tester.scrollUntilVisible(
         find.byTooltip('Add participant'),
         -160,
@@ -1337,12 +1337,10 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       expect(find.text('Add to Group draft'), findsNothing);
-      await _tap(tester, find.byTooltip('Add a question'));
-      await tester.enterText(
-        find.byType(TextFormField).first,
-        'Keyboard question',
-      );
+      await tester.scrollUntilVisible(find.text('Add shared question'), 160, scrollable: scrollable, maxScrolls: 100);
       await _tap(tester, find.text('Add shared question'));
+      await tester.enterText(find.descendant(of: find.byType(AlertDialog).last, matching: find.byType(TextFormField)), 'Keyboard question');
+      await _tap(tester, find.widgetWithText(FilledButton, 'Add question'));
       await _tap(tester, find.text('Save Group copy'));
       expect(repository.entry['data']['participants'], hasLength(3));
       expect(
@@ -1381,14 +1379,15 @@ void main() {
         scrollable: scrollable,
         maxScrolls: 100,
       );
-      await _tap(tester, find.byTooltip('Edit follow-up question').last);
+      final field = find.byKey(const ValueKey('guest-question-text-root-child-child-child-child'));
+      await _tap(tester, field);
       await tester.enterText(
-        _field('Question text'),
+        field,
         List.filled(12, 'Long nested question').join(' '),
       );
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       await tester.pumpAndSettle();
-      await _tap(tester, find.text('Update Group draft'));
+      expect(tester.takeException(), isNull);
       tester.view.resetViewInsets();
       await tester.pumpAndSettle();
       await _tap(tester, find.text('Save Group copy'));
