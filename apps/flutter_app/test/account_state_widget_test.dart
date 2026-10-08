@@ -1066,21 +1066,21 @@ void main() {
       page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'a')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Saved Q&A'));
+    await tester.tap(find.text('Saved'));
     await tester.pumpAndSettle();
     await _ensureVisibleInVerticalList(
       tester,
       find.text('Account A private item'),
-      anchor: find.text('Saved Q&A'),
+      anchor: find.text('Saved'),
     );
     expect(find.text('Account A private item'), findsOneWidget);
     expect((await storage.load()).knowledge, isEmpty);
     await _ensureVisibleInVerticalList(
       tester,
-      find.text('Back to Ask & search'),
-      anchor: find.text('Saved Q&A'),
+      find.text('Back to Search'),
+      anchor: find.text('Saved'),
     );
-    await _tapVisibleTarget(tester, find.text('Back to Ask & search'));
+    await _tapVisibleTarget(tester, find.text('Back to Search'));
     await tester.pumpAndSettle();
 
     repository.items = [personalItem('b', 'Account B private item')];
@@ -1088,14 +1088,14 @@ void main() {
       page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'b')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Saved Q&A'));
+    await tester.tap(find.text('Saved'));
     await tester.pumpAndSettle();
 
     expect(find.text('Account A private item'), findsNothing);
     await _ensureVisibleInVerticalList(
       tester,
       find.text('Account B private item'),
-      anchor: find.text('Saved Q&A'),
+      anchor: find.text('Saved'),
     );
     expect(find.text('Account B private item'), findsOneWidget);
     expect(repository.listCalls, 2);
@@ -1458,12 +1458,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect((await store.load()).knowledge, isEmpty);
-    await tester.tap(find.text('Saved Q&A'));
+    await tester.tap(find.text('Saved'));
     await tester.pumpAndSettle();
     await _ensureVisibleInVerticalList(
       tester,
       find.text('Personal account item'),
-      anchor: find.text('Saved Q&A'),
+      anchor: find.text('Saved'),
     );
     expect(find.text('Personal account item'), findsOneWidget);
     expect(repository.deleteCalls, 0);
@@ -1516,12 +1516,12 @@ void main() {
         repository.imports[1].single['source_key'],
       );
       expect((await store.load()).knowledge, hasLength(2));
-      await tester.tap(find.text('Questions').first);
+      await tester.tap(find.text('Saved').first);
       await tester.pumpAndSettle();
-      expect(find.text('Back to Ask & search'), findsOneWidget);
+      expect(find.text('Back to Search'), findsOneWidget);
       final savedListScrollable = find
           .ancestor(
-            of: find.text('Questions').first,
+            of: find.text('Saved').first,
             matching: find.byType(Scrollable),
           )
           .first;
@@ -1651,12 +1651,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Saved Q&A'));
+      await tester.tap(find.text('Saved'));
       await tester.pumpAndSettle();
       await _ensureVisibleInVerticalList(
         tester,
         find.byTooltip('Edit personal-account Knowledge'),
-        anchor: find.text('Saved Q&A'),
+        anchor: find.text('Saved'),
       );
       await tester.tap(
         find.byTooltip('Edit personal-account Knowledge').hitTestable(),
@@ -1923,15 +1923,15 @@ void main() {
       );
       await _ensureVisibleInVerticalList(
         tester,
-        find.text('Saved Q&A'),
+        find.text('Saved'),
         anchor: find.text('Search Knowledge'),
       );
-      await tester.tap(find.text('Saved Q&A').hitTestable());
+      await tester.tap(find.text('Saved').hitTestable());
       await tester.pumpAndSettle();
       await _ensureVisibleInVerticalList(
         tester,
         find.byTooltip('Edit personal-account Knowledge'),
-        anchor: find.text('Saved Q&A'),
+        anchor: find.text('Saved'),
       );
       await tester.tap(
         find.byTooltip('Edit personal-account Knowledge').hitTestable(),
@@ -2166,15 +2166,15 @@ void main() {
       await _scrollToTopOfVerticalList(tester, anchor: find.byType(Form));
       await _ensureVisibleInVerticalList(
         tester,
-        find.text('Saved Q&A'),
+        find.text('Saved'),
         anchor: find.text('Search Knowledge'),
       );
-      await tester.tap(find.text('Saved Q&A').hitTestable());
+      await tester.tap(find.text('Saved').hitTestable());
       await tester.pumpAndSettle();
       await _ensureVisibleInVerticalList(
         tester,
         find.byTooltip('Remove personal-account Knowledge'),
-        anchor: find.text('Saved Q&A'),
+        anchor: find.text('Saved'),
       );
       await tester.tap(find.byTooltip('Remove personal-account Knowledge'));
       await tester.pumpAndSettle();
@@ -2239,15 +2239,15 @@ void main() {
       );
       await _ensureVisibleInVerticalList(
         tester,
-        find.text('Saved Q&A'),
+        find.text('Saved'),
         anchor: find.text('Search Knowledge'),
       );
-      await tester.tap(find.text('Saved Q&A').hitTestable());
+      await tester.tap(find.text('Saved').hitTestable());
       await tester.pumpAndSettle();
       await _ensureVisibleInVerticalList(
         tester,
         find.text('Refresh race question'),
-        anchor: find.text('Saved Q&A'),
+        anchor: find.text('Saved'),
       );
       expect(find.text('Refresh race question'), findsOneWidget);
       expect(find.text('Personal account · saved'), findsOneWidget);
