@@ -635,6 +635,7 @@ void main() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
     });
+    late final GoRouter router;
     Widget page({
       int tab = 0,
       KnowledgeSection section = KnowledgeSection.ask,
@@ -645,10 +646,13 @@ void main() {
         accountUser: ref.watch(authStateProvider).value,
         membershipStatus: AccountMembershipStatus.active,
         initialWorkspaceTab: tab,
+        onWorkspaceTabChanged: (index) => router.go(
+          index == 0 ? '/personal/ask' : '/personal/interact',
+        ),
         initialKnowledgeSection: section,
       ),
     );
-    final router = GoRouter(
+    router = GoRouter(
       initialLocation: initialLocation,
       routes: [
         ShellRoute(
@@ -716,6 +720,39 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('personal shell provides the only workspace navigation', (
+    tester,
+  ) async {
+    await pumpPersonalRouter(
+      tester,
+      user: _TestUser(isAnonymous: false, isEmailVerified: true),
+      repository: _TestPersonalWorkspaceRepository([]),
+      store: GuestWorkspaceStore(_MemoryGuestStorage()),
+    );
+    final workspace = find.byType(GuestWorkspacePage);
+    expect(
+      find.descendant(of: workspace, matching: find.byType(TabBar)),
+      findsNothing,
+    );
+    expect(find.byTooltip('Switch Knowledge or Interact'), findsNothing);
+    expect(find.byTooltip('Search help'), findsOneWidget);
+    expect(find.byTooltip('Interact privacy information'), findsNothing);
+
+    await _tapPersonalNavigation(tester, 'Interact');
+    expect(find.text('Create private session'), findsOneWidget);
+    expect(find.byTooltip('Interact privacy information'), findsOneWidget);
+    expect(find.byTooltip('Search help'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(GuestWorkspacePage),
+        matching: find.byType(TabBar),
+      ),
+      findsNothing,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
 
   testWidgets('personal workspace consolidates information and import controls', (
     tester,
