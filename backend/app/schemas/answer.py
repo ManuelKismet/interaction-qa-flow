@@ -11,9 +11,8 @@ from app.schemas.user import UserSummary
 
 
 class AnswerCreate(BaseModel):
-    # TODO(auth): derive organisation_id and author_id from the authenticated identity.
-    organisation_id: UUID
-    author_id: UUID
+    organisation_id: UUID | None = None
+    author_id: UUID | None = None
     body: str = Field(min_length=1)
 
 
@@ -42,16 +41,14 @@ class AnswerDetailResponse(AnswerResponse):
 
 
 class AnswerUpdate(BaseModel):
-    # TODO(auth): derive organisation_id and user_id from the authenticated identity.
-    organisation_id: UUID
-    user_id: UUID
+    organisation_id: UUID | None = None
+    user_id: UUID | None = None
     body: str = Field(min_length=1)
 
 
 class ReactionCreate(BaseModel):
-    # TODO(auth): derive organisation_id and user_id from the authenticated identity.
-    organisation_id: UUID
-    user_id: UUID
+    organisation_id: UUID | None = None
+    user_id: UUID | None = None
     reaction: ReactionType
 
 

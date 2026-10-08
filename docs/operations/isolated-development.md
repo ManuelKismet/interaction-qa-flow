@@ -19,10 +19,12 @@ existing TeamService annotation blocker (IQ-01); no tests passed in this run.
 Docker Compose execution, PostgreSQL migrations and Flutter/browser acceptance
 remain pending.
 
-Knowledge and Interact stay in one platform. Authentication remains deferred.
-Only synthetic content belongs in this environment. Keep the development
-identity API on loopback or behind verified private workspace access. Do not
-publish the server-backed platform to GitHub Pages or a public development URL.
+Knowledge and Interact stay in one platform. This runbook's previous development
+identity commands are superseded by Firebase Auth and App Check. Use
+[cloud-development.md](cloud-development.md) for current non-secret web
+configuration, private synthetic membership seeding, and acceptance steps. Only
+synthetic content belongs in this environment. Do not publish the server-backed
+platform without the private deployment review.
 The existing root index.html compatibility app is a separate static experience;
 its hosting success does not verify the platform.
 
@@ -91,12 +93,11 @@ Do not substitute the original compose.yaml: it uses the default smart_qa
 database and an unrestricted host port binding. Always use this standalone
 file with -f, without combining the two Compose files.
 
-## Flutter and synthetic identities
+## Flutter and synthetic membership
 
-After the API works, create only synthetic organisations/users using an
-explicit reviewed seed procedure. The repository requires matching database
-rows for the development IDs; arbitrary UUIDs alone are insufficient.
-Synthetic seed automation is still pending.
+The previous caller-selected development identity flow is disabled. Use the
+reviewed seed procedure in `cloud-development.md` to map a synthetic Firebase
+UID to an active database membership.
 
 In a separate shell, from apps/flutter_app:
 
@@ -104,12 +105,10 @@ In a separate shell, from apps/flutter_app:
 flutter pub get
 flutter analyze
 flutter test
-flutter run -d web-server --web-hostname 127.0.0.1 --web-port 8080 \
-  --dart-define=API_BASE_URL=http://localhost:8000 \
-  --dart-define=DEV_ORGANISATION_ID=<synthetic-organisation-uuid> \
-  --dart-define=DEV_USER_ID=<synthetic-user-uuid> \
-  --dart-define=DEV_USER_ROLE=employee
 ```
+
+Follow the Firebase build defines in `apps/flutter_app/README.md` to launch the
+web client. App Check requires the registered web provider/site key.
 
 Replace angle-bracket placeholders before execution. For a local browser use
 localhost:8080. If a future Codespace is used, both web and API ports must remain

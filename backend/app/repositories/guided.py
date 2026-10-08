@@ -47,10 +47,11 @@ class GuidedRepository:
             GuidedSession.created_by == user_id,
             GuidedSession.visibility == GuidedSessionVisibility.ORGANISATION,
         ]
-        if department_id:
+        if department_id is not None:
             visibility.append(
                 and_(
                     GuidedSession.visibility == GuidedSessionVisibility.DEPARTMENT,
+                    GuidedSession.department_id.is_not(None),
                     GuidedSession.department_id == department_id,
                 )
             )
@@ -62,7 +63,14 @@ class GuidedRepository:
                 )
             )
         statement = select(GuidedSession).where(GuidedSession.organisation_id == organisation_id)
-        if not is_admin:
+        if is_admin:
+            statement = statement.where(
+                or_(
+                    GuidedSession.visibility != GuidedSessionVisibility.PRIVATE,
+                    GuidedSession.created_by == user_id,
+                )
+            )
+        else:
             statement = statement.where(or_(*visibility))
         if status:
             statement = statement.where(GuidedSession.status == status)

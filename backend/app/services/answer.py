@@ -6,7 +6,8 @@ from app.core.config import get_settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.answer import Answer, AnswerStatus
 from app.models.answer_reaction import AnswerReaction
-from app.models.question import QuestionStatus
+from app.models.question import Question, QuestionStatus
+from app.models.user import User
 from app.repositories.answer import AnswerReactionRepository, AnswerRepository
 from app.repositories.question import QuestionRepository
 from app.repositories.user import UserRepository
@@ -37,18 +38,9 @@ class AnswerService:
         question_id: UUID,
         data: AnswerCreate,
     ) -> AnswerDetailResponse:
-        question = await self.questions.get_for_organisation(
-            question_id,
-            data.organisation_id,
+        question, _ = await self._visible_question(
+            question_id, data.organisation_id, data.author_id
         )
-        if not question:
-            raise NotFoundError("Question not found")
-
-        if not await self.users.get_for_organisation(
-            data.author_id,
-            data.organisation_id,
-        ):
-            raise NotFoundError("Author not found in this organisation")
 
         answer = Answer(
             question_id=question_id,
@@ -62,11 +54,13 @@ class AnswerService:
         await self.session.refresh(answer)
         return await self._detail(answer)
 
-    async def list(self, question_id: UUID, organisation_id: UUID) -> list[AnswerDetailResponse]:
-        if not await self.questions.get_for_organisation(question_id, organisation_id):
-            raise NotFoundError("Question not found")
+    async def list(
+        self, question_id: UUID, organisation_id: UUID, user_id: UUID
+    ) -> list[AnswerDetailResponse]:
+        question, _ = await self._visible_question(
+            question_id, organisation_id, user_id
+        )
         rows = await self.answers.list_details_for_question(question_id, organisation_id)
-        question = await self.questions.get_for_organisation(question_id, organisation_id)
         return [
             AnswerDetailResponse.model_validate(
                 {
@@ -119,7 +113,9 @@ class AnswerService:
         answer = await self.answers.get_for_organisation(answer_id, data.organisation_id)
         if not answer:
             raise NotFoundError("Answer not found")
-        await self.permissions.actor(data.user_id, data.organisation_id)
+        await self._visible_question(
+            answer.question_id, data.organisation_id, data.user_id
+        )
         reaction = await self.reactions.get(answer_id, data.user_id, data.organisation_id)
         if reaction:
             reaction.reaction = data.reaction
@@ -149,9 +145,23 @@ class AnswerService:
         answer = await self.answers.get_for_organisation(answer_id, organisation_id)
         if not answer:
             raise NotFoundError("Answer not found")
-        actor = await self.permissions.actor(user_id, organisation_id)
+        _, actor = await self._visible_question(
+            answer.question_id, organisation_id, user_id
+        )
         self.permissions.require_owner(actor, answer.author_id)
         return answer
+
+    async def _visible_question(
+        self, question_id: UUID, organisation_id: UUID, user_id: UUID
+    ) -> tuple[Question, User]:
+        question = await self.questions.get_for_organisation(
+            question_id, organisation_id
+        )
+        if not question:
+            raise NotFoundError("Question not found")
+        actor = await self.permissions.actor(user_id, organisation_id)
+        self.permissions.require_question_visibility(actor, question)
+        return question, actor
 
     async def _detail(self, answer: Answer) -> AnswerDetailResponse:
         question = await self.questions.get_for_organisation(

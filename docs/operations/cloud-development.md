@@ -102,3 +102,86 @@ missing, invalid and wrong-app App Check tokens. Test real Flutter auth and
 hosted database access. No production resources, secrets committed or tokens
 logged. Joint review before release. Copilot owns application coding under the
 agreed workflow; Codex owns configuration and environment setup.
+
+## Application integration status
+
+The application change is on the draft isolation-branch PR. It does not deploy
+the service, change IAM, or create cloud resources.
+
+- API requests now require a Firebase ID token whose verified UID maps to one
+  active `users` membership. Organisation, user, and role are taken from that
+  database row. `X-User-ID`, `X-Organisation-ID`, and caller-provided actor
+  fields do not establish identity. The organisation-creation API is not
+  registered; tenant setup is a private operator action.
+- Migration `0008` adds the unique `firebase_uid_mappings` relationship. Apply it
+  to the hosted development database only after Codex review.
+- Firebase Admin uses Application Default Credentials and
+  `FIREBASE_PROJECT_ID`; do not configure downloaded service-account keys.
+- App Check is a distinct API dependency. `APP_CHECK_MODE=observe` explicitly
+  permits a missing App Check token while validating any provided token.
+  `APP_CHECK_MODE=enforce` rejects missing, invalid, and wrong-web-app tokens.
+  Keep observation mode until the real hosted web client passes the browser
+  matrix below. Codex must configure the approved reCAPTCHA Enterprise provider,
+  register the actual hosted web origins and the web app ID with Firebase App
+  Check, and provide its public site key as a build define. Firebase App Check
+  debug tokens are not enabled in this app.
+- Set `CORS_ORIGINS` to an explicit JSON list of hosted web origins (for example,
+  `["https://intqaflow-dev.web.app"]`). A configured hosted-origin list disables
+  the local-only development origin pattern. Wildcard origins are rejected.
+- The Flutter web app requires non-secret build defines for Firebase API key,
+  registered web app/project IDs, and the registered reCAPTCHA Enterprise site key.
+  Firebase email/password sign-in, password reset and sign-out are supported.
+  The client sends refreshed ID and App Check tokens and obtains its active
+  membership from `/api/v1/auth/me`.
+
+### Private synthetic tenant seed
+
+Create the dedicated synthetic Firebase user in the private development
+project, then use its Firebase UID with the API database URL already supplied
+to the private Codex runtime. The procedure is repeatable, restricted in code
+to `APP_ENV=development` and project `intqaflow-dev`, and only creates a fixed
+synthetic tenant/admin. It does not create a Firebase account or credentials.
+Never use a real person's UID, email, or data.
+
+```sh
+cd backend
+APP_ENV=development FIREBASE_PROJECT_ID=intqaflow-dev \
+  python -m scripts.seed_synthetic_membership \
+  --firebase-uid <synthetic-firebase-uid> --confirm-development
+```
+
+The Firebase UID is an identifier, not a token or credential. The script reads
+the database URL from the private runtime environment and prints no database
+configuration. Do not place that URL or ID token in source control.
+
+### Hosted browser-to-API acceptance matrix
+
+| Check | Expected result |
+| --- | --- |
+| Sign in at `intqaflow-dev.web.app` with the seeded synthetic account; load Knowledge and Interact | `/api/v1/auth/me` succeeds; API calls carry current ID and App Check tokens |
+| Sign out, then reload or call a protected API | UI returns to sign-in; protected API returns 401 without an ID token |
+| Missing, malformed, expired, wrong-project ID token | API returns 401 |
+| Valid Firebase UID without an active mapping | API returns 401 |
+| Forged `X-User-ID`, `X-Organisation-ID`, or actor fields | Identity is still token-derived; conflicting tenant/actor values are rejected |
+| Employee role attempts a tenant administration action | API returns 403 |
+| Request selects another organisation | API returns 403 or a tenant-scoped not-found response |
+| App Check observation mode without token | Request is admitted and missing-token observation is logged without token contents |
+| App Check enforcement with no token, invalid token, or token for another app | API returns 401 |
+| Valid App Check token for registered web app with enforcement enabled | Request proceeds to Firebase Auth and membership checks |
+
+### Validation and pending cloud checks
+
+The local synthetic-token tests cover membership resolution, invalid claims,
+expired tokens, inactive/unmapped users, forged development headers, tenant
+scoping, role restriction, and App Check observation/enforcement. PostgreSQL 16
+with pgvector accepted migrations 0001–0008 on a disposable local database; the
+synthetic seed completed twice idempotently there. The backend suite reports 46
+passed and one existing guided-proposal test failure. That same
+`MissingGreenlet` failure reproduces on base commit `80dc87d` with the currently
+resolved dependency versions, so it is not introduced by this change.
+
+Flutter tests/analyzer/release build, actual hosted browser-to-API tests, and
+service ADC verification require the Flutter SDK and private Codex runtime/site
+key; they remain pending. Do not enable App Check enforcement or deploy until
+those hosted checks pass. No production deployment, IAM change, credential
+retrieval, or cloud resource provisioning was performed.

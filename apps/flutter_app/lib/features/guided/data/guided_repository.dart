@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
-import 'package:int_qa_flow/core/config/app_config.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
@@ -17,16 +16,9 @@ class GuidedRepository {
 
   final Dio _client;
 
-  Options get _options => Options(headers: {
-        'X-Organisation-ID': AppConfig.developmentOrganisationId,
-        'X-User-ID': AppConfig.developmentUserId,
-      });
+  Options get _options => Options();
 
   Future<T> _request<T>(Future<T> Function() operation) async {
-    if (AppConfig.developmentOrganisationId.isEmpty ||
-        AppConfig.developmentUserId.isEmpty) {
-      throw const ApiException('Development identity is not configured.');
-    }
     try {
       return await operation();
     } on DioException catch (error) {

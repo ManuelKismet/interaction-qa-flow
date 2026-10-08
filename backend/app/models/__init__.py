@@ -7,6 +7,7 @@ from app.models.base import Base
 from app.models.comment import Comment
 from app.models.department import Department
 from app.models.department_answer_owner import DepartmentAnswerOwner
+from app.models.firebase_uid_mapping import FirebaseUidMapping
 from app.models.duplicate_suggestion import (
     DuplicateSuggestion,
     DuplicateSuggestionStatus,
@@ -49,6 +50,7 @@ __all__ = [
     "Comment",
     "Department",
     "DepartmentAnswerOwner",
+    "FirebaseUidMapping",
     "DuplicateSuggestion",
     "DuplicateSuggestionStatus",
     "GuidedAnswer",

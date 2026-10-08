@@ -9,6 +9,7 @@ from app.models.department import Department
 from app.models.question import Question
 from app.models.team import Team
 from app.models.user import User
+from app.services.permissions import PermissionService
 
 
 class QuestionRepository:
@@ -25,6 +26,8 @@ class QuestionRepository:
         organisation_id: UUID,
         offset: int,
         limit: int,
+        *,
+        actor: User,
         status=None,
         department_id: UUID | None = None,
         team_id: UUID | None = None,
@@ -58,6 +61,7 @@ class QuestionRepository:
             statement = statement.where(Question.team_id == team_id)
         if author_id is not None:
             statement = statement.where(Question.author_id == author_id)
+        statement = statement.where(PermissionService.question_visibility_clause(actor))
 
         result = await self.session.execute(
             statement.order_by(Question.created_at.desc()).offset(offset).limit(limit)
@@ -124,6 +128,7 @@ class QuestionRepository:
         canonical_question_id: UUID,
         organisation_id: UUID,
         limit: int,
+        actor: User,
     ) -> list[Question]:
         return list(
             await self.session.scalars(
@@ -131,6 +136,7 @@ class QuestionRepository:
                 .where(
                     Question.organisation_id == organisation_id,
                     Question.canonical_question_id == canonical_question_id,
+                    PermissionService.question_visibility_clause(actor),
                 )
                 .order_by(Question.updated_at.desc())
                 .limit(limit)
