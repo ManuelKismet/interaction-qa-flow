@@ -2,10 +2,7 @@ diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_pa
 index 2ad0044..8154fe5 100644
 --- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
 +++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
-@@ -1649,6 +1649,141 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
-     final guestGroupsState = canUseGroups
-         ? ref.watch(currentGuestGroupsProvider)
-         : null;
+@@ -1651,0 +1652,135 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 +    final viewport = MediaQuery.sizeOf(context);
 +    final compactViewport = viewport.height < 300;
 +    final narrowViewport = viewport.width < 420;
@@ -141,13 +138,7 @@ index 2ad0044..8154fe5 100644
 +          ],
 +        ),
 +    ];
-     return PopScope(
-       canPop: !_hasPendingWorkspaceChanges,
-       onPopInvokedWithResult: (didPop, result) {
-@@ -1661,16 +1796,35 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
-         initialIndex: widget.initialWorkspaceTab,
-         child: Scaffold(
-           appBar: AppBar(
+@@ -1664,9 +1799,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 -            title: Text(
 -              _verifiedPersonalUid != null
 -                  ? 'Personal workspace'
@@ -168,7 +159,7 @@ index 2ad0044..8154fe5 100644
 +                    maxLines: 1,
 +                    overflow: TextOverflow.ellipsis,
 +                  ),
-             actions: [
+@@ -1673,0 +1811,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 +              if (compactViewport)
 +                Builder(
 +                  builder: (context) => PopupMenuButton<int>(
@@ -186,13 +177,7 @@ index 2ad0044..8154fe5 100644
 +                    ],
 +                  ),
 +                ),
-               _accountMenu(),
-               PopupMenuButton<String>(
-                 tooltip: _hasSignedInNonGuestUser
-@@ -1712,13 +1866,18 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
-                 ],
-               ),
-             ],
+@@ -1715,7 +1869,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 -            bottom: TabBar(
 -              onTap: _handleWorkspaceTabChanged,
 -              tabs: [
@@ -212,13 +197,7 @@ index 2ad0044..8154fe5 100644
 +                      ),
 +                    ],
 +                  ),
-           ),
-           body: data == null
-               ? Center(
-@@ -1742,230 +1901,108 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
-                           ),
-                         ),
-                 )
+@@ -1745,76 +1904,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 -              : Column(
 -                  children: [
 -                    Flexible(
@@ -312,7 +291,7 @@ index 2ad0044..8154fe5 100644
 +                                crossAxisAlignment: CrossAxisAlignment.stretch,
 +                                children: workspaceNotices,
 +                              ),
-                             ),
+@@ -1822,38 +1922,61 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 -                          ),
 -                        ],
 -                      ),
@@ -402,12 +381,7 @@ index 2ad0044..8154fe5 100644
 +                                  updated: data.copyWith(
 +                                    knowledge: [item, ...data.knowledge],
 +                                  ),
-                                 ),
--                              )
--                            : const Text(
--                                'Verify this account’s email before using Groups. '
--                                'Local work remains available, and organisation '
--                                'membership is not required for Groups.',
++                                ),
 +                                onUpdate: (item) => _save(
 +                                  data.copyWith(
 +                                    knowledge: [
@@ -417,7 +391,12 @@ index 2ad0044..8154fe5 100644
 +                                            : current,
 +                                    ],
 +                                  ),
-+                                ),
+@@ -1861,5 +1984,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+-                              )
+-                            : const Text(
+-                                'Verify this account’s email before using Groups. '
+-                                'Local work remains available, and organisation '
+-                                'membership is not required for Groups.',
 +                                onDelete: (id) =>
 +                                    _deleteKnowledge(data, id),
 +                              ),
@@ -433,7 +412,7 @@ index 2ad0044..8154fe5 100644
 +                                      updated: updated,
 +                                    ),
 +                                onPrint: _printReport,
-                               ),
+@@ -1867,24 +1999,0 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 -                      ),
 -                    if (guestGroupsState?.hasError == true)
 -                      MaterialBanner(
@@ -458,9 +437,7 @@ index 2ad0044..8154fe5 100644
 -                          ),
 -                        ],
 -                      ),
-                             ],
-                           ),
-                         ),
+@@ -1894,75 +2003,3 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 -                      ),
 -                    ),
 -                    Expanded(
@@ -539,13 +516,7 @@ index 2ad0044..8154fe5 100644
 +                      ],
 +                    );
 +                  },
-                 ),
-         ),
-       ),
-@@ -2426,17 +2463,22 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
-           const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
-         ],
-       ],
+@@ -2429,11 +2466,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 -      child: const Padding(
 -        padding: EdgeInsets.symmetric(horizontal: 8),
 -        child: Row(
@@ -573,39 +544,21 @@ index 2ad0044..8154fe5 100644
 +                ],
 +              ),
 +            ),
-     );
-   }
- }
 diff --git a/apps/flutter_app/lib/shared/widgets/app_shell.dart b/apps/flutter_app/lib/shared/widgets/app_shell.dart
 index c0b7e0c..296df3a 100644
 --- a/apps/flutter_app/lib/shared/widgets/app_shell.dart
 +++ b/apps/flutter_app/lib/shared/widgets/app_shell.dart
-@@ -285,6 +285,7 @@ class AppShell extends ConsumerWidget {
-         }).toList();
-     final isWide =
-         MediaQuery.sizeOf(context).width >= Responsive.navigationRailBreakpoint;
+@@ -287,0 +288 @@ class AppShell extends ConsumerWidget {
 +    final compactToolbar = MediaQuery.sizeOf(context).width < 380;
- 
-     return PopScope(
-       canPop: !pendingWorkspaceChanges,
-@@ -298,17 +299,24 @@ class AppShell extends ConsumerWidget {
-             ? null
-             : AppBar(
-                 backgroundColor: const Color(0xFFFFFBF4),
+@@ -301 +302,3 @@ class AppShell extends ConsumerWidget {
 -                title: const Text('IntQAFlow'),
 +                title: MediaQuery.sizeOf(context).width < 280
 +                    ? null
 +                    : const Text('IntQAFlow'),
-                 actions: [
-                   if (membership != null)
-                     _workspaceSwitcher(
-                       context,
-                       ref: ref,
-                       personalWorkspace: personalWorkspace,
+@@ -308 +311 @@ class AppShell extends ConsumerWidget {
 -                      showLabel: true,
 +                      showLabel: !compactToolbar,
-                     ),
-                   if (membership != null)
+@@ -311 +314,6 @@ class AppShell extends ConsumerWidget {
 -                    _accountMenu(context, ref, membership, showLabel: true),
 +                    _accountMenu(
 +                      context,
@@ -613,17 +566,11 @@ index c0b7e0c..296df3a 100644
 +                      membership,
 +                      showLabel: !compactToolbar,
 +                    ),
-                 ],
-               ),
-         body: Row(
 diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
 index e839c37..a26fedd 100644
 --- a/apps/flutter_app/test/account_state_widget_test.dart
 +++ b/apps/flutter_app/test/account_state_widget_test.dart
-@@ -403,6 +403,31 @@ Future<void> _ensureVisibleInVerticalList(
-   expect(target.hitTestable(), findsOneWidget);
- }
- 
+@@ -405,0 +406,25 @@ Future<void> _ensureVisibleInVerticalList(
 +Future<void> _tapVisibleTarget(WidgetTester tester, Finder target) async {
 +  await tester.ensureVisible(target);
 +  await tester.pumpAndSettle();
@@ -649,65 +596,35 @@ index e839c37..a26fedd 100644
 +  expect(target.hitTestable(), findsOneWidget);
 +}
 +
- Future<void> _tapPersonalNavigation(
-   WidgetTester tester,
-   String label,
-@@ -481,7 +506,11 @@ void main() {
-     String initialLocation = '/personal/ask',
-   }) async {
-     tester.view.physicalSize = const Size(720, 600);
+@@ -484 +509,5 @@ void main() {
 -    addTearDown(tester.view.resetPhysicalSize);
 +    tester.view.devicePixelRatio = 1;
 +    addTearDown(() {
 +      tester.view.resetPhysicalSize();
 +      tester.view.resetDevicePixelRatio();
 +    });
-     Widget page({
-       int tab = 0,
-       KnowledgeSection section = KnowledgeSection.ask,
-@@ -800,6 +829,11 @@ void main() {
-     await tester.pumpAndSettle();
-     await tester.tap(find.text('Saved Q&A'));
-     await tester.pumpAndSettle();
+@@ -802,0 +832,5 @@ void main() {
 +    await _ensureVisibleInVerticalList(
 +      tester,
 +      find.text('Account A private item'),
 +      anchor: find.text('Saved Q&A'),
 +    );
-     expect(find.text('Account A private item'), findsOneWidget);
-     expect((await storage.load()).knowledge, isEmpty);
-     await tester.tap(find.text('Back to add a local question'));
-@@ -814,6 +848,11 @@ void main() {
-     await tester.pumpAndSettle();
- 
-     expect(find.text('Account A private item'), findsNothing);
+@@ -816,0 +851,5 @@ void main() {
 +    await _ensureVisibleInVerticalList(
 +      tester,
 +      find.text('Account B private item'),
 +      anchor: find.text('Saved Q&A'),
 +    );
-     expect(find.text('Account B private item'), findsOneWidget);
-     expect(repository.listCalls, 2);
-     expect((await storage.load()).knowledge, isEmpty);
-@@ -1177,6 +1216,11 @@ void main() {
-     expect((await store.load()).knowledge, isEmpty);
-     await tester.tap(find.text('Saved Q&A'));
-     await tester.pumpAndSettle();
+@@ -1179,0 +1219,5 @@ void main() {
 +    await _ensureVisibleInVerticalList(
 +      tester,
 +      find.text('Personal account item'),
 +      anchor: find.text('Saved Q&A'),
 +    );
-     expect(find.text('Personal account item'), findsOneWidget);
-     expect(repository.deleteCalls, 0);
-   });
-@@ -1204,14 +1248,10 @@ void main() {
-         repository: repository,
-         store: store,
-       );
+@@ -1207 +1251 @@ void main() {
 -      await tester.tap(find.text('Import local work'));
 +      await _tapVisibleTarget(tester, find.text('Import local work'));
-       await tester.pumpAndSettle();
+@@ -1209,6 +1253,2 @@ void main() {
 -      await tester.tap(
 -        find.descendant(
 -          of: find.byType(AlertDialog),
@@ -716,22 +633,10 @@ index e839c37..a26fedd 100644
 -      );
 +      await _ensureVisibleInDialog(tester, find.text('Keep this item local'));
 +      await tester.tap(find.text('Keep this item local').hitTestable());
-       await tester.pumpAndSettle();
-       await tester.tap(find.text('Import selected work'));
-       await tester.pumpAndSettle();
-@@ -1294,7 +1334,7 @@ void main() {
-       ),
-     );
-     await tester.pumpAndSettle();
+@@ -1297 +1337 @@ void main() {
 -    await tester.tap(find.text('Import local work'));
 +    await _tapVisibleTarget(tester, find.text('Import local work'));
-     await tester.pumpAndSettle();
-     await tester.tap(find.text('Import selected work'));
-     await tester.pumpAndSettle();
-@@ -1369,7 +1409,14 @@ void main() {
-       await tester.pumpAndSettle();
-       await tester.tap(find.text('Saved Q&A'));
-       await tester.pumpAndSettle();
+@@ -1372 +1412,8 @@ void main() {
 -      await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
 +      await _ensureVisibleInVerticalList(
 +        tester,
@@ -741,71 +646,29 @@ index e839c37..a26fedd 100644
 +      await tester.tap(
 +        find.byTooltip('Edit personal-account Knowledge').hitTestable(),
 +      );
-       await tester.pumpAndSettle();
-       await tester.enterText(
-         find
-@@ -1390,7 +1437,7 @@ void main() {
- 
-       expect(repository.updateRevisions, [1]);
-       expect(find.text('My pending edit'), findsOneWidget);
+@@ -1393 +1440 @@ void main() {
 -      await tester.tap(find.text('Review account change'));
 +      await _tapVisibleTarget(tester, find.text('Review account change'));
-       await tester.pumpAndSettle();
-       expect(
-         find.textContaining('Latest saved version (revision 2)'),
-@@ -1401,7 +1448,7 @@ void main() {
-       await tester.pumpAndSettle();
-       expect(find.text('My pending edit'), findsOneWidget);
- 
+@@ -1404 +1451 @@ void main() {
 -      await tester.tap(find.text('Review account change'));
 +      await _tapVisibleTarget(tester, find.text('Review account change'));
-       await tester.pumpAndSettle();
-       await tester.tap(find.text('Save my pending edit'));
-       await tester.pumpAndSettle();
-@@ -1539,7 +1586,7 @@ void main() {
-       (await store.load()).knowledge.single['id'],
-       'local-knowledge',
-     );
+@@ -1542 +1589 @@ void main() {
 -    await tester.tap(find.text('Import local work'));
 +    await _tapVisibleTarget(tester, find.text('Import local work'));
-     await tester.pumpAndSettle();
-     await tester.tap(find.text('Import selected work'));
-     await tester.pumpAndSettle();
-@@ -1892,7 +1939,7 @@ void main() {
-       );
-       unawaited(router.push<void>('/personal/ask'));
-       await tester.pumpAndSettle();
+@@ -1895 +1942 @@ void main() {
 -      await tester.tap(find.text('Import local work'));
 +      await _tapVisibleTarget(tester, find.text('Import local work'));
-       await tester.pumpAndSettle();
-       await tester.tap(find.text('Import selected work'));
-       await tester.pump();
-@@ -1936,7 +1983,7 @@ void main() {
-         repository: repository,
-         store: store,
-       );
+@@ -1939 +1986 @@ void main() {
 -      await tester.tap(find.text('Import local work'));
 +      await _tapVisibleTarget(tester, find.text('Import local work'));
-       await tester.pumpAndSettle();
-       await tester.tap(find.text('Import selected work'));
-       await tester.pumpAndSettle();
-@@ -1973,7 +2020,7 @@ void main() {
-         repository: repository,
-         store: store,
-       );
+@@ -1976 +2023 @@ void main() {
 -      await tester.tap(find.text('Import local work'));
 +      await _tapVisibleTarget(tester, find.text('Import local work'));
-       await tester.pumpAndSettle();
-       await tester.tap(find.text('Import selected work'));
-       await tester.pumpAndSettle();
 diff --git a/apps/flutter_app/test/ask_page_test.dart b/apps/flutter_app/test/ask_page_test.dart
 index aca6462..0190c14 100644
 --- a/apps/flutter_app/test/ask_page_test.dart
 +++ b/apps/flutter_app/test/ask_page_test.dart
-@@ -370,6 +370,21 @@ void main() {
-     await tester.pumpAndSettle();
-     await tester.tap(find.text('Private account policy'));
-     await tester.pumpAndSettle();
+@@ -372,0 +373,15 @@ void main() {
 +    final personalQuestionsList = find
 +        .ancestor(of: find.text('Saved Q&A'), matching: find.byType(Scrollable))
 +        .first;
@@ -821,30 +684,18 @@ index aca6462..0190c14 100644
 +    );
 +    await tester.pumpAndSettle();
 +    expect(find.text('Private account policy').hitTestable(), findsOneWidget);
-     expect(find.text('Saved Q&A'), findsOneWidget);
-     expect(find.text('Private account policy'), findsOneWidget);
-     _expectKnowledgeSubtitle(
 diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
 index 14ac705..32f2ff7 100644
 --- a/apps/flutter_app/test/guest_group_dialog_test.dart
 +++ b/apps/flutter_app/test/guest_group_dialog_test.dart
-@@ -1160,7 +1160,11 @@ void main() {
-     );
-     await tester.enterText(question, 'Keep this draft');
-     final save = find.widgetWithText(FilledButton, 'Save locally');
+@@ -1163 +1163,5 @@ void main() {
 -    await tester.ensureVisible(save);
 +    await _ensureVisibleInVerticalList(
 +      tester,
 +      save,
 +      anchor: question,
 +    );
-     await tester.pumpAndSettle();
-     await tester.tap(save);
-     await tester.pump(const Duration(milliseconds: 300));
-@@ -1894,6 +1898,25 @@ void main() {
-   }
- }
- 
+@@ -1896,0 +1901,19 @@ void main() {
 +Future<void> _ensureVisibleInVerticalList(
 +  WidgetTester tester,
 +  Finder target, {
@@ -864,41 +715,23 @@ index 14ac705..32f2ff7 100644
 +  expect(target.hitTestable(), findsOneWidget);
 +}
 +
- Future<void> _pumpUntilEnabled(WidgetTester tester, Finder finder) async {
-   for (var attempt = 0; attempt < 40; attempt++) {
-     await tester.pump(const Duration(milliseconds: 50));
 diff --git a/apps/flutter_app/test/guest_interact_widget_test.dart b/apps/flutter_app/test/guest_interact_widget_test.dart
 index df7c6d3..3c70b69 100644
 --- a/apps/flutter_app/test/guest_interact_widget_test.dart
 +++ b/apps/flutter_app/test/guest_interact_widget_test.dart
-@@ -114,6 +114,11 @@ void main() {
- 
-       await tester.enterText(localSearch, '');
-       await tester.pumpAndSettle();
+@@ -116,0 +117,5 @@ void main() {
 +      await _ensureVisibleInGuestList(
 +        tester,
 +        find.text('Incident response'),
 +        anchor: find.text('Saved Q&A'),
 +      );
-       expect(find.text('Password rotation'), findsOneWidget);
-       expect(find.text('Incident response'), findsOneWidget);
-       final passwordRotationCard = find.ancestor(
-@@ -253,6 +258,11 @@ void main() {
-     await tester.pumpAndSettle();
-     await tester.tap(find.text('Interact').first);
-     await tester.pumpAndSettle();
+@@ -255,0 +261,5 @@ void main() {
 +    await _ensureVisibleInGuestList(
 +      tester,
 +      find.text('A long session title that should truncate cleanly'),
 +      anchor: find.text('Create session locally'),
 +    );
-     await tester.tap(
-       find.text('A long session title that should truncate cleanly'),
-     );
-@@ -361,7 +371,12 @@ void main() {
-       await tester.pumpAndSettle();
-       await tester.tap(find.text('Interact').first);
-       await tester.pumpAndSettle();
+@@ -364 +374,6 @@ void main() {
 -      await tester.tap(find.text('Legacy session'));
 +      await _ensureVisibleInGuestList(
 +        tester,
@@ -906,13 +739,7 @@ index df7c6d3..3c70b69 100644
 +        anchor: find.text('Create session locally'),
 +      );
 +      await tester.tap(find.text('Legacy session').hitTestable());
-       await tester.pumpAndSettle();
- 
-       expect(find.textContaining('duplicate participant IDs'), findsOneWidget);
-@@ -469,14 +484,24 @@ void main() {
-         await tester.pumpAndSettle();
-         await tester.tap(find.text('Interact').first);
-         await tester.pumpAndSettle();
+@@ -472 +487,6 @@ void main() {
 -        await tester.tap(find.text('Two-person interview'));
 +        await _ensureVisibleInGuestList(
 +          tester,
@@ -920,12 +747,7 @@ index df7c6d3..3c70b69 100644
 +          anchor: find.text('Create session locally'),
 +        );
 +        await tester.tap(find.text('Two-person interview').hitTestable());
-         await tester.pumpAndSettle();
-       }
- 
-       await showWorkspace();
-       expect(find.byTooltip('Active participant help'), findsOneWidget);
-       expect(find.byTooltip('Prepared question help'), findsOneWidget);
+@@ -479 +499,6 @@ void main() {
 -      await tester.tap(find.byTooltip('Prepared question help'));
 +      await _ensureVisibleInGuestList(
 +        tester,
@@ -933,25 +755,13 @@ index df7c6d3..3c70b69 100644
 +        anchor: find.text('Two-person interview'),
 +      );
 +      await tester.tap(find.byTooltip('Prepared question help').hitTestable());
-       await tester.pumpAndSettle();
-       expect(
-         find.text(
-@@ -540,6 +565,11 @@ void main() {
-     await tester.pumpAndSettle();
-     await tester.tap(find.text('Interact').first);
-     await tester.pumpAndSettle();
+@@ -542,0 +568,5 @@ void main() {
 +    await _ensureVisibleInGuestList(
 +      tester,
 +      find.text('Two-person interview'),
 +      anchor: find.text('Create session locally'),
 +    );
-     await tester.tap(find.text('Two-person interview'));
-     await tester.pumpAndSettle();
-     await tester.tap(find.text('Download / Share PDF'));
-@@ -1271,6 +1301,25 @@ Finder _field(String label) => find.byWidgetPredicate(
-   (widget) => widget is TextField && widget.decoration?.labelText == label,
- );
- 
+@@ -1273,0 +1304,19 @@ Finder _field(String label) => find.byWidgetPredicate(
 +Future<void> _ensureVisibleInGuestList(
 +  WidgetTester tester,
 +  Finder target, {
@@ -971,6 +781,3 @@ index df7c6d3..3c70b69 100644
 +  expect(target.hitTestable(), findsOneWidget);
 +}
 +
- TextField _answerField(WidgetTester tester) =>
-     tester.widget<TextField>(_field('Local answer').first);
- 
