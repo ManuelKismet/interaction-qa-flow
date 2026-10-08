@@ -732,8 +732,10 @@ void main() {
     );
     final workspace = find.byType(GuestWorkspacePage);
     expect(
-      find.descendant(of: workspace, matching: find.byType(TabBar)),
-      findsNothing,
+      tester.widget<AppBar>(
+        find.descendant(of: workspace, matching: find.byType(AppBar)),
+      ).bottom,
+      isNull,
     );
     expect(find.byTooltip('Switch Knowledge or Interact'), findsNothing);
     expect(find.byTooltip('Search help'), findsOneWidget);
@@ -744,11 +746,13 @@ void main() {
     expect(find.byTooltip('Interact privacy information'), findsOneWidget);
     expect(find.byTooltip('Search help'), findsNothing);
     expect(
-      find.descendant(
-        of: find.byType(GuestWorkspacePage),
-        matching: find.byType(TabBar),
-      ),
-      findsNothing,
+      tester.widget<AppBar>(
+        find.descendant(
+          of: find.byType(GuestWorkspacePage),
+          matching: find.byType(AppBar),
+        ),
+      ).bottom,
+      isNull,
     );
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
