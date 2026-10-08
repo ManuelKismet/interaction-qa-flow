@@ -233,3 +233,35 @@ Eighth session source4cb13204475dc3385513ff5e7187909048cb47c0/app subtree d14312
 Correct applied focused five-file suite72PASS26FAIL exit1; analyzer0errors0warnings12existinginfos exit1 solely infos; formatter10files2would-change guest_workspace_page.dart/account_state_widget_test.dart. Full/release withheld. Latest failures expand into previously passing guest/Ask tests and actual responsive overflows: AppShell AppBar285px horizontal at240px width; guest layout10px bottom/56px and228px horizontal. Missing/lazy/offscreen targets require diagnosis, new scrollable header changing geometry/ancestor selection is source inference. Conflict test now missing finder1372, so old[1,2] overwrite is not reproduced by latest failure. Preserve explicit-resolution assertions and queue/UID/retry guards.
 
 Full exact latest focused/analyzer/format receipts persisted interact-parity-batch2-layout-failures-20261008.md commitcc7d926db40e13e5f76b640199329c71bc7af775 after interruption retry confirmed no prior write. ONE consolidated correction sent SAME task763f99ed, UI verified Queued/9sessions/spinning up environment. Exact4cb132 app baseline, assigned branch only, real layout fixes and meaningful active scroll/hit-test fixtures, no suppressed assertions. Formatter artifact refresh deferred until coherent next candidate. No rebuild/new task/oldPR13/later batch/merge/deploy/schema/access change. Batch2 unaccepted; DEV unchanged. All local validation processes complete, no Codespace/DB/proxy.
+
+### Copilot Flutter setup authorised and verified — 2026-10-08
+
+Founder authorised updating workflow documentation and providing Copilot Flutter,
+retaining implementation/testing plus independent Codex acceptance. Added only
+.github/workflows/copilot-setup-steps.yml on required default branch main at0627a2d,
+correctedf6b1c9e7b0841fa6182d2dcf278e701498712026. Pinned official Flutter3.41.4
+revisionff37bef603469fb030f2b72995ab929ccfc227f0/Dart3.11.1; CI=true and
+--suppress-analytics, SHA-pinned checkout without persisted credentials,
+contents:read, web precache/enforced lockfile pubget. Local YAML/job/Bash syntax
+checks passed. Initial hosted run37765832906 failed first-launch-banner JSON
+parsing after SDK downloaded; corrected warmup then machine-version check.
+Hosted run37766017527/job113273759089 SUCCESS: exact SDK verified, web tooling
+and locked dependencies complete, readiness marker independently observed in logs.
+No permission/firewall/credential changes. Existing GitHub Pages automation also
+ran on tooling pushes; no application merge or Cloud Run/Firebase DEV rollout.
+
+Ninth application session published sourcea08180af9bfed400e652ff362e010c0b21a4afd6,
+app treeda1f4af6c688b352f3ac4d33534f8335b156ce4e; reported artifact11571d037c57f99734bcf5a58e1c6542e30b89af,
+raw zero-context diff36492bytes/SHA2562b5504248ad1a10e073d4b835d58fe5320a0f5a52470568398ca8da354677cf7,
+pathinteract-parity-batch2-runtime-repair-20261008.diff. This latest app/artifact
+provenance is reported by Copilot, not yet independently fetched/applied/tested;
+previous72PASS26FAIL applies4cb132 only, not latesta08180.
+
+ONE SAME-task tenth session started with automatic setup plus exact fallback
+instructions if inherited initial setup. Active steering correction delivered;
+UI shows SDK initialization/precache/locked pubget and actual validation plan.
+Requested official formatting/analyzer/focused five-file suite, incremental
+meaningful repairs preserving all guards, coherent full/release when stable,
+exact logs/source/artifact provenance. No rebuild/competing task/later batches/
+PR13/deploy/schema. Workflow lessons updated with two-stage gates and hosted
+setup receipts. Batch2 remains unaccepted, DEV prior7aac21f unchanged.
