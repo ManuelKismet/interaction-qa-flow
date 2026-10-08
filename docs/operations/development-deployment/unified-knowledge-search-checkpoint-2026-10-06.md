@@ -1,0 +1,1164 @@
+# Unified Knowledge search workflow checkpoint — 2026-10-06
+
+## Compact guest and personal UI tested and deployed — 2026-10-08
+
+The pending UI changes are now deployed to DEV from `bd713485d01eaa13a7bf3d5159d2215e22e13616` on `copilot/fixinteract-parity-batch4-edit-shared-copy`. This entry supersedes the earlier pending UI checks/deployment status; older entries below retain their historical receipts.
+
+Guest/personal session Destination and Download / Share PDF controls share a centered 40px height with 13px labels, growing together for larger accessibility text; wide-header title/actions center together and narrow headers wrap safely. Root/follow-up question fields are compact and keep Delete beside the field, preserving inline edits, blank-text protection, graph ownership and Undo. Personal workspace heading is subtle at 14px with a 48px toolbar; private/local storage, Group identity and no-membership information move behind its workspace info icon. Optional local-to-account import stays in Workspace options with busy-state protection; save/access errors, verification gates and retry actions remain visible. Routed personal pages remove redundant Knowledge/Interact tabs where AppShell navigation already exists, keep contextual help by the heading, and disable in-page tab swipes; standalone workspaces retain their navigation. Personal Knowledge sections are Search and Saved, with the duplicate Saved Q&A heading/button removed. Shared KnowledgeSectionTabs defaults remain unchanged for other workspaces.
+
+Validation on the exact final commit:
+
+- Offline locked dependency resolution PASS (1.5s); formatting of six relevant Dart files PASS (0.5s).
+- Full Flutter suite: **370 passed, zero skips, exit 0** (153.2s). The guest/personal/Group focused suite previously passed all 158 tests with unchanged implementation; the final search-to-personal result test also passed (6.7s). Coverage retains graph IDs/ownership, inline question editing, blank-text protection, Delete/Undo, delayed writes/account switches, import retry/navigation guards, nested Group copies and responsive layouts.
+- Analysis: **0 errors, 0 warnings, 12 baseline infos** (15.1s). The info messages match the preceding release exactly after normalizing line/column numbers. Exit 1 is solely those existing infos.
+- Configured DEV web release build PASS (48.7s), using the existing pinned environment and public DEV defines SHA256 `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`; release/no-pub/no-wasm-dry-run/PWA-none and AUTH_DIAGNOSTICS=true.
+- Repository tree `57ffc348265809167d9dd8e029f80ac9d4dfc204`; Flutter app tree `c4e83d11a6bd3abde8a171b95b86b593ca7561db`.
+- The initial checks exposed two outdated layout/navigation expectations, then an organisation-search test still using the removed personal Saved Q&A heading. They were updated for safe narrow-screen wrapping, the retained Search/Saved section tabs and the new Saved label. All final checks pass; no tests were skipped or disabled.
+
+DEV release `sites/intqaflow-dev/releases/1791496524947000`, version `sites/intqaflow-dev/versions/f8aeac736e8b0655`, Hosting exit 0. All **36 files** matched byte lengths and SHA256 on **both** `https://intqaflow-dev.web.app` and `https://intqaflow-dev.firebaseapp.com`; the live guest landing page also loaded after reload.
+
+Key build receipts:
+
+| File | Bytes | SHA256 |
+| --- | ---: | --- |
+| main.dart.js | 4680903 | `8b481947e5b37a1f498efa05409fca832dedb23bb96546e6a2c265d1fa6c99b6` |
+| index.html | 1531 | `a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858` |
+| flutter_bootstrap.js | 9805 | `0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67` |
+
+API revision `intqaflow-dev-api-review80f421d` remains at 100% traffic, unchanged; /health and /ready returned 200. The previous Hosting release was `sites/intqaflow-dev/releases/1791492119078000`; rollback target is `sites/intqaflow-dev/versions/44c9f7632273ee36`.
+
+Receipts: `/workspaces/guest-ui-compact-validation-20261008/release/` and `/workspaces/guest-ui-compact-dev-publication-20261008/`. Existing root worktree documents were hash-checked and preserved before/after validation, before publication and before shutdown; the isolated source remains clean. The editor tab was closed and GitHub explicitly confirmed **Codespace "bookish happiness" stopped**; shutdown proof: `/workspace/scratch/intqaflow-compact-ui-codespace-stopped-1791496657484.jpg`.
+
+No backend/schema/dependency, production, IAM/credential or merge changes. Earlier 198-test PostgreSQL/backend evidence remains unchanged-code evidence, not a fresh backend run. External authenticated/device/native acceptance remains **OPEN**; the cloud-browser authentication investigation remains paused. Guest reload returning to the session list remains accepted (IP-19 CLOSED).
+
+## Guest session controls tested and deployed — 2026-10-08
+
+Founder authorised “Test all changes made and deploy to dev”. This rollout includes all pending guest UI changes since the earlier compact-heading deployment. Exact source `1e124f8d1ac271eba0373a8fb73497da63468228` on `copilot/fixinteract-parity-batch4-edit-shared-copy`; repository tree `05ba347c4bbf40a9004a39066173a2c957d8a249`, Flutter subtree `e829373700e89b1b23766b9d35e60ca09ce6d82c`.
+
+- Shared guest information icons are 16px; tap areas remain unchanged.
+- Destination and Download / Share PDF share the session title row when space permits, ahead of the three-dot menu. Narrow layouts wrap them below. Medium-width actions use flexible constraints and destination text can ellipsize without changing the full label.
+- Removed the generic “Add a question” shortcut and inline “New question” composer. Shared/active-participant add controls follow all visible question cards and open required-text dialogs. Submission scrolls to the list end. Participant scope captures the active participant at dialog opening and revalidates session/participant availability before writing. Question guidance remains beside these controls.
+- Root and recursive follow-up question text use bordered inline editable fields. Removed their Edit buttons/dialog callback. Nonempty edits use the existing local/private/Group draft save flow and preserve graph IDs, targets, answers and branches. Temporarily blank input shows validation while retaining the last saved question.
+
+Independent Flutter 3.41.4/Dart 3.11.1 checks in isolated `/workspaces/intqaflow-guest-ui-20261008`: locked offline pubget PASS (1.6s), touched-file format PASS (0.4s), **full suite 368 PASS, zero skips, exit0** (160.3s), analysis zero errors/warnings and unchanged 12 baseline infos (6.7s, exit1 solely infos), configured DEV release PASS/exit0 (43.2s). Five added regressions cover dialog blank/cancel behavior, shared versus participant ownership, controls following newly added questions, 360/800/832/1200px layouts, 16px icons, inline edit persistence and graph preservation. Existing recursive edit, Group save/reload, sign-out/UID disposal, narrow keyboard, Undo, conflict and delayed-save tests remain enabled. A real overflow at the medium-width header breakpoint was found and fixed; the final exact-source full rerun passed. Three new style notes were cleaned up before final validation.
+
+Validation/build receipts: `/workspaces/guest-ui-controls-validation-20261008/release`; earlier diagnostic runs remain under the parent folder. DEV defines SHA-256 `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`. Main bundle: 4,678,332 bytes, SHA-256 `ae64db84528d51246c01b05e70ba454e6788d3e488a354db05de0fd19f157103`. Index (1,531 bytes) and bootstrap (9,805 bytes) retain the previously recorded hashes.
+
+DEV Hosting **release `1791492119078000`, version `44c9f7632273ee36`**, 36 files. Every served file on BOTH `https://intqaflow-dev.web.app/` and `https://intqaflow-dev.firebaseapp.com/` matched the tested build's byte lengths and SHA-256. API health/readiness HTTP200; `intqaflow-dev-api-review80f421d` retains 100% traffic. Rollback target is the prior compact-UI release `1791488795550000` / version `6dc9f6083d4bb7a4`. Publication receipts: `/workspaces/guest-ui-controls-dev-publication-20261008`. Live DEV guest Knowledge page loaded with compact heading and 16px inline help icons; session behavior was verified by the widget suite. No backend deployment, hosted data/schema, IAM, credentials, production change or merge.
+
+The root worktree's four dirty documentation files were hash-checked before/after validation and preserved; isolated release source is clean. GitHub confirmed **Codespace “bookish happiness” stopped** after publication and verification; the editor tab was closed. Source, receipts and prior worktree/stash material remain retained.
+
+Only the guest UI source and two Flutter test files changed relative to the prior DEV source. Backend/schema/dependencies unchanged; prior 198 PostgreSQL-enabled backend passes are retained unchanged-code evidence, not a fresh backend rerun. Founder external authenticated/device/native acceptance remains OPEN; no authenticated live acceptance is claimed. Cloud-browser authentication investigation remains paused. Guest reload-to-session-list remains accepted, IP19 CLOSED.
+
+
+## Guest workspace compact UI tested and deployed — 2026-10-08
+
+Founder requested the shorter subtle “Guest workspace” heading, inline module/workspace information, and clearer Interact creation fields, then explicitly authorised “Test and deploy”. Final exact source `4d42c812f4df8b6d1f22040901170ea85974eb05` on `copilot/fixinteract-parity-batch4-edit-shared-copy`; repository tree `0068dc1f5cd36ec2dd4546140d673ed808bc3295`, Flutter subtree `b4a65e03f5006a66dd0d6180a7c8e524a1076546`. This supersedes the previous Hosting status below, not the outstanding manual acceptance gates.
+
+Changes: guest heading is regular 14px/onSurfaceVariant in a 48px toolbar; personal/registered heading styles are unchanged. Knowledge/Interact help icons sit beside tab text. Routine workspace/save status and privacy explanation are behind the heading's info icon. Save-failure/retry, account/load/permission notices remain visible. “New Interact session” floats on the input's top edge with “Session title” hint; participant input uses “Participant” hint without “First participant” label. Required-field validation and account/local/Group persistence semantics retained. Very-short viewports retain accessible help controls when module tabs are hidden.
+
+Independent Flutter 3.41.4/Dart 3.11.1 validation in isolated `/workspaces/intqaflow-guest-ui-20261008`: locked offline pubget PASS (1.4s), four-file format PASS (0.6s; formatting committed/pushed), analysis zero errors/warnings and same 12 baseline infos (10.4s, exit1 solely infos), **full suite 363 PASS, zero skips, exit0** (181.7s), configured DEV release PASS/exit0 (67.3s). Regression assertions cover inline help placement, private/local explanations, saving/saved status in the dialog, failure/retry visibility, creation fields and the existing responsive/account/Group suites. Initial b427318 run was 352 PASS/11 FAIL: six stale text/status expectations, one unstable scroll anchor, four narrow-tab overflow scenarios. Fixed assertions/anchor without dropping behavior checks and fixed the real tab overflow; final full rerun passed. Initial and final logs retained under `/workspaces/guest-ui-validation-20261008`. Backend/schema/dependency files unchanged from accepted batch4; prior 198 PostgreSQL-enabled backend passes remain unchanged-code evidence, not a fresh rerun.
+
+DEV Hosting **release `1791488795550000`, version `6dc9f6083d4bb7a4`**, 36 files. All 36 served files on BOTH DEV origins matched exact built byte lengths/SHA-256. main.dart.js: 4,678,270 bytes / `ebb508ef0b7aebfe89adde07c21e23e2bf9d5af8819911e235de957eadebac4d`; index.html/bootstrap retain previously recorded hashes. DEV defines SHA `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`. Publication manifest/verification receipts: `/workspaces/guest-ui-dev-publication-20261008`.
+
+API health/readiness both HTTP200; revision `intqaflow-dev-api-review80f421d` and 100% traffic unchanged. Rollback retained prior batch4 release `1791483895509000` / version `408afbad8341c730`. No backend deployment, hosted data/schema, IAM, credentials, production change or merge. Live DEV guest Knowledge screen loaded and visually confirmed the compact heading, inline info icons and removal of routine status row. Interact fields/help/privacy behavior independently verified by widget tests; no authenticated live acceptance claimed and no sign-in retry.
+
+Existing root worktree's four dirty documentation files preserved; isolated final source clean. GitHub UI confirmed **Codespace “bookish happiness” stopped** after publishing/verifying; files, receipts and initial formatter stash retained. Founder external authenticated/device/native acceptance remains OPEN. Cloud-browser auth investigation paused. Guest reload-to-session-list remains accepted IP19 CLOSED.
+
+
+## Batch 4 DEV frontend published and verified — 2026-10-08
+
+Founder authorised the next deployment step after choosing external manual acceptance. Published the independently tested configured build from exact source `6c97993c0de10f5199a26f3dda09697560d7e707` (repository tree `57c8260b1e96b683689d477576b5c678b1b1285e`, Flutter subtree `9528f2b5760a27996b46d35cc0bd439fff066f5d`). This rollout supersedes the earlier “not yet deployed” status below; those sections retain historical review evidence.
+
+Firebase DEV Hosting release `1791483895509000`, version `408afbad8341c730`, published successfully with 36 files. All 36 served files on each of `https://intqaflow-dev.web.app/` and `https://intqaflow-dev.firebaseapp.com/` matched the local upload manifest byte lengths and SHA-256 hashes. Browser load of the DEV guest workspace also succeeded; this is load verification, not authenticated acceptance.
+
+The independently tested build hashes remain: index.html `a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858` (1531 bytes); flutter_bootstrap.js `0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67` (9805 bytes); main.dart.js `8a13ff7e5500360cd5b7b94b314c3ab7f50470576fa045d92a60653d7b36bf7d` (4677702 bytes). Verification receipt: `/workspaces/batch4-dev-publication-20261008/publication-verified.json`; publisher log and full manifest are retained alongside it.
+
+API health and readiness both returned HTTP 200. Existing API revision `intqaflow-dev-api-review80f421d` and 100% traffic allocation were unchanged. Previous batch 3 Hosting release `1791473511974000` / version `f2b2a3b33b4acd94` is retained for rollback. No backend, schema, IAM, credentials, production deployment or merge was performed.
+
+**External manual acceptance remains pending.** Founder will sign in externally and check Group shared-copy editing/save/reopen, recursive questions and answers, permission boundaries, concurrent-edit conflict handling, phone layout/keyboard and PDF/share/printing. Original local/private copies must remain intact. Cloud-browser sign-in diagnosis remains paused. Guest reload to the session list is accepted (IP-19 closed); users reopen their session manually. Refresh the external DEV page before testing; Hosting cache max-age is 300 seconds.
+
+Cleanup verified on GitHub: Codespace “bookish happiness” stopped; its row shows last-used time rather than Active. Existing files and deployment receipts retained.
+
+## Batch 4 independent review complete — 2026-10-08
+
+Exact corrected final source `6c97993c0de10f5199a26f3dda09697560d7e707`, repository tree `57c8260b1e96b683689d477576b5c678b1b1285e`, Flutter subtree `9528f2b5760a27996b46d35cc0bd439fff066f5d`. Founder authorised exact pushed-commit review because the original mailbox exceeds GitHub's 100MiB cap; no filtered/reconstructed mailbox used. Same Copilot task/branch retained, completed three sessions.
+
+Independent review found empty-query newest-50 list lookup falsely treating an older authorised Group copy as unavailable. Copilot corrected it to the existing exact entry GET, retaining permissions/UID/revision/uncertain-write guards and all old tests; nine new regressions. Final exact-source Codespace validation: **362 Flutter PASS**, official six-file format zero changes; analyze zero errors/warnings, 12 baseline infos; **configured DEV build PASS**. Main.dart.js 4,677,702 bytes/SHA256 `8a13ff7e5500360cd5b7b94b314c3ab7f50470576fa045d92a60653d7b36bf7d`. Four additional independent real-page/dialog disposal probes PASS. **198 backend PASS, zero skips**, actual fresh disposable PostgreSQL16.15/vector0.8.6; backend files/dependencies unchanged by correction, so this result reused explicitly rather than falsely claimed rerun. Database stopped. Exact final source clean; original root four dirty docs preserved. GitHub UI verified **Codespace “bookish happiness” stopped**.
+
+Independent static/automated/configured-build gates PASS. Full evidence and receipt paths: [batch 4 independent review](interact-parity-batch4-independent-review-20261008.md). **No deployment or merge**. Previously recorded DEV remains batch3/frontend5a2dd264, backendreview80f421d. Hosted authenticated personal/organisation/Group checks, physical phone/accessibility and native share/print remain OPEN; auth investigation paused. Guest/nonmember reload-to-session-list remains accepted IP19 CLOSED. Next authorised rollout, if requested, must use these exact tested bytes and retain manual acceptance gates. Earlier timeout/incomplete entries below are historical.
+
+## Batch 4 timeout recovery — 2026-10-08, 17:47 BST
+
+First session timed out after 25m31s. Durable checkpoint independently fetched: `9fa5caa84fb4da1f3b25f81602385c60336ca8e0` on `copilot/fixinteract-parity-batch4-edit-shared-copy` (prior editor commit `8db08bd`). Pushed source/editor integration, backend and widget tests and IP01–IP24 acceptance matrix inspected; saved `batch4-widget.log` confirms 35 Group widget passes. Copilot reports 115 existing Flutter and 198 PostgreSQL-enabled backend passes, not independently rerun. Final full Flutter/release, human-readable validation receipts, original mailbox/provenance and unchanged git-am proof were missing.
+
+Founder authorised completing batch 4. ONE completion request sent to SAME task `49641b6c-45e3-447f-9db4-2675b4a3fdde` / SAME branch from exact checkpoint; UI confirms **Queued, 2 sessions**, preparing environment. No competing job or main/base restart. Require final complete validation and immutable original exact-5a2dd264 mailbox; disclose early temporary environment captured then removed, ensure clean final source and complete reproducible mailbox without silently filtering history. Independent review follows coherent delivery. Batch 4 is NOT accepted or deployed. DEV remains batch 3, Codespace stopped; hosted auth investigation paused again by founder, device/authenticated acceptance OPEN.
+
+## Batch 4 started — 2026-10-08
+
+Founder authorised batch 4 and selected **Edit shared copy**: existing authorised Group members can edit shared Interact questions and answers; originals remain independent. ONE new Copilot task submitted and UI verified **Queued / session started**: https://github.com/ManuelKismet/interaction-qa-flow/tasks/49641b6c-45e3-447f-9db4-2675b4a3fdde?q=is%3Aopen+author%3A%40me. Exact source-picker branch `fix/interact-parity-batch3-dev-20261008` pinned to complete accepted source `5a2dd26410a428b6a0b516efe53afc37d89362b7` (repository tree `46e373deec7f3351dd307d5b68d3e7042d75122b`, Flutter subtree `1a3642d9fde6dd377300c056966712174dcae89a`).
+
+Scope: IP05 shared-copy editor plus remaining IP12/IP22 permission/concurrency/identity and narrow-screen/accessibility regressions, IP01–IP24 acceptance matrix and manual scenarios. Reuse existing editors/APIs/revisions, preserve all batches 1–3 and Group eligibility; no live link, implicit import or original mutation. Full brief: [batch 4 handoff](interact-parity-batch4-handoff-20261008.md). Original incremental mailbox required from exact 5a2dd264; independent review and validation follow delivery. No batch 4 implementation result, new tests, merge or deployment claimed. DEV stays batch 3; Codespace remains stopped. Hosted authenticated and physical-device/accessibility acceptance remains OPEN. Earlier not-started entries are historical.
+
+## Accepted reload behaviour — 2026-10-08, 16:48 BST
+
+Founder accepts the current guest/nonmember Interact reload behaviour: refreshing returns to the session list, where users can reopen the session they were working on. **IP19 reload decision CLOSED — accepted as designed; no automatic editor reopening or remembered-session change required.** This is a product acceptance decision, not a new implementation or browser test. It supersedes earlier OPEN reload-decision entries below. Hosted authenticated acceptance remains pending; batch 4 implementation is now assigned.
+
+## Batch 3 DEV frontend rollout — 2026-10-08 (current)
+
+**Reviewed batch3 frontend source `5a2dd26410a428b6a0b516efe53afc37d89362b7` is deployed to DEV.** Repository tree`46e373deec7f3351dd307d5b68d3e7042d75122b`, app subtree`1a3642d9fde6dd377300c056966712174dcae89a`. Includes batches1+2 and independently reviewed batch3 organisation/guest/personal editor, scoped clipboard safety and uncertain-delete/Undo recovery. Three immutable mailbox handoffs independently match exact bytes/SHA/tree. No repository merge or production change.
+
+Independent final gates: Flutter298PASS exit0 (38s), locked offline pubgetPASS, format2correctionfiles0changes, analyzer0errors0warnings12baselineinfos(exit1 solelyinfos). ConfiguredDEVreleasePASS using existing publicDEVdefines and AUTH_DIAGNOSTICS=true/no-wasm-dry-run/pwa-strategy=none in isolated Codespace worktree; runner54.5s. No appsource changes after validation. Backend unchanged; existing158backend/PG receipt retained, not new rerun.
+
+Hosting **release`1791473511974000` / version`f2b2a3b33b4acd94`**,36files, deploy exit0. BOTH origins (`intqaflow-dev.firebaseapp.com`, `intqaflow-dev.web.app`) served exact reviewed build bytes for index/bootstrap/main. Main.dart.js4645494bytes SHA256`90e2dfda9ebbbc777b89d70d249e3ba30402291826c4592325c7d52b7dc995cd`; index1531bytes SHA`a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858`; bootstrap9805bytes SHA`0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67`.
+
+API **`intqaflow-dev-api-review80f421d`100%traffic unchanged**, public health200/ready200. No API deployment, DB/proxy/schema/migration/IAM/serviceidentity/credential/firewall/access change. Hosting rollback retained **prior version`fd994b8bd5fe8b22` / release`1791460845367000`**, no rollback triggered; leave additive schema/account data intact.
+
+Codespace **bookish happiness STOPPED**, explicitly confirmed GitHub toast and Last used (no Active). Isolated source`/workspaces/intqaflow-batch3-independent-20261008`, receipts`/workspaces/batch3-independent-receipts-20261008` (build-receipt.json/publication-verified.json/logs). Root four pre-existing dirty docs preserved. No ongoing test/build/deploy worker or DB started.
+
+**Accepted:** IP19 guest/nonmember reload returns to the session list; users reopen their session from there. Founder accepted this behaviour on 2026-10-08; no reload implementation required. **Still OPEN:** hosted authenticated personal/organisation/Groups and physical/device/accessibility acceptance (earlier cloud-browser auth issue, founder paused). Hosted-file and API verification are not an authenticated UI acceptance pass. No new hosted guest scenario matrix executed after this rollout. Batch 4 implementation is now assigned; full cross-role acceptance remains pending. See `interact-parity-batch3-independent-review-20261008.md` for independent gates/findings and source receipts. Batch 4 is in progress; authenticated checks remain founder/manual pending as previously agreed.
+
+## Batches 1 and 2 DEV rollout — 2026-10-08
+
+Founder authorised deploying both independently validated batches before batch3.
+**Exact combined source80f421d1c0ecc907d0d88a8147ccb1f2138fe377 is now deployed
+to DEV.** App subtreefd44cfb309d64bac30b8f4da5ae1caa6b35c9938; source contains
+accepted batch1 plus reviewed batch2. No repository merge or production change.
+
+Independent source gates: fullFlutter264PASS0FAIL, focused98PASS0FAIL,
+format11files0changes, analyzer0errors0warnings12existinginfos (exit1 solely
+infos), configured releasePASS. Backend unchanged since batch1's158PASSincludingPG;
+that evidence is retained, not a fresh backend rerun. Rollout publication build
+PASS54.5s with existing DEV Firebase/AppCheck public defines,
+AUTH_DIAGNOSTICS=true/no-wasm-dry-run/pwa-strategy=none. App/test source unchanged.
+
+Backend Cloud Build f4a55cfe-d964-4c04-95cf-7877b2b06d78 SUCCESS51s.
+Immutable image europe-west2-docker.pkg.dev/intqaflow-dev/cloud-run-source-deploy/intqaflow-dev-api@sha256:7dc630fb5296b040439423c6d7068f9b21b9f80339c2079b8f4b38e08f6ef835.
+Staged revision **intqaflow-dev-api-review80f421d** at0traffic; old/new revision
+runtime specs identical excluding image, ingress/invoker settings preserved,
+tagged health/ready200. Switched to100%traffic and public health/ready200.
+No migration needed or executed; schema0015 retained, no DB/proxy started.
+No IAM/service identity/CloudSQL/VPC/credential/access change.
+
+Firebase Hosting **release1791460845367000/versionfd994b8bd5fe8b22**,36files,
+exit0. Publication verification exit0: BOTH DEV origins match exact publication
+build bytes; unauthenticated personal search401.
+
+| Both origins' file | Bytes | SHA256 |
+|---|---:|---|
+|index.html|1531|a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858|
+|flutter_bootstrap.js|9805|0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67|
+|main.dart.js|4592442|95f6c0fca260cfee2f4f10d4268bd17af11b6c34f5d69d2bba20a13ca076a6ac|
+
+Rollback retained: **intqaflow-dev-api-review7aac21f** and Hosting
+**version8dc80b67398948f1/release1791372154776000**. Publication runner includes
+backend/Hosting rollback if publication fails; rollback was not triggered.
+Always preserve additive schema and account data.
+
+Hosted guest acceptance completed: local Knowledge creation/save, answer-only search
+with Local badge and answer preview, result-to-SavedQ&A navigation, reload
+persistence, answer editing and storage-specific removal feedback PASS.
+Three disposable browser-local fixture entries were created during accessibility
+input diagnosis; only exact DEV acceptance80f421d fixture titles removed.
+Final SavedQ&A displays “No saved Q&A yet” and saved-on-device status.
+No user data/account upload. Initial stale accessibility text/input and immediate
+snapshots were corrected using rendered field focus and settled visible states;
+no product failure or pass inferred from those intermediate states.
+Authenticated personal/organisation/Group role, conflicts/imports, multi-device
+and accessibility acceptance remains OPEN and requires DEV sign-in. Current browser
+shows existing-account Email/Password/Sign in form; secure browserAuth sign-in
+request submitted, then fresh DEV UI reported auth/invalid-email. Authentication
+NOT established; no credential value inspected/logged, no automated retry.
+Manual browser sign-in handoff offered to unblock the remaining acceptance. No full parity
+claim; batch3/4 not started.
+
+Persistent evidence/scripts:
+`/home/vscode/.local/share/intqaflow/batch12-rollout-80f421d`,
+`org-80f421d-stage-verified.json`, `org-80f421d-publication-verified.json`;
+independent test receipts remain `/workspaces/batch2-independent-receipts-20261008`.
+Isolated source `/workspaces/intqaflow-batch2-independent-20261008`;
+original checkout's four dirty docs preserved. Codespace shutdown confirmed after completed rollout runners; GitHub shows Last used
+instead of Active. No temporary database/proxy was started. Batch3/4 not started, oldPR13 task remains quarantined,
+monitoring remains cancelled.
+
+
+## Interact parity review — 2026-10-07
+
+**Analysis/documentation only; no implementation authorised by this review.** [Complete audit](interact-parity-audit-2026-10-07.md) records guest, registered personal, organisation and Groups parity at exact source `7aac21fad638570cf6f60a5dad478b776278c603`. Core flow concepts align; full functional/UI parity is NOT established.
+
+Priority source findings: IP01 role-label UI versus owner/grant backend authority; IP02 blank organisation answers do not save; IP03 pending debounce cancelled on disposal and weaker recovery; IP04 incompatible backup/export/legacy-import shapes with hidden warnings. Groups are shared copies with title-only editing; templates, lifecycle, reporting, metadata controls and navigation differ. Stale-identity and mobile/accessibility scenarios remain risks/open evidence, not proven incidents.
+
+No new tests or hosted functional checks executed. Prior 126 backend / 190 Flutter passes and 0 analyzer errors/warnings (13 infos) remain scoped rollout evidence. Latest recorded runtime: `intqaflow-dev-api-review7aac21f`, schema0015, Hosting1791372154776000/version8dc80b67398948f1. Runtime/bundle details remain in [rollout checkpoint](unified-knowledge-search-checkpoint-2026-10-06.md); this review did not redeploy or remeasure them.
+
+Existing dated evidence below is historical and remains preserved. F04/F08/F09, hosted registered personal/role acceptance and real semantic quality remain open/deferred as recorded. No Copilot assignment or application/test changes. See audit for IP01–IP12, exact source anchors, acceptance criteria and intentional privacy boundaries.
+
+### Organisation DEV rollout independently completed — 2026-10-07 11:24Z / 12:24 BST
+
+Copilot same-task fifth session completed (5m28s); no competing request.
+Artifact814fcc7350f500504774cc4baa97e703ee6457db published correction-only mailbox
+organisation-improvements-dev-20261007-race-test-correction.patch,
+10115 bytes, SHA256 e06da64e9ad16f5de7d544a8e6dc66c8b4ed39b53a7ce113485eeb4c022aba19.
+Exact complete base019097f72c0f6ef678d5ebe96ac852268aa737dc verified.
+Mailbox correction source4573c4021c70dd7f7405151bdf3fa74790d94dd4;
+task-branch test source2a38adcc5d2ae3263c2445c1c380fb4abf2fc098.
+Applied UNCHANGED in isolated worktree as **7aac21fad638570cf6f60a5dad478b776278c603**.
+Exact tree48a205f417aad95cb34197dc7737c24924ba57d2 equals declared mailbox target.
+Only backend/tests/test_organisation_administration_postgres.py changed since019097f.
+Both ordered decision outcomes preserve exact pending/duplicate, 200/409,
+reviewer/status/membership and audit assertions using independent sessions/row locks.
+No application change to force approval-first. Clean source pushed
+fix/unified-search-dev-20261006; GitHub commit readback verified parent/tree/file.
+No old mailbox reconstruction. Copilot owns application/tests; Codex changed only
+external validation/deployment scripts and repository operations checkpoint.
+
+Independent FINAL source checks:
+- Python compile exit0; Alembic single0015 head exit0.
+- Full backend with BOTH real PostgreSQL test URLs: **126PASS0FAIL0SKIP,
+  10warnings,23.54s,exit0** on fresh org_7aac21f_tests.
+- Separate org_7aac21f_migrate:0014→0015 exact-two-user preservation,
+  zero owners/one explicit legacy grant; isolated0015→0014→0015 PASS exit0.
+- Extra self-approval probe PASS exit0: HTTPException, department unchanged.
+- Prior independent delayed UID-switch real-provider/repository/client probe
+  remains PASS on019097f; application/Flutter code unchanged, not rerun this turn.
+- FULL Flutter final source **190PASS89s exit0**.
+- Analyzer **0errors0warnings13existinginfos14.1s**, exit1 solely infos.
+- FULL configured DEV web release **53.0s PASS exit0**, existing Firebase/AppCheck
+  public defines; AUTH_DIAGNOSTICS=true/no-wasm-dry-run/pwa-strategy=none.
+No unexecuted check claimed passed. Initial local PG start lacked explicit port/socket
+and failed before tests; corrected to loopback55443/private socket before fresh DB creation.
+External deployment-helper preparation had quoting/indentation syntax errors; corrected
+and compiled before execution. These were harness/setup errors, not app failures.
+
+Confirmed DEV-only rollout (publication verification exit0 before cleanup):
+- Source **7aac21fad638570cf6f60a5dad478b776278c603**.
+- New immutable backend image
+  europe-west2-docker.pkg.dev/intqaflow-dev/cloud-run-source-deploy/intqaflow-dev-api@sha256:475fe1f999e5c428bceecb3fb0d1d0c6a7b0ad7f39fac977b55bed58d334f15a.
+- Cloud Run **intqaflow-dev-api-review7aac21f**, built/staged0traffic first.
+  Old/new runtime spec equal excluding image; Cloud SQL/VPC/service identity,
+  ingress/invoker/security config preserved. Tagged staged health/ready200 before
+  switch; then **100%traffic**, public health/ready200.
+- CloudSQL intqaflow-dev-pg/europe-west2/projectintqaflow-dev:
+  additive hosted **0014→0015** upgrade PASS. All35 pre-existing public tables'
+  counts AND complete row hashes unchanged. Runtime schema usage and CRUD/read
+  privileges for existing and three new organisation tables passed.
+  **Zero owners appointed**, zero join requests; exactlyone explicit legacy_admin
+  grant matches existing admin, with scope/grantor validation. No arbitrary owner mapping.
+  Existing runtime credentials handled internally only; no IAM/security changes.
+  Temporary Cloud SQL proxy terminated in helper finally.
+- Firebase Hosting **release1791372154776000/version8dc80b67398948f1**,36files,exit0.
+- BOTH https://intqaflow-dev.web.app/ and https://intqaflow-dev.firebaseapp.com/
+  independently match exact tested bundle bytes. Missing identity private search401.
+
+| Exact bundle on BOTH origins | Bytes | SHA256 |
+|---|---:|---|
+|index.html|1531|a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858|
+|flutter_bootstrap.js|9805|0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67|
+|main.dart.js|4551199|c2a596e7e26a481bdd05f51d21b73bca45fce5f8f397197f68af613810b1227c|
+
+Hosted guest workspace opens after final publication with Knowledge/Interact,
+Groups and local-save boundaries visible. No content created/imported/uploaded.
+This is page-load smoke only: typed needle did not yield a visible result in this
+browser state, so no new hosted search-result acceptance is asserted.
+
+Rollback: reviewed **intqaflow-dev-api-reviewf662a6c** and Hosting
+**version3e8209ddae71b73b/release1791360928018000**, sourcef662a6c, retained.
+If reverting app runtime, retain additive0015 and all private data; NEVER live
+DB downgrade/purge. No production/repository merge/live appointments/provider activation.
+
+Remaining handoff gaps: live owner provisioning requires explicit chosen organisation/user
+authorisation; no owner was assigned merely by implementing this scope. Hosted registered
+owner/delegated-admin/member role/scope acceptance and registered unified Ask/search
+acceptance remain separate from automated proofs. Authenticated personal-import
+F04/F08/F09 remain open. Real semantics/provider quality deferred until first customer;
+fake embeddings do not prove meaning matching. Existing search formatting advisory retained.
+Internal organisation Teams are not Microsoft Teams integration/browser extension.
+
+Evidence /home/vscode/.local/share/intqaflow/org-validation-7aac21f and
+org-7aac21f-* deployment receipts/scripts retained outside repo.
+Fresh databases/logs/files preserved. Temporary PostgreSQL stopped at11:23:34Z;
+ss showed no listeners55443/55439. GitHub UI confirms Codespace “bookish happiness”
+stopped. Isolated source clean7aac21f; main four dirty docs preserved exactly.
+Old PR13 task quarantined, late output rejected. Founder already cancelled monitoring;
+no automation recreated. This completed entry supersedes earlier pending/runtime states.
+
+### Independent incremental correction review — 2026-10-07 10:49Z / 11:49 BST
+
+Artifact087548b0a410b9cb4a9fa925e0fa230d5798ce27 correction mailbox SHA256
+edba78ee16cdb207d83ca28301267e80c8cb1a4aefd2a2bf77fed29359eadcfc verified.
+Applied UNCHANGED from basec0a1246 as
+019097f72c0f6ef678d5ebe96ac852268aa737dc. Tree
+e8857692b70e180d7aa267916a2d78fed145c7f7 equals declared patch source
+21834f765be55c01cb16a6a1c91cd94449af7d62 (empty git diff).
+Clean review source pushed fix/unified-search-dev-20261006 and GitHub-readback
+verified. This is NOT deployed runtime. No old patch reconstruction.
+
+Independent compile0, singleAlembic0015head0; Flutter190PASS108s exit0;
+analyzer0errors0warnings13existinginfos13.8s exit1 solely infos;
+FULL configured DEV release build80.4s exit0 using existing public defines
+rollout-dca98b7-web-defines.json, AUTH_DIAGNOSTICS=true, no-wasm-dry-run,
+pwa-strategy=none; no publication or bundle hash acceptance yet.
+Fresh isolated PostgreSQL0014→0015 preserves exact two user rows, creates no
+owners and one explicit legacy-admin grant; isolated0015→0014→0015 PASS0.
+BOTH extra independent blocker probes now PASS0: self-approval denied with
+HTTPException/dept unchanged, late UID-switch grants rejected. Identity probe
+fixture gained isAnonymous=false/currentMembershipProvider driven by auth UID,
+matching the new required scope dependency; no app/test source edited by Codex.
+All independent probes remain outside repo.
+
+Full backend with BOTH real PostgreSQL URLs:125PASS1FAIL0SKIP10warnings46.51s,
+exit1. ONLY failure test_postgres_duplicate_requests_and_concurrent_decisions_are_serialized
+at backend/tests/test_organisation_administration_postgres.py:302, expected
+memberships1/actual0. Concurrent approve/decline correctly had outcomes200/409;
+test incorrectly always assumes approval wins rather than asserting committed
+state matches successful decision. Either decision may acquire org lock first.
+No rollout until meaningful corrected race test passes. Earlier setup attempt
+had PG connection-refused (4FAIL117PASS5ERROR); fixture preparation initially
+failed/missing files. Both setup errors corrected before actual125/1 result;
+retained logs distinguish those from application results. No unexecuted pass.
+
+ONE same-task fifth session correction submitted task8a480ce0 from NEW exact
+complete base019097f, asking correction-only mailbox
+organisation-improvements-dev-20261007-race-test-correction.patch.
+Requires deterministic BOTH approve-first/decline-first interleavings with
+independent sessions/bounded barriers, exactlyone200/one409/one audit decision,
+correct reviewer/status and membership/add-audit consistency, duplicate safety
+and retained security regressions. No loose ranges/test removal/production
+approval-first manipulation. UI confirmed In progress / Copilot is working.
+Await artifact; no competing task/request and no retry-until-pass loop.
+
+DEV UNCHANGED reviewf662a6c100% /Hosting3e8209ddae71b73b/schema0014.
+No Cloud Run stage/image build/traffic switch, hosted migration, Hosting publish,
+merge/production/live appointments/security/provider change executed.
+Rollback remains reviewedf662/Hosting3e8209; additive schema/data retained.
+Real semantics first-customer deferred; F04/F08/F09 and registered live Ask scope
+acceptance separate/open. No monitoring automation recreated.
+Evidence /home/vscode/.local/share/intqaflow/org-validation-21834f7;
+fresh DBs org_21834f7_tests/org_21834f7_migrate retained. Own PG stopped, port55443
+no listener, no proxy started. GitHub UI confirms Codespace bookish happiness
+stopped. Main four dirty docs preserved; isolated tree clean019097f.
+
+### Independent organisation review — 2026-10-07 10:05Z / 11:05 BST
+
+Copilot correction completed and published original mailbox artifact
+6ed7cbadfabf2c6ab66f6e136c8b13610ab17c0a, authored source
+a3855d4fdbfcaec9af4acc581edb0e180e9734cd, basef662a6c.
+Exact mailbox SHA256 verified e14ea697b17f1287099e8856119c744f0fc5b76bf0220e7c5412d756054bda75.
+Applied UNCHANGED in isolated worktree as
+c0a124683cad1cb2287d31f212c943a2649b41c2; git diff to authored source empty.
+Clean isolated tree pushed fix/unified-search-dev-20261006; GitHub readback
+verified source SHA/tree c39a7fdf2b528c34a7c82e6da65d92de4c8f724d.
+This is review source only, NOT current runtime. Main four dirty docs preserved.
+
+Independent executed gates:
+- compile0; Alembic single0015head0.
+- SQLite/default backend116PASS8SKIP10warnings22.71s exit0 (PG absent).
+- FULL backend with BOTH PostgreSQL URLs on fresh loopback-only disposable
+  PostgreSQL16 port55443:124PASS0SKIP10warnings33.56s exit0. Includes owner,
+  join/delegation races plus existing PostgreSQL regressions.
+- Flutter full185PASS85s exit0.
+- analyzer0errors0warnings13existinginfos11.6s exit1 solely infos.
+- release compilation118.4s PASS exit0; command flutter build web --release
+  --no-pub --dart-define=API_BASE_URL=<existingDEVAPI>. This diagnostic build
+  omits full Firebase/AppCheck public defines; NOT a publication-ready bundle.
+  Full configured DEV release/hashes remain rollout gate. Copilot HTTP403 did
+  not reproduce using existing Codespace SDK.
+- fresh isolated0014→0015 user-row preservation/no owner appointments/one
+  explicit legacy-admin grant and0015→0014→0015 round-tripPASS exit0. No live
+  DB mutation or downgrade.
+
+Two EXTRA independent regression probes FAILED exit1; rollout BLOCKED:
+1. Scoped reviewer in deptA with explicit review grant for deptB can request
+   deptB then approve their own request. Real PostgreSQL service probe logged
+   SELF_DECISION_OUTCOME approved / SELF_APPROVAL_CHANGED_DEPARTMENT True.
+   This widens department visibility eligibility and violates no-self-escalation.
+2. Real organisationPermissionsProvider + OrganisationRepository + createApiClient,
+   faithful fake Auth/token source and delayed HTTP adapter: request for UID A,
+   auth/currentUser switch to B, delayed200 A-grants response still publishes A
+   grants (Expected false/Actual true/noerror). Four organisation list providers
+   lack UID/membership dependency and successful late-response checks. Mounted-only
+   mutation callbacks also need identity/org recheck; existing routed tests do
+   not cover these transitions.
+
+ONE consolidated incremental correction sent SAME task8a480ce0 from exact NEW
+complete basec0a1246 (fetch fix/unified-search-dev-20261006), not old reconstruction.
+Requires server self-approval denial/legitimate distinct reviewer regression,
+identity/org/role invalidation/cancellation/stale-result/mutation guards, actual
+routed/provider delayed-response/partial-failure/retry coverage and unchanged
+incremental mailbox organisation-improvements-dev-20261007-correction.patch
+with provenance/checksum/tree equivalence. UI confirmed In progress / Copilot
+is working, fourth session. Await corrected delivery; no competing request.
+
+DEV STILL reviewf662a6c100% /Hosting3e8209ddae71b73b/schema0014. No deployment,
+merge/live owner appointment/IAM/AppCheck/provider change. Real semantics stays
+first-customer deferred; personal-import F04/F08/F09 and registered hosted Ask
+scope acceptance remain separate/open. Reviewed rollback retained.
+Evidence/probes/logs retained OUTSIDE repo:
+/home/vscode/.local/share/intqaflow/org-validation-20261007.
+Fresh databases org_c0a1246_tests/org_c0a1246_migrate retained. Own PG cluster
+stopped and port55443 no listener; no proxy started. GitHub UI confirmed Codespace “bookish happiness” stopped. All files and databases retained.
+
+### Organisation delivery incomplete; same-task correction — 2026-10-07 09:30Z
+
+Copilot session5e25f212 completed after56m40s. Published branch
+copilot/organisation-improvements-dev-20261007 head verified via GitHub:
+f83307cd24ae94832061af08be0f3bfb15c7441b (09:24:14Z).
+Copilot reports backend120PASS4SKIP, PostgreSQL concurrency4PASS and isolated
+0014→0015 preserving existing users without appointing owners. These results
+have NOT yet been independently verified by Codex. Delivery is incomplete:
+Flutter organisation-page tests fail including overflow; analyzer not rerun
+after final fix; web SDK download HTTP403 blocked release; pubspec.lock drift;
+required mailbox/hashes/design-permission matrix absent. No artifact applied.
+
+ONE consolidated correction sent in SAME task8a480ce0 against currentf83307c,
+preserving original complete basef662a6c. Request fixes/tests/analyzer, lockfile
+resolution, exact tooling-limit reporting, complete unchanged mailbox from
+original base, authored/artifact SHA and byteSHA256, permission/migration matrix.
+UI confirmed Queued then In progress: “Addressing layout overflow and testing
+issues in organisation improvements”, environment spinning up. No competing
+request/task. Await coherent corrected delivery before independent application
+and gates. Existing DEV reviewf662a6c/Hosting3e8209ddae71b73b/schema0014 unchanged;
+Codespace remains idle/stopped; no runtime/security/provider changes. Real
+semantics remains deferred until first customer; F04/F08/F09 remain open.
+
+### Same-task documentation clarification — 2026-10-07
+
+Initial sessionaea65059 stopped before implementation: it incorrectly searched
+for the docs branch as a local directory and reported required docs missing.
+No code/artifact/tests produced. Codex clarified in SAME task8a480ce0:
+git fetch origin docs/user-admin-e2e-checkpoint-20261004 then git show FETCH_HEAD
+for the three required files, or GitHub MCP with explicit branch ref. No merge,
+checkout or app-tree mutation; baselinef662a6c must remain pinned.
+Follow-up accepted; initially Queued, then UI confirms In progress / Copilot is working, session5e25f212-84c6-465b-91d9-e1767aa9274a. This is a continuation of
+the same authorised task, not a duplicate or competing task. Await implementation
+artifact; do not call initial session completion implementation success.
+DEV unchanged, no resources restarted. Real semantics still deferred.
+
+## Active organisation implementation — 2026-10-07
+
+Founder authorised the nine-point organisation scope after search rollout.
+ONE new task **8a480ce0-4a41-465c-9b0e-a453ab56de03**
+(ORGANISATION-IMPROVEMENTS-DEV-20261007) created through existing GitHub Agents
+workflow at approximately08:30Z/09:30BST; selected base
+fix/unified-search-dev-20261006, exact f662a6cff70526f287fb521bea25ec24860d8f4a.
+Initially queued, then UI confirmed **In progress / Copilot is working**,
+environment setup running, sessionaea65059-7f29-49af-acf1-0b41c086d44d.
+Auto model selected by GitHub; no new credentials/permissions.
+Task URL: https://github.com/ManuelKismet/interaction-qa-flow/tasks/8a480ce0-4a41-465c-9b0e-a453ab56de03?q=is%3Aopen+author%3A%40me
+No organisation PR/artifact or test result exists yet; await completed delivery.
+No competing request sent to old PR13 or completed PR19/20.
+
+Brief includes all nine items, server-scoped allow/deny enforcement, no signup
+ownership/self-escalation, internal cross-department Teams and join requests,
+no pending access, audit/revocation, retained protected-content authorship,
+last-active-owner concurrency, existing legitimate-admin compatibility without
+arbitrary owner appointment, additive schema from0014, real PostgreSQL races,
+Flutter actual navigation/stale-response/UID/role/org transitions and regressions.
+Requires ONE incremental unchanged mailbox
+docs/operations/development-deployment/organisation-improvements-dev-20261007.patch
+declaring exact baseline/source/artifact/checksum. Copilot owns code/tests;
+Codex independently reviews/tests before gated DEV-only rollout.
+No live owner/admin appointments granted merely by implementing this task.
+Real semantics/provider billing explicitly deferred until first customer;
+keep fake-provider DEV. No Microsoft Teams integration or browser extension.
+
+DEV remains reviewedf662a6c100% /Hostingrelease1791360928018000,
+version3e8209ddae71b73b/schema0014. Codespace remains stopped; no temporary
+resources started. Main four dirty docs/files preserved. No production/merge,
+IAM/AppCheck weakening, new permissions, secret disclosure, live purge/downgrade
+or automatic local upload. Existing authenticated personal-import/F04/F08/F09
+and registered live Ask scope gaps remain separately open.
+Old PR13 task8c57d37e remains quarantined/not confirmed stopped; reject late output.
+Monitoring already cancelled; no automation created.
+This authorisation supersedes organisation-deferred wording in historical
+search entries, not the real-semantic/provider deferral.
+
+## Unified Ask/search rollout completed — 2026-10-07
+
+Founder authorised next steps after the completed Copilot correction.
+Sole replacement task b8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0 continued through
+PR19 comment6033551477 and GitHub-created stacked PR20, session
+4d8fe812-a649-4297-b24f-c1b702432414. Actions run37590320973/job112689985974
+completed SUCCESS at2026-10-07T07:59:41Z. Backend workflow action_required is
+NOT a test pass. Copilot Flutter/Dart remained unavailable127; no Copilot
+Flutter pass claimed. No additional or competing correction request sent.
+
+Authored navigation correction source
+`d35440f932085a8d30d8cf6071b212fdc0ab3997`;
+artifact-only `6843474ab45ae164dd144731c2612a365fd264ff`.
+Mailbox `docs/operations/development-deployment/unified-knowledge-ask-parity-navigation-20261007.patch`,
+2593 bytes, exact SHA256
+`47cbf574fad15970cbea7b54aa99915445dea179161155b13e56369bc492f9dc`.
+Declared complete base8b675e20133ee713416c162896851d308d615881 verified.
+Applied UNCHANGED with git am in /workspaces/intqaflow-unified-search-dev-20261006,
+producing complete reviewed source **`f662a6cff70526f287fb521bea25ec24860d8f4a`**.
+Pushed fix/unified-search-dev-20261006 and exact GitHub ref readback verified.
+Flutter tree equivalent to authored d35440f; diff --check PASS, tree clean.
+Final patch changes only the navigation assertion helper: exact original title's
+ancestor ListTile, then descendant subtitle answer and storage-status assertions
+for both Private and Local. Real destination retained, no dummy/global matcher,
+no application changes merely to satisfy tests. Codex made no app/test edits.
+
+| Independent executed check onf662a6c | Result |
+|---|---|
+| Python compile / Alembic heads |exit0 / single0014,exit0|
+| Full backend |111PASS4SKIP10warnings24.99s,exit0|
+| Fresh actual PostgreSQL16 |4PASS3.47s,exit0|
+| Separate isolated migrationDB |0014→0013→0014,current0014 PASS,exit0|
+| Full Flutter |180PASS81s,exit0|
+| Analyzer |0errors0warnings13existing infos19.5s,exit1 solely infos|
+| Configured DEV web release |PASS77.4s,exit0|
+| Non-mutating Dart format |7of7Dart files changed since105a528 would change,exit1; advisory outstanding, no files modified|
+
+The initial format invocation used four incorrect paths and checked only
+ask_page_test.dart; not a full format pass. Corrected exact git-diff file-list
+check above covers all7 changed Dart files. Formatting was requested but not
+delivered by Copilot because tools unavailable. Record this nonfunctional debt;
+do not label format PASS or alter Copilot application/test patches.
+All specified functional release gates passed, including stale-response,
+scope/UID transitions, partial-failure, badges, actual Private/Local navigation
+and manual-only submission regressions. Automated scope tests do not establish
+hosted registered-account acceptance or fake-provider semantic quality.
+
+### Confirmed intqaflow-dev-only runtime
+
+Verified at2026-10-07T08:16:56Z, before final resource shutdown:
+- Complete source f662a6cff70526f287fb521bea25ec24860d8f4a.
+- Backend unchanged byte-for-byte against prior reviewed105a528; reused its
+  reviewed immutable image, no redundant rebuild:
+  `europe-west2-docker.pkg.dev/intqaflow-dev/cloud-run-source-deploy/intqaflow-dev-api@sha256:31d1eb5487847352ff25e9b10de2711e8afca3a1f30d758f26cf28adee61be34`.
+- New Cloud Run revision **intqaflow-dev-api-reviewf662a6c**, initially0traffic.
+  Independent old/new spec comparison excluding image PASS; identity,
+  Cloud SQL/VPC/egress/execution/CPU settings retained; service ingress and
+  invoker security settings unchanged. Staged /health and /ready200 before
+  switch; then100%traffic, public health/ready200.
+- Cloud SQL intqaflow-dev-pg/europe-west2 schema already0014.
+  Read-only schema0014→0014 check verified unchanged existing-data counts,
+  runtime CRUD/new-column privileges, vector/pg_trgm extensions and trigram
+  indexes. Only alembic current executed on hosted DB; no migration, grants,
+  live downgrade or purge.
+- Firebase Hosting release **1791360928018000**, version **3e8209ddae71b73b**,
+ 36 files, publisherexit0.
+- Both https://intqaflow-dev.web.app/ and
+  https://intqaflow-dev.firebaseapp.com/ independently matched exact tested
+  index/bootstrap/main bytes; verificationexit0.
+- Missing identity on /api/v1/personal/items/search returns401.
+
+| Exact bundle on BOTH origins | Bytes | SHA256 |
+|---|---:|---|
+|index.html|1531|`a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858`|
+|flutter_bootstrap.js|9975|`dcce93a9b8f46ed31af333f1f0f00388708cac604a6e3931ba5a6fe27901437b`|
+|main.dart.js|4508459|`68e41529159ff413ed29eed8ccd1b5bf872ec4674320acde618a84c7c7a54a34`|
+
+Live guest smoke after reloading new frontend: existing browser-local items
+retained, query needle retrieved answer-only matches with Local badge and
+local-storage/source explanation. Selecting first result opened real Saved Q&A
+with exact original title, answer and Local on this device; screenshot and
+fresh accessibility state confirmed. No content created/imported/uploaded.
+This resolves prior guest local search/navigation smoke uncertainty for this
+specific flow, not registered Ask/account/group/organisation hosted acceptance.
+
+### Rollback, gaps and cleanup
+
+Rollback to reviewed **intqaflow-dev-api-review105a528** and Hosting version
+**4eb839685c6f21c7** (release1791323636722000). Retain additive schema0014 and
+all private data; never live DB downgrade/purge.
+Remaining: real semantic-provider quality in fake-provider DEV;
+hosted ordinary registered-account Ask/search source/scope acceptance;
+authenticated personal import/edit/multi-device E2E/F04/F08/F09; formatting
+advisory. Do not close these without actual evidence.
+Organisation owner/delegated-admin/Teams/join-request improvements DEFERRED.
+
+Logs/exit receipts retained under
+/home/vscode/.local/share/intqaflow/ask-validation-f662a6c;
+runtime/deployment JSON receipts under /home/vscode/.local/share/intqaflow.
+Fresh local DBs ask_pr20_tests_f662a6c/ask_pr20_migrate_f662a6c retained.
+Temporary PostgreSQL stopped (pg_ctl no server running); hosted-check proxy
+terminated by helper, no listeners55439/55442. Codespace bookish happiness
+stopped via GitHub with stopped banner confirmation. All files preserved.
+Main worktree's exact four dirty docs preserved; isolated worktree clean.
+Old PR13 task8c57d37e-831d-4101-8af0-5c25a6aa65da remains superseded/quarantined
+and NOT confirmed cancelled; reject any late output. Do not apply old artifacts.
+No production, merge, IAM/AppCheck weakening, secret disclosure or automatic
+local-content upload. Monitoring already cancelled; no automation created.
+This completed snapshot supersedes pending/current-runtime statements below;
+historical evidence remains intact.
+
+## Latest correction independently tested — single navigation assertion pending, 2026-10-07
+
+Completion6033431915 published source `380a6fa87d3b63bef4b100c844a2e4146ed62cc0`
+and artifact-only commit `298e2c707e8c7b6176f927a7d322920ab6e24b16`.
+Mailbox `docs/operations/development-deployment/unified-knowledge-ask-parity-correction-20261007.patch`,
+exact SHA256 `fa70afe9be73bf5bed6e99cf2f0bec8038c082cd8ff3249a40d47798e67f638b`,
+declared base6514b7e50c38520449b114853f9f11d1c74db136 verified.
+Applied UNCHANGED with git am in the isolated worktree, complete source
+**`8b675e20133ee713416c162896851d308d615881`**.
+Pushed fix/unified-search-dev-20261006; exact GitHub readback verified.
+Flutter application tree diff against source380a6fa is empty; diff --check passed.
+Three Flutter files changed; no backend/schema changes. Isolated tree clean,
+main worktree four dirty docs preserved. No Codex app/test edits.
+
+| Independent executed check on8b675e2 | Result |
+|---|---|
+| Python compile / Alembic heads |exit0 / single0014,exit0|
+| Full backend |111PASS4SKIP10warnings24.04s,exit0|
+| Fresh real PostgreSQL16 |4PASS2.49s,exit0|
+| Separate isolated migrationDB |0014→0013→0014,current0014 PASS,exit0|
+| Full Flutter |179PASS1FAIL89s,exit1|
+| Analyzer |0errors0warnings13existing infos15.0s,exit1 due infos|
+| Configured DEV web release build |PASS99.1s,exit0|
+| Non-mutating format check |5touched files would change,exit1; no modifications|
+
+Stale-scope/UID and exact manual-submission regressions now pass. Remaining
+test 'Ask suggestions show unified source badges and open source' fails at
+ask_page_test.dart:348: exact answer-only Text 'Keep account passwords unique.'
+found0 after real Private navigation; Saved Q&A and exact selected title pass.
+Static evidence: real saved-item ListTile.subtitle combines body, answer and
+storage status into one Text joined by blank lines (guest_workspace_page.dart
+around2811–2826); answer-only exact matcher cannot match combined subtitle.
+Following Local assertion line356 has same latent issue and was NOT reached,
+so do not claim Local destination answer assertion passed.
+ONE focused same-replacement follow-up
+[6033551477](https://github.com/ManuelKismet/interaction-qa-flow/pull/19#issuecomment-6033551477)
+requests selected-original-Card/ListTile scoped subtitle/content/storage assertions,
+not broad global text matcher/dummy destination/removed assertions/renderer change
+merely to satisfy test. Also outstanding requested Dart formatting.
+Complete baseline8b675e2; incremental mailbox/source/artifact/checksum requested.
+Prior correction6033327274 completed before this follow-up; no competing task.
+GitHub responded to6033551477 by automatically creating stacked draft PR20,
+not an additional Codex request. Carrier copilot/replacement-ask-parity-20261007-again
+into copilot/replacement-ask-parity-20261007 at298e2c7; initial-plan head
+c3beccc01e49d271211d33cfdde61513e2a0e677. PR20 body explicitly links triggering
+comment6033551477 and exact complete requested baseline8b675e2. UI confirms
+started-work session `4d8fe812-a649-4297-b24f-c1b702432414`.
+This is the sole continuation of the registered replacement, NOT old PR13.
+No completed new artifact yet; preserve baseline8b675e2 and require declared
+mailbox base/app-tree equivalence before apply. Do not merge/rebase stack or send
+another task. Await completed PR20 correction artifact; no retry loop.
+Copilot Flutter/Dart unavailable exit127, no such Copilot passes claimed.
+
+Logs and exit receipts retained under
+/home/vscode/.local/share/intqaflow/ask-validation-8b675e2.
+Initial nested-shell backend startup was malformed/interrupted by autoactivation;
+not counted as pass. Corrected isolated runner executed all recorded checks.
+Its newly generated main nohup.out moved intact to private startup-nohup.out;
+four original dirty docs preserved and no user data removed.
+Fresh local DBs ask_pr19_tests_8b675e2/ask_pr19_migrate_8b675e2 retained.
+PostgreSQL stopped with server-stopped confirmation; no proxy started.
+Codespace stopped via GitHub, stopped banner confirmed. All files preserved.
+
+DEV **UNCHANGED / rollout HELD**: reviewed105a528 /
+intqaflow-dev-api-review105a528100%, schema0014,
+Hostingrelease1791323636722000/version4eb839685c6f21c7.
+Retain reviewed rollback/additive schema/private data; never live downgrade/purge.
+Old PR13 task8c57d37e output remains quarantined, not confirmed cancelled.
+Only replacement PR19/taskb8a0e4a5 authorised. Fake-provider semantic quality,
+authenticated personal-import E2E/F04/F08/F09 remain unverified.
+Organisation/admin/Teams/join-request improvements DEFERRED.
+No production, merge, IAM/AppCheck weakening, secrets disclosure or automatic
+local-content upload. Monitoring cancelled; no automation created.
+
+## Latest independent replacement review — correction pending, 2026-10-07
+
+Replacement PR19 delivery completed in artifact commit
+`20f6a89c8f35a2b077298b029d10abf17c815642`, parent adee30e5.
+Mailbox path `docs/operations/development-deployment/unified-knowledge-ask-parity-replacement-20261007.patch`;
+exact-byte SHA256 `d49ac604aa73037ce7e6de56fcc01d3544cd688a8463fa1e1f424c5ac4ffb630`.
+Declared base e9e3cc804e8dbb45033e637304fd34c21cd14b2f verified.
+Applied UNCHANGED via git am in /workspaces/intqaflow-unified-search-dev-20261006.
+Complete review source **`6514b7e50c38520449b114853f9f11d1c74db136`**, pushed to
+fix/unified-search-dev-20261006 and exact GitHub readback verified.
+Independent entire-tree diff against authored adee30e53a92b6e51fa3ee2472216db1b7beeb20
+is empty; diff --check passed. Five Flutter files only; no backend/schema changes.
+Isolated tree clean and four dirty main docs preserved. No Codex app/test edits.
+
+| Executed independent check on6514b7e | Result |
+|---|---|
+| Python compile / Alembic heads | exit0 / single0014, exit0 |
+| Full backend |111 passed,4 skipped,10 warnings,22.07s,exit0|
+| Fresh real PostgreSQL16 |4 passed,1.53s,exit0,asyncpg|
+| Separate isolated migration database |0014→0013→0014 and current0014 PASS,exit0|
+| Full Flutter |177 passed,3 failed,about80s,exit1|
+| Analyzer |0 errors,0 warnings,13 existing infos,16.3s,exit1 due infos|
+| Configured DEV release web build |PASS,105.5s,exit0|
+| Non-mutating Dart format check |all5touched files would change,exit1; no modifications|
+
+Initial PostgreSQL/migration attempt used unavailable psycopg driver and failed
+ModuleNotFoundError; corrected executions used installed asyncpg on fresh local
+databases ask_pr19_tests_6514b7e / ask_pr19_migrate_6514b7e, host127.0.0.1:55442.
+Do not report initial attempt as a code failure or hide it. No hosted DB touched.
+Logs/exit receipts retained in /home/vscode/.local/share/intqaflow/ask-validation-6514b7e.
+
+**ONE targeted incremental correction** sent on same authorised
+[PR19 comment6033327274](https://github.com/ManuelKismet/interaction-qa-flow/pull/19#issuecomment-6033327274),
+complete baseline6514b7e, no competing task:
+- controller test 'drops stale results after identity and membership changes':
+expected three password calls, actual four; diagnose legitimate transition refresh
+vs redundant/unscoped request, retain scope/privacy rejection assertions.
+- actual GuestWorkspacePage navigation harness raises [core/no-app] Firebase default
+app missing through firebaseAuthProvider, followed by Saved Q&A missing at
+ask_page_test.dart:328. Faithful deterministic provider overrides required;
+do not replace real destination with dummy text/suppress exceptions.
+- manual-only submission test StateError 'No element' at ask_page_test.dart:436;
+fix finder/harness/control behaviour while retaining exact manual payload and
+no retrieved/local/private-content upload assertions.
+- Copilot to format touched Dart files. Preserve all previous parity acceptance.
+GitHub PR19 visibly confirms Copilot started work on this correction in session
+`304923b9-6663-40b3-8825-91aae08e35ab`; no corrected artifact published yet.
+Await completion/mailbox declaring baseline6514b7e and exact checksum before
+UNCHANGED application and independent rerun. Copilot's original Flutter tools
+were unavailable exit127; its outer shell0 was not a pass.
+
+DEV rollout **HELD**, unchanged complete reviewed105a528 /
+intqaflow-dev-api-review105a528100%, schema0014 /
+Hostingrelease1791323636722000/version4eb839685c6f21c7.
+Keep reviewed rollback and additive schema/private data; no live downgrade/purge.
+Temporary PostgreSQL stopped (pg_ctl confirmed server stopped), no proxy started.
+Codespace bookish-happiness-w974vpwgq7j3g95v stopped, GitHub banner confirmed.
+All source/log/database files retained. Main four dirty docs preserved.
+Old PR13 task8c57d37e remains quarantined (not confirmed cancelled); reject late
+outputs. Replacement identity remains b8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0.
+Fake-provider semantic quality and authenticated personal-import E2E/F04/F08/F09
+remain unverified. Organisation improvements DEFERRED. No production, merge,
+security/IAM/AppCheck weakening, secrets disclosure or automatic upload.
+Monitoring remains cancelled; no automation created.
+
+## Active replacement and old-output quarantine — 2026-10-07
+
+Founder explicitly authorised a NEW SEPARATE Copilot session after both browser
+and manual Stop failed to confirm cancellation of stalled request6026870639.
+CLI2.102.0 was installed from the official release with SHA256 verified, outside
+the repo at /home/vscode/.local/bin/gh. Authenticated workflow lookup succeeded;
+no new Actions run exists for the old correction. Exact CLI Stop attempt returned
+unknown command "stop" for "gh agent-task". Do not claim old cancellation.
+Codespace stopped again; files and main four dirty docs preserved.
+
+ONLY active authorised correction: **REPLACEMENT-ASK-PARITY-20261007**.
+[Replacement task](https://github.com/ManuelKismet/interaction-qa-flow/tasks/b8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0?q=is%3Aopen+author%3A%40me)
+ID `b8a0e4a5-3c30-4d03-a7d3-9d1739fa54f0`; initial activity/session
+`659d9fb1-53de-49bc-bb43-acdf79ad6f21`. GitHub shows **In progress**,
+with actual environment setup, base/checkpoint/PR discussion inspection and Ask
+source/test reads, not merely a queued spinner. Created2026-10-07 around07:01Z
+(08:01 Europe/London). No completed artifact or new independent passes yet.
+Selected source branch fix/unified-search-dev-20261006; fresh GitHub readback
+confirmed exact COMPLETE base `e9e3cc804e8dbb45033e637304fd34c21cd14b2f`.
+Same full correction6026870639 and original acceptance6026591268; no added scope.
+Replacement must use a separate branch/PR, never old PR13 carrier, publish ONE
+incremental format patch declaring this base plus authored/source/artifact SHAs.
+Copilot owns app/tests; Codex applies unchanged and independently reruns gates.
+
+**SUPERSEDED / QUARANTINED**: old correction request6026870639,
+created2026-10-06T22:49:13Z, under task
+`8c57d37e-831d-4101-8af0-5c25a6aa65da` on PR13 /
+copilot/improve-short-query-search-yet-again. Old UI still Queued; not stopped.
+[Supersession marker](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6032732442).
+Any late completion, commit, patch, or Actions artifact attributable to that OLD
+attempt is audit-only: **DO NOT APPLY, MERGE OR DEPLOY**. Retain history; do not
+reset/delete its commits. PR13 head movement is not acceptance evidence. Only
+registered replacement provenance may enter review. Previously accepted runtime
+105a528 and unchanged-applied rejected reviewe9e3cc8 are not invalidated.
+Record replacement PR/branch/run/artifact IDs when published; do not invent them.
+
+DEV UNCHANGED: reviewed105a528/backendreview105a528100%, schema0014,
+Hostingrelease1791323636722000/version4eb839685c6f21c7. No new deployment,
+merge or hosted migration. Retain105a528 rollback and additive schema/private
+records. Fake-provider quality, personal-import authenticated E2E/F04/F08/F09
+remain unverified. Organisation improvements remain DEFERRED. No production,
+IAM/AppCheck weakening, secret disclosure, paid-provider activation, automatic
+local-content upload or database downgrade/purge. Monitoring remains cancelled;
+no automation created. Await ONLY replacement artifact, avoid retry loops.
+
+## Latest independent review — Ask parity correction pending, 2026-10-06
+
+Copilot Ask-parity run37540651764 completed success at22:41:25Z.
+Completion6026770454 published artifact
+`6de32ac7e97148eb4022ddc080c1f64387586749`, authored
+`607bcce3ea61e0fb9c9392c2cd9c0b2bbbc847c3`, base105a528.
+Its unified-knowledge-ask-parity-20261007.patch was applied UNCHANGED with git am
+in /workspaces/intqaflow-unified-search-dev-20261006, producing exact complete
+review source `e9e3cc804e8dbb45033e637304fd34c21cd14b2f`.
+Published to fix/unified-search-dev-20261006 and GitHub readback verified.
+Seven Flutter files only; backend/schema unchanged. Clean isolated tree and
+main worktree's four dirty documentation files preserved.
+
+| Independent check on e9e3cc8 | Executed result |
+|---|---|
+| Python compile / Alembic heads | exit0 / single0014 |
+| Full backend |111 passed,4 skipped,10 warnings,40.13s,exit0|
+| Fresh separate real PostgreSQL16 |4 passed,3.92s,exit0|
+| Isolated migration round-trip |0014→0013→0014 PASS,exit0|
+| Full Flutter |173 passed,1 failed,about91s,exit1|
+| Analyzer |0 errors,1 warning,13 infos,13.3s,exit1|
+| Configured DEV release build |PASS,49.9s,exit0|
+| Non-mutating Dart format check |7 changed files would be formatted,exit1; source untouched|
+
+Rollout BLOCKED by unused question_models import warning in
+ask_suggestions_controller.dart:11:8 and new AskPage widget harness failure:
+“No Material widget found” (bare AskPage route, pumpAndSettle line168).
+This is a test harness failure, not proof production lacks Material.
+Actual Ask-specific privacy/submission, stale account/organisation, partial
+failure/retry, local answer/body-vs-semantic, scoped navigation/dedup and
+mobile/keyboard acceptance coverage is also incomplete; do not mark it passed.
+
+[ONE consolidated incremental correction](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6026870639)
+requires exact complete basee9e3cc804e8dbb45033e637304fd34c21cd14b2f, not
+carrier6de32ac or a reconstructed old patch tree. Copilot owns app/tests.
+Await its one corrected artifact; no competing requests or further rollout.
+
+DEV is UNCHANGED: backendintqaflow-dev-api-review105a528 at100%,
+schema0014, Hostingrelease1791323636722000/version4eb839685c6f21c7.
+Both-origin current bundle hashes remain the105a528 snapshot below.
+For any next rollout, retain reviewed105a528 + Hosting4eb839685c6f21c7 as
+rollback; retain additive0014/private data, never live downgrade/purge.
+No Cloud Run stage, traffic switch, Hosting publish or hosted migration executed
+for rejected e9e3cc8. Fake-provider quality, authenticated personal-import
+E2E/F04/F08/F09 and live search/navigation gap remain separate; organisation
+owner/delegated-admin/Teams/join-request changes remain deferred.
+
+Logs/exit receipts retained privately under
+/home/vscode/.local/share/intqaflow/ask-validation-e9e3cc8.
+Codespace restarted through existing GitHub UI for validation.
+Temporary PostgreSQL stopped and files retained; no proxy used.
+GitHub UI confirmed “Codespace bookish happiness stopped”. Validation runners
+completed; no temporary database/proxy left active. Files/evidence retained.
+Recurring monitoring remains cancelled by founder; do not recreate.
+
+## Active follow-up — Ask & search unified parity, founder-authorised 2026-10-06
+
+Founder reports the deployed search works in their manual test. Scope/account,
+queries and source-navigation coverage were not specified, so record this as
+founder-reported success, not Codex-executed authenticated/multi-source E2E.
+The earlier cloud-browser search smoke remains separately inconclusive.
+
+Static review on exact deployed105a528 confirmed organisation AskPage uses
+organisation-only questionsRepository search and related-question rows with
+department/team/answer/match labels. It does not yet share the unified
+Local/Private/Group/Organisation search coverage and explicit origin labels.
+
+Founder explicitly approved extending the same unified search to Ask & search.
+[ONE targeted Copilot handoff](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6026591268)
+uses complete base `105a528f19b2383545b5cfae17197439ce065279` on
+`fix/unified-search-dev-20261006`, not the older patch-carrier head.
+Apply only its future incremental patch unchanged; never reconstruct old patches.
+
+Preserve existing form/submission/selectors and Ask as new question. Accessible
+Local/Private/Group/Organisation results get actual source names and assigned
+department/team labels, useful snippets, shared ranking/query lifecycle and
+correct source navigation. A local/private match never blocks deliberate new
+organisation submission and never copies/uploads private/local content
+automatically. Existing access boundaries, membership checks, no-org personal
+usage, query/identity freshness, retry/partial failures and original retention
+remain mandatory. Shared reusable logic and meaningful actual AskPage/widget
+regressions required; no unnecessary schema or deferred organisation work.
+
+Copilot owns app/tests; Codex independently reviews/applies/tests in the existing
+isolated worktree and manages DEV-only rollout after passing gates. No new patch
+is independently tested or deployed at this handoff. Current runtime remains
+review105a528/schema0014/Hosting4eb839685c6f21c7 as recorded below.
+Codespace remains stopped while awaiting artifact. Recurring monitoring remains
+cancelled; do not recreate. Real-provider quality, authenticated personal-import
+E2E/F04/F08/F09 and deferred organisation work remain separate.
+
+## Latest deployed snapshot — DEV search rollout verified, 2026-10-06
+
+Complete reviewed source `105a528f19b2383545b5cfae17197439ce065279` on
+`fix/unified-search-dev-20261006` is deployed to **intqaflow-dev only**.
+Artifact8efaf683, authored9698850d, was applied unchanged to98ca4f6.
+Source push and GitHub readback matched the full SHA.
+
+| Independent check on105a528 | Executed result |
+|---|---|
+| Compile / Alembic head | PASS / single0014 |
+| Backend full suite |111 passed,4 PostgreSQL skips,10 warnings,35.09s,exit0|
+| Fresh isolated PostgreSQL16 |4 passed,1.35s,exit0|
+| Isolated migration cycle |0014→0013→0014 PASS,exit0|
+| Full Flutter suite |169 passed,about67s,exit0|
+| Analyzer |0 errors,0 warnings,13 infos,18.3s,exit1 from infos|
+| Configured DEV release build |PASS,62.3s,exit0|
+
+The initial reused PostgreSQL test database run was3PASS1FAIL due to duplicate
+fixed-UID fixture records left by the earlier run; no hosted data was touched.
+A new separate disposable database passed all four tests. Both logs retained.
+Use a fresh empty test DB for these schema fixtures, separate from migrated
+public tables, rather than assuming schema cleanup removes public fixtures.
+
+### Verified runtime and artifacts
+
+- Backend `intqaflow-dev-api-review105a528`,100% traffic,health/ready200.
+  Staged at zero traffic first. Runtime spec identical except image;
+  service identity,SQL/VPC attachments,env/security settings preserved.
+- Backend image digest:
+  `31d1eb5487847352ff25e9b10de2711e8afca3a1f30d758f26cf28adee61be34`.
+- Additive Cloud SQL0013→0014 completed. Runtime table/column privileges,
+  vector/pg_trgm extensions and all three exact trigram indexes verified.
+  Before/after counts identical:questions5,answers5,groups6,memberships9,
+  group entries3,personal items0. No new grants,live downgrade or purge.
+- Hosting release `1791323636722000`,version `4eb839685c6f21c7`,36 files.
+- Both https://intqaflow-dev.web.app/ and https://intqaflow-dev.firebaseapp.com/
+  matched exact tested index/bootstrap/main bytes:
+  main4497789 bytes/SHA256
+  `78a8f550a70e24dea13bdbd64bed183356c88035914bc4649ddedb29879ff2c1`;
+  index1531 bytes/`a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858`;
+  bootstrap9805 bytes/`0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67`.
+- Live unauthenticated personal search rejected401.
+- Live guest local save and Saved Q&A listing verified with two synthetic
+  local-only smoke records titled “DEV search smoke105a528”. No import/account
+  action or automatic local upload performed. Records retained,not purged.
+  Live query/result/navigation smoke remains inconclusive because cloud-browser
+  Flutter text-input/focus automation did not reliably trigger query changes.
+  Do not count that search smoke as passed or infer a confirmed app defect.
+  The independent answer-ranking/Local-Private/no-upload widget regressions passed.
+
+### Rollback, remaining gaps and cleanup
+
+Rollback traffic to `intqaflow-dev-api-reviewaafc112` and Hosting to
+version `49afc5b14f53f3b0` (release1791307395456000).
+**Retain additive schema0014 and private data**; never live DB downgrade/purge.
+The previous reviewed revision/Hosting version remain the rollback targets.
+
+Meaningful semantic-provider quality remains unverified in fake-provider DEV.
+Authenticated personal-import/edit/multi-device E2E and F04/F08/F09 remain open.
+Live guest query/result/navigation smoke needs ordinary browser validation.
+Organisation owner/delegated-admin/Teams/join-request improvements remain
+explicitly deferred. No production,merge,IAM/AppCheck weakening or secret
+disclosure performed.
+
+Operational receipts/logs retained privately under
+`/home/vscode/.local/share/intqaflow/search-validation-105a528` and
+`search-105a528-*.json`. Disposable PostgreSQL stopped; migration proxy
+terminated by its finally block. Main worktree's four dirty docs preserved.
+Temporary staging tag removal passed (exit0), leaving reviewed105a528 at100%.
+Post-cleanup both-origin exact-byte,health/ready and private rejection checks
+passed again (exit0). GitHub UI confirmed “Codespace bookish happiness stopped”.
+Files/evidence retained; no database/proxy or rollout runner left active.
+Recurring monitoring remains cancelled by founder; do not recreate.
+
+## Current state (original handoff history)
+
+Founder reviewed the seven search improvements and authorised implementation.
+Copilot handoff was published as [PR 13 comment](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6023733274).
+Implementation, independent validation and development rollout are pending;
+this handoff is not evidence that the feature is complete.
+
+Exact implementation baseline:
+`fix/saved-qa-dev-20261006` at
+`aafc112fbbf220eda1077895334dc16b4930eeab`.
+Use the complete published source, not the older PR patch-carrier head.
+Copilot owns app/backend/test changes; Codex independently reviews, validates,
+configures and deploys to development within the authorised workflow.
+
+## Accepted scope
+
+- One existing Search Knowledge field searches accessible local, private account,
+  Group and organisation Knowledge, with department/team access governed by
+  existing permissions. Personal/group access needs no organisation.
+- Clear source badges, question results and answer snippets, visible beneath the
+  field while typing on both Knowledge views. Preserve placement and Saved Q&A.
+- Keyword/prefix and bounded typo matching, plus meaningful semantic retrieval
+  for backend content through the configurable provider. Rank exact/strong text
+  matches before weaker semantic results and keep lexical fallback.
+- Enforce scope permissions before retrieval/ranking/snippets/counts; no private
+  data added to shared/global semantic indexes. Group membership/lifecycle and
+  organisation policies remain authoritative.
+- Local item content remains on-device unless explicitly imported. Search never
+  uploads local content or silently imports, mutates or removes originals.
+- Debounced bounded requests; stale query/account responses ignored; sign-out and
+  identity changes clear private results. Accessible navigation opens the source.
+- Loading, empty, retry and partial-scope failure states preserve the query and
+  available results. Empty queries do not trigger unbounded remote listing.
+
+## Review gates and next steps
+
+1. Confirm Copilot's published implementation SHA and artifact/base provenance.
+   Apply unchanged code patches only against the stated baseline.
+2. Review permissions across lexical/semantic branches and source labels.
+   Check answer indexing, per-scope isolation, query bounds and local privacy.
+3. Independently run compilation/analyzer first, meaningful backend/Flutter
+   suites, isolated PostgreSQL retrieval/permission checks and a release build.
+   Record actual tests versus unavailable tools or live provider checks.
+4. If meaningful provider credentials are unavailable, keep that live validation
+   explicitly pending. Fake embeddings cannot establish semantic quality.
+5. Only after review/checks, perform the authorised development rollout and
+   verify runtime/source/Hosting artifacts and changed browser behavior.
+   No production deployment, merge, purge or security weakening is authorised.
+6. Update this checkpoint with source/artifacts, results, runtime/schema changes,
+   rollback and remaining acceptance gaps.
+
+The earlier live authenticated personal import/edit/multi-device acceptance gap
+remains outstanding. Do not close it or F04/F08/F09 just because search tests or
+deployment succeed. See [previous rollout checkpoint](README.md) and
+[workflow lessons](personal-workspace-workflow-lessons-2026-10-06.md).
+
+## Independent first-patch review — 2026-10-06
+
+Published artifact `9bc571daa9c3348acfc322e57f84d9566acd930d` contains
+`unified-knowledge-search-20261006.patch`, authored commit
+`04b09c259e8d5bed408b8ebf07268af3e5b218ef`, declaring the correct
+`aafc112` base. It has NOT been applied or deployed. This review was static;
+no runtime test pass is claimed.
+
+Blockers were consolidated into
+[Copilot correction request](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6024434062):
+
+- Duplicate Alembic revision 0013/down_revision0012 conflicts with the existing
+  personal-workspace schema. Correct to a unique next revision based on 0013.
+- Backend personal/group semantic retrieval missing; preserve private scoped
+  indexes, local content privacy and lexical fallback.
+- Results grouped by origin without common relevance ranking; source badges,
+  organisation/department/team names and useful local/account answer previews missing.
+- Local/group result navigation incomplete; query/account freshness and full
+  personal item coverage need validation.
+- Remote UI, scoped semantic permission, PostgreSQL typo and failure/isolation
+  regressions insufficiently covered.
+- New answer embedding input requires lifecycle invalidation across governance
+  and other accepted/verified answer transitions.
+
+Because this patch is unapplied, requested one corrected consolidated patch
+against the exact original complete baseline. Resume by verifying the new
+authored/artifact commits and reviewing those blockers before running full
+independent checks or changing development.
+
+Founder explicitly instructed search only, then dev rollout after confirmation
+it works. [Organisation improvements](organisation-improvements-deferred-2026-10-06.md)
+are recorded but must not be implemented or assigned to Copilot until the
+founder gives the later start instruction.
+
+## Corrected patch applied and independently tested — 2026-10-06
+
+Artifact `7eca2357ecc774508bf827bd694f73f531177925` was applied unchanged
+in a new isolated worktree, producing
+`44422230f7435e503b82e96586ff6ec5314bdab1` on
+`fix/unified-search-dev-20261006`. Source branch is pushed and GitHub readback
+verified. Deployed source remains `aafc112`; **no search deployment yet**.
+
+| Check | Executed result |
+|---|---|
+| Python compileall | Pass |
+| Alembic heads | Single head 0014 |
+| Backend suite | 110 passed, 1 failed, 4 PostgreSQL tests skipped without URL; 10 warnings, 26.32 s, exit 1 |
+| Flutter dependencies | Pass |
+| Flutter analysis | 2 errors, 3 warnings, 11 informational notices; 23.1 s, exit 1 |
+| Fresh isolated PostgreSQL migration | Upgrade through 0014 passed |
+| Actual PostgreSQL search/concurrency | 2 passed, 1 failed; 0.87 s, exit 1 |
+| Isolated migration round-trip | 0014 → 0013 → 0014 passed, exit 0 |
+| Full Flutter suite / release build | Not run: compile errors block these gates |
+
+Failures and remaining matching issues were consolidated into
+[Copilot correction request](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6025264339):
+
+- Nullable membership status access and nonexistent personal reload method in
+  guest_workspace_page.dart; redundant assertions and unused savedItems warnings.
+- Account search test incorrectly expects one record despite two legitimate
+  same-owner sentinel records. Preserve owner isolation while correcting the assertion.
+- PostgreSQL semantic fixture fails because GuestGroup is never added before
+  flushing/using its ID, producing null group_id.
+- Personal backend typo coverage, strong answer/body lexical priority against
+  semantic-only matches, compact Private/Local badges and remote widget regressions
+  still require completion.
+
+Requested a targeted incremental patch against the exact pushed `44422230`
+source, not another reconstructed full feature patch. Next step is review/apply
+that correction, repeat independent gates, then DEV-only rollout if passing.
+No automatic claim of test completion or meaningful live semantic quality.
+
+The database was disposable PostgreSQL16 on loopback port55442, not Cloud SQL.
+Its server was stopped after the isolated migration round-trip; files retained
+for resumable checks. Logs are private under /tmp/intqaflow-search-*.log in the
+Codespace. Main worktree's four pre-existing dirty docs were preserved.
+Organisation improvements remain explicitly deferred until founder instruction.
+
+Cleanup confirmed: Codespace bookish happiness stopped after review source and
+checkpoint were pushed. Restart only for the next independent correction check.
+
+
+## Incremental correction independently validated — 2026-10-06
+
+Copilot artifact `6c69662936102ee6a47fedaef73b102475d7ca68`, authored
+`d9d2a506298787e21ea41296004b9273914ba1e3`, contains
+`unified-knowledge-search-corrections-20261006.patch` with base `44422230`.
+Applied unchanged in the isolated review worktree, producing exact source
+`047d4131f2542a02762c3fdc9822dd52ce59f43d`; pushed on
+`fix/unified-search-dev-20261006` and GitHub branch readback confirmed.
+
+Executed independent checks:
+
+- Python compileall passed; Alembic single head 0014.
+- Backend: 111 passed, 4 PostgreSQL skips, 10 warnings, 27.33s.
+- Flutter analyzer: zero errors/warnings, 13 informational notices, 19.9s;
+  exit 1 due to infos. These are not a zero-exit result.
+- Full Flutter suite: 167 passed, 1 failed, about 77s, exit 1. New stale
+  account-result and partial-source retry widget regressions passed.
+- Fresh disposable PostgreSQL16 upgraded through 0014. Search, personal
+  concurrency and Group lock-order suites: 4 passed, 0.44s, exit 0.
+- Isolated 0014→0013→0014 round-trip passed, exit 0. No hosted DB changes.
+- Release compilation started separately; result pending at this checkpoint.
+
+Single failing Flutter scenario: `guest_interact_widget_test.dart:87`,
+“Saved Q&A search edits and removes local entries and returns to the form”,
+expects “On this device” in the search result, while approved badge is now
+“Local”. Detailed local storage status must remain independently asserted.
+[One targeted test correction](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6025524398)
+was sent against exact `047d413`; no competing requests. Next step: apply that
+incremental correction unchanged, rerun affected/full frontend gates and
+record release result before authorised DEV rollout.
+
+DEV remains source `aafc112`, backend `reviewaafc112`, schema0013 and
+Hosting1791307395456000/version49afc5b14f53f3b0. No deployment, merge,
+production, security change or automatic local upload performed.
+Meaningful live semantic-provider quality and authenticated personal-import
+E2E remain unverified; organisation improvements remain deferred.
+
+Database files are retained at
+`/home/vscode/.local/share/intqaflow/search-review-20261006`, loopback55442.
+Server stopped after isolated checks. Validation evidence is copied to
+`/home/vscode/.local/share/intqaflow/search-validation-047d413`.
+Main worktree's four pre-existing dirty docs preserved. Recurring monitoring
+was cancelled by the founder; do not recreate it.
+
+Release compilation completed: `flutter build web --release` passed, exit0,
+99.3s compilation on exact `047d413`. This was an independent generic
+release compile, not the configured Firebase deployment bundle. Deployment
+remains gated on the one full-suite assertion failure above.
+
+Final logs and exit files copied to retained validation directory. GitHub UI
+confirmed Codespace bookish happiness stopped after build completion.
+
+
+## Final badge-test retest and remaining application corrections — 2026-10-06
+
+Artifact `ddb0360f40e81cce16adfdf6d19dca3eb4df179f`, authored
+`bbe7349b3a9c169a2bb77519bf423f0c6fe4a56e`, was applied unchanged to047d413,
+producing `98ca4f612a4334cf4d95ee10ff294be0a000903d` on the same isolated
+worktree/branch. Source pushed and GitHub branch readback verified.
+
+- Full Flutter:167 passed,1 failed,about70s,exit1.
+- Analyzer:0errors/0warnings/13infos,16.9s,exit1 from infos.
+- App/backend code unchanged by this one-line test patch; prior111 backend
+  pass, isolated PostgreSQL4pass/migration cycle, and release compilation
+  apply to the unchanged app tree, not newly executed checks here.
+
+The compact Local Chip assertion still fails at
+`guest_interact_widget_test.dart:87` (zero matching Chips). Static review
+confirmed an APPLICATION contract gap: local/loaded-account result source is
+still constructed as origin plus storage status, and the renderer uses that
+whole string as its Chip label. Separate compact Local/Private badges from
+storage status, which already has its own field. Also local `_localRelevance`
+still scores all answer/body-only matches0.9, below semantic-only remote1.0;
+backend scoring was corrected but the on-device path was missed.
+
+[One consolidated targeted correction](https://github.com/ManuelKismet/interaction-qa-flow/pull/13#issuecomment-6025761236)
+requests application fixes plus meaningful Local/Private and cross-source
+answer-ranking regressions against exact98ca4f6, retaining all navigation,
+edit/remove/local-retention checks. Do not merely suppress the test or broaden
+badge text contract. Next: apply Copilot incremental correction unchanged,
+repeat independent relevant gates, then DEV rollout only when passing.
+
+No cloud deployment/migration/traffic/Hosting/security changes made in this
+retest. DEV remains aafc112/schema0013. Organisation improvements and live
+semantic-provider/authenticated-import acceptance gaps remain deferred or
+unverified as previously recorded. Validation evidence retained under
+`/home/vscode/.local/share/intqaflow/search-validation-98ca4f6`.
+Main worktree's four dirty docs remain preserved; recurring monitoring remains
+cancelled. Codespace cleanup confirmation will follow.
+
+Cleanup confirmed: GitHub UI displayed “Codespace bookish happiness stopped”.
+No temporary database/proxy was started during this test-only retest.

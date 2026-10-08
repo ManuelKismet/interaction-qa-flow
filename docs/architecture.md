@@ -9,6 +9,40 @@ The application shell exposes Knowledge and Interact as primary destinations.
 Knowledge owns the route-backed Ask/Search and Questions views; Review remains
 a shared governance destination rather than a third product module.
 
+## Current identity, storage and hosting model — 2026-10-06
+
+Development runs in project `intqaflow-dev`. Firebase hosts the Flutter frontend
+at [web.app](https://intqaflow-dev.web.app/) and
+[firebaseapp.com](https://intqaflow-dev.firebaseapp.com/) and provides
+authentication. A separate [Cloud Run API](https://intqaflow-dev-api-bycdjb22qq-nw.a.run.app)
+connects to PostgreSQL hosted by Google Cloud SQL (`intqaflow-dev-pg`,
+`europe-west2`, London). Firebase does not host this PostgreSQL database.
+
+| Workspace | Identity and ownership | Storage and boundary |
+|---|---|---|
+| Guest/local | No anonymous Firebase account | Browser-local Knowledge and Interact content |
+| Personal account | Verified registered Firebase UID; no organisation required | Private backend `personal_workspace_items`; excluded from organisation/group/global and semantic indexes |
+| Group | Verified registered account; no organisation required | Backend content with group permissions |
+| Organisation | Authenticated account with server-controlled membership/role | Tenant-scoped backend entities and governance |
+
+Registration creates a separate real account; there is no guest UID to link.
+Sign-in/signup never silently uploads or deletes local work. Selected import
+creates private account copies and retains the local originals. Registered users
+can still create local work; it remains local until explicitly imported.
+Storage labels describe the actual item origin and save state. Removing an
+account copy can reveal a retained local original, labelled Local.
+
+Account requests are bound to the expected UID; identity transitions clear
+private UI state and late responses are ignored. Pending edits, retry/conflict
+handling and revision-guarded deletion protect account saves. Search Knowledge
+stays in its existing location and searches loaded local/account content using
+client keyword/prefix matching. This is separate from organisation semantic search.
+
+[Deployment checkpoint](operations/development-deployment/README.md) records
+the exact released source, validation limits and rollback. The organisation
+sections below describe that module and do not imply organisation membership
+is required for a personal workspace or Group.
+
 ## Current boundaries
 
 - `apps/flutter_app` contains the employee web shell and uses feature-first
@@ -39,12 +73,13 @@ Question detail uses bounded aggregate reads: question/author/department,
 answers/authors/reaction counts, and comment count. It does not issue one query
 per answer.
 
-Authentication is not implemented. Development clients currently send
-`organisation_id` and `user_id`; TODO markers identify every boundary where
-these values must later come from validated authentication tokens.
+Hosted authentication uses verified Firebase ID tokens. Organisation actor,
+membership and role are resolved server-side; caller-supplied identifiers do
+not establish identity or authority.
 
-Semantic search and governance take their temporary identity from
-`X-Organisation-ID` and `X-User-ID` headers rather than the request body. Its
+Organisation semantic search and governance use authenticated, server-resolved
+identity and scoped membership. Any organisation selector is validated against
+that membership. The semantic-search
 repository filters by organisation, answered/resolved state, eligible answer,
 embedding model, and visibility before returning candidates. Organisation-visible rows
 are shared within the tenant, department-visible rows require the user's single
@@ -138,7 +173,7 @@ infer the user's formal department.
   Open suggestions appear in the existing department-scoped review queue and
   may be accepted through merge or rejected without altering either question.
 - Canonical linking, answer selection, and suggestions derive tenant/actor
-  identity from headers and use the existing admin/department-owner policy.
+  identity from validated authentication and server-controlled membership and use the existing admin/department-owner policy.
 
 ## IntQAFlow Interact
 
@@ -167,6 +202,6 @@ infer the user's formal department.
 
 ## Deferred work
 
-Generative AI, Firebase Auth, team-only visibility for primary Q&A, Microsoft
+Generative AI, team-only visibility for primary Q&A, Microsoft
 Teams integration, browser extensions, document ingestion, and agent access
 remain intentionally deferred.

@@ -1,5 +1,7 @@
 # Development acceptance checklist
 
+> Current status (2026-10-05): historical baseline and scenario inventory. Dated FAIL/PENDING/NOT RUN labels below are not current verdicts. See [current checkpoint](development-deployment/user-admin-e2e-checkpoint-2026-10-04.md) for superseding evidence and remaining gaps. Production and old local database excluded.
+
 Prepared 2026-10-02. Deployment remains deferred. Keep the old local database and its volume until hosted end-to-end acceptance passes. Use synthetic data and fake embeddings for local checks. No production data, live embedding calls, public server exposure or global App Check enforcement changes are part of this checklist.
 
 ## Evidence and policy
@@ -92,3 +94,6 @@ Reproducible opt-in files:
 Run from the pinned backend with PYTHONPATH containing that backend and the isolation branch's docs/operations/review-probes directory, using the review virtual environment and EMBEDDING_PROVIDER=fake. Invoke these files explicitly with pytest; they are not automatically included in the application's suite. Preserve backend_security_observations.py as the historical defect reproduction helper.
 
 Next correction: check visibility of resolved canonical roots and intermediate aliases before suggestion creation and response construction; test denied creation leaves no persisted suggestion, legitimate owner/public-root operations succeed, and related canonical/search paths do not expose private target metadata. Live Firebase/App Check, hosted migration/database acceptance and manual Phase 6 remain pending. No merge or deployment.
+
+
+Current test planning starts with [the coverage index](development-deployment/user-flow-acceptance-index.md); do not rerun historical cases marked PASS without a documented reason.
