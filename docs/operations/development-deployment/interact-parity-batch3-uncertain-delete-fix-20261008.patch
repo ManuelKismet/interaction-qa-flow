@@ -1,0 +1,660 @@
+From c61cb7d1d013fb24f4fd9c3fefbeded8b06df916 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 14:46:47 +0000
+Subject: [PATCH 1/2] Reconcile Undo after queued uncertain account DELETE
+ before create/update; add focused tests
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../presentation/guest_workspace_page.dart    | 128 ++++++++-
+ .../test/account_state_widget_test.dart       | 272 +++++++++++++++++-
+ 2 files changed, 398 insertions(+), 2 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 5431682..37c5b8e 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -50,8 +50,13 @@ class _PersonalWorkspaceWrite {
+     this.title,
+     this.data,
+     this.deleteAfterCreate = false,
++    this.reconcileRecordId,
++    this.reconcileRevision,
+   });
+ 
++  /// `create`, `update`, `delete` or `reconcile`. A `reconcile` write restores
++  /// an item after an account removal whose outcome was not confirmed: the
++  /// latest same-UID account state is read before choosing create or update.
+   final String action;
+   final String kind;
+   final String sourceKey;
+@@ -59,6 +64,16 @@ class _PersonalWorkspaceWrite {
+   final String? title;
+   final Map<String, dynamic>? data;
+   final bool deleteAfterCreate;
++
++  /// The account record (ID and revision) the unconfirmed removal targeted.
++  final String? reconcileRecordId;
++  final int? reconcileRevision;
++}
++
++class _PersonalReconcileConflict implements Exception {
++  const _PersonalReconcileConflict(this.remote);
++
++  final Map<String, dynamic> remote;
+ }
+ 
+ String _pdfFontPreviewMessage() => kIsWeb
+@@ -138,6 +153,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   String? _personalLoadedUid;
+   String? _openSessionId;
+   _PersonalWorkspaceWrite? _inFlightPersonalWrite;
++  // Account removals that were sent but whose outcome was not confirmed,
++  // keyed by source key, with the record they targeted.
++  final Map<String, Map<String, dynamic>> _uncertainPersonalDeletes = {};
+   bool _personalSaving = false;
+   bool _personalImportSaving = false;
+   int _personalWriteGeneration = 0;
+@@ -189,6 +207,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     _personalItems = [];
+     _pendingPersonalItems = [];
+     _pendingPersonalWrites.clear();
++    _uncertainPersonalDeletes.clear();
+     _pendingPersonalImport = [];
+     _personalImportNeedsReselection = false;
+     _personalConflictSourceKey = null;
+@@ -571,6 +590,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       }
+       final key = '$kind:${data['id']}';
+       final replacement = submittedByKey[key];
++      if (_pendingPersonalWrites[key]?.action == 'reconcile') continue;
+       if (replacement == null) {
+         _enqueuePersonalWrite(
+           _PersonalWorkspaceWrite(
+@@ -605,16 +625,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         final current = _personalItems
+             .where((item) => item['source_key'] == write.sourceKey)
+             .firstOrNull;
++        // A removal that failed without confirmation may still have been
++        // applied by the server, so the restore reconciles first.
++        final uncertain = _uncertainPersonalDeletes[write.sourceKey];
+         _enqueuePersonalWrite(
+           _PersonalWorkspaceWrite(
+             action: current == null || identical(_inFlightPersonalWrite, write)
+                 ? 'create'
++                : uncertain != null
++                ? 'reconcile'
+                 : 'update',
+             kind: write.kind,
+             sourceKey: write.sourceKey,
+             sourceId: write.sourceId,
+             title: _personalTitle(write.kind, replacement),
+             data: replacement,
++            reconcileRecordId: uncertain?['id'] as String?,
++            reconcileRevision: uncertain?['revision'] as int?,
+           ),
+         );
+         continue;
+@@ -639,6 +666,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             title: _personalTitle(write.kind, replacement),
+             data: replacement,
+             deleteAfterCreate: write.deleteAfterCreate,
++            reconcileRecordId: write.reconcileRecordId,
++            reconcileRevision: write.reconcileRevision,
+           ),
+         );
+       }
+@@ -711,6 +740,44 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               .firstOrNull;
+           if (current == null && write.action == 'delete') {
+             saved = null;
++          } else if (write.action == 'reconcile') {
++            final latest = await repository.listItems(expectedUid: uid);
++            if (!mounted ||
++                generation != _personalGeneration ||
++                uid != _verifiedPersonalUid) {
++              return;
++            }
++            final remote = latest
++                .where((item) => item['source_key'] == write.sourceKey)
++                .firstOrNull;
++            if (remote == null) {
++              // The removal was applied: recreate idempotently by source key.
++              saved = await repository.createItem(
++                kind: write.kind,
++                sourceKey: write.sourceKey,
++                title: write.title!,
++                data: write.data!,
++                expectedUid: uid,
++              );
++              if (!_samePersonalContent(saved, write)) {
++                throw _PersonalReconcileConflict(saved);
++              }
++            } else if (remote['id'] == write.reconcileRecordId &&
++                remote['revision'] == write.reconcileRevision) {
++              // The removal was not applied and nothing changed elsewhere.
++              saved = await repository.updateItem(
++                id: remote['id'] as String,
++                expectedUid: uid,
++                expectedRevision: write.reconcileRevision!,
++                title: write.title!,
++                data: write.data!,
++              );
++            } else if (_samePersonalContent(remote, write)) {
++              // A previous restore whose response was lost already applied.
++              saved = remote;
++            } else {
++              throw _PersonalReconcileConflict(remote);
++            }
+           } else if (write.action == 'create') {
+             saved = await repository.createItem(
+               kind: write.kind,
+@@ -747,6 +814,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               data: write.data!,
+             );
+           } else {
++            _uncertainPersonalDeletes[write.sourceKey] = current;
+             await repository.deleteItem(
+               current['id'] as String,
+               expectedUid: uid,
+@@ -760,6 +828,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           }
+           setState(() {
+             _personalWriteGeneration++;
++            _uncertainPersonalDeletes.remove(write.sourceKey);
+             if (saved != null) {
+               _personalItems.removeWhere(
+                 (item) => item['source_key'] == write.sourceKey,
+@@ -789,9 +858,19 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               ),
+             );
+           }
++        } on _PersonalReconcileConflict catch (conflict) {
++          if (mounted &&
++              generation == _personalGeneration &&
++              uid == _verifiedPersonalUid) {
++            _showReconcileConflict(write, conflict.remote);
++          }
++          return;
+         } on DioException catch (error) {
+           if (error.response?.statusCode == 409) {
+-            await _reloadPersonalConflict(uid, generation, write);
++            final conflictWrite = write.action == 'reconcile'
++                ? _reviewableRestore(entry.key, write)
++                : write;
++            await _reloadPersonalConflict(uid, generation, conflictWrite);
+           } else if (mounted && generation == _personalGeneration) {
+             setState(() {
+               _personalError =
+@@ -839,6 +918,52 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     }
+   }
+ 
++  bool _samePersonalContent(
++    Map<String, dynamic> record,
++    _PersonalWorkspaceWrite write,
++  ) =>
++      record['title'] == write.title &&
++      jsonEncode(record['data']) == jsonEncode(write.data);
++
++  /// Turns a pending restore into an ordinary pending edit so the existing
++  /// explicit conflict review decides whether it may replace the newer
++  /// account version.
++  _PersonalWorkspaceWrite _reviewableRestore(
++    String key,
++    _PersonalWorkspaceWrite write,
++  ) {
++    final reviewable = _PersonalWorkspaceWrite(
++      action: 'update',
++      kind: write.kind,
++      sourceKey: write.sourceKey,
++      sourceId: write.sourceId,
++      title: write.title,
++      data: write.data,
++    );
++    _uncertainPersonalDeletes.remove(write.sourceKey);
++    if (identical(_pendingPersonalWrites[key], write)) {
++      _pendingPersonalWrites[key] = reviewable;
++    }
++    return reviewable;
++  }
++
++  void _showReconcileConflict(
++    _PersonalWorkspaceWrite write,
++    Map<String, dynamic> remote,
++  ) {
++    setState(() {
++      _reviewableRestore('${write.kind}:${write.sourceId}', write);
++      _personalItems.removeWhere(
++        (item) => item['source_key'] == write.sourceKey,
++      );
++      _personalItems.add(remote);
++      _personalConflictSourceKey = write.sourceKey;
++      _personalConflictReloadFailed = false;
++      _personalError =
++          'This account item changed elsewhere while its removal was being undone. Your restored copy is preserved; review the latest account version before choosing.';
++    });
++  }
++
+   Future<void> _reloadPersonalConflict(
+     String uid,
+     int generation,
+@@ -1428,6 +1553,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             _personalItems = [];
+             _pendingPersonalItems = [];
+             _pendingPersonalWrites.clear();
++            _uncertainPersonalDeletes.clear();
+             _pendingPersonalImport = [];
+             _personalImportNeedsReselection = false;
+             _personalConflictSourceKey = null;
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 8d6311b..32086aa 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -303,7 +303,27 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+         response: Response(requestOptions: request, statusCode: 409),
+       );
+     }
+-    final current = items.firstWhere((item) => item['id'] == id);
++    final current = items.where((item) => item['id'] == id).firstOrNull;
++    final request = RequestOptions(path: '/api/v1/personal/items/$id');
++    if (current == null) {
++      // Mirrors the server: an unknown item ID is a 404, never an upsert.
++      throw DioException(
++        requestOptions: request,
++        response: Response(requestOptions: request, statusCode: 404),
++      );
++    }
++    if (current['revision'] != expectedRevision) {
++      // Mirrors the server's idempotent replay and revision conflict rules.
++      if (current['revision'] == expectedRevision + 1 &&
++          current['title'] == title &&
++          jsonEncode(current['data']) == jsonEncode(data)) {
++        return current;
++      }
++      throw DioException(
++        requestOptions: request,
++        response: Response(requestOptions: request, statusCode: 409),
++      );
++    }
+     final saved = {
+       ...current,
+       'title': title,
+@@ -328,6 +348,14 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     final gate = nextDeleteGate;
+     nextDeleteGate = null;
+     if (gate != null) await gate.future;
++    final current = items.where((item) => item['id'] == id).firstOrNull;
++    if (current != null && current['revision'] != expectedRevision) {
++      final request = RequestOptions(path: '/api/v1/personal/items/$id');
++      throw DioException(
++        requestOptions: request,
++        response: Response(requestOptions: request, statusCode: 409),
++      );
++    }
+     if (deleteFailures > 0) {
+       deleteFailures--;
+       if (deleteFailureAppliesOnServer) {
+@@ -3434,6 +3462,248 @@ void main() {
+       },
+     );
+ 
++    Future<_TestPersonalWorkspaceRepository> undoAfterQueuedUncertainDelete(
++      WidgetTester tester, {
++      required bool appliedOnServer,
++      required GuestWorkspaceStore store,
++      User? user,
++    }) async {
++      final session = accountSession('s1', 'Removable account session');
++      final repository =
++          _TestPersonalWorkspaceRepository([accountRecord(session)])
++            ..deleteFailures = 1
++            ..deleteFailureAppliesOnServer = appliedOnServer;
++      await tester.pumpWidget(
++        accountPage(
++          user: user ?? verified('a'),
++          store: store,
++          repository: repository,
++          initialSessionId: 's1',
++        ),
++      );
++      await tester.pumpAndSettle();
++      await deleteOpenSession(tester);
++      await tester.pump();
++      await tester.pump(const Duration(milliseconds: 300));
++      // The DELETE has finished with an unconfirmed outcome: it is pending
++      // for retry but no longer in flight when Undo is chosen.
++      expect(repository.deleteCalls, 1);
++      expect(find.text('Retry account save'), findsOneWidget);
++      expect(repository.items, appliedOnServer ? isEmpty : hasLength(1));
++      await tester.tap(find.text('Undo').hitTestable().first);
++      await tester.pump();
++      await tester.pump(const Duration(milliseconds: 300));
++      expect(repository.deleteCalls, 1);
++      expect(find.text('Retry account save'), findsOneWidget);
++      expect(find.textContaining('save not confirmed'), findsWidgets);
++      expect(find.textContaining('Personal account · saved'), findsNothing);
++      return repository;
++    }
++
++    Future<void> retryAccountSave(WidgetTester tester) async {
++      await _tapVisibleTarget(tester, find.text('Retry account save'));
++      await tester.pumpAndSettle();
++    }
++
++    for (final appliedOnServer in [true, false]) {
++      testWidgets('Undo after a queued uncertain DELETE '
++          '(${appliedOnServer ? 'applied' : 'not applied'} on server) '
++          'reconciles to one account item', (tester) async {
++        final store = GuestWorkspaceStore(_MemoryGuestStorage());
++        final repository = await undoAfterQueuedUncertainDelete(
++          tester,
++          appliedOnServer: appliedOnServer,
++          store: store,
++        );
++        final listsBeforeRetry = repository.listCalls;
++        await retryAccountSave(tester);
++
++        expect(repository.listCalls, listsBeforeRetry + 1);
++        expect(repository.listUids.last, 'a');
++        expect(repository.deleteCalls, 1);
++        expect(find.text('Retry account save'), findsNothing);
++        expect(find.textContaining('not confirmed'), findsNothing);
++        if (appliedOnServer) {
++          // Recreated idempotently under the same source key.
++          expect(repository.importUids, ['a']);
++          expect(repository.updateRevisions, isEmpty);
++          expectSingleRestored(
++            repository,
++            accountSession('s1', 'Removable account session'),
++            revision: 1,
++          );
++          expect(repository.items.single['id'], 'record-interact_session:s1');
++        } else {
++          // The original record is retained through its known revision.
++          expect(repository.imports, isEmpty);
++          expect(repository.updateRevisions, [1]);
++          expectSingleRestored(
++            repository,
++            accountSession('s1', 'Removable account session'),
++            revision: 2,
++          );
++          expect(repository.items.single['id'], 'remote-s1');
++        }
++        expect((await store.load()).sessions, isEmpty);
++      });
++    }
++
++    testWidgets(
++      'reconciliation read failure keeps the Undo pending and retry converges',
++      (tester) async {
++        final store = GuestWorkspaceStore(_MemoryGuestStorage());
++        final repository = await undoAfterQueuedUncertainDelete(
++          tester,
++          appliedOnServer: true,
++          store: store,
++        );
++        var failRead = true;
++        repository.listHandler = (uid) async {
++          if (failRead) {
++            failRead = false;
++            throw StateError('Simulated network failure.');
++          }
++          return repository.items;
++        };
++        await retryAccountSave(tester);
++
++        expect(find.text('Retry account save'), findsOneWidget);
++        expect(find.textContaining('save not confirmed'), findsWidgets);
++        expect(find.textContaining('Personal account · saved'), findsNothing);
++        expect(repository.imports, isEmpty);
++        expect(repository.items, isEmpty);
++
++        await retryAccountSave(tester);
++        expect(repository.importUids, ['a']);
++        expect(repository.deleteCalls, 1);
++        expectSingleRestored(
++          repository,
++          accountSession('s1', 'Removable account session'),
++          revision: 1,
++        );
++        expect(find.text('Retry account save'), findsNothing);
++        expect((await store.load()).sessions, isEmpty);
++      },
++    );
++
++    testWidgets('a lost recreate response does not create a duplicate', (
++      tester,
++    ) async {
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      final repository = await undoAfterQueuedUncertainDelete(
++        tester,
++        appliedOnServer: true,
++        store: store,
++      );
++      // The recreate is applied but its response is lost.
++      repository.failedImports = 1;
++      await retryAccountSave(tester);
++      expect(repository.imports, hasLength(1));
++      expect(repository.items, hasLength(1));
++      expect(find.text('Retry account save'), findsOneWidget);
++
++      await retryAccountSave(tester);
++      expect(repository.imports, hasLength(1));
++      expect(repository.updateRevisions, isEmpty);
++      expect(repository.deleteCalls, 1);
++      expectSingleRestored(
++        repository,
++        accountSession('s1', 'Removable account session'),
++        revision: 1,
++      );
++      expect(find.text('Retry account save'), findsNothing);
++      expect((await store.load()).sessions, isEmpty);
++    });
++
++    for (final recreated in [false, true]) {
++      testWidgets(
++        'a ${recreated ? 'recreated' : 'changed'} remote record during an '
++        'uncertain-delete Undo needs explicit review',
++        (tester) async {
++          final store = GuestWorkspaceStore(_MemoryGuestStorage());
++          final repository = await undoAfterQueuedUncertainDelete(
++            tester,
++            appliedOnServer: recreated,
++            store: store,
++          );
++          final remoteSession = accountSession('s1', 'Changed elsewhere');
++          final remote = {
++            ...accountRecord(remoteSession),
++            if (recreated) 'id': 'other-device-record',
++            'revision': recreated ? 1 : 2,
++          };
++          repository.items = [remote];
++          await retryAccountSave(tester);
++
++          expect(find.text('Review account change'), findsOneWidget);
++          expect(find.textContaining('changed elsewhere'), findsWidgets);
++          // The newer remote content is untouched and nothing was duplicated.
++          expect(repository.items, [remote]);
++          expect(repository.imports, isEmpty);
++          expect(repository.updateRevisions, isEmpty);
++          expect(repository.deleteCalls, 1);
++          // The local Undo remains available for review.
++          expect(
++            find.textContaining('Removable account session'),
++            findsWidgets,
++          );
++
++          await _tapVisibleTarget(tester, find.text('Review account change'));
++          await tester.pumpAndSettle();
++          expect(
++            find.text(
++              'Latest saved version (revision ${remote['revision']}): '
++              'Changed elsewhere',
++            ),
++            findsOneWidget,
++          );
++          expect(find.text('Save my pending edit'), findsOneWidget);
++          await tester.tap(find.text('Cancel'));
++          await tester.pumpAndSettle();
++          expect(repository.items, [remote]);
++          expect(repository.updateRevisions, isEmpty);
++          expect((await store.load()).sessions, isEmpty);
++        },
++      );
++    }
++
++    for (final signOut in [false, true]) {
++      testWidgets('uncertain-delete reconciliation sends no writes after '
++          '${signOut ? 'sign-out' : 'a UID switch'}', (tester) async {
++        final store = GuestWorkspaceStore(_MemoryGuestStorage());
++        final repository = await undoAfterQueuedUncertainDelete(
++          tester,
++          appliedOnServer: true,
++          store: store,
++        );
++        final oldRead = Completer<List<Map<String, dynamic>>>();
++        repository.listHandler = (uid) => uid == 'a'
++            ? oldRead.future
++            : Future.value(<Map<String, dynamic>>[]);
++        await _tapVisibleTarget(tester, find.text('Retry account save'));
++        await tester.pump();
++
++        await tester.pumpWidget(
++          accountPage(
++            user: signOut ? null : verified('b'),
++            store: store,
++            repository: repository,
++          ),
++        );
++        await tester.pump();
++        oldRead.complete(<Map<String, dynamic>>[]);
++        await tester.pumpAndSettle();
++
++        expect(repository.importUids, isEmpty);
++        expect(repository.updateUids, isEmpty);
++        expect(repository.deleteUids, ['a']);
++        expect(repository.items, isEmpty);
++        expect(find.textContaining('Removable account session'), findsNothing);
++        expect(find.text('Retry account save'), findsNothing);
++        expect((await store.load()).sessions, isEmpty);
++      });
++    }
++
+     for (final signOut in [false, true]) {
+       testWidgets(
+         'open personal editor drops delayed old-account reads and writes on '
+-- 
+2.55.0
+
+
+From 5a2dd26410a428b6a0b516efe53afc37d89362b7 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 14:49:17 +0000
+Subject: [PATCH 2/2] Uncertain-delete Undo fix: coverage and validation
+ receipts
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ ...-batch3-uncertain-delete-fix-2026-10-08.md | 89 +++++++++++++++++++
+ 1 file changed, 89 insertions(+)
+ create mode 100644 docs/operations/development-deployment/interact-parity-batch3-uncertain-delete-fix-2026-10-08.md
+
+diff --git a/docs/operations/development-deployment/interact-parity-batch3-uncertain-delete-fix-2026-10-08.md b/docs/operations/development-deployment/interact-parity-batch3-uncertain-delete-fix-2026-10-08.md
+new file mode 100644
+index 0000000..9f2f8a4
+--- /dev/null
++++ b/docs/operations/development-deployment/interact-parity-batch3-uncertain-delete-fix-2026-10-08.md
+@@ -0,0 +1,89 @@
++# Interact parity batch 3 – queued uncertain-delete Undo fix (2026-10-08)
++
++Branch: `copilot/fixinteract-parity-batch3`. Base: artifact commit
++`8728b802654e8507aabb63b9c38625c678ac8626` (tree `3703ffe399c8ce34ab0bf3086fe023b4777ac88e`,
++app subtree `56768f0d721cc43b75363450478ba0ae920e61ea`). The two earlier mailboxes and their
++receipts are unchanged. This fix supersedes the "Residual, not separately tested" note in
++`interact-parity-batch3-review-fix-2026-10-08.md`: that case is now fixed and tested.
++
++No backend, schema, production, IAM, credential, firewall, deployment or authentication-code
++changes. Hosted authenticated acceptance remains **pending**. Guest reload/open-session
++routing remains **OPEN**, and there is no new router or auth design.
++
++## Problem
++
++An account DELETE can fail without confirmation (an error, or a lost response after the
++server applied it). It stays queued for retry, and the user may then choose Undo.
++`_syncPersonalWorkspace` used to pick `update`, because the stale `_personalItems` still held
++the old record. If the server had actually removed it, Retry sent `PUT` to a missing ID and
++got a 404 from the server, so the Undo never converged.
++
++## Fix (`guest_workspace_page.dart`)
++
++- Before each DELETE is sent, its target record (ID and revision) is recorded in
++  `_uncertainPersonalDeletes`. The entry is removed when any write for that source key is
++  confirmed, and cleared on a UID change (`didUpdateWidget`) or sign-out (`_signOut`).
++- Undo of a pending, not-in-flight DELETE with an unconfirmed outcome enqueues a `reconcile`
++  write that keeps the full restored data (answers and nested branches). The in-flight Undo
++  path (`create`) is unchanged.
++- Processing a `reconcile` write first reads the authoritative same-UID account list. The
++  mounted, UID and generation guard is rechecked after the read, then:
++  - **Missing:** `createItem`, which is idempotent by source key. If the server returns a
++    record whose content differs, it is treated as a conflict.
++  - **Same ID and the revision the DELETE targeted:** `updateItem` with that known revision.
++    The server's 409 check prevents any blind overwrite. Existing queued-not-applied
++    behaviour is retained (one revision-guarded write, giving revision 2).
++  - **Different record or revision with identical title and data** (for example a previous
++    recreate whose response was lost): adopted without writing.
++  - **Different content** (changed or recreated on another device): no write. The pending
++    restore becomes an ordinary pending edit, the remote record is shown, and the existing
++    explicit "Review account change" dialog decides. A 409 from the reconcile update goes
++    through the same review.
++- A failure to read or write keeps the pending Undo with "save not confirmed" status and
++  "Retry account save". Nothing is reported as saved.
++- No local import or copy, no deletion of originals, no access expansion.
++
++## Tests (`test/account_state_widget_test.dart`, group "batch3 review correction")
++
++The fake repository now follows the server's semantics:
++- `updateItem` returns 404 for an unknown ID.
++- A revision mismatch returns 409, except the server's idempotent same-content replay.
++- `deleteItem` returns 409 on a revision mismatch.
++
++The existing tests, including the in-flight and queued-not-applied Undo tests, still pass.
++
++Eight new tests. In each, Undo is tapped only after the DELETE has finished with an
++unconfirmed outcome, so it is pending but not in flight; the test asserts "Retry account
++save" is shown and `deleteCalls == 1`.
++
++| Test | Proves |
++| --- | --- |
++| Undo after a queued uncertain DELETE (applied on server) | One reconcile read, then an idempotent recreate gives exactly one item (`record-interact_session:s1`, revision 1) with full data. No update, no repeated DELETE, local store unchanged. |
++| … (not applied on server) | The original `remote-s1` is retained at revision 2 via known-revision update. No import, no duplicate. |
++| reconciliation read failure keeps the Undo pending and retry converges | The failed read gives "save not confirmed" and Retry, with nothing written. The second Retry converges to one item. |
++| a lost recreate response does not create a duplicate | The recreate is applied but its response is lost. Retry adopts it: still one import and one item. |
++| a changed / recreated remote record … needs explicit review | "Review account change" is shown. The remote record is untouched (no import or update) and the restored local copy is still shown. The review dialog shows the latest revision and offers "Save my pending edit". |
++| uncertain-delete reconciliation sends no writes after a UID switch / sign-out | The old-UID read is delayed and the identity changes. No import or update under any UID, and the old content is not shown. |
++
++**Negative control:** with the pre-fix `lib/` and the new tests, all 8 new tests fail. The
++server-applied case gets stuck on the 404, and the UID-switch cases send an update.
++
++## Validation receipts
++
++Environment: Flutter 3.41.4 / Dart 3.11.1, `CI=true FLUTTER_SUPPRESS_ANALYTICS=true`,
++`--suppress-analytics`. These were run on source commit
++`c61cb7d1d013fb24f4fd9c3fefbeded8b06df916` (tree `fcab97e12b08b5512eaa9f9fffdf013b66c71798`,
++app subtree `1a3642d9fde6dd377300c056966712174dcae89a`). This document is the only later
++change.
++
++| Command (in `apps/flutter_app`) | Exit | Result |
++| --- | --- | --- |
++| `dart format --output=none --set-exit-if-changed lib/features/guest/presentation/guest_workspace_page.dart test/account_state_widget_test.dart` | 0 | 2 files, 0 changed |
++| `flutter analyze --suppress-analytics` | 1 | 0 errors, 0 warnings, 12 baseline infos |
++| `flutter test --suppress-analytics test/account_state_widget_test.dart --plain-name 'batch3 review correction'` with pre-fix `lib/` (negative control) | 1 | 10 passed, 8 failed (all 8 new) |
++| same, with the fix | 0 | 18 passed |
++| `flutter test --suppress-analytics test/account_state_widget_test.dart test/guest_interact_widget_test.dart test/guided_batch3_test.dart test/session_deep_link_test.dart` | 0 | 108 passed |
++| `flutter test --suppress-analytics` (full) | 0 | 298 passed (290 + 8 new) |
++
++The backend is unchanged, so no backend tests were run. The configured DEV release build
++remains Codex's responsibility.
+-- 
+2.55.0
+
