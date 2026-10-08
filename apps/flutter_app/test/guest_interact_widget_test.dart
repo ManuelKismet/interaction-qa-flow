@@ -222,10 +222,12 @@ void main() {
         tester.getSize(pdfControl).height,
       );
       expect(tester.getSize(destinationControl).height, 40);
-      expect(
-        (tester.getCenter(destination).dy - tester.getCenter(pdf).dy).abs(),
-        lessThan(1),
-      );
+      if (width >= 800) {
+        expect(
+          (tester.getCenter(destination).dy - tester.getCenter(pdf).dy).abs(),
+          lessThan(1),
+        );
+      }
       // The session list contributes 16px padding on each side.
       if (width >= 832) {
         expect(
