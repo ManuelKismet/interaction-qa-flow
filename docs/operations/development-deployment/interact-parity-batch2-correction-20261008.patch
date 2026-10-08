@@ -1,0 +1,1118 @@
+From 986ee48bff23d6420a37ef992ca0cc8ecc0c14ed Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 08:38:40 +0000
+Subject: [PATCH 1/3] Fix status lifecycle and collection syntax
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../personal_workspace_status.dart            |  21 +++-
+ .../presentation/guest_workspace_page.dart    | 118 ++++++++++++++----
+ 2 files changed, 115 insertions(+), 24 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+index 760d8a7..2741490 100644
+--- a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
++++ b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+@@ -6,8 +6,13 @@ final personalWorkspaceStatusProvider =
+     );
+ 
+ class PersonalWorkspaceStatus {
+-  const PersonalWorkspaceStatus({this.uid, this.hasPendingChanges = false});
++  const PersonalWorkspaceStatus({
++    this.owner,
++    this.uid,
++    this.hasPendingChanges = false,
++  });
+ 
++  final Object? owner;
+   final String? uid;
+   final bool hasPendingChanges;
+ }
+@@ -17,10 +22,22 @@ class PersonalWorkspaceStatusController
+   @override
+   PersonalWorkspaceStatus build() => const PersonalWorkspaceStatus();
+ 
+-  void update({required String? uid, required bool hasPendingChanges}) {
++  void publish({
++    required Object owner,
++    required String? uid,
++    required bool hasPendingChanges,
++    bool claim = false,
++  }) {
++    if (!claim && state.owner != owner) return;
+     state = PersonalWorkspaceStatus(
++      owner: owner,
+       uid: uid,
+       hasPendingChanges: hasPendingChanges,
+     );
+   }
++
++  void clear(Object owner) {
++    if (state.owner != owner) return;
++    state = const PersonalWorkspaceStatus();
++  }
+ }
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 6c4014c..c8c623e 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -47,6 +47,7 @@ class _PersonalWorkspaceWrite {
+     required this.sourceId,
+     this.title,
+     this.data,
++    this.deleteAfterCreate = false,
+   });
+ 
+   final String action;
+@@ -55,6 +56,7 @@ class _PersonalWorkspaceWrite {
+   final String sourceId;
+   final String? title;
+   final Map<String, dynamic>? data;
++  final bool deleteAfterCreate;
+ }
+ 
+ String _pdfFontPreviewMessage() => kIsWeb
+@@ -117,22 +119,29 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   String? _personalConflictSourceKey;
+   bool _personalConflictReloadFailed = false;
+   int _personalGeneration = 0;
++  int _personalRefreshGeneration = 0;
+   String? _personalOwnerUid;
+   bool _personalLoading = false;
+   bool _personalSaving = false;
++  bool _personalImportSaving = false;
+   int _personalWriteGeneration = 0;
++  final Object _workspaceStatusOwner = Object();
++  late final PersonalWorkspaceStatusController _workspaceStatusController;
++  int _workspaceStatusRevision = 0;
++  bool _workspaceStatusClaimed = false;
+ 
+   @override
+   void initState() {
+     super.initState();
+     _store = ref.read(guestWorkspaceStoreProvider);
++    _workspaceStatusController = ref.read(personalWorkspaceStatusProvider.notifier);
+     _personalOwnerUid = _verifiedPersonalUid;
+     WidgetsBinding.instance.addObserver(this);
+     _load();
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+       unawaited(_refreshPersonalWorkspace());
+     });
+-    _publishWorkspaceSaveStatus();
++    _publishWorkspaceSaveStatus(claim: true);
+   }
+ 
+   @override
+@@ -141,6 +150,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     final uid = _verifiedPersonalUid;
+     if (uid == _personalOwnerUid) return;
+     _personalGeneration++;
++    _personalRefreshGeneration++;
+     _personalOwnerUid = uid;
+     _personalItems = [];
+     _pendingPersonalItems = [];
+@@ -151,7 +161,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     _personalConflictReloadFailed = false;
+     _personalError = null;
+     _personalLoading = false;
+-    _publishWorkspaceSaveStatus();
++    _personalImportSaving = false;
++    _publishWorkspaceSaveStatus(claim: true);
+     if (uid != null) {
+       WidgetsBinding.instance.addPostFrameCallback((_) {
+         unawaited(_refreshPersonalWorkspace());
+@@ -175,11 +186,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     if (_savedRevision < _dataRevision) {
+       unawaited(_flushPendingSave());
+     }
+-    if (!_hasPendingWorkspaceChanges) {
+-      ref
+-          .read(personalWorkspaceStatusProvider.notifier)
+-          .update(uid: null, hasPendingChanges: false);
+-    }
++    _workspaceStatusRevision++;
++    _workspaceStatusController.clear(_workspaceStatusOwner);
+     super.dispose();
+   }
+ 
+@@ -188,16 +196,24 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       _unsavedChanges ||
+       _pendingPersonalWrites.isNotEmpty ||
+       _pendingPersonalImport.isNotEmpty ||
++      _personalImportSaving ||
+       _personalSaving ||
+       _personalConflictSourceKey != null;
+ 
+-  void _publishWorkspaceSaveStatus() {
+-    ref
+-        .read(personalWorkspaceStatusProvider.notifier)
+-        .update(
+-          uid: _verifiedPersonalUid,
+-          hasPendingChanges: _hasPendingWorkspaceChanges,
+-        );
++  void _publishWorkspaceSaveStatus({bool claim = false}) {
++    final revision = ++_workspaceStatusRevision;
++    final uid = _verifiedPersonalUid;
++    final shouldClaim = claim || !_workspaceStatusClaimed;
++    WidgetsBinding.instance.addPostFrameCallback((_) {
++      if (!mounted || revision != _workspaceStatusRevision) return;
++      _workspaceStatusController.publish(
++        owner: _workspaceStatusOwner,
++        uid: uid,
++        hasPendingChanges: _hasPendingWorkspaceChanges,
++        claim: shouldClaim,
++      );
++      if (shouldClaim) _workspaceStatusClaimed = true;
++    });
+   }
+ 
+   Future<void> _load() async {
+@@ -236,7 +252,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   Future<void> _refreshPersonalWorkspace() async {
+     final uid = _verifiedPersonalUid;
+     if (uid == null || !mounted) return;
+-    final generation = ++_personalGeneration;
++    final generation = _personalGeneration;
++    final refreshGeneration = ++_personalRefreshGeneration;
+     final writeGeneration = _personalWriteGeneration;
+     setState(() {
+       _personalLoading = true;
+@@ -249,6 +266,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           .listItems(expectedUid: uid);
+       if (!mounted ||
+           generation != _personalGeneration ||
++          refreshGeneration != _personalRefreshGeneration ||
+           uid != _verifiedPersonalUid) {
+         return;
+       }
+@@ -269,6 +287,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     } on Object {
+       if (!mounted ||
+           generation != _personalGeneration ||
++          refreshGeneration != _personalRefreshGeneration ||
+           uid != _verifiedPersonalUid) {
+         return;
+       }
+@@ -571,15 +590,32 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   }
+ 
+   void _enqueuePersonalWrite(_PersonalWorkspaceWrite write) {
++    final key = '${write.kind}:${write.sourceId}';
++    final previous = _pendingPersonalWrites[key];
++    final nextWrite =
++        write.action == 'delete' && previous?.action == 'create'
++        ? _PersonalWorkspaceWrite(
++            action: 'create',
++            kind: previous!.kind,
++            sourceKey: previous.sourceKey,
++            sourceId: previous.sourceId,
++            title: previous.title,
++            data: previous.data,
++            deleteAfterCreate: true,
++          )
++        : write;
+     setState(() {
+-      _pendingPersonalWrites['${write.kind}:${write.sourceId}'] = write;
++      _pendingPersonalWrites[key] = nextWrite;
+       _pendingPersonalItems.removeWhere(
+         (item) =>
+-            item['kind'] == write.kind &&
+-            (item['data'] as Map?)?['id'] == write.sourceId,
++            item['kind'] == nextWrite.kind &&
++            (item['data'] as Map?)?['id'] == nextWrite.sourceId,
+       );
+-      if (write.action != 'delete') {
+-        _pendingPersonalItems.add({'kind': write.kind, 'data': write.data});
++      if (nextWrite.action != 'delete') {
++        _pendingPersonalItems.add({
++          'kind': nextWrite.kind,
++          'data': nextWrite.data,
++        });
+       }
+       _personalError = null;
+     });
+@@ -664,6 +700,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               );
+             }
+           });
++          if (write.deleteAfterCreate) {
++            _enqueuePersonalWrite(
++              _PersonalWorkspaceWrite(
++                action: 'delete',
++                kind: write.kind,
++                sourceKey: write.sourceKey,
++                sourceId: write.sourceId,
++              ),
++            );
++          }
+         } on DioException catch (error) {
+           if (error.response?.statusCode == 409) {
+             await _reloadPersonalConflict(uid, generation, write);
+@@ -689,7 +735,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       }
+     } finally {
+       _personalSaving = false;
+-      if (mounted) _publishWorkspaceSaveStatus();
++      if (mounted) {
++        _publishWorkspaceSaveStatus();
++        final nextUid = _verifiedPersonalUid;
++        if (nextUid != null && _pendingPersonalWrites.isNotEmpty) {
++          WidgetsBinding.instance.addPostFrameCallback((_) {
++            if (mounted && nextUid == _verifiedPersonalUid) {
++              unawaited(
++                _processPersonalWrites(
++                  nextUid,
++                  _personalGeneration,
++                  ref.read(personalWorkspaceRepositoryProvider),
++                ),
++              );
++            }
++          });
++        }
++      }
+     }
+   }
+ 
+@@ -1374,7 +1436,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   }
+ 
+   Future<void> _submitPersonalImport(String uid, int generation) async {
++    if (_personalImportSaving) return;
+     final payload = _pendingPersonalImport;
++    _personalImportSaving = true;
++    _publishWorkspaceSaveStatus();
+     try {
+       final items = await ref
+           .read(personalWorkspaceRepositoryProvider)
+@@ -1395,6 +1460,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         _personalImportNeedsReselection = false;
+         _personalError = null;
+       });
++      _publishWorkspaceSaveStatus();
+       ScaffoldMessenger.of(context).showSnackBar(
+         const SnackBar(
+           content: Text(
+@@ -1415,12 +1481,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           _personalError =
+               'This selection exceeds account import limits or contains invalid content. Select fewer items or smaller items and try again. Your local originals are unchanged.';
+         });
++        _publishWorkspaceSaveStatus();
+         return;
+       }
+       setState(() {
+         _personalError =
+             'The account import was not confirmed. Local copies remain on this device; retry safely.';
+       });
++      _publishWorkspaceSaveStatus();
+     } on Object {
+       if (!mounted ||
+           uid != _verifiedPersonalUid ||
+@@ -1431,6 +1499,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         _personalError =
+             'The account import was not confirmed. Local copies remain on this device; retry safely.';
+       });
++      _publishWorkspaceSaveStatus();
++    } finally {
++      if (mounted && uid == _verifiedPersonalUid && generation == _personalGeneration) {
++        _personalImportSaving = false;
++        _publishWorkspaceSaveStatus();
++      }
+     }
+   }
+ 
+@@ -6266,7 +6340,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+           ),
+           const SizedBox(height: 8),
+           if (_entries.isEmpty)
+-            const Text('No shared Knowledge or Interact items are available.'),
++            const Text('No shared Knowledge or Interact items are available.')
+           else
+             for (final entry in _entries)
+               Card(
+
+From 7d568c8ae91a0f43712bf1576175808960e05755 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 08:44:37 +0000
+Subject: [PATCH 2/3] Add async privacy and lifecycle regression coverage
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../personal_workspace_status.dart            |  17 +-
+ .../presentation/guest_workspace_page.dart    |  34 +-
+ .../test/account_state_widget_test.dart       | 468 +++++++++++++++++-
+ 3 files changed, 506 insertions(+), 13 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+index 2741490..a2bcfaa 100644
+--- a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
++++ b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+@@ -7,12 +7,12 @@ final personalWorkspaceStatusProvider =
+ 
+ class PersonalWorkspaceStatus {
+   const PersonalWorkspaceStatus({
+-    this.owner,
++    this.ownerGeneration = 0,
+     this.uid,
+     this.hasPendingChanges = false,
+   });
+ 
+-  final Object? owner;
++  final int ownerGeneration;
+   final String? uid;
+   final bool hasPendingChanges;
+ }
+@@ -23,21 +23,24 @@ class PersonalWorkspaceStatusController
+   PersonalWorkspaceStatus build() => const PersonalWorkspaceStatus();
+ 
+   void publish({
+-    required Object owner,
++    required int ownerGeneration,
+     required String? uid,
+     required bool hasPendingChanges,
+     bool claim = false,
+   }) {
+-    if (!claim && state.owner != owner) return;
++    if (ownerGeneration < state.ownerGeneration ||
++        (!claim && state.ownerGeneration != ownerGeneration)) {
++      return;
++    }
+     state = PersonalWorkspaceStatus(
+-      owner: owner,
++      ownerGeneration: ownerGeneration,
+       uid: uid,
+       hasPendingChanges: hasPendingChanges,
+     );
+   }
+ 
+-  void clear(Object owner) {
+-    if (state.owner != owner) return;
++  void clear(int ownerGeneration) {
++    if (state.ownerGeneration != ownerGeneration) return;
+     state = const PersonalWorkspaceStatus();
+   }
+ }
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index c8c623e..685a008 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -39,6 +39,8 @@ void _showPdfFontFallbackNotice(BuildContext context) {
+   );
+ }
+ 
++var _personalWorkspaceStatusOwnerSequence = 0;
++
+ class _PersonalWorkspaceWrite {
+   const _PersonalWorkspaceWrite({
+     required this.action,
+@@ -125,7 +127,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   bool _personalSaving = false;
+   bool _personalImportSaving = false;
+   int _personalWriteGeneration = 0;
+-  final Object _workspaceStatusOwner = Object();
++  final int _workspaceStatusOwner = ++_personalWorkspaceStatusOwnerSequence;
+   late final PersonalWorkspaceStatusController _workspaceStatusController;
+   int _workspaceStatusRevision = 0;
+   bool _workspaceStatusClaimed = false;
+@@ -134,7 +136,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   void initState() {
+     super.initState();
+     _store = ref.read(guestWorkspaceStoreProvider);
+-    _workspaceStatusController = ref.read(personalWorkspaceStatusProvider.notifier);
++    _workspaceStatusController = ref.read(
++      personalWorkspaceStatusProvider.notifier,
++    );
+     _personalOwnerUid = _verifiedPersonalUid;
+     WidgetsBinding.instance.addObserver(this);
+     _load();
+@@ -207,7 +211,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+       if (!mounted || revision != _workspaceStatusRevision) return;
+       _workspaceStatusController.publish(
+-        owner: _workspaceStatusOwner,
++        ownerGeneration: _workspaceStatusOwner,
+         uid: uid,
+         hasPendingChanges: _hasPendingWorkspaceChanges,
+         claim: shouldClaim,
+@@ -581,6 +585,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             sourceId: write.sourceId,
+             title: _personalTitle(write.kind, replacement),
+             data: replacement,
++            deleteAfterCreate: write.deleteAfterCreate,
+           ),
+         );
+       }
+@@ -649,7 +654,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               .firstOrNull;
+           if (current == null && write.action == 'delete') {
+             saved = null;
+-          } else if (current == null && write.action == 'create') {
++          } else if (write.action == 'create') {
+             saved = await repository.createItem(
+               kind: write.kind,
+               sourceKey: write.sourceKey,
+@@ -657,6 +662,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               data: write.data!,
+               expectedUid: uid,
+             );
++            final savedData = saved['data'];
++            if (saved['title'] != write.title ||
++                savedData is! Map ||
++                jsonEncode(savedData) != jsonEncode(write.data)) {
++              if (!mounted ||
++                  generation != _personalGeneration ||
++                  uid != _verifiedPersonalUid) {
++                return;
++              }
++              saved = await repository.updateItem(
++                id: saved['id'] as String,
++                expectedUid: uid,
++                expectedRevision: saved['revision'] as int,
++                title: write.title!,
++                data: write.data!,
++              );
++            }
+           } else if (current == null) {
+             throw StateError('The personal item is not loaded.');
+           } else if (write.action != 'delete') {
+@@ -1501,7 +1523,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       });
+       _publishWorkspaceSaveStatus();
+     } finally {
+-      if (mounted && uid == _verifiedPersonalUid && generation == _personalGeneration) {
++      if (mounted &&
++          uid == _verifiedPersonalUid &&
++          generation == _personalGeneration) {
+         _personalImportSaving = false;
+         _publishWorkspaceSaveStatus();
+       }
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 1567b6f..8af5124 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:flutter_test/flutter_test.dart';
++import 'package:go_router/go_router.dart';
+ import 'package:int_qa_flow/app.dart';
+ import 'package:int_qa_flow/core/auth/auth_providers.dart';
+ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
+@@ -15,6 +16,7 @@ import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
+ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
++import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
+ import 'package:int_qa_flow/shared/widgets/app_shell.dart';
+ 
+ class _TestUser extends Fake implements User {
+@@ -191,11 +193,14 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+   var failedImports = 0;
+   int? importFailureStatus;
+   final imports = <List<Map<String, dynamic>>>[];
++  final importUids = <String>[];
+   int updateConflicts = 0;
+   List<Map<String, dynamic>>? conflictItems;
+   final updateRevisions = <int>[];
+   var deleteCalls = 0;
+   final searches = <(String, String)>[];
++  Completer<List<Map<String, dynamic>>>? nextListResponse;
++  Completer<void>? nextImportGate;
+   Future<Map<String, dynamic>> Function(String query, String expectedUid)?
+   searchHandler;
+ 
+@@ -204,6 +209,9 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     required String expectedUid,
+   }) async {
+     listCalls++;
++    final response = nextListResponse;
++    nextListResponse = null;
++    if (response != null) return response.future;
+     return items;
+   }
+ 
+@@ -223,6 +231,10 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     required String expectedUid,
+   }) async {
+     imports.add(payload);
++    importUids.add(expectedUid);
++    final gate = nextImportGate;
++    nextImportGate = null;
++    if (gate != null) await gate.future;
+     final uncertainOutcome = failedImports > 0;
+     if (uncertainOutcome) {
+       failedImports--;
+@@ -302,6 +314,7 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     required int expectedRevision,
+   }) async {
+     deleteCalls++;
++    items = items.where((item) => item['id'] != id).toList();
+   }
+ }
+ 
+@@ -423,6 +436,80 @@ void main() {
+     await tester.pumpAndSettle();
+   }
+ 
++  Future<GoRouter> pumpPersonalRouter(
++    WidgetTester tester, {
++    required _TestUser user,
++    required _TestPersonalWorkspaceRepository repository,
++    required GuestWorkspaceStore store,
++    Stream<User?>? authChanges,
++    String initialLocation = '/personal/ask',
++  }) async {
++    GuestWorkspacePage page({int tab = 0}) => Consumer(
++      builder: (context, ref, _) => GuestWorkspacePage(
++        firebaseReady: true,
++        personalWorkspaceEnabled: true,
++        accountUser: ref.watch(authStateProvider).value,
++        membershipStatus: AccountMembershipStatus.active,
++        initialWorkspaceTab: tab,
++      ),
++    );
++    final router = GoRouter(
++      initialLocation: initialLocation,
++      routes: [
++        ShellRoute(
++          builder: (context, state, child) =>
++              AppShell(currentPath: state.uri.path, child: child),
++          routes: [
++            GoRoute(
++              path: '/',
++              builder: (context, state) =>
++                  const Scaffold(body: Text('Organisation route')),
++            ),
++            GoRoute(
++              path: '/personal/ask',
++              builder: (context, state) => page(),
++            ),
++            GoRoute(
++              path: '/personal/interact',
++              builder: (context, state) => page(tab: 1),
++            ),
++          ],
++        ),
++      ],
++    );
++    addTearDown(router.dispose);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          authStateProvider.overrideWith(
++            (ref) => authChanges ?? Stream.value(user),
++          ),
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          currentMembershipProvider.overrideWith(
++            (ref) async => const ActiveMembership(
++              userId: 'app-user',
++              organisationId: 'org',
++              email: 'member@example.test',
++              displayName: 'Member',
++              role: 'owner',
++            ),
++          ),
++          organisationProfileProvider.overrideWith(
++            (ref) async => throw StateError('Profile not needed in this test.'),
++          ),
++          guestWorkspaceStoreProvider.overrideWithValue(store),
++          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++          currentGuestGroupsProvider.overrideWith(
++            (ref) async => const <Map<String, dynamic>>[],
++          ),
++        ],
++        child: MaterialApp.router(routerConfig: router),
++      ),
++    );
++    await tester.pumpAndSettle();
++    return router;
++  }
++
+   testWidgets(
+     'local guest account menu explains local-only work',
+     (tester) async {
+@@ -1482,7 +1569,16 @@ void main() {
+       );
+       expect((await store.load()).knowledge, isEmpty);
+ 
+-      await tester.tap(find.text('Retry account save'));
++      await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
++      await tester.pumpAndSettle();
++      await tester.enterText(
++        find.descendant(
++          of: find.byType(AlertDialog),
++          matching: find.byType(TextFormField),
++        ).first,
++        'Edited while create confirmation was uncertain',
++      );
++      await tester.tap(find.text('Save account changes'));
+       await tester.pumpAndSettle();
+ 
+       expect(repository.imports, hasLength(2));
+@@ -1491,10 +1587,380 @@ void main() {
+         repository.imports.last.single['source_key'],
+       );
+       expect(repository.items, hasLength(1));
++      expect(
++        repository.items.single['title'],
++        'Edited while create confirmation was uncertain',
++      );
++      expect(find.text('Personal account · saved'), findsOneWidget);
++    },
++  );
++
++  testWidgets(
++    'pending private write blocks shell navigation and browser back until saved',
++    (tester) async {
++      final user = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'delayed-private-user',
++      );
++      final repository = _TestPersonalWorkspaceRepository([]);
++      final writeGate = Completer<void>();
++      repository.nextImportGate = writeGate;
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      final router = await pumpPersonalRouter(
++        tester,
++        user: user,
++        repository: repository,
++        store: store,
++        initialLocation: '/',
++      );
++      unawaited(router.push<void>('/personal/ask'));
++      await tester.pumpAndSettle();
++      await tester.enterText(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is TextFormField &&
++              widget.decoration.labelText == 'Question',
++        ),
++        'Held private question',
++      );
++      await tester.tap(find.text('Save to private account'));
++      await tester.pump();
++      await tester.pump();
++
++      await tester.tap(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is NavigationDestination && widget.label == 'Interact',
++        ),
++      );
++      await tester.pumpAndSettle();
++      expect(find.text('Save to private account'), findsOneWidget);
++
++      await tester.binding.handlePopRoute();
++      await tester.pumpAndSettle();
++      expect(find.text('Save to private account'), findsOneWidget);
++
++      await tester.tap(find.byTooltip('Switch workspace'));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Organisation workspace'));
++      await tester.pumpAndSettle();
++      expect(find.text('Save to private account'), findsOneWidget);
++
++      writeGate.complete();
++      await tester.pumpAndSettle();
++      expect(repository.items, hasLength(1));
++      expect((await store.load()).knowledge, isEmpty);
++      await tester.tap(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is NavigationDestination && widget.label == 'Interact',
++        ),
++      );
++      await tester.pumpAndSettle();
++      expect(find.text('Create private session'), findsOneWidget);
++    },
++  );
++
++  testWidgets(
++    'UID transition isolates queued writes while an earlier create is unresolved',
++    (tester) async {
++      final firstUser = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'first-private-uid',
++      );
++      final secondUser = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'second-private-uid',
++      );
++      final authChanges = StreamController<User?>();
++      addTearDown(authChanges.close);
++      authChanges.add(firstUser);
++      final repository = _TestPersonalWorkspaceRepository([]);
++      final firstWriteGate = Completer<void>();
++      repository.nextImportGate = firstWriteGate;
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await pumpPersonalRouter(
++        tester,
++        user: firstUser,
++        repository: repository,
++        store: store,
++        authChanges: authChanges.stream,
++      );
++      await tester.enterText(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is TextFormField &&
++              widget.decoration.labelText == 'Question',
++        ),
++        'First identity private question',
++      );
++      await tester.tap(find.text('Save to private account'));
++      await tester.pump();
++      await tester.pump();
++      expect(repository.importUids, ['first-private-uid']);
++
++      authChanges.add(secondUser);
++      await tester.pumpAndSettle();
++      expect(find.text('First identity private question'), findsNothing);
++      await tester.enterText(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is TextFormField &&
++              widget.decoration.labelText == 'Question',
++        ),
++        'Second identity private question',
++      );
++      await tester.tap(find.text('Save to private account'));
++      await tester.pump();
++      await tester.pump();
++      expect(repository.importUids, ['first-private-uid']);
++
++      firstWriteGate.complete();
++      await tester.pumpAndSettle();
++
++      expect(repository.importUids, [
++        'first-private-uid',
++        'second-private-uid',
++      ]);
++      expect(find.text('First identity private question'), findsNothing);
++      expect(find.text('Second identity private question'), findsOneWidget);
++      expect((await store.load()).knowledge, isEmpty);
++    },
++  );
++
++  testWidgets(
++    'deleting during uncertain create confirms creation before account deletion',
++    (tester) async {
++      final user = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'uncertain-delete-user',
++      );
++      final repository = _TestPersonalWorkspaceRepository([])
++        ..failedImports = 1;
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await pumpGuestWorkspace(
++        tester,
++        user: user,
++        personalWorkspaceEnabled: true,
++        personalRepository: repository,
++        store: store,
++      );
++      await tester.enterText(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is TextFormField &&
++              widget.decoration.labelText == 'Question',
++        ),
++        'Remove uncertain private create',
++      );
++      await tester.tap(find.text('Save to private account'));
++      await tester.pumpAndSettle();
++      expect(repository.items, hasLength(1));
++
++      await tester.tap(
++        find.byTooltip('Remove personal-account Knowledge'),
++      );
++      await tester.pumpAndSettle();
++
++      expect(repository.imports, hasLength(2));
++      expect(repository.deleteCalls, 1);
++      expect(repository.items, isEmpty);
++      expect((await store.load()).knowledge, isEmpty);
++      expect(find.text('Retry account save'), findsNothing);
++    },
++  );
++
++  testWidgets(
++    'personal refresh overlapping a create cannot replace the acknowledged item',
++    (tester) async {
++      final user = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'refresh-race-user',
++      );
++      final repository = _TestPersonalWorkspaceRepository([]);
++      final staleRefresh = Completer<List<Map<String, dynamic>>>();
++      repository.nextListResponse = staleRefresh;
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await pumpGuestWorkspace(
++        tester,
++        user: user,
++        personalWorkspaceEnabled: true,
++        personalRepository: repository,
++        store: store,
++      );
++      expect(repository.listCalls, 1);
++      await tester.enterText(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is TextFormField &&
++              widget.decoration.labelText == 'Question',
++        ),
++        'Refresh race question',
++      );
++      await tester.tap(find.text('Save to private account'));
++      await tester.pumpAndSettle();
++      expect(repository.items, hasLength(1));
++
++      staleRefresh.complete(const []);
++      await tester.pumpAndSettle();
++
++      expect(repository.listCalls, greaterThanOrEqualTo(2));
++      expect(repository.items, hasLength(1));
++      expect(find.text('Refresh race question'), findsOneWidget);
+       expect(find.text('Personal account · saved'), findsOneWidget);
+     },
+   );
+ 
++  testWidgets(
++    'pending selected account import blocks shell navigation until confirmed',
++    (tester) async {
++      final user = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'delayed-import-user',
++      );
++      final repository = _TestPersonalWorkspaceRepository([]);
++      final importGate = Completer<void>();
++      repository.nextImportGate = importGate;
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await store.save(
++        const GuestWorkspaceData(
++          knowledge: [
++            {'id': 'selected-local', 'title': 'Selected local work'},
++          ],
++        ),
++      );
++      final router = await pumpPersonalRouter(
++        tester,
++        user: user,
++        repository: repository,
++        store: store,
++        initialLocation: '/',
++      );
++      unawaited(router.push<void>('/personal/ask'));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Import local work'));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Import selected work'));
++      await tester.pump();
++      await tester.pump();
++
++      await tester.tap(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is NavigationDestination && widget.label == 'Interact',
++        ),
++      );
++      await tester.pumpAndSettle();
++      expect(find.text('Import local work'), findsOneWidget);
++
++      importGate.complete();
++      await tester.pumpAndSettle();
++      expect(repository.items, hasLength(1));
++      expect((await store.load()).knowledge.single['id'], 'selected-local');
++      await tester.tap(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is NavigationDestination && widget.label == 'Interact',
++        ),
++      );
++      await tester.pumpAndSettle();
++      expect(find.text('Create private session'), findsOneWidget);
++    },
++  );
++
++  testWidgets(
++    'permanent import rejection releases navigation while transient failure stays guarded',
++    (tester) async {
++      final user = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'rejected-import-user',
++      );
++      final repository = _TestPersonalWorkspaceRepository([])
++        ..failedImports = 1
++        ..importFailureStatus = 413;
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await store.save(
++        const GuestWorkspaceData(
++          knowledge: [
++            {'id': 'local-original', 'title': 'Original stays local'},
++          ],
++        ),
++      );
++      await pumpPersonalRouter(
++        tester,
++        user: user,
++        repository: repository,
++        store: store,
++      );
++      await tester.tap(find.text('Import local work'));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Import selected work'));
++      await tester.pumpAndSettle();
++      expect(find.text('Change selection'), findsOneWidget);
++      expect((await store.load()).knowledge.single['id'], 'local-original');
++
++      await tester.tap(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is NavigationDestination && widget.label == 'Interact',
++        ),
++      );
++      await tester.pumpAndSettle();
++      expect(find.text('Create private session'), findsOneWidget);
++    },
++  );
++
++  testWidgets(
++    'unconfirmed account import remains guarded and retains its local original',
++    (tester) async {
++      final user = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'uncertain-import-user',
++      );
++      final repository = _TestPersonalWorkspaceRepository([])
++        ..failedImports = 1
++        ..importFailureStatus = 500;
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await store.save(
++        const GuestWorkspaceData(
++          knowledge: [
++            {'id': 'retry-local', 'title': 'Retry keeps original'},
++          ],
++        ),
++      );
++      await pumpPersonalRouter(
++        tester,
++        user: user,
++        repository: repository,
++        store: store,
++      );
++      await tester.tap(find.text('Import local work'));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Import selected work'));
++      await tester.pumpAndSettle();
++      expect(find.text('Retry import'), findsOneWidget);
++      expect((await store.load()).knowledge.single['id'], 'retry-local');
++
++      await tester.tap(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is NavigationDestination && widget.label == 'Interact',
++        ),
++      );
++      await tester.pumpAndSettle();
++      expect(find.text('Create private session'), findsNothing);
++      expect(find.text('Import local work'), findsOneWidget);
++    },
++  );
++
+   testWidgets('new verified-user Interact sessions save privately by default', (
+     tester,
+   ) async {
+
+From b408dbe7dfed796189124aba6e0e53cb36e89e83 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 08:46:26 +0000
+Subject: [PATCH 3/3] Harden pending status ownership and verify tests
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../application/personal_workspace_status.dart  |  2 ++
+ .../presentation/guest_workspace_page.dart      |  6 +++++-
+ .../test/account_state_widget_test.dart         | 17 +++++++++++------
+ 3 files changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+index a2bcfaa..13bd45a 100644
+--- a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
++++ b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+@@ -28,6 +28,7 @@ class PersonalWorkspaceStatusController
+     required bool hasPendingChanges,
+     bool claim = false,
+   }) {
++    if (!ref.mounted) return;
+     if (ownerGeneration < state.ownerGeneration ||
+         (!claim && state.ownerGeneration != ownerGeneration)) {
+       return;
+@@ -40,6 +41,7 @@ class PersonalWorkspaceStatusController
+   }
+ 
+   void clear(int ownerGeneration) {
++    if (!ref.mounted) return;
+     if (state.ownerGeneration != ownerGeneration) return;
+     state = const PersonalWorkspaceStatus();
+   }
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 685a008..06fce5f 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -191,7 +191,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       unawaited(_flushPendingSave());
+     }
+     _workspaceStatusRevision++;
+-    _workspaceStatusController.clear(_workspaceStatusOwner);
++    final statusController = _workspaceStatusController;
++    final statusOwner = _workspaceStatusOwner;
++    WidgetsBinding.instance.addPostFrameCallback((_) {
++      statusController.clear(statusOwner);
++    });
+     super.dispose();
+   }
+ 
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 8af5124..216e3af 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -1651,14 +1651,18 @@ void main() {
+       await tester.pumpAndSettle();
+       expect(repository.items, hasLength(1));
+       expect((await store.load()).knowledge, isEmpty);
+-      await tester.tap(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is NavigationDestination && widget.label == 'Interact',
+-        ),
+-      );
++      await tester.pump(const Duration(seconds: 5));
++      await tester.tap(find.byTooltip('Switch workspace'));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Organisation workspace'));
++      await tester.pumpAndSettle();
++      expect(find.text('Organisation route'), findsOneWidget);
++      unawaited(router.push<void>('/personal/interact'));
++      await tester.pumpAndSettle();
+       await tester.pumpAndSettle();
+       expect(find.text('Create private session'), findsOneWidget);
++      await tester.pumpWidget(const SizedBox.shrink());
++      expect(tester.takeException(), isNull);
+     },
+   );
+ 
+@@ -1863,6 +1867,7 @@ void main() {
+       await tester.pumpAndSettle();
+       expect(repository.items, hasLength(1));
+       expect((await store.load()).knowledge.single['id'], 'selected-local');
++      await tester.pump(const Duration(seconds: 5));
+       await tester.tap(
+         find.byWidgetPredicate(
+           (widget) =>
