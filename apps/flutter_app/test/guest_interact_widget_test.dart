@@ -211,6 +211,17 @@ void main() {
       final destination = find.text('Destination: Local · this device');
       final pdf = find.text('Download / Share PDF');
       final menu = find.byTooltip('More session actions');
+      final destinationControl = find.byKey(
+        const ValueKey('guest-session-destination'),
+      );
+      final pdfControl = find.byKey(
+        const ValueKey('guest-session-pdf-action'),
+      );
+      expect(
+        tester.getSize(destinationControl).height,
+        tester.getSize(pdfControl).height,
+      );
+      expect(tester.getSize(destinationControl).height, 40);
       expect(
         (tester.getCenter(destination).dy - tester.getCenter(pdf).dy).abs(),
         lessThan(1),
