@@ -223,7 +223,8 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
     required String expectedUid,
   }) async {
     imports.add(payload);
-    if (failedImports > 0) {
+    final uncertainOutcome = failedImports > 0;
+    if (uncertainOutcome) {
       failedImports--;
       if (importFailureStatus != null) {
         final request = RequestOptions(path: '/api/v1/personal/items/import');
@@ -235,18 +236,28 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
           ),
         );
       }
-      throw StateError('Simulated uncertain response.');
     }
-    return [
-      for (final item in payload)
-        {
+    final imported = <Map<String, dynamic>>[];
+    for (final item in payload) {
+      final existing = items
+          .where((record) => record['source_key'] == item['source_key'])
+          .firstOrNull;
+      if (existing != null) {
+        imported.add(existing);
+        continue;
+      }
+      final record = {
           ...item,
           'id': 'record-${item['source_key']}',
           'revision': 1,
           'created_at': '2026-10-06T00:00:00+00:00',
           'updated_at': '2026-10-06T00:00:00+00:00',
-        },
-    ];
+        };
+      items = [...items, record];
+      imported.add(record);
+    }
+    if (uncertainOutcome) throw StateError('Simulated uncertain response.');
+    return imported;
   }
 
   @override
@@ -355,14 +366,30 @@ Future<void> _expectSeparateAccountError(
   expect(auth.createAttempts, 1);
 }
 
+Future<void> _openGroupsFromPersonalOptions(WidgetTester tester) async {
+  await tester.tap(
+    find.byWidgetPredicate(
+      (widget) =>
+          widget is PopupMenuButton<String> &&
+          (widget.tooltip == 'Workspace options' ||
+              widget.tooltip == 'Guest workspace options'),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Groups').last);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   Future<void> pumpGuestWorkspace(
     WidgetTester tester, {
     User? user,
     AccountMembershipStatus? membershipStatus,
+    bool personalWorkspaceEnabled = false,
     bool sharedIdentityActive = false,
     bool authUnavailable = false,
     GuestWorkspaceStore? store,
+    PersonalWorkspaceRepository? personalRepository,
     List<Map<String, dynamic>> existingGuestGroups =
         const <Map<String, dynamic>>[],
   }) async {
@@ -376,10 +403,15 @@ void main() {
             (ref) async => existingGuestGroups,
           ),
           firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          if (personalRepository != null)
+            personalWorkspaceRepositoryProvider.overrideWithValue(
+              personalRepository,
+            ),
         ],
         child: MaterialApp(
           home: GuestWorkspacePage(
             firebaseReady: true,
+            personalWorkspaceEnabled: personalWorkspaceEnabled,
             accountUser: user,
             membershipStatus: membershipStatus,
             sharedIdentityActive: sharedIdentityActive,
@@ -397,13 +429,12 @@ void main() {
       await pumpGuestWorkspace(tester);
 
       expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
-      final groupsButton = tester.widget<IconButton>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is IconButton && widget.tooltip == 'Groups',
-        ),
-      );
-      expect((groupsButton.icon as Icon).icon, Icons.group_outlined);
+      expect(find.byTooltip('Groups'), findsNothing);
+      await tester.tap(find.byTooltip('Guest workspace options'));
+      await tester.pumpAndSettle();
+      expect(find.text('Groups'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
       expect(
         find.textContaining('People using this profile can see its local work.'),
         findsNothing,
@@ -1395,6 +1426,75 @@ void main() {
     );
   });
 
+  testWidgets(
+    'new verified-user Knowledge saves privately and reconciles an uncertain create',
+    (tester) async {
+      final user = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'private-user',
+      );
+      final repository = _TestPersonalWorkspaceRepository([])
+        ..failedImports = 1;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await pumpGuestWorkspace(
+        tester,
+        user: user,
+        personalWorkspaceEnabled: true,
+        personalRepository: repository,
+        store: store,
+      );
+
+      expect(find.text('Save to private account'), findsOneWidget);
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextFormField &&
+              widget.decoration.labelText == 'Question',
+        ),
+        'Private default question',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'Details',
+        ),
+        'Account-only detail',
+      );
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'Answer',
+        ),
+        'Account-only answer',
+      );
+      await tester.tap(find.text('Save to private account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Retry account save'), findsOneWidget);
+      expect(repository.items, hasLength(1));
+      expect(repository.items.single['kind'], 'knowledge');
+      expect(
+        (repository.items.single['data'] as Map)['visibility'],
+        'private_account',
+      );
+      expect((await store.load()).knowledge, isEmpty);
+
+      await tester.tap(find.text('Retry account save'));
+      await tester.pumpAndSettle();
+
+      expect(repository.imports, hasLength(2));
+      expect(
+        repository.imports.first.single['source_key'],
+        repository.imports.last.single['source_key'],
+      );
+      expect(repository.items, hasLength(1));
+      expect(find.text('Personal account · saved'), findsOneWidget);
+    },
+  );
+
   testWidgets('existing-account sign-in errors do not reveal Firebase details', (
     tester,
   ) async {
@@ -1513,13 +1613,12 @@ void main() {
       ],
     );
 
-    expect(find.byTooltip('Groups'), findsOneWidget);
+    expect(find.byTooltip('Groups'), findsNothing);
     expect(
       find.textContaining('Verify this account’s email before using Groups'),
       findsOneWidget,
     );
-    await tester.tap(find.byTooltip('Groups'));
-    await tester.pumpAndSettle();
+    await _openGroupsFromPersonalOptions(tester);
     expect(find.text('Verify your email to use Groups'), findsOneWidget);
     expect(
       find.textContaining(
@@ -1541,7 +1640,7 @@ void main() {
     );
 
     expect(find.textContaining('no organisation membership'), findsOneWidget);
-    expect(find.byTooltip('Groups'), findsOneWidget);
+    expect(find.byTooltip('Groups'), findsNothing);
     expect(find.byTooltip('Enable groups'), findsNothing);
   });
 
@@ -1580,8 +1679,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Groups'));
-      await tester.pumpAndSettle();
+      await _openGroupsFromPersonalOptions(tester);
       expect(find.text('Create an account to use Groups'), findsOneWidget);
       expect(repository.listGroupsCalls, 0);
       expect(repository.listArchivedGroupsCalls, 0);
@@ -1659,11 +1757,8 @@ void main() {
     expect(find.text('Member One'), findsOneWidget);
     expect(find.text('member@example.test'), findsOneWidget);
     expect(find.text('Organisation workspace · answer_owner'), findsOneWidget);
-    expect(
-      find.text('Group roles are separate from organisation roles.'),
-      findsOneWidget,
-    );
-    expect(find.text('Groups'), findsOneWidget);
+    expect(find.text('Group access information'), findsOneWidget);
+    expect(find.text('Groups'), findsNothing);
     expect(find.text('Sign out'), findsOneWidget);
   });
 

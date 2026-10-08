@@ -64,6 +64,27 @@ class PersonalWorkspaceRepository {
     return [for (final item in result) item as Map<String, dynamic>];
   }
 
+  Future<Map<String, dynamic>> createItem({
+    required String kind,
+    required String sourceKey,
+    required String title,
+    required Map<String, dynamic> data,
+    required String expectedUid,
+  }) async {
+    final items = await importItems(
+      [
+        {
+          'kind': kind,
+          'source_key': sourceKey,
+          'title': title,
+          'data': data,
+        },
+      ],
+      expectedUid: expectedUid,
+    );
+    return items.single;
+  }
+
   Future<Map<String, dynamic>> updateItem({
     required String id,
     required String expectedUid,

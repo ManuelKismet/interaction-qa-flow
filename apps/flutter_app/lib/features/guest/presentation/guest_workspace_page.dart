@@ -15,6 +15,7 @@ import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/core/platform/pdf_download.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
+import 'package:int_qa_flow/features/guest/application/personal_workspace_status.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
 import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
@@ -22,8 +23,8 @@ import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
 import 'package:int_qa_flow/features/knowledge/application/knowledge_search_sources.dart';
-import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
 import 'package:share_plus/share_plus.dart';
 
 void _showPdfFontFallbackNotice(BuildContext context) {
@@ -47,6 +48,7 @@ class _PersonalWorkspaceWrite {
     this.title,
     this.data,
   });
+  _publishWorkspaceSaveStatus();
 
   final String action;
   final String kind;
@@ -64,6 +66,10 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
   const GuestWorkspacePage({
     required this.firebaseReady,
     this.initialKnowledgeItemId,
+    this.initialKnowledgeSection = KnowledgeSection.ask,
+    this.onKnowledgeSectionChanged,
+    this.initialWorkspaceTab = 0,
+    this.onWorkspaceTabChanged,
     this.personalWorkspaceEnabled = false,
     this.sharedIdentityActive = false,
     this.accountUser,
@@ -72,9 +78,14 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
     this.onRetryAccount,
     super.key,
   });
+  _publishWorkspaceSaveStatus();
 
   final bool firebaseReady;
   final String? initialKnowledgeItemId;
+  final KnowledgeSection initialKnowledgeSection;
+  final ValueChanged<KnowledgeSection>? onKnowledgeSectionChanged;
+  final int initialWorkspaceTab;
+  final ValueChanged<int>? onWorkspaceTabChanged;
   final bool personalWorkspaceEnabled;
   final bool sharedIdentityActive;
   final User? accountUser;
@@ -111,6 +122,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   String? _personalOwnerUid;
   bool _personalLoading = false;
   bool _personalSaving = false;
+  int _personalWriteGeneration = 0;
 
   @override
   void initState() {
@@ -122,6 +134,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_refreshPersonalWorkspace());
     });
+    _publishWorkspaceSaveStatus();
   }
 
   @override
@@ -140,6 +153,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     _personalConflictReloadFailed = false;
     _personalError = null;
     _personalLoading = false;
+    _publishWorkspaceSaveStatus();
     if (uid != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_refreshPersonalWorkspace());
@@ -163,7 +177,29 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (_savedRevision < _dataRevision) {
       unawaited(_flushPendingSave());
     }
+    if (!_hasPendingWorkspaceChanges) {
+      ref
+          .read(personalWorkspaceStatusProvider.notifier)
+          .update(uid: null, hasPendingChanges: false);
+    }
     super.dispose();
+  }
+
+  bool get _hasPendingWorkspaceChanges =>
+      _savedRevision < _dataRevision ||
+      _unsavedChanges ||
+      _pendingPersonalWrites.isNotEmpty ||
+      _pendingPersonalImport.isNotEmpty ||
+      _personalSaving ||
+      _personalConflictSourceKey != null;
+
+  void _publishWorkspaceSaveStatus() {
+    ref
+        .read(personalWorkspaceStatusProvider.notifier)
+        .update(
+          uid: _verifiedPersonalUid,
+          hasPendingChanges: _hasPendingWorkspaceChanges,
+        );
   }
 
   Future<void> _load() async {
@@ -203,10 +239,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final uid = _verifiedPersonalUid;
     if (uid == null || !mounted) return;
     final generation = ++_personalGeneration;
+    final writeGeneration = _personalWriteGeneration;
     setState(() {
       _personalLoading = true;
       _personalError = null;
     });
+    _publishWorkspaceSaveStatus();
     try {
       final items = await ref
           .read(personalWorkspaceRepositoryProvider)
@@ -214,6 +252,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       if (!mounted ||
           generation != _personalGeneration ||
           uid != _verifiedPersonalUid) {
+        return;
+      }
+      if (writeGeneration != _personalWriteGeneration) {
+        setState(() => _personalLoading = false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && uid == _verifiedPersonalUid) {
+            unawaited(_refreshPersonalWorkspace());
+          }
+        });
+        _publishWorkspaceSaveStatus();
         return;
       }
       setState(() {
@@ -362,6 +410,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       _dataRevision++;
       _saveStatus = 'Saving locally…';
     });
+    _publishWorkspaceSaveStatus();
     _autosaveTimer?.cancel();
     _autosaveTimer = Timer(
       const Duration(milliseconds: 250),
@@ -370,6 +419,69 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (uid != null) {
       unawaited(_syncPersonalWorkspace(uid, submitted));
     }
+  }
+
+  void _createWorkspaceItem({
+    required String kind,
+    required Map<String, dynamic> item,
+    required GuestWorkspaceData updated,
+  }) {
+    final uid = _verifiedPersonalUid;
+    final accountItem = uid == null
+        ? item
+        : {
+            ...item,
+            if (kind == 'knowledge' || kind == 'interact_session')
+              'visibility': 'private_account',
+          };
+    final submitted = uid == null
+        ? updated
+        : switch (kind) {
+            'knowledge' => updated.copyWith(
+              knowledge: [
+                accountItem,
+                ...updated.knowledge.where(
+                  (value) => value['id'] != item['id'],
+                ),
+              ],
+            ),
+            'interact_session' => updated.copyWith(
+              sessions: [
+                accountItem,
+                ...updated.sessions.where(
+                  (value) => value['id'] != item['id'],
+                ),
+              ],
+            ),
+            'template' => updated.copyWith(
+              templates: [
+                accountItem,
+                ...updated.templates.where(
+                  (value) => value['id'] != item['id'],
+                ),
+              ],
+            ),
+            _ => updated,
+          };
+    _save(submitted);
+    if (uid == null) return;
+    final sourceId = item['id'] as String;
+    final write = _PersonalWorkspaceWrite(
+      action: 'create',
+      kind: kind,
+      sourceKey: _personalSourceKey(kind, sourceId),
+      sourceId: sourceId,
+      title: _personalTitle(kind, accountItem),
+      data: accountItem,
+    );
+    _enqueuePersonalWrite(write);
+    unawaited(
+      _processPersonalWrites(
+        uid,
+        _personalGeneration,
+        ref.read(personalWorkspaceRepositoryProvider),
+      ),
+    );
   }
 
   Future<void> _syncPersonalWorkspace(
@@ -419,6 +531,33 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       }
     }
 
+    for (final entry in _pendingPersonalWrites.entries.toList()) {
+      final write = entry.value;
+      if (write.action == 'delete') continue;
+      final replacement = submittedByKey['${write.kind}:${write.sourceId}'];
+      if (replacement == null) {
+        _enqueuePersonalWrite(
+          _PersonalWorkspaceWrite(
+            action: 'delete',
+            kind: write.kind,
+            sourceKey: write.sourceKey,
+            sourceId: write.sourceId,
+          ),
+        );
+      } else if (jsonEncode(replacement) != jsonEncode(write.data)) {
+        _enqueuePersonalWrite(
+          _PersonalWorkspaceWrite(
+            action: write.action,
+            kind: write.kind,
+            sourceKey: write.sourceKey,
+            sourceId: write.sourceId,
+            title: _personalTitle(write.kind, replacement),
+            data: replacement,
+          ),
+        );
+      }
+    }
+
     await _processPersonalWrites(uid, generation, repository);
   }
 
@@ -445,6 +584,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }) async {
     if (_personalSaving || !mounted) return;
     _personalSaving = true;
+    _publishWorkspaceSaveStatus();
     try {
       while (mounted &&
           generation == _personalGeneration &&
@@ -464,9 +604,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               .firstOrNull;
           if (current == null && write.action == 'delete') {
             saved = null;
+          } else if (current == null && write.action == 'create') {
+            saved = await repository.createItem(
+              kind: write.kind,
+              sourceKey: write.sourceKey,
+              title: write.title!,
+              data: write.data!,
+              expectedUid: uid,
+            );
           } else if (current == null) {
             throw StateError('The personal item is not loaded.');
-          } else if (write.action == 'update') {
+          } else if (write.action != 'delete') {
             saved = await repository.updateItem(
               id: current['id'] as String,
               expectedUid: uid,
@@ -487,6 +635,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             return;
           }
           setState(() {
+            _personalWriteGeneration++;
             if (saved != null) {
               _personalItems.removeWhere(
                 (item) => item['source_key'] == write.sourceKey,
@@ -531,6 +680,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       }
     } finally {
       _personalSaving = false;
+      if (mounted) _publishWorkspaceSaveStatus();
     }
   }
 
@@ -664,6 +814,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             ? null
             : 'Other account edits are still pending.';
       });
+      _publishWorkspaceSaveStatus();
       return;
     }
 
@@ -681,6 +832,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             ? null
             : 'Other account edits are still pending.';
       });
+      _publishWorkspaceSaveStatus();
       return;
     }
 
@@ -698,6 +850,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             ], expectedUid: uid);
         if (!mounted || uid != _verifiedPersonalUid) return;
         setState(() {
+          _personalWriteGeneration++;
           _personalItems.removeWhere(
             (item) => item['source_key'] == write.sourceKey,
           );
@@ -714,12 +867,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               ? null
               : 'Other account edits are still pending.';
         });
+        _publishWorkspaceSaveStatus();
       } on Object {
         if (mounted) {
           setState(() {
             _personalError =
                 'The pending edit could not be restored. It remains available; refresh account status before trying again.';
           });
+          _publishWorkspaceSaveStatus();
         }
       }
       return;
@@ -730,6 +885,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       _personalConflictReloadFailed = false;
       _personalError = null;
     });
+    _publishWorkspaceSaveStatus();
     await _retryPersonalWrites(sourceKey: sourceKey);
   }
 
@@ -791,6 +947,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           _unsavedChanges = false;
         });
       }
+      if (mounted) _publishWorkspaceSaveStatus();
       return _savedRevision == _dataRevision;
     } on Object {
       if (mounted) {
@@ -798,24 +955,92 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           _saveStatus = 'Unable to save locally';
           _unsavedChanges = true;
         });
+        _publishWorkspaceSaveStatus();
       }
       return false;
     }
   }
 
   Future<bool> _saveBeforeLeaving() async {
-    if (_data == null || await _flushPendingSave()) return true;
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Unable to save local changes. Retry saving before leaving '
-            'this workspace.',
+    if (_data != null && !await _flushPendingSave()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unable to save local changes. Retry saving before leaving '
+              'this workspace.',
+            ),
           ),
-        ),
-      );
+        );
+      }
+      return false;
     }
+    if (_personalConflictSourceKey != null) {
+      _showPendingWorkspaceChanges();
+      return false;
+    }
+    if (_pendingPersonalImport.isNotEmpty) {
+      await _retryPersonalImport();
+    }
+    if (_pendingPersonalWrites.isNotEmpty) {
+      await _retryPersonalWrites();
+    }
+    final deadline = DateTime.now().add(const Duration(seconds: 12));
+    while (mounted &&
+        _personalSaving &&
+        DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    if (!_hasPendingWorkspaceChanges) return true;
+    _showPendingWorkspaceChanges();
     return false;
+  }
+
+  void _showPendingWorkspaceChanges() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Finish or retry pending private account changes before leaving '
+          'this workspace.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openGroupKnowledge(String groupId, String entryId) async {
+    if (!await _saveBeforeLeaving() || !mounted) return;
+    if (widget.onWorkspaceTabChanged != null) {
+      context.push(
+        '/guest/groups?groupId=${Uri.encodeQueryComponent(groupId)}'
+        '&entryId=${Uri.encodeQueryComponent(entryId)}',
+      );
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SharedGuestGroupsPage(
+          initialGroupId: groupId,
+          initialEntryId: entryId,
+        ),
+      ),
+    );
+  }
+
+  void _handleWorkspaceTabChanged(int index) {
+    final onChanged = widget.onWorkspaceTabChanged;
+    if (onChanged == null) return;
+    unawaited(() async {
+      if (await _saveBeforeLeaving() && mounted) onChanged(index);
+    }());
+  }
+
+  void _handleKnowledgeSectionChanged(KnowledgeSection section) {
+    final onChanged = widget.onKnowledgeSectionChanged;
+    if (onChanged == null) return;
+    unawaited(() async {
+      if (await _saveBeforeLeaving() && mounted) onChanged(section);
+    }());
   }
 
   Future<void> _openSignIn({bool createAccount = false}) async {
@@ -930,6 +1155,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             _personalError = null;
             _personalOwnerUid = null;
           });
+          _publishWorkspaceSaveStatus();
         }
       } on Object {
         if (mounted) {
@@ -1128,6 +1354,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (selected.isEmpty) return;
     _pendingPersonalImport = selected;
     _personalImportNeedsReselection = false;
+    _publishWorkspaceSaveStatus();
     await _submitPersonalImport(uid, _personalGeneration);
   }
 
@@ -1307,24 +1534,28 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final guestGroupsState = canUseGroups
         ? ref.watch(currentGuestGroupsProvider)
         : null;
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    return PopScope(
+      canPop: !_hasPendingWorkspaceChanges,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _hasPendingWorkspaceChanges) {
+          _showPendingWorkspaceChanges();
+        }
+      },
+      child: DefaultTabController(
+        length: 2,
+        initialIndex: widget.initialWorkspaceTab,
+        child: Scaffold(
         appBar: AppBar(
           title: Text(
-            _hasSignedInNonGuestUser
-                ? 'IntQAFlow workspace'
+            _verifiedPersonalUid != null
+                ? 'Personal workspace'
+                : _hasSignedInNonGuestUser
+                ? 'Registered local workspace'
                 : 'IntQAFlow guest workspace',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           actions: [
-            if (widget.firebaseReady)
-              IconButton(
-                tooltip: 'Groups',
-                onPressed: _openSharedGroups,
-                icon: const Icon(Icons.group_outlined),
-              ),
             _accountMenu(),
             PopupMenuButton<String>(
               tooltip: _hasSignedInNonGuestUser
@@ -1335,8 +1566,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                 if (value == 'backup') _copyLocalBackup();
                 if (value == 'import') _importLocalBackup();
                 if (value == 'account-import') _openPersonalImport();
+                if (value == 'groups') _openSharedGroups();
               },
               itemBuilder: (context) => [
+                if (widget.firebaseReady)
+                  const PopupMenuItem(value: 'groups', child: Text('Groups')),
+                PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'backup',
                   child: Text('Copy local JSON backup'),
@@ -1362,7 +1597,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
               ],
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
+            onTap: _handleWorkspaceTabChanged,
             tabs: [
               Tab(text: 'Knowledge', icon: Icon(Icons.search)),
               Tab(text: 'Interact', icon: Icon(Icons.account_tree_outlined)),
@@ -1527,17 +1763,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                         _GuestKnowledgeTab(
                           items: data.knowledge,
                           initialKnowledgeItemId: widget.initialKnowledgeItemId,
+                          initialKnowledgeSection:
+                              widget.initialKnowledgeSection,
+                          onKnowledgeSectionChanged:
+                              _handleKnowledgeSectionChanged,
+                          onOpenGroup: _openGroupKnowledge,
+                          privateWorkspace: _verifiedPersonalUid != null,
                           searchIdentityKey: _verifiedPersonalUid == null
                               ? null
                               : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
-                          searchOrganization:
-                              _verifiedPersonalUid != null &&
-                                  widget.membershipStatus ==
-                                      AccountMembershipStatus.active
-                              ? (query) => ref
-                                    .read(questionsRepositoryProvider)
-                                    .searchQuestions(query, limit: 10)
-                              : null,
+                          searchOrganization: null,
                           searchPersonal: _verifiedPersonalUid == null
                               ? null
                               : (query) => ref
@@ -1558,8 +1793,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                             'knowledge',
                             item,
                           ).startsWith('Personal account'),
-                          onCreate: (item) => _save(
-                            data.copyWith(knowledge: [item, ...data.knowledge]),
+                          onCreate: (item) => _createWorkspaceItem(
+                            kind: 'knowledge',
+                            item: item,
+                            updated: data.copyWith(
+                              knowledge: [item, ...data.knowledge],
+                            ),
                           ),
                           onUpdate: (item) => _save(
                             data.copyWith(
@@ -1573,13 +1812,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                         ),
                         _GuestInteractTab(
                           data: data,
+                          privateWorkspace: _verifiedPersonalUid != null,
                           storageStatus: _storageStatus,
                           onChange: _save,
-                          onSaveTemplate: (template) => _save(
-                            data.copyWith(
-                              templates: [template, ...data.templates],
-                            ),
-                          ),
+                          onCreateItem: (kind, item, updated) =>
+                              _createWorkspaceItem(
+                                kind: kind,
+                                item: item,
+                                updated: updated,
+                              ),
                           onPrint: _printReport,
                         ),
                       ],
@@ -1587,6 +1828,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                   ),
                 ],
               ),
+        ),
       ),
     );
   }
@@ -2170,6 +2412,10 @@ class _UnifiedKnowledgeSearchHit {
 class _GuestKnowledgeTab extends StatefulWidget {
   const _GuestKnowledgeTab({
     required this.items,
+    required this.privateWorkspace,
+    required this.initialKnowledgeSection,
+    required this.onKnowledgeSectionChanged,
+    required this.onOpenGroup,
     this.initialKnowledgeItemId,
     required this.searchIdentityKey,
     required this.searchOrganization,
@@ -2184,6 +2430,10 @@ class _GuestKnowledgeTab extends StatefulWidget {
   });
 
   final List<Map<String, dynamic>> items;
+  final bool privateWorkspace;
+  final KnowledgeSection initialKnowledgeSection;
+  final ValueChanged<KnowledgeSection>? onKnowledgeSectionChanged;
+  final Future<void> Function(String, String) onOpenGroup;
   final String? initialKnowledgeItemId;
   final String? searchIdentityKey;
   final Future<List<SemanticSearchResult>> Function(String)? searchOrganization;
@@ -2225,10 +2475,20 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
   void initState() {
     super.initState();
     _selectedKnowledgeItemId = widget.initialKnowledgeItemId;
-    _showSavedQuestions = widget.initialKnowledgeItemId != null;
+    _showSavedQuestions =
+        widget.initialKnowledgeSection == KnowledgeSection.questions ||
+        widget.initialKnowledgeItemId != null;
   }
 
   String? _selectedKnowledgeItemId;
+
+  void _selectKnowledgeSection(KnowledgeSection section) {
+    setState(() {
+      _showSavedQuestions = section == KnowledgeSection.questions;
+      _selectedKnowledgeItemId = null;
+    });
+    widget.onKnowledgeSectionChanged?.call(section);
+  }
 
   @override
   void dispose() {
@@ -2523,6 +2783,11 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
       );
     }
     for (final result in _groupResults) {
+      final id = result['id'] as String?;
+      final groupId = result['group_id'] as String?;
+      if (id == null || id.isEmpty || groupId == null || groupId.isEmpty) {
+        continue;
+      }
       final data = result['data'] is Map
           ? Map<String, dynamic>.from(result['data'] as Map)
           : const <String, dynamic>{};
@@ -2530,7 +2795,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
       final groupName = result['group_name'] as String? ?? 'Group';
       hits.add(
         _UnifiedKnowledgeSearchHit(
-          id: result['id'] as String? ?? '',
+          id: id,
           title: title,
           source: 'Group: $groupName',
           method: _matchMethodLabel(
@@ -2544,10 +2809,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                 _stringValue(data['answer']),
               ]),
           icon: Icons.groups_outlined,
-          onTap: () => context.push(
-            '/guest/groups',
-            extra: {'groupId': result['group_id'], 'entryId': result['id']},
-          ),
+          onTap: () => widget.onOpenGroup(groupId, id),
         ),
       );
     }
@@ -2679,7 +2941,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
       'title': title,
       'body': _body.text.trim(),
       'answer': _answer.text.trim(),
-      'visibility': 'local_guest',
+      'visibility': widget.privateWorkspace ? 'private_account' : 'local_guest',
     });
     _title.clear();
     _body.clear();
@@ -2735,6 +2997,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (widget.privateWorkspace) ...[
+                KnowledgeSectionTabs(
+                  selected: KnowledgeSection.questions,
+                  onChanged: _selectKnowledgeSection,
+                ),
+                const SizedBox(height: 12),
+              ],
               searchField,
               _remoteSearchResults(context, query, const []),
               const SizedBox(height: 16),
@@ -2769,7 +3038,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                   padding: const EdgeInsets.all(24),
                   child: Text(
                     widget.items.isEmpty
-                        ? 'No saved Q&A yet. Add a local question to get started.'
+                        ? widget.privateWorkspace
+                              ? 'No saved Q&A yet. Add private Knowledge to get started.'
+                              : 'No saved Q&A yet. Add a local question to get started.'
                         : 'No local matches.',
                   ),
                 ),
@@ -2821,6 +3092,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (widget.privateWorkspace) ...[
+              KnowledgeSectionTabs(
+                selected: KnowledgeSection.ask,
+                onChanged: _selectKnowledgeSection,
+              ),
+              const SizedBox(height: 12),
+            ],
             searchField,
             _remoteSearchResults(context, query, matches),
             const SizedBox(height: 16),
@@ -2828,7 +3106,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
               children: [
                 Expanded(
                   child: Text(
-                    'Add a local question',
+                    widget.privateWorkspace
+                        ? 'Add private Knowledge'
+                        : 'Add a local question',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -2875,7 +3155,11 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
               child: FilledButton.icon(
                 onPressed: _create,
                 icon: const Icon(Icons.add),
-                label: const Text('Save locally'),
+                label: Text(
+                  widget.privateWorkspace
+                      ? 'Save to private account'
+                      : 'Save locally',
+                ),
               ),
             ),
           ],
@@ -3059,16 +3343,23 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
 class _GuestInteractTab extends StatefulWidget {
   const _GuestInteractTab({
     required this.data,
+    required this.privateWorkspace,
     required this.storageStatus,
     required this.onChange,
-    required this.onSaveTemplate,
+    required this.onCreateItem,
     required this.onPrint,
   });
 
   final GuestWorkspaceData data;
+  final bool privateWorkspace;
   final String Function(String, Map<String, dynamic>) storageStatus;
   final ValueChanged<GuestWorkspaceData> onChange;
-  final ValueChanged<Map<String, dynamic>> onSaveTemplate;
+  final void Function(
+    String kind,
+    Map<String, dynamic> item,
+    GuestWorkspaceData updated,
+  )
+  onCreateItem;
   final void Function(Map<String, dynamic>, String?) onPrint;
 
   @override
@@ -3122,7 +3413,9 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
             title: title,
             firstParticipantName: participant,
           );
-    widget.onChange(
+    widget.onCreateItem(
+      'interact_session',
+      session,
       widget.data.copyWith(sessions: [session, ...widget.data.sessions]),
     );
     _newSessionTitle.clear();
@@ -3188,8 +3481,12 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
     final values = await showDialog<List<String>>(
       context: context,
       builder: (context) => _GuestRequiredTextDialog(
-        title: 'Save local template',
-        submitLabel: 'Save template',
+        title: widget.privateWorkspace
+            ? 'Save private Interact template'
+            : 'Save local template',
+        submitLabel: widget.privateWorkspace
+            ? 'Save to private account'
+            : 'Save template',
         fields: [
           _GuestRequiredTextField(
             label: 'Template name',
@@ -3199,12 +3496,15 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
       ),
     );
     if (values == null || !mounted) return;
-    widget.onSaveTemplate(
-      createGuestTemplateFromSession(
-        session: session,
-        id: newGuestItemId(),
-        name: values.single,
-      ),
+    final template = createGuestTemplateFromSession(
+      session: session,
+      id: newGuestItemId(),
+      name: values.single,
+    );
+    widget.onCreateItem(
+      'template',
+      template,
+      widget.data.copyWith(templates: [template, ...widget.data.templates]),
     );
   }
 
@@ -3308,7 +3608,11 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
             child: FilledButton.icon(
               onPressed: _createSession,
               icon: const Icon(Icons.add),
-              label: const Text('Create session locally'),
+              label: Text(
+                widget.privateWorkspace
+                    ? 'Create private session'
+                    : 'Create session locally',
+              ),
             ),
           ),
           const Divider(height: 28),
@@ -4211,7 +4515,6 @@ class SharedGuestGroupsPage extends ConsumerStatefulWidget {
 
 class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     with WidgetsBindingObserver {
-  final _search = TextEditingController();
   List<Map<String, dynamic>> _groups = const [];
   List<Map<String, dynamic>> _archivedGroups = const [];
   List<Map<String, dynamic>> _entries = const [];
@@ -4276,7 +4579,6 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _search.dispose();
     super.dispose();
   }
 
@@ -4398,7 +4700,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
       final entries = await _repository.searchEntries(
         groupId: groupId,
-        query: _search.text,
+        query: '',
       );
       if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
       final invitations = detail['role'] == 'admin'
@@ -5892,30 +6194,26 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         ],
         if (_group != null) ...[
           const SizedBox(height: 12),
-          Text(
-            'Approved members can access this group. Role: ${_group!['role']}. '
-            'Only admins manage membership and invitations.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          _adminTransferCard(),
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _search,
-                  decoration: const InputDecoration(
-                    labelText: 'Search group content',
-                  ),
-                  onSubmitted: (_) => _loadGroup(_groupId!),
+                child: Text(
+                  'Your group role: ${_group!['role']}.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-              IconButton(
-                tooltip: 'Search',
-                onPressed: () => _loadGroup(_groupId!),
-                icon: const Icon(Icons.search),
+              const _GuestInfoButton(
+                tooltip: 'Group access information',
+                title: 'About Group access',
+                content:
+                    'Approved Group members can access this content. '
+                    'Only Group admins manage membership and invitations. '
+                    'Search accessible Group Knowledge from Personal '
+                    'workspace Ask & search.',
               ),
             ],
           ),
+          _adminTransferCard(),
           Wrap(
             spacing: 8,
             children: [
@@ -5947,7 +6245,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           ),
           const SizedBox(height: 8),
           if (_entries.isEmpty)
-            const Text('No group content matches this search.')
+            const Text('No shared Knowledge or Interact items are available.'),
           else
             for (final entry in _entries)
               Card(

@@ -12,6 +12,7 @@ import 'package:int_qa_flow/features/questions/presentation/question_detail_page
 import 'package:int_qa_flow/features/questions/presentation/questions_page.dart';
 import 'package:int_qa_flow/features/organisation/presentation/organisation_page.dart';
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
+import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
 
 final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
   ref,
@@ -64,8 +65,12 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
               final extra = state.extra;
               final entry = extra is Map ? extra : const {};
               return SharedGuestGroupsPage(
-                initialGroupId: entry['groupId'] as String?,
-                initialEntryId: entry['entryId'] as String?,
+                initialGroupId:
+                    state.uri.queryParameters['groupId'] ??
+                    entry['groupId'] as String?,
+                initialEntryId:
+                    state.uri.queryParameters['entryId'] ??
+                    entry['entryId'] as String?,
               );
             },
           ),
@@ -75,9 +80,70 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
               firebaseReady: true,
               personalWorkspaceEnabled: true,
               membershipStatus: AccountMembershipStatus.active,
-              initialKnowledgeItemId: state.extra is Map
-                  ? (state.extra as Map)['knowledgeItemId'] as String?
-                  : null,
+              initialKnowledgeItemId:
+                  state.uri.queryParameters['knowledgeItemId'] ??
+                  (state.extra is Map
+                      ? (state.extra as Map)['knowledgeItemId'] as String?
+                      : null),
+              initialKnowledgeSection: KnowledgeSection.ask,
+              onKnowledgeSectionChanged: (section) => context.go(
+                section == KnowledgeSection.ask
+                    ? '/personal/ask'
+                    : '/personal/questions',
+              ),
+              onWorkspaceTabChanged: (index) => context.go(
+                index == 0 ? '/personal' : '/personal/interact',
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/personal/ask',
+            builder: (context, state) => GuestWorkspacePage(
+              firebaseReady: true,
+              personalWorkspaceEnabled: true,
+              membershipStatus: AccountMembershipStatus.active,
+              initialKnowledgeItemId:
+                  state.uri.queryParameters['knowledgeItemId'],
+              initialKnowledgeSection: KnowledgeSection.ask,
+              onKnowledgeSectionChanged: (section) => context.go(
+                section == KnowledgeSection.ask
+                    ? '/personal/ask'
+                    : '/personal/questions',
+              ),
+              onWorkspaceTabChanged: (index) => context.go(
+                index == 0 ? '/personal/ask' : '/personal/interact',
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/personal/questions',
+            builder: (context, state) => GuestWorkspacePage(
+              firebaseReady: true,
+              personalWorkspaceEnabled: true,
+              membershipStatus: AccountMembershipStatus.active,
+              initialKnowledgeItemId:
+                  state.uri.queryParameters['knowledgeItemId'],
+              initialKnowledgeSection: KnowledgeSection.questions,
+              onKnowledgeSectionChanged: (section) => context.go(
+                section == KnowledgeSection.ask
+                    ? '/personal/ask'
+                    : '/personal/questions',
+              ),
+              onWorkspaceTabChanged: (index) => context.go(
+                index == 0 ? '/personal/questions' : '/personal/interact',
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/personal/interact',
+            builder: (context, state) => GuestWorkspacePage(
+              firebaseReady: true,
+              personalWorkspaceEnabled: true,
+              membershipStatus: AccountMembershipStatus.active,
+              initialWorkspaceTab: 1,
+              onWorkspaceTabChanged: (index) => context.go(
+                index == 0 ? '/personal' : '/personal/interact',
+              ),
             ),
           ),
         ],

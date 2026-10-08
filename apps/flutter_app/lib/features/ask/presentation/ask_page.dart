@@ -320,14 +320,13 @@ class _SuggestionRow extends StatelessWidget {
             break;
           case 'group':
             context.go(
-              '/guest/groups',
-              extra: {'groupId': result.groupId, 'entryId': result.id},
+              '/guest/groups?groupId=${Uri.encodeQueryComponent(result.groupId ?? '')}'
+              '&entryId=${Uri.encodeQueryComponent(result.id)}',
             );
             break;
           default:
             context.go(
-              '/personal',
-              extra: {'knowledgeItemId': result.id},
+              '/personal/questions?knowledgeItemId=${Uri.encodeQueryComponent(result.id)}',
             );
         }
       },
