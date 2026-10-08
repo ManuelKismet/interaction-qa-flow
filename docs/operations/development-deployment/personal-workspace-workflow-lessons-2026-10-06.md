@@ -152,3 +152,27 @@ for actual formatter/analyzer/focused tests and subsequent repairs; setup
 correction was visibly delivered to the active session. Config pushes also
 triggered existing GitHub Pages build/deployment; no app source changed and no
 Cloud Run/Firebase DEV rollout was performed.
+
+
+### Test asset readiness correction — 2026-10-08
+
+SDK/version and web-only preparation were insufficient: active Copilot session
+attempted Material fonts download after setup and received403; pubget, analyzer
+and tests never ran. Formatting alone had package-resolution warnings and is
+not a fully validated project-format gate. Supersede the earlier readiness
+claim with explicit test-asset verification.
+
+Default-branch setup updated at0b88f0596d4e1a8e30add936e61490914cdbf57e:
+`flutter --suppress-analytics precache --universal --linux --web` explicitly
+includes universal cache selection (Material fonts, patched SDK and host test
+engine), Linux and web artifacts before agent network restrictions apply.
+Verify MaterialIcons-Regular.otf and executable linux-x64/flutter_tester,
+enforce pubspec lockfile, then run a temporary MaterialApp widget smoke test
+with --no-pub; trap removes the temporary test without committing it. Readiness
+marker only follows successful smoke completion. No firewall/access expansion.
+
+Hosted run37767338120/job113278082801 SUCCESS, actual log confirms Material
+fonts downloaded, locked dependencies prepared, widget smoke test passed and
+new full readiness marker. This verifies environment/widget runner readiness,
+not application batch2 tests. Continue SAME task from latest published2a6417a
+app candidate; rerun locked pubget in that checkout then actual project checks.
