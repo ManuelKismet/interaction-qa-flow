@@ -269,6 +269,18 @@ void main() {
         isA<OutlineInputBorder>(),
       );
       expect(find.byTooltip('Edit question'), findsNothing);
+      final deleteButton = find.byKey(
+        const ValueKey('guest-question-delete-shared-root'),
+      );
+      expect(
+        tester.getTopLeft(deleteButton).dx,
+        greaterThan(tester.getTopRight(field).dx),
+      );
+      expect(
+        tester.getTopLeft(deleteButton).dy,
+        tester.getTopLeft(field).dy,
+      );
+      expect(tester.widget<TextField>(field).decoration?.isDense, isTrue);
       await tester.enterText(field, 'Edited shared question');
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 400));
