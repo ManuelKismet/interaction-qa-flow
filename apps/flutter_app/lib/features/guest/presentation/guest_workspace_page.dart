@@ -621,7 +621,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           'data': nextWrite.data,
         });
       }
-      _personalError = null;
     });
   }
 
@@ -631,7 +630,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     PersonalWorkspaceRepository repository, {
     String? prioritySourceKey,
   }) async {
-    if (_personalSaving || !mounted) return;
+    if (_personalSaving ||
+        !mounted ||
+        _personalError != null ||
+        _personalConflictSourceKey != null) {
+      return;
+    }
     _personalSaving = true;
     _publishWorkspaceSaveStatus();
     try {
@@ -759,7 +763,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       if (mounted) {
         _publishWorkspaceSaveStatus();
         final nextUid = _verifiedPersonalUid;
-        if (nextUid != null && _pendingPersonalWrites.isNotEmpty) {
+        if (nextUid != null &&
+            nextUid != uid &&
+            _personalError == null &&
+            _personalConflictSourceKey == null &&
+            _pendingPersonalWrites.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && nextUid == _verifiedPersonalUid) {
               unawaited(
@@ -983,7 +991,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
 
   Future<void> _retryPersonalWrites({String? sourceKey}) async {
     final uid = _verifiedPersonalUid;
-    if (uid == null) return;
+    if (!mounted || uid == null) return;
+    if (_personalError != null) {
+      setState(() => _personalError = null);
+    }
     await _processPersonalWrites(
       uid,
       _personalGeneration,
@@ -1733,6 +1744,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                 )
               : Column(
                   children: [
+                    Flexible(
+                      fit: FlexFit.loose,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 220),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
                     _GuestNotice(
                       isRegistered: _hasSignedInNonGuestUser,
                       saveStatus: _saveStatus,
@@ -1868,6 +1888,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                           ),
                         ],
                       ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                     Expanded(
                       child: TabBarView(
                         children: [
@@ -3134,7 +3159,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
                   icon: const Icon(Icons.arrow_back),
                   label: Text(
                     _selectedKnowledgeItemId == null
-                        ? 'Back to add a local question'
+                        ? widget.privateWorkspace
+                              ? 'Back to Ask & search'
+                              : 'Back to add a local question'
                         : 'Back to all Saved Q&A',
                   ),
                 ),
