@@ -91,9 +91,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
                     ? '/personal/ask'
                     : '/personal/questions',
               ),
-              onWorkspaceTabChanged: (index) => context.go(
-                index == 0 ? '/personal' : '/personal/interact',
-              ),
+              onWorkspaceTabChanged: (index) =>
+                  context.go(index == 0 ? '/personal' : '/personal/interact'),
             ),
           ),
           GoRoute(
@@ -141,9 +140,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
               personalWorkspaceEnabled: true,
               membershipStatus: AccountMembershipStatus.active,
               initialWorkspaceTab: 1,
-              onWorkspaceTabChanged: (index) => context.go(
-                index == 0 ? '/personal' : '/personal/interact',
-              ),
+              onWorkspaceTabChanged: (index) =>
+                  context.go(index == 0 ? '/personal' : '/personal/interact'),
             ),
           ),
         ],

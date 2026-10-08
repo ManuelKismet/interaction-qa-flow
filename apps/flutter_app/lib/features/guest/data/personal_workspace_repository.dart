@@ -2,9 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
 
-final personalWorkspaceRepositoryProvider = Provider<PersonalWorkspaceRepository>(
-  (ref) => PersonalWorkspaceRepository(ref.watch(apiClientProvider)),
-);
+final personalWorkspaceRepositoryProvider =
+    Provider<PersonalWorkspaceRepository>(
+      (ref) => PersonalWorkspaceRepository(ref.watch(apiClientProvider)),
+    );
 
 class PersonalWorkspaceRepository {
   const PersonalWorkspaceRepository(this._client);
@@ -16,9 +17,7 @@ class PersonalWorkspaceRepository {
   }) async {
     final response = await _client.get<List<dynamic>>(
       '/api/v1/personal/items',
-      options: Options(
-        extra: {'expectedFirebaseUid': expectedUid},
-      ),
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
     );
     return [
       for (final item in response.data ?? const [])
@@ -51,9 +50,7 @@ class PersonalWorkspaceRepository {
     final response = await _client.post<Map<String, dynamic>>(
       '/api/v1/personal/items/import',
       data: {'items': items},
-      options: Options(
-        extra: {'expectedFirebaseUid': expectedUid},
-      ),
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
     );
     final result = response.data?['items'];
     if (result is! List ||
@@ -71,17 +68,9 @@ class PersonalWorkspaceRepository {
     required Map<String, dynamic> data,
     required String expectedUid,
   }) async {
-    final items = await importItems(
-      [
-        {
-          'kind': kind,
-          'source_key': sourceKey,
-          'title': title,
-          'data': data,
-        },
-      ],
-      expectedUid: expectedUid,
-    );
+    final items = await importItems([
+      {'kind': kind, 'source_key': sourceKey, 'title': title, 'data': data},
+    ], expectedUid: expectedUid);
     return items.single;
   }
 
@@ -99,9 +88,7 @@ class PersonalWorkspaceRepository {
         'title': title,
         'data': data,
       },
-      options: Options(
-        extra: {'expectedFirebaseUid': expectedUid},
-      ),
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
     );
     return response.data!;
   }
@@ -114,9 +101,7 @@ class PersonalWorkspaceRepository {
     await _client.delete<void>(
       '/api/v1/personal/items/$id',
       queryParameters: {'expected_revision': expectedRevision},
-      options: Options(
-        extra: {'expectedFirebaseUid': expectedUid},
-      ),
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
     );
   }
 }

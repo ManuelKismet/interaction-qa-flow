@@ -284,13 +284,13 @@ void main() {
         ),
         GoRoute(
           path: '/questions/:id',
-          builder: (_, state) => Text('Opened organisation: ${state.pathParameters['id']}'),
+          builder: (_, state) =>
+              Text('Opened organisation: ${state.pathParameters['id']}'),
         ),
         GoRoute(
           path: '/guest/groups',
-          builder: (_, state) => Text(
-            'Opened group: ${state.uri.queryParameters['entryId']}',
-          ),
+          builder: (_, state) =>
+              Text('Opened group: ${state.uri.queryParameters['entryId']}'),
         ),
       ],
     );
@@ -557,9 +557,7 @@ void main() {
           questionsRepositoryProvider.overrideWithValue(questions),
           departmentsProvider.overrideWith((ref) async => [_department()]),
           teamsProvider.overrideWith((ref) async => [_team()]),
-          personalWorkspaceRepositoryProvider.overrideWithValue(
-            personal,
-          ),
+          personalWorkspaceRepositoryProvider.overrideWithValue(personal),
           guestGroupRepositoryProvider.overrideWithValue(groups),
           guestWorkspaceStoreProvider.overrideWithValue(
             GuestWorkspaceStore(storage),

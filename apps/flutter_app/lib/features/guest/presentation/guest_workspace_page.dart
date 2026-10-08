@@ -479,9 +479,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             'interact_session' => updated.copyWith(
               sessions: [
                 accountItem,
-                ...updated.sessions.where(
-                  (value) => value['id'] != item['id'],
-                ),
+                ...updated.sessions.where((value) => value['id'] != item['id']),
               ],
             ),
             'template' => updated.copyWith(
@@ -496,9 +494,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           };
     _save(
       submitted,
-      accountPrivateKeys: uid == null
-          ? const {}
-          : {'$kind:${item['id']}'},
+      accountPrivateKeys: uid == null ? const {} : {'$kind:${item['id']}'},
     );
     if (uid == null) return;
     final sourceId = item['id'] as String;
@@ -601,8 +597,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   void _enqueuePersonalWrite(_PersonalWorkspaceWrite write) {
     final key = '${write.kind}:${write.sourceId}';
     final previous = _pendingPersonalWrites[key];
-    final nextWrite =
-        write.action == 'delete' && previous?.action == 'create'
+    final nextWrite = write.action == 'delete' && previous?.action == 'create'
         ? _PersonalWorkspaceWrite(
             action: 'create',
             kind: previous!.kind,
@@ -1083,9 +1078,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       await _retryPersonalWrites();
     }
     final deadline = DateTime.now().add(const Duration(seconds: 12));
-    while (mounted &&
-        _personalSaving &&
-        DateTime.now().isBefore(deadline)) {
+    while (mounted && _personalSaving && DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     if (!_hasPendingWorkspaceChanges) return true;
@@ -1656,296 +1649,299 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         length: 2,
         initialIndex: widget.initialWorkspaceTab,
         child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            _verifiedPersonalUid != null
-                ? 'Personal workspace'
-                : _hasSignedInNonGuestUser
-                ? 'Registered local workspace'
-                : 'IntQAFlow guest workspace',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          actions: [
-            _accountMenu(),
-            PopupMenuButton<String>(
-              tooltip: _hasSignedInNonGuestUser
-                  ? 'Workspace options'
-                  : 'Guest workspace options',
-              onSelected: (value) {
-                if (value == 'clear') _clearLocalCopy();
-                if (value == 'backup') _copyLocalBackup();
-                if (value == 'import') _importLocalBackup();
-                if (value == 'account-import') _openPersonalImport();
-                if (value == 'groups') _openSharedGroups();
-              },
-              itemBuilder: (context) => [
-                if (widget.firebaseReady)
-                  const PopupMenuItem(value: 'groups', child: Text('Groups')),
-                PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'backup',
-                  child: Text('Copy local JSON backup'),
-                ),
-                PopupMenuItem(
-                  value: 'import',
-                  child: Text('Import local JSON backup'),
-                ),
-                if (_verifiedPersonalUid != null)
-                  const PopupMenuItem(
-                    value: 'account-import',
-                    child: Text('Import local work into my account'),
-                  ),
-                PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'clear',
-                  child: Text(
-                    _hasSignedInNonGuestUser
-                        ? 'Clear local copy on this device'
-                        : 'Clear local guest copy',
-                  ),
-                ),
-              ],
+          appBar: AppBar(
+            title: Text(
+              _verifiedPersonalUid != null
+                  ? 'Personal workspace'
+                  : _hasSignedInNonGuestUser
+                  ? 'Registered local workspace'
+                  : 'IntQAFlow guest workspace',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-          ],
-          bottom: TabBar(
-            onTap: _handleWorkspaceTabChanged,
-            tabs: [
-              Tab(text: 'Knowledge', icon: Icon(Icons.search)),
-              Tab(text: 'Interact', icon: Icon(Icons.account_tree_outlined)),
-            ],
-          ),
-        ),
-        body: data == null
-            ? Center(
-                child: _loadError == null
-                    ? const CircularProgressIndicator()
-                    : Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(_loadError!, textAlign: TextAlign.center),
-                            const SizedBox(height: 12),
-                            FilledButton.icon(
-                              onPressed: _isLoading ? null : _load,
-                              icon: const Icon(Icons.refresh),
-                              label: Text(
-                                _isLoading ? 'Retrying…' : 'Retry loading',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-              )
-            : Column(
-                children: [
-                  _GuestNotice(
-                    isRegistered: _hasSignedInNonGuestUser,
-                    saveStatus: _saveStatus,
+            actions: [
+              _accountMenu(),
+              PopupMenuButton<String>(
+                tooltip: _hasSignedInNonGuestUser
+                    ? 'Workspace options'
+                    : 'Guest workspace options',
+                onSelected: (value) {
+                  if (value == 'clear') _clearLocalCopy();
+                  if (value == 'backup') _copyLocalBackup();
+                  if (value == 'import') _importLocalBackup();
+                  if (value == 'account-import') _openPersonalImport();
+                  if (value == 'groups') _openSharedGroups();
+                },
+                itemBuilder: (context) => [
+                  if (widget.firebaseReady)
+                    const PopupMenuItem(value: 'groups', child: Text('Groups')),
+                  PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'backup',
+                    child: Text('Copy local JSON backup'),
                   ),
-                  if (_unsavedChanges)
-                    MaterialBanner(
-                      content: const Text(
-                        'Your changes are not saved. Keep this page open and retry.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: _flushPendingSave,
-                          child: const Text('Retry saving'),
-                        ),
-                      ],
+                  PopupMenuItem(
+                    value: 'import',
+                    child: Text('Import local JSON backup'),
+                  ),
+                  if (_verifiedPersonalUid != null)
+                    const PopupMenuItem(
+                      value: 'account-import',
+                      child: Text('Import local work into my account'),
                     ),
-                  if (widget.authUnavailable)
-                    const _AccountMembershipNotice(
-                      text:
-                          'Account status could not be verified. This workspace is local; organisation access is not assumed.',
-                    ),
-                  if (_verifiedPersonalUid != null &&
-                      localData != null &&
-                      _hasMeaningfulWork(localData))
-                    MaterialBanner(
-                      content: const Text(
-                        'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: _personalSaving || _personalLoading
-                              ? null
-                              : _openPersonalImport,
-                          child: const Text('Import local work'),
-                        ),
-                      ],
-                    ),
-                  if (_personalError != null)
-                    MaterialBanner(
-                      content: Text(_personalError!),
-                      actions: [
-                        TextButton(
-                          onPressed: _personalImportNeedsReselection
-                              ? _openPersonalImport
-                              : _personalConflictSourceKey != null
-                              ? _personalConflictReloadFailed
-                                    ? _reloadPendingPersonalConflict
-                                    : _reviewPersonalConflict
-                              : _pendingPersonalImport.isNotEmpty
-                              ? _retryPersonalImport
-                              : _pendingPersonalWrites.isNotEmpty
-                              ? _retryPersonalWrites
-                              : _refreshPersonalWorkspace,
-                          child: Text(
-                            _personalImportNeedsReselection
-                                ? 'Change selection'
-                                : _personalConflictSourceKey != null
-                                ? _personalConflictReloadFailed
-                                      ? 'Reload account version'
-                                      : 'Review account change'
-                                : _pendingPersonalImport.isNotEmpty
-                                ? 'Retry import'
-                                : _pendingPersonalWrites.isNotEmpty
-                                ? 'Retry account save'
-                                : 'Retry account load',
-                          ),
-                        ),
-                      ],
-                    ),
-                  if (widget.membershipStatus ==
-                      AccountMembershipStatus.noMembership)
-                    const _AccountMembershipNotice(
-                      text:
-                          'This signed-in account has no organisation '
-                          'membership. Groups require a verified registered '
-                          'account, but do not require organisation membership.',
-                    ),
-                  if (widget.membershipStatus ==
-                      AccountMembershipStatus.inactive)
-                    const _AccountMembershipNotice(
-                      text:
-                          'This organisation membership is inactive. You can continue local work; contact your organisation administrator about access.',
-                    ),
-                  if (widget.membershipStatus ==
-                      AccountMembershipStatus.unavailable)
-                    const _AccountMembershipNotice(
-                      text:
-                          'Organisation membership could not be verified. You can continue local work, but no organisation access is assumed.',
-                    ),
-                  if (widget.firebaseReady &&
-                      _hasSignedInNonGuestUser &&
-                      !widget.sharedIdentityActive)
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: canUseGroups
-                          ? const Align(
-                              alignment: Alignment.centerLeft,
-                              child: _GuestInfoButton(
-                                tooltip: 'Group identity information',
-                                title: 'About Group identity',
-                                content:
-                                    'Group access is associated with this '
-                                    'signed-in verified identity. A separate '
-                                    'account does not inherit its Group data.',
-                              ),
-                            )
-                          : const Text(
-                              'Verify this account’s email before using Groups. '
-                              'Local work remains available, and organisation '
-                              'membership is not required for Groups.',
-                            ),
-                    ),
-                  if (guestGroupsState?.hasError == true)
-                    MaterialBanner(
-                      content: const Text(
-                        'Existing group access could not be checked. This does not confirm that no groups are linked.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () =>
-                              ref.invalidate(currentGuestGroupsProvider),
-                          child: const Text('Retry groups'),
-                        ),
-                      ],
-                    ),
-                  if (_loadError != null)
-                    MaterialBanner(
-                      content: Text(_loadError!),
-                      actions: [
-                        TextButton(
-                          onPressed: _load,
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        _GuestKnowledgeTab(
-                          items: data.knowledge,
-                          initialKnowledgeItemId: widget.initialKnowledgeItemId,
-                          initialKnowledgeSection:
-                              widget.initialKnowledgeSection,
-                          onKnowledgeSectionChanged:
-                              _handleKnowledgeSectionChanged,
-                          onOpenGroup: _openGroupKnowledge,
-                          privateWorkspace: _verifiedPersonalUid != null,
-                          searchIdentityKey: _verifiedPersonalUid == null
-                              ? null
-                              : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
-                          searchOrganization: null,
-                          searchPersonal: _verifiedPersonalUid == null
-                              ? null
-                              : (query) => ref
-                                    .read(personalWorkspaceRepositoryProvider)
-                                    .searchKnowledge(
-                                      query,
-                                      expectedUid: _verifiedPersonalUid!,
-                                    ),
-                          searchGroups: _verifiedPersonalUid == null
-                              ? null
-                              : (query) => ref
-                                    .read(guestGroupRepositoryProvider)
-                                    .searchKnowledge(query),
-                          reloadPersonalWorkspace: _refreshPersonalWorkspace,
-                          storageStatus: (item) =>
-                              _storageStatus('knowledge', item),
-                          isPersonalAccount: (item) => _storageStatus(
-                            'knowledge',
-                            item,
-                          ).startsWith('Personal account'),
-                          onCreate: (item) => _createWorkspaceItem(
-                            kind: 'knowledge',
-                            item: item,
-                            updated: data.copyWith(
-                              knowledge: [item, ...data.knowledge],
-                            ),
-                          ),
-                          onUpdate: (item) => _save(
-                            data.copyWith(
-                              knowledge: [
-                                for (final current in data.knowledge)
-                                  current['id'] == item['id'] ? item : current,
-                              ],
-                            ),
-                          ),
-                          onDelete: (id) => _deleteKnowledge(data, id),
-                        ),
-                        _GuestInteractTab(
-                          data: data,
-                          privateWorkspace: _verifiedPersonalUid != null,
-                          storageStatus: _storageStatus,
-                          onChange: _save,
-                          onCreateItem: (kind, item, updated) =>
-                              _createWorkspaceItem(
-                                kind: kind,
-                                item: item,
-                                updated: updated,
-                              ),
-                          onPrint: _printReport,
-                        ),
-                      ],
+                  PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'clear',
+                    child: Text(
+                      _hasSignedInNonGuestUser
+                          ? 'Clear local copy on this device'
+                          : 'Clear local guest copy',
                     ),
                   ),
                 ],
               ),
+            ],
+            bottom: TabBar(
+              onTap: _handleWorkspaceTabChanged,
+              tabs: [
+                Tab(text: 'Knowledge', icon: Icon(Icons.search)),
+                Tab(text: 'Interact', icon: Icon(Icons.account_tree_outlined)),
+              ],
+            ),
+          ),
+          body: data == null
+              ? Center(
+                  child: _loadError == null
+                      ? const CircularProgressIndicator()
+                      : Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_loadError!, textAlign: TextAlign.center),
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                onPressed: _isLoading ? null : _load,
+                                icon: const Icon(Icons.refresh),
+                                label: Text(
+                                  _isLoading ? 'Retrying…' : 'Retry loading',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                )
+              : Column(
+                  children: [
+                    _GuestNotice(
+                      isRegistered: _hasSignedInNonGuestUser,
+                      saveStatus: _saveStatus,
+                    ),
+                    if (_unsavedChanges)
+                      MaterialBanner(
+                        content: const Text(
+                          'Your changes are not saved. Keep this page open and retry.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: _flushPendingSave,
+                            child: const Text('Retry saving'),
+                          ),
+                        ],
+                      ),
+                    if (widget.authUnavailable)
+                      const _AccountMembershipNotice(
+                        text:
+                            'Account status could not be verified. This workspace is local; organisation access is not assumed.',
+                      ),
+                    if (_verifiedPersonalUid != null &&
+                        localData != null &&
+                        _hasMeaningfulWork(localData))
+                      MaterialBanner(
+                        content: const Text(
+                          'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: _personalSaving || _personalLoading
+                                ? null
+                                : _openPersonalImport,
+                            child: const Text('Import local work'),
+                          ),
+                        ],
+                      ),
+                    if (_personalError != null)
+                      MaterialBanner(
+                        content: Text(_personalError!),
+                        actions: [
+                          TextButton(
+                            onPressed: _personalImportNeedsReselection
+                                ? _openPersonalImport
+                                : _personalConflictSourceKey != null
+                                ? _personalConflictReloadFailed
+                                      ? _reloadPendingPersonalConflict
+                                      : _reviewPersonalConflict
+                                : _pendingPersonalImport.isNotEmpty
+                                ? _retryPersonalImport
+                                : _pendingPersonalWrites.isNotEmpty
+                                ? _retryPersonalWrites
+                                : _refreshPersonalWorkspace,
+                            child: Text(
+                              _personalImportNeedsReselection
+                                  ? 'Change selection'
+                                  : _personalConflictSourceKey != null
+                                  ? _personalConflictReloadFailed
+                                        ? 'Reload account version'
+                                        : 'Review account change'
+                                  : _pendingPersonalImport.isNotEmpty
+                                  ? 'Retry import'
+                                  : _pendingPersonalWrites.isNotEmpty
+                                  ? 'Retry account save'
+                                  : 'Retry account load',
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (widget.membershipStatus ==
+                        AccountMembershipStatus.noMembership)
+                      const _AccountMembershipNotice(
+                        text:
+                            'This signed-in account has no organisation '
+                            'membership. Groups require a verified registered '
+                            'account, but do not require organisation membership.',
+                      ),
+                    if (widget.membershipStatus ==
+                        AccountMembershipStatus.inactive)
+                      const _AccountMembershipNotice(
+                        text:
+                            'This organisation membership is inactive. You can continue local work; contact your organisation administrator about access.',
+                      ),
+                    if (widget.membershipStatus ==
+                        AccountMembershipStatus.unavailable)
+                      const _AccountMembershipNotice(
+                        text:
+                            'Organisation membership could not be verified. You can continue local work, but no organisation access is assumed.',
+                      ),
+                    if (widget.firebaseReady &&
+                        _hasSignedInNonGuestUser &&
+                        !widget.sharedIdentityActive)
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: canUseGroups
+                            ? const Align(
+                                alignment: Alignment.centerLeft,
+                                child: _GuestInfoButton(
+                                  tooltip: 'Group identity information',
+                                  title: 'About Group identity',
+                                  content:
+                                      'Group access is associated with this '
+                                      'signed-in verified identity. A separate '
+                                      'account does not inherit its Group data.',
+                                ),
+                              )
+                            : const Text(
+                                'Verify this account’s email before using Groups. '
+                                'Local work remains available, and organisation '
+                                'membership is not required for Groups.',
+                              ),
+                      ),
+                    if (guestGroupsState?.hasError == true)
+                      MaterialBanner(
+                        content: const Text(
+                          'Existing group access could not be checked. This does not confirm that no groups are linked.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () =>
+                                ref.invalidate(currentGuestGroupsProvider),
+                            child: const Text('Retry groups'),
+                          ),
+                        ],
+                      ),
+                    if (_loadError != null)
+                      MaterialBanner(
+                        content: Text(_loadError!),
+                        actions: [
+                          TextButton(
+                            onPressed: _load,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _GuestKnowledgeTab(
+                            items: data.knowledge,
+                            initialKnowledgeItemId:
+                                widget.initialKnowledgeItemId,
+                            initialKnowledgeSection:
+                                widget.initialKnowledgeSection,
+                            onKnowledgeSectionChanged:
+                                _handleKnowledgeSectionChanged,
+                            onOpenGroup: _openGroupKnowledge,
+                            privateWorkspace: _verifiedPersonalUid != null,
+                            searchIdentityKey: _verifiedPersonalUid == null
+                                ? null
+                                : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
+                            searchOrganization: null,
+                            searchPersonal: _verifiedPersonalUid == null
+                                ? null
+                                : (query) => ref
+                                      .read(personalWorkspaceRepositoryProvider)
+                                      .searchKnowledge(
+                                        query,
+                                        expectedUid: _verifiedPersonalUid!,
+                                      ),
+                            searchGroups: _verifiedPersonalUid == null
+                                ? null
+                                : (query) => ref
+                                      .read(guestGroupRepositoryProvider)
+                                      .searchKnowledge(query),
+                            reloadPersonalWorkspace: _refreshPersonalWorkspace,
+                            storageStatus: (item) =>
+                                _storageStatus('knowledge', item),
+                            isPersonalAccount: (item) => _storageStatus(
+                              'knowledge',
+                              item,
+                            ).startsWith('Personal account'),
+                            onCreate: (item) => _createWorkspaceItem(
+                              kind: 'knowledge',
+                              item: item,
+                              updated: data.copyWith(
+                                knowledge: [item, ...data.knowledge],
+                              ),
+                            ),
+                            onUpdate: (item) => _save(
+                              data.copyWith(
+                                knowledge: [
+                                  for (final current in data.knowledge)
+                                    current['id'] == item['id']
+                                        ? item
+                                        : current,
+                                ],
+                              ),
+                            ),
+                            onDelete: (id) => _deleteKnowledge(data, id),
+                          ),
+                          _GuestInteractTab(
+                            data: data,
+                            privateWorkspace: _verifiedPersonalUid != null,
+                            storageStatus: _storageStatus,
+                            onChange: _save,
+                            onCreateItem: (kind, item, updated) =>
+                                _createWorkspaceItem(
+                                  kind: kind,
+                                  item: item,
+                                  updated: updated,
+                                ),
+                            onPrint: _printReport,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );

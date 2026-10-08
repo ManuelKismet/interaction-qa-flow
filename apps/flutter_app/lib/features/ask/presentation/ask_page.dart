@@ -194,10 +194,7 @@ class _AskPageState extends ConsumerState<AskPage> {
 }
 
 class _SuggestionList extends StatelessWidget {
-  const _SuggestionList({
-    required this.suggestions,
-    required this.onRetry,
-  });
+  const _SuggestionList({required this.suggestions, required this.onRetry});
 
   final AsyncValue<AskSuggestions> suggestions;
   final VoidCallback onRetry;

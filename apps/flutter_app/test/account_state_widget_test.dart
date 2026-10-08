@@ -73,11 +73,7 @@ class _TestUserCredential extends Fake implements UserCredential {
 }
 
 class _TestFirebaseAuth extends Fake implements FirebaseAuth {
-  _TestFirebaseAuth(
-    this.currentUser, {
-    this.createError,
-    this.signInError,
-  });
+  _TestFirebaseAuth(this.currentUser, {this.createError, this.signInError});
 
   @override
   final User? currentUser;
@@ -287,10 +283,7 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
       final request = RequestOptions(path: '/api/v1/personal/items/$id');
       throw DioException(
         requestOptions: request,
-        response: Response(
-          requestOptions: request,
-          statusCode: 409,
-        ),
+        response: Response(requestOptions: request, statusCode: 409),
       );
     }
     final current = items.firstWhere((item) => item['id'] == id);
@@ -358,19 +351,16 @@ Future<void> _expectSeparateAccountError(
   await tester.enterText(find.byType(TextField).last, 'secret-password');
   final passwordField = tester.widget<TextField>(find.byType(TextField).last);
   expect(passwordField.obscureText, isTrue);
-  await tester.tap(
-    find.widgetWithText(FilledButton, 'Create account'),
-  );
+  await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
   await tester.pumpAndSettle();
 
   expect(find.textContaining(expectedMessage), findsOneWidget);
   final renderedMessages = tester.widgetList<Text>(
-    find.descendant(
-      of: find.byType(SignInPage),
-      matching: find.byType(Text),
-    ),
+    find.descendant(of: find.byType(SignInPage), matching: find.byType(Text)),
   );
-  final renderedMessageText = renderedMessages.map((widget) => widget.data ?? '');
+  final renderedMessageText = renderedMessages.map(
+    (widget) => widget.data ?? '',
+  );
   expect(
     renderedMessageText,
     isNot(contains('Sensitive credential details must not be shown.')),
@@ -465,10 +455,7 @@ void main() {
               builder: (context, state) =>
                   const Scaffold(body: Text('Organisation route')),
             ),
-            GoRoute(
-              path: '/personal/ask',
-              builder: (context, state) => page(),
-            ),
+            GoRoute(path: '/personal/ask', builder: (context, state) => page()),
             GoRoute(
               path: '/personal/interact',
               builder: (context, state) => page(tab: 1),
@@ -510,40 +497,39 @@ void main() {
     return router;
   }
 
-  testWidgets(
-    'local guest account menu explains local-only work',
-    (tester) async {
-      await pumpGuestWorkspace(tester);
+  testWidgets('local guest account menu explains local-only work', (
+    tester,
+  ) async {
+    await pumpGuestWorkspace(tester);
 
-      expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
-      expect(find.byTooltip('Groups'), findsNothing);
-      await tester.tap(find.byTooltip('Guest workspace options'));
-      await tester.pumpAndSettle();
-      expect(find.text('Groups'), findsOneWidget);
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
-      expect(
-        find.textContaining('People using this profile can see its local work.'),
-        findsNothing,
-      );
-      await tester.tap(find.byTooltip('Workspace storage information'));
-      await tester.pumpAndSettle();
-      expect(
-        find.textContaining('People using this profile can see its local work.'),
-        findsOneWidget,
-      );
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+    expect(find.byTooltip('Groups'), findsNothing);
+    await tester.tap(find.byTooltip('Guest workspace options'));
+    await tester.pumpAndSettle();
+    expect(find.text('Groups'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('People using this profile can see its local work.'),
+      findsNothing,
+    );
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('People using this profile can see its local work.'),
+      findsOneWidget,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
 
-      await tester.tap(find.byTooltip('Account'));
-      await tester.pumpAndSettle();
-      expect(find.text('Local guest workspace'), findsOneWidget);
-      expect(find.text('Already have an account? Sign in'), findsOneWidget);
-      expect(find.text('Create account'), findsOneWidget);
-      expect(find.text('Sign out'), findsNothing);
-    },
-  );
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Local guest workspace'), findsOneWidget);
+    expect(find.text('Already have an account? Sign in'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Sign out'), findsNothing);
+  });
 
   testWidgets('local workspace does not access Firebase when unavailable', (
     tester,
@@ -567,41 +553,40 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'leaving sign-in keeps the local workspace available',
-    (tester) async {
-      final store = GuestWorkspaceStore(_MemoryGuestStorage());
-      await store.save(
-        const GuestWorkspaceData(
-          sessions: [
-            {
-              'id': 'local-session',
-              'title': 'Work in progress',
-              'participants': [],
-              'questions': [],
-            },
-          ],
-        ),
-      );
-      await pumpGuestWorkspace(tester, store: store);
+  testWidgets('leaving sign-in keeps the local workspace available', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      const GuestWorkspaceData(
+        sessions: [
+          {
+            'id': 'local-session',
+            'title': 'Work in progress',
+            'participants': [],
+            'questions': [],
+          },
+        ],
+      ),
+    );
+    await pumpGuestWorkspace(tester, store: store);
 
-      await tester.tap(find.byTooltip('Account'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Already have an account? Sign in'));
-      await tester.pumpAndSettle();
-      expect(find.text('Back to workspace'), findsOneWidget);
-      await tester.tap(find.text('Back to workspace'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Already have an account? Sign in'));
+    await tester.pumpAndSettle();
+    expect(find.text('Back to workspace'), findsOneWidget);
+    await tester.tap(find.text('Back to workspace'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
-      await tester.tap(find.text('Interact').first);
-      await tester.pumpAndSettle();
-      expect(find.text('Work in progress'), findsOneWidget);
+    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+    await tester.tap(find.text('Interact').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Work in progress'), findsOneWidget);
 
-      final saved = await store.load();
-      expect(saved.sessions.single['title'], 'Work in progress');
-    },
-  );
+    final saved = await store.load();
+    expect(saved.sessions.single['title'], 'Work in progress');
+  });
 
   testWidgets('local-work clear option clears only the device copy', (
     tester,
@@ -652,9 +637,7 @@ void main() {
     await tester.tap(find.byTooltip('Workspace storage information'));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining(
-        'Guest workspace active in this browser profile.',
-      ),
+      find.textContaining('Guest workspace active in this browser profile.'),
       findsOneWidget,
     );
     await tester.tap(find.text('Close'));
@@ -707,7 +690,10 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+    await tester.enterText(
+      find.byType(TextField).first,
+      'account@example.test',
+    );
     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
@@ -776,94 +762,98 @@ void main() {
     expect((await storage.load()).knowledge, isEmpty);
   });
 
-  testWidgets('stale personal search results are ignored after account switch', (
-    tester,
-  ) async {
-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
-    final staleResponse = Completer<Map<String, dynamic>>();
-    final userA = _TestUser(
-      isAnonymous: false,
-      isEmailVerified: true,
-      testUid: 'search-account-a',
-    );
-    final userB = _TestUser(
-      isAnonymous: false,
-      isEmailVerified: true,
-      testUid: 'search-account-b',
-    );
-    final authEvents = StreamController<User?>.broadcast();
-    final repository = _TestPersonalWorkspaceRepository([])
-      ..searchHandler = (query, uid) => uid == userA.uid
-          ? staleResponse.future
-          : Future.value({
-              'results': [
-                {
-                  'id': 'account-b-record',
-                  'source_id': 'account-b-item',
-                  'title': 'Account B result',
-                  'data': {'id': 'account-b-item', 'body': 'account-b needle'},
-                  'match_method': 'keyword',
-                  'relevance_score': 1.1,
-                },
-              ],
-              'partial': false,
-            });
-    final groups = _TestGuestGroupRepository([], {});
-    Widget page(User user) => ProviderScope(
-      overrides: [
-        authStateProvider.overrideWith((ref) => authEvents.stream),
-        firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
-        guestWorkspaceStoreProvider.overrideWithValue(store),
-        personalWorkspaceRepositoryProvider.overrideWithValue(repository),
-        guestGroupRepositoryProvider.overrideWithValue(groups),
-      ],
-      child: MaterialApp(
-        home: GuestWorkspacePage(
-          firebaseReady: true,
-          personalWorkspaceEnabled: true,
-          accountUser: user,
-          membershipStatus: AccountMembershipStatus.noMembership,
+  testWidgets(
+    'stale personal search results are ignored after account switch',
+    (tester) async {
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      final staleResponse = Completer<Map<String, dynamic>>();
+      final userA = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'search-account-a',
+      );
+      final userB = _TestUser(
+        isAnonymous: false,
+        isEmailVerified: true,
+        testUid: 'search-account-b',
+      );
+      final authEvents = StreamController<User?>.broadcast();
+      final repository = _TestPersonalWorkspaceRepository([])
+        ..searchHandler = (query, uid) => uid == userA.uid
+            ? staleResponse.future
+            : Future.value({
+                'results': [
+                  {
+                    'id': 'account-b-record',
+                    'source_id': 'account-b-item',
+                    'title': 'Account B result',
+                    'data': {
+                      'id': 'account-b-item',
+                      'body': 'account-b needle',
+                    },
+                    'match_method': 'keyword',
+                    'relevance_score': 1.1,
+                  },
+                ],
+                'partial': false,
+              });
+      final groups = _TestGuestGroupRepository([], {});
+      Widget page(User user) => ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => authEvents.stream),
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+          guestGroupRepositoryProvider.overrideWithValue(groups),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(
+            firebaseReady: true,
+            personalWorkspaceEnabled: true,
+            accountUser: user,
+            membershipStatus: AccountMembershipStatus.noMembership,
+          ),
         ),
-      ),
-    );
-    final searchField = find.byWidgetPredicate(
-      (widget) =>
-          widget is TextField &&
-          widget.decoration?.labelText == 'Search Knowledge',
-    );
+      );
+      final searchField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.labelText == 'Search Knowledge',
+      );
 
-    await tester.pumpWidget(page(userA));
-    await tester.pumpAndSettle();
-    await tester.enterText(searchField, 'needle');
-    await tester.pump(const Duration(milliseconds: 301));
-    expect(repository.searches, [('needle', userA.uid)]);
+      await tester.pumpWidget(page(userA));
+      await tester.pumpAndSettle();
+      await tester.enterText(searchField, 'needle');
+      await tester.pump(const Duration(milliseconds: 301));
+      expect(repository.searches, [('needle', userA.uid)]);
 
-    await tester.pumpWidget(page(userB));
-    authEvents.add(userB);
-    await tester.pumpAndSettle();
-    await tester.pump(const Duration(milliseconds: 301));
-    await tester.pumpAndSettle();
-    expect(repository.searches.last, ('needle', userB.uid));
-    expect(find.text('Account B result'), findsOneWidget);
+      await tester.pumpWidget(page(userB));
+      authEvents.add(userB);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      expect(repository.searches.last, ('needle', userB.uid));
+      expect(find.text('Account B result'), findsOneWidget);
 
-    staleResponse.complete({
-      'results': [
-        {
-          'id': 'account-a-record',
-          'source_id': 'account-a-item',
-          'title': 'Account A stale result',
-          'data': {'id': 'account-a-item', 'body': 'account-a needle'},
-          'match_method': 'keyword',
-          'relevance_score': 1.1,
-        },
-      ],
-      'partial': false,
-    });
-    await tester.pumpAndSettle();
-    expect(find.text('Account A stale result'), findsNothing);
-    expect(find.text('Account B result'), findsOneWidget);
-    await authEvents.close();
-  });
+      staleResponse.complete({
+        'results': [
+          {
+            'id': 'account-a-record',
+            'source_id': 'account-a-item',
+            'title': 'Account A stale result',
+            'data': {'id': 'account-a-item', 'body': 'account-a needle'},
+            'match_method': 'keyword',
+            'relevance_score': 1.1,
+          },
+        ],
+        'partial': false,
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('Account A stale result'), findsNothing);
+      expect(find.text('Account B result'), findsOneWidget);
+      await authEvents.close();
+    },
+  );
 
   testWidgets('partial personal search can be retried from the widget', (
     tester,
@@ -957,45 +947,47 @@ void main() {
       final store = GuestWorkspaceStore(_MemoryGuestStorage());
       await store.save(GuestWorkspaceData(knowledge: [localItem]));
       final user = _TestUser(isAnonymous: false, isEmailVerified: true);
-      final repository = _TestPersonalWorkspaceRepository([
-        {
-          'id': 'private-record',
-          'kind': 'knowledge',
-          'source_key': 'knowledge:private-answer-match',
-          'title': 'Private answer evidence',
-          'data': {
-            'id': 'private-answer-match',
-            'title': 'Private answer evidence',
-            'body': '',
-            'answer': 'Another precise needle phrase appears here.',
-          },
-          'revision': 1,
-          'created_at': '2026-10-06T00:00:00+00:00',
-          'updated_at': '2026-10-06T00:00:00+00:00',
-        },
-      ])..searchHandler = (searchQuery, uid) async {
-        expect(searchQuery, query);
-        expect(uid, user.uid);
-        return {
-          'results': [
-            {
-              'id': 'semantic-record',
-              'source_id': 'semantic-only',
-              'title': 'Remote semantic match',
-              'data': {
-                'id': 'semantic-only',
-                'title': 'Remote semantic match',
-                'body': 'Related guidance without the query words.',
-                'answer': '',
+      final repository =
+          _TestPersonalWorkspaceRepository([
+              {
+                'id': 'private-record',
+                'kind': 'knowledge',
+                'source_key': 'knowledge:private-answer-match',
+                'title': 'Private answer evidence',
+                'data': {
+                  'id': 'private-answer-match',
+                  'title': 'Private answer evidence',
+                  'body': '',
+                  'answer': 'Another precise needle phrase appears here.',
+                },
+                'revision': 1,
+                'created_at': '2026-10-06T00:00:00+00:00',
+                'updated_at': '2026-10-06T00:00:00+00:00',
               },
-              'snippet': 'Related guidance without the query words.',
-              'match_method': 'semantic',
-              'relevance_score': 1,
-            },
-          ],
-          'partial': false,
-        };
-      };
+            ])
+            ..searchHandler = (searchQuery, uid) async {
+              expect(searchQuery, query);
+              expect(uid, user.uid);
+              return {
+                'results': [
+                  {
+                    'id': 'semantic-record',
+                    'source_id': 'semantic-only',
+                    'title': 'Remote semantic match',
+                    'data': {
+                      'id': 'semantic-only',
+                      'title': 'Remote semantic match',
+                      'body': 'Related guidance without the query words.',
+                      'answer': '',
+                    },
+                    'snippet': 'Related guidance without the query words.',
+                    'match_method': 'semantic',
+                    'relevance_score': 1,
+                  },
+                ],
+                'partial': false,
+              };
+            };
       final groups = _TestGuestGroupRepository([], {});
       await tester.pumpWidget(
         ProviderScope(
@@ -1026,10 +1018,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
 
-      Finder resultCard(String title) => find.ancestor(
-        of: find.text(title),
-        matching: find.byType(Card),
-      );
+      Finder resultCard(String title) =>
+          find.ancestor(of: find.text(title), matching: find.byType(Card));
 
       final localCard = resultCard('Local answer evidence');
       final privateCard = resultCard('Private answer evidence');
@@ -1134,84 +1124,93 @@ void main() {
     expect(repository.deleteCalls, 0);
   });
 
-  testWidgets('personal import retries selected items without removing locals', (
-    tester,
-  ) async {
-    final localData = GuestWorkspaceData(
-      knowledge: [
-        {'id': 'selected', 'title': 'Import this item', 'body': 'Selected'},
-        {'id': 'local-only', 'title': 'Keep this item local', 'body': 'Private'},
-      ],
-    );
-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
-    await store.save(localData);
-    final repository = _TestPersonalWorkspaceRepository([])..failedImports = 1;
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          firebaseAuthProvider.overrideWithValue(
-            _TestFirebaseAuth(
-              _TestUser(isAnonymous: false, isEmailVerified: true),
+  testWidgets(
+    'personal import retries selected items without removing locals',
+    (tester) async {
+      final localData = GuestWorkspaceData(
+        knowledge: [
+          {'id': 'selected', 'title': 'Import this item', 'body': 'Selected'},
+          {
+            'id': 'local-only',
+            'title': 'Keep this item local',
+            'body': 'Private',
+          },
+        ],
+      );
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(localData);
+      final repository = _TestPersonalWorkspaceRepository([])
+        ..failedImports = 1;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(
+              _TestFirebaseAuth(
+                _TestUser(isAnonymous: false, isEmailVerified: true),
+              ),
+            ),
+            guestWorkspaceStoreProvider.overrideWithValue(store),
+            personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: MaterialApp(
+            home: GuestWorkspacePage(
+              firebaseReady: true,
+              personalWorkspaceEnabled: true,
+              accountUser: _TestUser(isAnonymous: false, isEmailVerified: true),
             ),
           ),
-          guestWorkspaceStoreProvider.overrideWithValue(store),
-          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
-        ],
-        child: MaterialApp(
-          home: GuestWorkspacePage(
-            firebaseReady: true,
-            personalWorkspaceEnabled: true,
-            accountUser: _TestUser(isAnonymous: false, isEmailVerified: true),
-          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Import local work'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.text('Keep this item local'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Import selected work'));
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import local work'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Keep this item local'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import selected work'));
+      await tester.pumpAndSettle();
 
-    expect(repository.imports, hasLength(1));
-    expect(repository.imports.single, hasLength(1));
-    expect(repository.imports.single.single['source_key'], 'knowledge:selected');
-    expect(find.text('Retry import'), findsOneWidget);
-    await tester.tap(find.text('Retry import'));
-    await tester.pumpAndSettle();
+      expect(repository.imports, hasLength(1));
+      expect(repository.imports.single, hasLength(1));
+      expect(
+        repository.imports.single.single['source_key'],
+        'knowledge:selected',
+      );
+      expect(find.text('Retry import'), findsOneWidget);
+      await tester.tap(find.text('Retry import'));
+      await tester.pumpAndSettle();
 
-    expect(repository.imports, hasLength(2));
-    expect(
-      repository.imports[0].single['source_key'],
-      repository.imports[1].single['source_key'],
-    );
-    expect((await store.load()).knowledge, hasLength(2));
-    await tester.tap(find.text('Saved Q&A'));
-    await tester.pumpAndSettle();
-    final savedListScrollable = find
-        .ancestor(
-          of: find.text('Back to add a local question'),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    expect(
-      tester.widget<Scrollable>(savedListScrollable).axisDirection,
-      AxisDirection.down,
-    );
-    await tester.scrollUntilVisible(
-      find.text('Keep this item local'),
-      250,
-      scrollable: savedListScrollable,
-    );
-    expect(find.text('Import this item'), findsOneWidget);
-    expect(find.text('Keep this item local'), findsOneWidget);
-  });
+      expect(repository.imports, hasLength(2));
+      expect(
+        repository.imports[0].single['source_key'],
+        repository.imports[1].single['source_key'],
+      );
+      expect((await store.load()).knowledge, hasLength(2));
+      await tester.tap(find.text('Saved Q&A'));
+      await tester.pumpAndSettle();
+      final savedListScrollable = find
+          .ancestor(
+            of: find.text('Back to add a local question'),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      expect(
+        tester.widget<Scrollable>(savedListScrollable).axisDirection,
+        AxisDirection.down,
+      );
+      await tester.scrollUntilVisible(
+        find.text('Keep this item local'),
+        250,
+        scrollable: savedListScrollable,
+      );
+      expect(find.text('Import this item'), findsOneWidget);
+      expect(find.text('Keep this item local'), findsOneWidget);
+    },
+  );
 
   testWidgets('permanent import limit errors ask for a smaller selection', (
     tester,
@@ -1252,7 +1251,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.imports, hasLength(1));
-    expect(find.textContaining('Select fewer items or smaller items'), findsOneWidget);
+    expect(
+      find.textContaining('Select fewer items or smaller items'),
+      findsOneWidget,
+    );
     expect(find.text('Change selection'), findsOneWidget);
     expect(find.text('Retry import'), findsNothing);
     expect((await store.load()).knowledge, hasLength(2));
@@ -1265,91 +1267,101 @@ void main() {
     expect(repository.imports, hasLength(1));
   });
 
-  testWidgets('revision conflicts reload before an explicit pending-edit save', (
-    tester,
-  ) async {
-    Map<String, dynamic> item({
-      required String title,
-      required int revision,
-    }) => {
-      'id': 'remote-record',
-      'kind': 'knowledge',
-      'source_key': 'knowledge:remote-id',
-      'title': title,
-      'data': {
-        'id': 'remote-id',
+  testWidgets(
+    'revision conflicts reload before an explicit pending-edit save',
+    (tester) async {
+      Map<String, dynamic> item({
+        required String title,
+        required int revision,
+      }) => {
+        'id': 'remote-record',
+        'kind': 'knowledge',
+        'source_key': 'knowledge:remote-id',
         'title': title,
-        'body': 'Remote details',
-        'answer': 'Remote answer',
-      },
-      'revision': revision,
-      'created_at': '2026-10-06T00:00:00+00:00',
-      'updated_at': '2026-10-06T00:00:00+00:00',
-    };
+        'data': {
+          'id': 'remote-id',
+          'title': title,
+          'body': 'Remote details',
+          'answer': 'Remote answer',
+        },
+        'revision': revision,
+        'created_at': '2026-10-06T00:00:00+00:00',
+        'updated_at': '2026-10-06T00:00:00+00:00',
+      };
 
-    final latestAccountItem = item(title: 'Latest account title', revision: 2);
-    final repository = _TestPersonalWorkspaceRepository([
-      item(title: 'Original account title', revision: 1),
-    ])
-      ..updateConflicts = 1
-      ..conflictItems = [latestAccountItem];
-    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
-          guestWorkspaceStoreProvider.overrideWithValue(store),
-          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
-        ],
-        child: MaterialApp(
-          home: GuestWorkspacePage(
-            firebaseReady: true,
-            personalWorkspaceEnabled: true,
-            accountUser: user,
+      final latestAccountItem = item(
+        title: 'Latest account title',
+        revision: 2,
+      );
+      final repository =
+          _TestPersonalWorkspaceRepository([
+              item(title: 'Original account title', revision: 1),
+            ])
+            ..updateConflicts = 1
+            ..conflictItems = [latestAccountItem];
+      final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+            guestWorkspaceStoreProvider.overrideWithValue(store),
+            personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: MaterialApp(
+            home: GuestWorkspacePage(
+              firebaseReady: true,
+              personalWorkspaceEnabled: true,
+              accountUser: user,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Saved Q&A'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.byType(TextFormField),
-      ).first,
-      'My pending edit',
-    );
-    await tester.tap(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.text('Save account changes'),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Saved Q&A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find
+            .descendant(
+              of: find.byType(AlertDialog),
+              matching: find.byType(TextFormField),
+            )
+            .first,
+        'My pending edit',
+      );
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Save account changes'),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(repository.updateRevisions, [1]);
-    expect(find.text('My pending edit'), findsOneWidget);
-    await tester.tap(find.text('Review account change'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Latest saved version (revision 2)'), findsOneWidget);
-    expect(find.text('Your pending edit: My pending edit'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(find.text('My pending edit'), findsOneWidget);
+      expect(repository.updateRevisions, [1]);
+      expect(find.text('My pending edit'), findsOneWidget);
+      await tester.tap(find.text('Review account change'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Latest saved version (revision 2)'),
+        findsOneWidget,
+      );
+      expect(find.text('Your pending edit: My pending edit'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('My pending edit'), findsOneWidget);
 
-    await tester.tap(find.text('Review account change'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Save my pending edit'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Review account change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save my pending edit'));
+      await tester.pumpAndSettle();
 
-    expect(repository.updateRevisions, [1, 2]);
-    expect(find.text('My pending edit'), findsOneWidget);
-    expect(find.text('Latest account title'), findsNothing);
-  });
+      expect(repository.updateRevisions, [1, 2]);
+      expect(find.text('My pending edit'), findsOneWidget);
+      expect(find.text('Latest account title'), findsNothing);
+    },
+  );
 
   testWidgets('editing an imported nested session updates the account copy', (
     tester,
@@ -1497,10 +1509,7 @@ void main() {
       scrollable: addQuestionScrollable,
     );
     await tester.pumpAndSettle();
-    await Scrollable.ensureVisible(
-      tester.element(saveLocally),
-      alignment: 0.5,
-    );
+    await Scrollable.ensureVisible(tester.element(saveLocally), alignment: 0.5);
     await tester.pumpAndSettle();
     await tester.tap(saveLocally.hitTestable());
     await tester.pump(const Duration(milliseconds: 300));
@@ -1544,16 +1553,14 @@ void main() {
       await tester.enterText(
         find.byWidgetPredicate(
           (widget) =>
-              widget is TextField &&
-              widget.decoration?.labelText == 'Details',
+              widget is TextField && widget.decoration?.labelText == 'Details',
         ),
         'Account-only detail',
       );
       await tester.enterText(
         find.byWidgetPredicate(
           (widget) =>
-              widget is TextField &&
-              widget.decoration?.labelText == 'Answer',
+              widget is TextField && widget.decoration?.labelText == 'Answer',
         ),
         'Account-only answer',
       );
@@ -1572,10 +1579,12 @@ void main() {
       await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.byType(TextFormField),
-        ).first,
+        find
+            .descendant(
+              of: find.byType(AlertDialog),
+              matching: find.byType(TextFormField),
+            )
+            .first,
         'Edited while create confirmation was uncertain',
       );
       await tester.tap(find.text('Save account changes'));
@@ -1765,9 +1774,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.items, hasLength(1));
 
-      await tester.tap(
-        find.byTooltip('Remove personal-account Knowledge'),
-      );
+      await tester.tap(find.byTooltip('Remove personal-account Knowledge'));
       await tester.pumpAndSettle();
 
       expect(repository.imports, hasLength(2));
@@ -2024,53 +2031,61 @@ void main() {
     expect(find.text('Private session'), findsOneWidget);
   });
 
-  testWidgets('existing-account sign-in errors do not reveal Firebase details', (
-    tester,
-  ) async {
-    final auth = _TestFirebaseAuth(
-      null,
-      signInError: FirebaseAuthException(
-        code: 'invalid-credential',
-        message: 'Sensitive credential details must not be shown.',
-      ),
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(home: SignInPage()),
-      ),
-    );
-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
-    await tester.enterText(find.byType(TextField).last, 'secret-password');
-    expect(
-      tester.widget<TextField>(find.byType(TextField).last).obscureText,
-      isTrue,
-    );
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'existing-account sign-in errors do not reveal Firebase details',
+    (tester) async {
+      final auth = _TestFirebaseAuth(
+        null,
+        signInError: FirebaseAuthException(
+          code: 'invalid-credential',
+          message: 'Sensitive credential details must not be shown.',
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+          child: const MaterialApp(home: SignInPage()),
+        ),
+      );
+      await tester.enterText(
+        find.byType(TextField).first,
+        'account@example.test',
+      );
+      await tester.enterText(find.byType(TextField).last, 'secret-password');
+      expect(
+        tester.widget<TextField>(find.byType(TextField).last).obscureText,
+        isTrue,
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
 
-    expect(auth.signInAttempts, 1);
-    expect(
-      find.text('Sign-in failed. Check your email and password and try again.'),
-      findsOneWidget,
-    );
-    final renderedText = tester.widgetList<Text>(
-      find.descendant(
-        of: find.byType(SignInPage),
-        matching: find.byType(Text),
-      ),
-    ).map((widget) => widget.data ?? '');
-    expect(
-      renderedText.any(
-        (text) => text.contains('Sensitive credential details'),
-      ),
-      isFalse,
-    );
-    expect(
-      renderedText.any((text) => text.contains('secret-password')),
-      isFalse,
-    );
-  });
+      expect(auth.signInAttempts, 1);
+      expect(
+        find.text(
+          'Sign-in failed. Check your email and password and try again.',
+        ),
+        findsOneWidget,
+      );
+      final renderedText = tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byType(SignInPage),
+              matching: find.byType(Text),
+            ),
+          )
+          .map((widget) => widget.data ?? '');
+      expect(
+        renderedText.any(
+          (text) => text.contains('Sensitive credential details'),
+        ),
+        isFalse,
+      );
+      expect(
+        renderedText.any((text) => text.contains('secret-password')),
+        isFalse,
+      );
+    },
+  );
 
   testWidgets('unexpected sign-in errors show a safe recovery message', (
     tester,
@@ -2082,7 +2097,10 @@ void main() {
         child: const MaterialApp(home: SignInPage()),
       ),
     );
-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+    await tester.enterText(
+      find.byType(TextField).first,
+      'account@example.test',
+    );
     await tester.enterText(find.byType(TextField).last, 'secret-password');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
@@ -2092,12 +2110,14 @@ void main() {
       find.text('Unable to complete this account request. Please try again.'),
       findsOneWidget,
     );
-    final renderedText = tester.widgetList<Text>(
-      find.descendant(
-        of: find.byType(SignInPage),
-        matching: find.byType(Text),
-      ),
-    ).map((widget) => widget.data ?? '');
+    final renderedText = tester
+        .widgetList<Text>(
+          find.descendant(
+            of: find.byType(SignInPage),
+            matching: find.byType(Text),
+          ),
+        )
+        .map((widget) => widget.data ?? '');
     expect(
       renderedText.any((text) => text.contains('private transport')),
       isFalse,
@@ -2109,26 +2129,24 @@ void main() {
     expect(find.text('Please wait…'), findsNothing);
   });
 
-  testWidgets('registered account without membership is not shown as signed out', (
-    tester,
-  ) async {
-    await pumpGuestWorkspace(
-      tester,
-      user: _TestUser(isAnonymous: false),
-      membershipStatus: AccountMembershipStatus.noMembership,
-    );
+  testWidgets(
+    'registered account without membership is not shown as signed out',
+    (tester) async {
+      await pumpGuestWorkspace(
+        tester,
+        user: _TestUser(isAnonymous: false),
+        membershipStatus: AccountMembershipStatus.noMembership,
+      );
 
-    expect(
-      find.textContaining('no organisation membership'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Account'));
-    await tester.pumpAndSettle();
-    expect(find.text('No organisation membership'), findsOneWidget);
-    expect(find.text('Sign out'), findsOneWidget);
-    expect(find.text('Sign in'), findsNothing);
-    expect(find.text('Create account'), findsNothing);
-  });
+      expect(find.textContaining('no organisation membership'), findsOneWidget);
+      await tester.tap(find.text('Account'));
+      await tester.pumpAndSettle();
+      expect(find.text('No organisation membership'), findsOneWidget);
+      expect(find.text('Sign out'), findsOneWidget);
+      expect(find.text('Sign in'), findsNothing);
+      expect(find.text('Create account'), findsNothing);
+    },
+  );
 
   testWidgets('unverified registered accounts see the Groups gate', (
     tester,
@@ -2291,45 +2309,46 @@ void main() {
     expect(find.text('Sign out'), findsOneWidget);
   });
 
-  testWidgets('Groups navigation is hidden for anonymous and unverified users', (
-    tester,
-  ) async {
-    for (final user in [
-      _TestUser(isAnonymous: true),
-      _TestUser(isAnonymous: false, isEmailVerified: false),
-    ]) {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            authStateProvider.overrideWith((ref) => Stream.value(user)),
-            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
-            currentMembershipProvider.overrideWith(
-              (ref) async => const ActiveMembership(
-                userId: 'app-user',
-                organisationId: 'org',
-                email: 'member@example.test',
-                displayName: 'Member',
-                role: 'member',
+  testWidgets(
+    'Groups navigation is hidden for anonymous and unverified users',
+    (tester) async {
+      for (final user in [
+        _TestUser(isAnonymous: true),
+        _TestUser(isAnonymous: false, isEmailVerified: false),
+      ]) {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              authStateProvider.overrideWith((ref) => Stream.value(user)),
+              firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+              currentMembershipProvider.overrideWith(
+                (ref) async => const ActiveMembership(
+                  userId: 'app-user',
+                  organisationId: 'org',
+                  email: 'member@example.test',
+                  displayName: 'Member',
+                  role: 'member',
+                ),
               ),
-            ),
-          ],
-          child: const MaterialApp(
-            home: Scaffold(
-              body: AppShell(
-                currentPath: '/',
-                child: Center(child: Text('Organisation content')),
+            ],
+            child: const MaterialApp(
+              home: Scaffold(
+                body: AppShell(
+                  currentPath: '/',
+                  child: Center(child: Text('Organisation content')),
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('Groups'), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pumpAndSettle();
-    }
-  });
+        expect(find.text('Groups'), findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    },
+  );
 
   testWidgets('Personal workspace navigation omits organisation destinations', (
     tester,
@@ -2483,41 +2502,37 @@ void main() {
     expect(find.text('Create account'), findsNothing);
   });
 
-  testWidgets('membership lookup errors do not claim the account has no member', (
-    tester,
-  ) async {
-    final user = _TestUser(isAnonymous: false);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authStateProvider.overrideWith((ref) => Stream.value(user)),
-          accountMembershipStatusProvider.overrideWith(
-            (ref) async => throw StateError('private test detail'),
-          ),
-          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
-          guestWorkspaceStoreProvider.overrideWithValue(
-            GuestWorkspaceStore(_MemoryGuestStorage()),
-          ),
-          currentGuestGroupsProvider.overrideWith(
-            (ref) async => const <Map<String, dynamic>>[],
-          ),
-        ],
-        child: const IntQaFlowApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'membership lookup errors do not claim the account has no member',
+    (tester) async {
+      final user = _TestUser(isAnonymous: false);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith((ref) => Stream.value(user)),
+            accountMembershipStatusProvider.overrideWith(
+              (ref) async => throw StateError('private test detail'),
+            ),
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+            guestWorkspaceStoreProvider.overrideWithValue(
+              GuestWorkspaceStore(_MemoryGuestStorage()),
+            ),
+            currentGuestGroupsProvider.overrideWith(
+              (ref) async => const <Map<String, dynamic>>[],
+            ),
+          ],
+          child: const IntQaFlowApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('could not be verified'),
-      findsOneWidget,
-    );
-    expect(find.text('private test detail'), findsNothing);
-    expect(find.text('No organisation membership'), findsNothing);
-  });
+      expect(find.textContaining('could not be verified'), findsOneWidget);
+      expect(find.text('private test detail'), findsNothing);
+      expect(find.text('No organisation membership'), findsNothing);
+    },
+  );
 
-  testWidgets('unverified accounts do not query Groups', (
-    tester,
-  ) async {
+  testWidgets('unverified accounts do not query Groups', (tester) async {
     final user = _TestUser(isAnonymous: false);
     var attempts = 0;
     await tester.pumpWidget(
@@ -2552,39 +2567,46 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('private test detail'), findsNothing);
-    expect(find.text('No approved groups are linked to this identity.'), findsNothing);
+    expect(
+      find.text('No approved groups are linked to this identity.'),
+      findsNothing,
+    );
     expect(attempts, 0);
   });
 
-  testWidgets('registration from anonymous session uses separate account flow', (
-    tester,
-  ) async {
-    final anonymousUser = _TestUser(isAnonymous: true);
-    final registeredUser = _TestUser(isAnonymous: false);
-    final auth = _TestFirebaseAuth(anonymousUser)
-      ..createCredential = _TestUserCredential(registeredUser);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(home: _SignInLauncher()),
-      ),
-    );
-    await tester.tap(find.text('Open personal account creation'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'registration from anonymous session uses separate account flow',
+    (tester) async {
+      final anonymousUser = _TestUser(isAnonymous: true);
+      final registeredUser = _TestUser(isAnonymous: false);
+      final auth = _TestFirebaseAuth(anonymousUser)
+        ..createCredential = _TestUserCredential(registeredUser);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+          child: const MaterialApp(home: _SignInLauncher()),
+        ),
+      );
+      await tester.tap(find.text('Open personal account creation'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField).first,
+        'account@example.test',
+      );
+      await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+      await tester.pumpAndSettle();
 
-    expect(anonymousUser.linkAttempts, 0);
-    expect(anonymousUser.isAnonymous, isTrue);
-    expect(auth.createAttempts, 1);
-    expect(registeredUser.verificationEmailAttempts, 1);
-    expect(
-      find.textContaining('nothing is uploaded unless you choose items'),
-      findsOneWidget,
-    );
-  });
+      expect(anonymousUser.linkAttempts, 0);
+      expect(anonymousUser.isAnonymous, isTrue);
+      expect(auth.createAttempts, 1);
+      expect(registeredUser.verificationEmailAttempts, 1);
+      expect(
+        find.textContaining('nothing is uploaded unless you choose items'),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('account creation sends verification email', (tester) async {
     final user = _TestUser(isAnonymous: false);
@@ -2592,12 +2614,8 @@ void main() {
       ..createCredential = _TestUserCredential(user);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          firebaseAuthProvider.overrideWithValue(auth),
-        ],
-        child: const MaterialApp(
-          home: SignInPage(createAccount: true),
-        ),
+        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+        child: const MaterialApp(home: SignInPage(createAccount: true)),
       ),
     );
     expect(
@@ -2630,10 +2648,7 @@ void main() {
       expectedMessage:
           'An account already uses this email. Sign in or reset the password instead.',
     );
-    expect(
-      find.textContaining('guest identity remains active'),
-      findsNothing,
-    );
+    expect(find.textContaining('guest identity remains active'), findsNothing);
   });
 
   testWidgets('separate signup explains weak passwords safely', (tester) async {
@@ -2658,7 +2673,10 @@ void main() {
         child: const MaterialApp(home: SignInPage()),
       ),
     );
-    await tester.enterText(find.byType(TextField).first, ' member@example.test ');
+    await tester.enterText(
+      find.byType(TextField).first,
+      ' member@example.test ',
+    );
     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
@@ -2674,15 +2692,11 @@ void main() {
     tester,
   ) async {
     final auth = _TestFirebaseAuth(null)
-      ..createCredential = _TestUserCredential(
-        _TestUser(isAnonymous: false),
-      );
+      ..createCredential = _TestUserCredential(_TestUser(isAnonymous: false));
     await tester.pumpWidget(
       ProviderScope(
         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(
-          home: SignInPage(createAccount: true),
-        ),
+        child: const MaterialApp(home: SignInPage(createAccount: true)),
       ),
     );
     await tester.enterText(find.byType(TextField).first, 'new@example.test');
@@ -2705,12 +2719,13 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
-        child: const MaterialApp(
-          home: SignInPage(),
-        ),
+        child: const MaterialApp(home: SignInPage()),
       ),
     );
-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+    await tester.enterText(
+      find.byType(TextField).first,
+      'destination@example.test',
+    );
     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
@@ -2768,7 +2783,10 @@ void main() {
     expect(repository.listGroupsCalls, 0);
     expect(repository.listArchivedGroupsCalls, 0);
     expect(repository.getGroupCalls, 0);
-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+    await tester.enterText(
+      find.byType(TextField).first,
+      'destination@example.test',
+    );
     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();

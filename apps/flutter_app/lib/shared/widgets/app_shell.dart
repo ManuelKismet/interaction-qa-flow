@@ -83,8 +83,10 @@ class AppShell extends ConsumerWidget {
   int _selectedIndex(List<AppDestination> destinations) {
     final selectedPath = switch (currentPath) {
       final path when path.startsWith('/questions') => '/',
-      final path when path.startsWith('/personal/questions') ||
-          path.startsWith('/personal/ask') => '/personal/ask',
+      final path
+          when path.startsWith('/personal/questions') ||
+              path.startsWith('/personal/ask') =>
+        '/personal/ask',
       final path when path.startsWith('/guided') => '/guided',
       final path when path.startsWith('/personal/interact') =>
         '/personal/interact',
@@ -292,87 +294,87 @@ class AppShell extends ConsumerWidget {
         }
       },
       child: Scaffold(
-      appBar: isWide
-          ? null
-          : AppBar(
-              backgroundColor: const Color(0xFFFFFBF4),
-              title: const Text('IntQAFlow'),
-              actions: [
-                if (membership != null)
-                  _workspaceSwitcher(
-                    context,
-                    ref: ref,
-                    personalWorkspace: personalWorkspace,
-                    showLabel: true,
-                  ),
-                if (membership != null)
-                  _accountMenu(context, ref, membership, showLabel: true),
-              ],
-            ),
-      body: Row(
-        children: [
-          if (isWide)
-            NavigationRail(
-              selectedIndex: _selectedIndex(destinations),
-              onDestinationSelected: (index) =>
-                  _navigate(context, ref, index, destinations),
-              extended: MediaQuery.sizeOf(context).width >= 1100,
-              leading: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
-                child: Column(
-                  children: [
-                    const Text(
-                      'IntQAFlow',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (membership != null)
-                      _workspaceSwitcher(
-                        context,
-                        ref: ref,
-                        personalWorkspace: personalWorkspace,
-                        showLabel: false,
-                      ),
-                  ],
-                ),
-              ),
-              trailing: membership == null
-                  ? null
-                  : _accountMenu(
+        appBar: isWide
+            ? null
+            : AppBar(
+                backgroundColor: const Color(0xFFFFFBF4),
+                title: const Text('IntQAFlow'),
+                actions: [
+                  if (membership != null)
+                    _workspaceSwitcher(
                       context,
-                      ref,
-                      membership,
-                      showLabel: MediaQuery.sizeOf(context).width >= 1100,
+                      ref: ref,
+                      personalWorkspace: personalWorkspace,
+                      showLabel: true,
                     ),
-              destinations: [
-                for (final destination in destinations)
-                  NavigationRailDestination(
-                    icon: Icon(destination.icon),
-                    selectedIcon: Icon(destination.selectedIcon),
-                    label: Text(destination.label),
+                  if (membership != null)
+                    _accountMenu(context, ref, membership, showLabel: true),
+                ],
+              ),
+        body: Row(
+          children: [
+            if (isWide)
+              NavigationRail(
+                selectedIndex: _selectedIndex(destinations),
+                onDestinationSelected: (index) =>
+                    _navigate(context, ref, index, destinations),
+                extended: MediaQuery.sizeOf(context).width >= 1100,
+                leading: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'IntQAFlow',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (membership != null)
+                        _workspaceSwitcher(
+                          context,
+                          ref: ref,
+                          personalWorkspace: personalWorkspace,
+                          showLabel: false,
+                        ),
+                    ],
                   ),
-              ],
-            ),
-          Expanded(child: child),
-        ],
-      ),
-      bottomNavigationBar: isWide
-          ? null
-          : NavigationBar(
-              selectedIndex: _selectedIndex(destinations),
-              onDestinationSelected: (index) =>
-                  _navigate(context, ref, index, destinations),
-              destinations: [
-                for (final destination in destinations)
-                  NavigationDestination(
-                    icon: Icon(destination.icon),
-                    selectedIcon: Icon(destination.selectedIcon),
-                    label: destination.label,
-                  ),
-              ],
-            ),
+                ),
+                trailing: membership == null
+                    ? null
+                    : _accountMenu(
+                        context,
+                        ref,
+                        membership,
+                        showLabel: MediaQuery.sizeOf(context).width >= 1100,
+                      ),
+                destinations: [
+                  for (final destination in destinations)
+                    NavigationRailDestination(
+                      icon: Icon(destination.icon),
+                      selectedIcon: Icon(destination.selectedIcon),
+                      label: Text(destination.label),
+                    ),
+                ],
+              ),
+            Expanded(child: child),
+          ],
+        ),
+        bottomNavigationBar: isWide
+            ? null
+            : NavigationBar(
+                selectedIndex: _selectedIndex(destinations),
+                onDestinationSelected: (index) =>
+                    _navigate(context, ref, index, destinations),
+                destinations: [
+                  for (final destination in destinations)
+                    NavigationDestination(
+                      icon: Icon(destination.icon),
+                      selectedIcon: Icon(destination.selectedIcon),
+                      label: destination.label,
+                    ),
+                ],
+              ),
       ),
     );
   }

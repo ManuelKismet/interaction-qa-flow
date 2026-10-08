@@ -1,9 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final personalWorkspaceStatusProvider =
-    NotifierProvider<PersonalWorkspaceStatusController, PersonalWorkspaceStatus>(
-      PersonalWorkspaceStatusController.new,
-    );
+    NotifierProvider<
+      PersonalWorkspaceStatusController,
+      PersonalWorkspaceStatus
+    >(PersonalWorkspaceStatusController.new);
 
 class PersonalWorkspaceStatus {
   const PersonalWorkspaceStatus({
