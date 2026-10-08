@@ -55,19 +55,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Interact'));
     await tester.pumpAndSettle();
-    final sessionField = tester.widget<TextFormField>(
-      find.widgetWithText(TextFormField, 'Session title'),
-    );
-    expect(sessionField.decoration.labelText, 'New Interact session');
+    final sessionField = tester.widget<TextField>(_field('Session title'));
+    expect(sessionField.decoration!.labelText, 'New Interact session');
     expect(
-      sessionField.decoration.floatingLabelBehavior,
+      sessionField.decoration!.floatingLabelBehavior,
       FloatingLabelBehavior.always,
     );
-    final participantField = tester.widget<TextFormField>(
-      find.widgetWithText(TextFormField, 'Participant'),
-    );
-    expect(participantField.decoration.labelText, isNull);
-    expect(participantField.decoration.hintText, 'Participant');
+    final participantField = tester.widget<TextField>(_field('Participant'));
+    expect(participantField.decoration!.labelText, isNull);
+    expect(participantField.decoration!.hintText, 'Participant');
     expect(tester.takeException(), isNull);
   });
 
