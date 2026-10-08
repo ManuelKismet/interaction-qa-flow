@@ -108,6 +108,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Example organisation'), findsOneWidget);
+    expect(find.text('Create Teams'), findsNothing);
+    await tester.tap(find.text('Your permissions'));
+    await tester.pumpAndSettle();
     final noPermissions = find.text(
       'The administrator title alone grants no organisation permissions.',
     );
@@ -164,7 +167,14 @@ void main() {
     expect(find.text('Role: Organisation owner'), findsOneWidget);
     final ownerControls = find.text('Owner administration');
     expect(ownerControls, findsOneWidget);
+    await tester.tap(find.text('Your permissions'));
+    await tester.pumpAndSettle();
     expect(find.text('Organisation-wide'), findsWidgets);
+    expect(find.text('Appoint admin'), findsNothing);
+    await tester.ensureVisible(ownerControls);
+    await tester.tap(ownerControls);
+    await tester.pumpAndSettle();
+    expect(find.text('Appoint admin'), findsOneWidget);
   });
 
   testWidgets('scoped reviewer is shown the exact department scope', (
@@ -185,6 +195,8 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Your permissions'));
     await tester.pumpAndSettle();
     final departmentScope = find.text('department department-1');
     expect(departmentScope, findsOneWidget);
