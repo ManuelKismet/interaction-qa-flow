@@ -706,7 +706,7 @@ void main() {
           'New Interact sessions stay local. '
           'Imported sessions stay in your personal account.',
         ),
-        findsOneWidget,
+        findsNothing,
       );
       await tester.tap(find.byTooltip('Interact privacy information'));
       await tester.pumpAndSettle();
@@ -1132,7 +1132,13 @@ void main() {
         find.text('Your changes are not saved. Keep this page open and retry.'),
         findsNothing,
       );
-      expect(find.textContaining('Saved on this device'), findsOneWidget);
+      await tester.tap(find.byTooltip('Workspace storage information'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Saved on this device'), findsOneWidget);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );
@@ -1447,7 +1453,11 @@ void main() {
     await tester.enterText(_field('Question'), 'Latest change');
     await tester.tap(saveButton);
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pump();
     expect(find.textContaining('Saving locally…'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pump();
 
     store.releaseFirstWrite();
     await tester.pumpAndSettle();
@@ -1581,11 +1591,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Enter a session title.'), findsOneWidget);
     await tester.enterText(_field('New Interact session'), 'Interview');
-    await tester.enterText(_field('First participant'), '');
+    await tester.enterText(_field('Participant'), '');
     await tester.tap(find.text('Create session locally'));
     await tester.pumpAndSettle();
     expect(find.text('Enter a participant name.'), findsOneWidget);
-    await tester.enterText(_field('First participant'), 'Alice');
+    await tester.enterText(_field('Participant'), 'Alice');
     await tester.tap(find.text('Create session locally'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 300));
@@ -1606,7 +1616,9 @@ void _registerGuestCleanup(WidgetTester tester) {
 }
 
 Finder _field(String label) => find.byWidgetPredicate(
-  (widget) => widget is TextField && widget.decoration?.labelText == label,
+  (widget) => widget is TextField &&
+      (widget.decoration?.labelText == label ||
+          widget.decoration?.hintText == label),
 );
 
 const _pinnedHeaderClearance = 120.0;
