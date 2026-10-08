@@ -2102,6 +2102,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         initialIndex: widget.initialWorkspaceTab,
         child: Scaffold(
           appBar: AppBar(
+            toolbarHeight: !_hasSignedInNonGuestUser ? 48 : kToolbarHeight,
             title: viewport.width < 320
                 ? null
                 : Text(
@@ -2109,7 +2110,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                         ? 'Personal workspace'
                         : _hasSignedInNonGuestUser
                         ? 'Registered local workspace'
-                        : 'IntQAFlow guest workspace',
+                        : 'Guest workspace',
+                    style: !_hasSignedInNonGuestUser
+                        ? Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          )
+                        : null,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
