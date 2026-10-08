@@ -4853,6 +4853,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
             widget.isPersonalAccount
                 ? 'Destination: Private account'
                 : 'Destination: Local · this device',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         );
         final pdfAction = OutlinedButton.icon(
@@ -4873,6 +4875,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 ),
                 const SizedBox(width: 4),
                 Expanded(
+                  flex: 2,
                   child: Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Semantics(
@@ -4887,9 +4890,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                   ),
                 ),
                 if (inlineActions) ...[
-                  if (widget.groupName == null) destination,
+                  if (widget.groupName == null) Flexible(child: destination),
                   const SizedBox(width: 8),
-                  pdfAction,
+                  Flexible(child: pdfAction),
                   const SizedBox(width: 8),
                 ],
                 PopupMenuButton<String>(
