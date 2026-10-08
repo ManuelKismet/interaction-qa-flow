@@ -1,0 +1,151 @@
+FINAL EXECUTED VALIDATION RECEIPT — 2026-10-08
+
+All paths below are relative to repository root
+/home/runner/work/interaction-qa-flow/interaction-qa-flow unless stated otherwise.
+Logs are adjacent to this receipt. Source/tree/mailbox pins are recorded in the
+later provenance artifact; that artifact is excluded from the source mailbox.
+
+Source and tools
+- Continued 9fa5caa84fb4da1f3b25f81602385c60336ca8e0 on the same assigned branch.
+  Dart production/widget bytes validated here are the corrected durable
+  b4ca84ff3fd8fee8bc3bdb1e5d2774867ecf203d payload, unchanged subsequently.
+  Backend test imports were then sorted with the existing pinned Ruff and the
+  entire backend was rerun against a second newly initialized disposable cluster.
+  No backend/app production code, schema, dependency manifest or lockfile changed.
+- Flutter 3.41.4, revision ff37bef603469fb030f2b72995ab929ccfc227f0;
+  Dart 3.11.1; prepared SDK /home/runner/work/_temp/copilot-flutter-3.41.4/bin.
+  See flutter-version.log. Git 2.55.0. Python environment:
+  /tmp/batch4-completion/venv, restored from backend/requirements.lock (pip exit 0).
+  backend-freeze.txt records the actual pinned installed packages.
+- Flutter invocations used CI=true FLUTTER_SUPPRESS_ANALYTICS=true and
+  --suppress-analytics. No cloud metadata probing or private build configuration.
+
+Final Flutter commands, cwd apps/flutter_app
+1. flutter --suppress-analytics pub get --offline --enforce-lockfile
+   exit 0; pub-get.log. Lockfile unchanged.
+2. Official dart format ran on all five batch4-touched Dart files:
+   lib/core/api/api_exception.dart
+   lib/features/guest/data/guest_group_repository.dart
+   lib/features/guest/presentation/group_interact_editor.dart
+   lib/features/guest/presentation/guest_workspace_page.dart
+   test/group_interact_editor_test.dart
+   Final check: dart format --output=none --set-exit-if-changed <those five paths>
+   exit 0, 5 files / 0 changes; final-format.log.
+3. flutter --suppress-analytics analyze --no-pub
+   exit 1 SOLELY for the existing 12 infos; 0 errors / 0 warnings.
+   final-analyze.log contains every diagnostic: governance_repository (2),
+   guest_report_document (1), guest_workspace_page (3), questions_repository (6).
+   No new infos, suppressions or lint configuration changes.
+4. flutter --suppress-analytics test --no-pub --reporter expanded
+     test/group_interact_editor_test.dart
+   exit 0, 55 passed (original 35 retained plus 20 added), 22 seconds;
+   flutter-editor-final4.log. This is a new executed run, not the old saved log.
+5. flutter --suppress-analytics test --no-pub --reporter expanded
+     test/group_interact_editor_test.dart test/account_state_widget_test.dart
+     test/guided_safety_test.dart test/guest_interact_widget_test.dart
+     test/guest_group_dialog_test.dart
+   exit 0, 228 passed, 51 seconds; final-flutter-focused.log.
+6. flutter --suppress-analytics test --no-pub --reporter expanded
+   exit 0, 353 passed, 69 seconds; final-flutter-full.log.
+   Coherent final full suite = accepted baseline 298 + 55 batch4 editor tests.
+   No skipped tests, removed tests, assertion weakening, warning/overflow/hit-test
+   suppression or phone viewport inflation. Final editor/focused/full logs were
+   checked for skipped-test/error/exception/hit-test warning output: none found.
+7. flutter --suppress-analytics build web --release --no-pub
+   exit 0, generic/default web release, compiler 53.9 seconds;
+   final-flutter-release.log. Existing default Wasm dry-run also succeeded.
+   No configured DEV compile, serving, deployment or authenticated runtime pass.
+   final-flutter-exits.txt records the actual individual command exits.
+
+Generic build output (ignored apps/flutter_app/build/web, not committed/deployed)
+index.html: 1531 bytes
+  SHA256 a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858
+flutter_bootstrap.js: 9975 bytes
+  SHA256 baf96280d23385496cf95dcd0b4f4dcaa7439af6ea46a1a29d61bc616ed64789
+main.dart.js: 4663202 bytes
+  SHA256 e3a3b0c1ece64301ee773a59477164c9e43fc3602d76830ac37a0f415886522d
+
+Final backend/API/PostgreSQL commands, cwd backend
+Environment for BOTH pytest invocations:
+  ORGANISATION_TEST_POSTGRES_URL=postgresql+asyncpg://postgres@127.0.0.1:55434/batch4_final
+  POSTGRES_TEST_DATABASE_URL=postgresql+asyncpg://postgres@127.0.0.1:55434/batch4_final
+Interpreter: /tmp/batch4-completion/venv/bin/python.
+1. /tmp/batch4-completion/venv/bin/ruff check
+     tests/test_guest_interact_edit.py tests/test_guest_interact_postgresql.py
+   Final exit 0, final-backend-lint.log.
+   Initial lint found two I001 import-order findings; existing Ruff --fix sorted
+   only imports, then this check and all backend tests were rerun.
+2. python -m pytest tests/test_guest_interact_edit.py
+     tests/test_guest_interact_postgresql.py tests/test_guest_groups.py
+     tests/test_personal_workspace.py tests/test_guest_lock_order_postgresql.py -q
+   exit 0, 61 passed, 8 existing deprecation warnings, 27.93 seconds;
+   final-backend-focused.log.
+3. python -m pytest tests -q
+   exit 0, 198 passed, 10 existing deprecation warnings, 41.92 seconds;
+   final-backend-full.log. Zero skips; actual PostgreSQL suites enabled.
+   Role/authorship, registration, independent organisation authority,
+   revocation/removal/archive/deletion, actual 403/404/409, graph/history/reload/
+   exports/independent originals and competing saves are exercised. The Interact
+   PostgreSQL race test observes a real pg_stat_activity Lock wait before release;
+   it does not merely run sequential requests and call them concurrent.
+
+Disposable PostgreSQL provenance and cleanup
+- PostgreSQL 16.15, pgvector server extension 0.6.0; Python pgvector 0.5.0.
+- First completion rerun used newly initialized /tmp/batch4-completion/postgres/data
+  and database batch4_fresh: focused 61 / full 198 passed, both exit 0; stopped.
+- FINAL post-lint rerun initialized an entirely separate data-final cluster:
+  sudo -u postgres /usr/lib/postgresql/16/bin/initdb
+    -D /tmp/batch4-completion/postgres/data-final -A trust --no-locale
+  sudo -u postgres /usr/lib/postgresql/16/bin/pg_ctl
+    -D /tmp/batch4-completion/postgres/data-final
+    -l /tmp/batch4-completion/postgres/final-server.log
+    -o '-h 127.0.0.1 -p 55434 -k /tmp/batch4-completion/postgres' start
+  /usr/lib/postgresql/16/bin/createdb -h 127.0.0.1 -p 55434
+    -U postgres batch4_final
+  init/start/createdb all exit 0. Existing fixtures create/drop isolated random
+  schemas and vector extension in this disposable database, never a hosted DB.
+  final-postgres-init/start/proof.log record creation/version/fixture cleanup.
+- After pytest, pg_ctl -D <data-final> stop -m fast exited 0.
+  final-postgres-stop.log and final-backend-exits.txt record stop and test exits.
+  Environments/DBs remained outside the tracked repository; no disposable
+  PostgreSQL server was left running. No hosted migrations or production changes.
+
+Earlier receipts versus new reruns (do not conflate these)
+- 9fa5caa:batch4-widget.log genuinely records the original 35 widget passes.
+- Recovered directly from 8db08bd:batch4-backend/affected.log and affected.result:
+  earlier affected backend run 39 passed / 8 warnings / exit 0, 6.88 seconds;
+  command was pytest tests/test_guest_interact_edit.py tests/test_guest_groups.py
+  tests/test_personal_workspace.py -q. Copies: earlier-affected.log/.result.
+- Historical full-backend.log and postgres-affected.log at 8db08bd are empty;
+  their .result files contain commands but no completed exit/count. Previous
+  session reports of 115 existing Flutter and 198 backend passes are historical
+  reported results, NOT independently accepted/durable full receipts.
+- This completion first ran checkpoint Flutter focused 208 / full 333 (exit 0)
+  and generic release (exit 0), BEFORE review corrections. See durable
+  pre-correction-flutter-full.log and pre-correction-flutter-release.log.
+  These are real new runs, superseded by the FINAL 228/353/release above.
+- Intermediate expanded-test attempts exposed test-registration/lifecycle/
+  scrolling mistakes, duplicate editor/parent SnackBars, and temporary wrapper
+  delimiter compilation errors. Causes were corrected; no tests were skipped,
+  warnings suppressed or assertions weakened. Final runs above are coherent.
+
+Review/security and pending acceptance
+- Secret scanning was executed on batch4 source/tests/matrix/manifest/scope before
+  the correction checkpoint: no secrets detected. Final receipt/artifact scans
+  are recorded in the later provenance.
+- parallel_validation: CodeQL Python completed, zero alerts. Dart was NOT covered
+  by CodeQL. The automated Code Review wrapper reported success but its actual
+  reviewer was UNAVAILABLE: registry lacked capi-prod-claude-sonnet-4.6. This is
+  not a successful automated code review and remains an infrastructure limitation.
+- Separate read-only implementation review found and rechecked the corrected
+  issues; its final response found no remaining high-confidence implementation
+  bugs. It did not run tests, establish independent Codex acceptance or examine
+  hosted devices. No agent-authored code was incorporated.
+- Scope/decisions/manual cases: adjacent batch4-scope.txt and acceptance JSON.
+  Configured DEV build, hosted authenticated flows, physical-device/accessibility,
+  real native OS sharing/printing and independent Codex acceptance remain OPEN.
+  Authentication investigation remains paused. Guest reload-to-list is accepted.
+- The complete ORIGINAL mailbox is oversized, not silently filtered/published.
+  Exact final bytes/SHA256/git-am/tree proof and the publication blocker are in
+  the later provenance artifact. Original source history and previous mailboxes
+  are preserved; no deployment/merge/schema/production/access change authorised.

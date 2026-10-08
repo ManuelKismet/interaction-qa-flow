@@ -1,0 +1,15 @@
+.............................................................            [100%]
+=============================== warnings summary ===============================
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+  /home/runner/work/interaction-qa-flow/interaction-qa-flow/backend/app/api/v1/routes/personal_workspace.py:96: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await PersonalWorkspaceService(session).update_item(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+61 passed, 8 warnings in 27.93s

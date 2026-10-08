@@ -2,13 +2,13 @@ from copy import deepcopy
 from uuid import UUID
 
 import pytest
+from sqlalchemy import func, select
+
 from app.api.dependencies import enforce_tenant_scope, get_development_identity
 from app.main import app
 from app.models import FirebaseUidMapping, Organisation, User, UserRole
 from app.models.guest import GuestGroupEntry, GuestGroupEntryRevision
 from app.models.personal_workspace import PersonalWorkspaceItem
-from sqlalchemy import func, select
-
 from tests.test_guest_groups import bearer, install_test_tokens, make_group
 
 

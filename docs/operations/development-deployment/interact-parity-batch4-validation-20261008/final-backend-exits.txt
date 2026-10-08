@@ -1,0 +1,3 @@
+backend_focused_exit=0
+backend_full_exit=0
+postgres_stop_exit=0
