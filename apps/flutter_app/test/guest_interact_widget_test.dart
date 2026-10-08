@@ -67,6 +67,119 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+
+  testWidgets('question dialogs validate cancel and keep actions below new scoped questions', (tester) async {
+    _registerGuestCleanup(tester);
+    tester.view.physicalSize = const Size(1200, 1200);
+    tester.view.devicePixelRatio = 1;
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(GuestWorkspaceData(sessions: [_twoParticipantSession()]));
+    await tester.pumpWidget(ProviderScope(
+      overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+      child: const MaterialApp(home: GuestWorkspacePage(firebaseReady: false, initialWorkspaceTab: 1, initialSessionId: 'two-person-session')),
+    ));
+    await tester.pumpAndSettle();
+    expect(_field('New question'), findsNothing);
+    expect(find.byTooltip('Add a question'), findsNothing);
+    final addShared = find.text('Add shared question');
+    await _ensureVisibleInGuestList(tester, addShared, anchor: _activeParticipantBar);
+    await tester.tap(addShared);
+    await tester.pumpAndSettle();
+    final dialogField = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextFormField));
+    await tester.enterText(dialogField, '  ');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add question'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a question.'), findsOneWidget);
+    expect((await store.load()).sessions.single['questions'], hasLength(2));
+    await tester.enterText(dialogField, 'Cancelled draft');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect((await store.load()).sessions.single['questions'], hasLength(2));
+    await tester.tap(addShared);
+    await tester.pumpAndSettle();
+    await tester.enterText(dialogField, 'New shared question');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add question'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
+    final questions = (await store.load()).sessions.single['questions'] as List;
+    final added = questions.last as Map;
+    expect(added['scope'], 'shared');
+    expect((added['answers'] as List).map((a) => a['participant_id']), ['alice-id', 'bob-id']);
+    final addedField = find.byKey(ValueKey('guest-question-text-' + (added['id'] as String)));
+    await _ensureVisibleInGuestList(tester, addShared, anchor: _activeParticipantBar);
+    expect(tester.getTopLeft(addShared).dy, greaterThan(tester.getBottomLeft(addedField).dy));
+    expect(find.text('Add question for active participant').hitTestable(), findsOneWidget);
+    await _selectParticipant(tester, 'Bob');
+    final participantAction = find.text('Add question for active participant');
+    await _ensureVisibleInGuestList(tester, participantAction, anchor: _activeParticipantBar);
+    await tester.tap(participantAction);
+    await tester.pumpAndSettle();
+    await tester.enterText(dialogField, 'New Bob question');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add question'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
+    final bob = ((await store.load()).sessions.single['questions'] as List).last as Map;
+    expect(bob['scope'], 'participant');
+    expect(bob['target_participant_id'], 'bob-id');
+    expect((bob['answers'] as List).single['participant_id'], 'bob-id');
+    final bobField = find.byKey(ValueKey('guest-question-text-' + (bob['id'] as String)));
+    await _ensureVisibleInGuestList(tester, participantAction, anchor: _activeParticipantBar);
+    expect(tester.getTopLeft(participantAction).dy, greaterThan(tester.getBottomLeft(bobField).dy));
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final width in [360.0, 1200.0]) {
+    testWidgets('session header and inline fields fit ${width}px', (tester) async {
+      _registerGuestCleanup(tester);
+      tester.view.physicalSize = Size(width, 1000);
+      tester.view.devicePixelRatio = 1;
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      final original = _twoParticipantSession();
+      await store.save(GuestWorkspaceData(sessions: [original]));
+      Future<void> open() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await tester.pumpWidget(ProviderScope(
+          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+          child: const MaterialApp(home: GuestWorkspacePage(firebaseReady: false, initialWorkspaceTab: 1, initialSessionId: 'two-person-session')),
+        ));
+        await tester.pumpAndSettle();
+      }
+      await open();
+      final title = find.text('Two-person interview');
+      final destination = find.text('Destination: Local · this device');
+      final pdf = find.text('Download / Share PDF');
+      final menu = find.byTooltip('More session actions');
+      if (width >= 800) {
+        expect((tester.getCenter(title).dy - tester.getCenter(pdf).dy).abs(), lessThan(16));
+        expect(tester.getCenter(destination).dx, greaterThan(tester.getCenter(title).dx));
+        expect(tester.getCenter(pdf).dx, lessThan(tester.getCenter(menu).dx));
+      } else {
+        expect(tester.getTopLeft(pdf).dy, greaterThan(tester.getTopLeft(title).dy));
+      }
+      for (final tooltip in ['Workspace storage information', 'Search help', 'Interact privacy information']) {
+        final icon = tester.widget<Icon>(find.descendant(of: find.byTooltip(tooltip), matching: find.byType(Icon)));
+        expect(icon.size, 16);
+      }
+      final field = find.byKey(const ValueKey('guest-question-text-shared-root'));
+      await _ensureVisibleInGuestList(tester, field, anchor: _activeParticipantBar);
+      expect(tester.widget<TextField>(field).decoration?.border, isA<OutlineInputBorder>());
+      expect(find.byTooltip('Edit question'), findsNothing);
+      await tester.enterText(field, 'Edited shared question');
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+      final saved = (await store.load()).sessions.single;
+      final root = (saved['questions'] as List).first as Map;
+      expect(root['text'], 'Edited shared question');
+      expect(root['id'], 'shared-root');
+      expect(root['answers'], (original['questions'] as List).first['answers']);
+      await open();
+      await _ensureVisibleInGuestList(tester, field, anchor: _activeParticipantBar);
+      expect(tester.widget<TextField>(field).controller!.text, 'Edited shared question');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   test('local Knowledge search supports prefixes and one bounded typo', () {
     const item = {
       'title': 'Interaction handover',
@@ -325,30 +438,15 @@ void main() {
       await _selectParticipant(tester, 'Bob');
       expect(find.textContaining('Active participant: Bob'), findsOneWidget);
 
-      final edit = find.byTooltip('Edit follow-up question');
-      await _ensureVisibleInGuestList(
-        tester,
-        edit,
-        anchor: _activeParticipantBar,
-      );
-      await tester.tap(edit.first);
-      await tester.pumpAndSettle();
-      final field = find.widgetWithText(TextFormField, 'Question text');
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(of: field, matching: find.byType(TextField)),
-            )
-            .decoration
-            ?.hintText,
-        startsWith('e.g.'),
-      );
+      final field = find.byKey(const ValueKey('guest-question-text-bob-branch'));
+      await _ensureVisibleInGuestList(tester, field, anchor: _activeParticipantBar);
+      expect(tester.widget<TextField>(field).decoration?.hintText, startsWith('e.g.'));
+      expect(find.byTooltip('Edit follow-up question'), findsNothing);
       await tester.enterText(field, '   ');
-      await tester.tap(find.text('Save question locally'));
       await tester.pumpAndSettle();
-      expect(find.text('Enter a question.'), findsOneWidget);
+      expect(find.text('Enter a question. The last saved text is kept.'), findsOneWidget);
+      expect(((await store.load()).sessions.single['questions'] as List).first['answers'][1]['follow_ups'][0]['text'], 'Bob follow-up');
       await tester.enterText(field, 'Bob follow-up, reworded');
-      await tester.tap(find.text('Save question locally'));
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
 
@@ -839,8 +937,11 @@ void main() {
         anchor: _activeParticipantBar,
       );
 
-      await tester.enterText(_field('New question'), 'Bob-only addition');
+      await _ensureVisibleInGuestList(tester, find.text('Add question for active participant'), anchor: _activeParticipantBar);
       await tester.tap(find.text('Add question for active participant'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextFormField)), 'Bob-only addition');
+      await tester.tap(find.widgetWithText(FilledButton, 'Add question'));
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 300));
       final saved = await store.load();
