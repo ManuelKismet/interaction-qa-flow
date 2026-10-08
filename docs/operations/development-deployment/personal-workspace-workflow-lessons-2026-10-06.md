@@ -92,3 +92,51 @@ unresolved acceptance items, API revision/traffic, Hosting release/version/hash,
 database schema/migration outcome, rollback targets and cleanup state. Put a
 readable current snapshot before the dated history so the next session does not
 resume an obsolete pending state.
+
+## Copilot Flutter environment and two-stage validation — 2026-10-08
+
+Founder authorised installing Flutter for Copilot while retaining independent
+Codex validation. Copilot must implement AND execute compilation/analyzer,
+official formatting and affected tests before delivery; Codex independently
+reviews the exact delivered source and runs acceptance gates. Tool availability
+does not establish acceptance, and Copilot's green checks do not replace the
+independent gate.
+
+Automatic setup lives on default branch main in
+`.github/workflows/copilot-setup-steps.yml`, tooling-only commit
+`0627a2dde8797116e17eefa0d81bc2392559b800`. It uses official Flutter tag
+3.41.4, verifies revision ff37bef603469fb030f2b72995ab929ccfc227f0 and
+Dart3.11.1, prepares web tooling and enforces the existing pubspec lockfile.
+The checkout action is SHA-pinned and does not persist credentials; workflow
+permissions are contents:read. No application merge, runtime deployment or
+credential/firewall changes are included.
+
+Every Flutter invocation uses CI=true and --suppress-analytics to avoid the
+cloud metadata detector and analytics. Setup exports CI and the SDK PATH for
+later steps. Do not access metadata endpoints or credentials. A live session
+that started before this workflow landed must explicitly install the same
+official pinned SDK and prepare dependencies at its own app checkout; a new
+session receives automatic setup. Re-run locked pubget if the agent checks out
+a different app baseline.
+
+Verify the session logs show `COPILOT_FLUTTER_SETUP_READY` and actual
+Flutter/Dart versions. GitHub can start the agent even if setup fails: report
+that blocker and never claim unavailable checks passed. Do not bypass network
+restrictions or expand access to repair installation. Setup YAML/job structure
+and embedded Bash syntax were locally validated; hosted installation success
+must be recorded separately after the setup run finishes.
+
+Copilot validation sequence: verify exact baseline and SDK, format touched Dart
+files, analyze with zero errors/warnings (record existing infos separately),
+run focused meaningful tests, fix regressions and rerun affected checks, then
+run coherent full suites/configured release when behavior stabilizes. Retain
+full logs, exit codes and source provenance. Diagnose actual layout/scrolling
+causes rather than increasing viewports, hiding overflow/hit-test exceptions or
+removing assertions. Preserve local originals, explicit import, UID/privacy,
+pending-save and explicit conflict-resolution behavior.
+
+Codex validates the unchanged artifact against the declared base/app tree,
+reviews behavior and meaningful coverage, then independently runs scoped/full
+acceptance checks as appropriate. Preserve the two-stage workflow and separate
+deployment authorisation. Batch2 remains unaccepted and DEV remains unchanged
+until its runtime failures are resolved.
