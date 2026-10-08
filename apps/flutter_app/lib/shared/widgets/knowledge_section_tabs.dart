@@ -7,10 +7,14 @@ class KnowledgeSectionTabs extends StatelessWidget {
   const KnowledgeSectionTabs({
     required this.selected,
     this.onChanged,
+    this.searchLabel = 'Ask & search',
+    this.savedLabel = 'Questions',
     super.key,
   });
 
   final KnowledgeSection selected;
+  final String searchLabel;
+  final String savedLabel;
   final ValueChanged<KnowledgeSection>? onChanged;
 
   @override
@@ -36,9 +40,9 @@ class KnowledgeSectionTabs extends StatelessWidget {
                 );
               }
             },
-            tabs: const [
-              Tab(text: 'Ask & search'),
-              Tab(text: 'Questions'),
+            tabs: [
+              Tab(text: searchLabel),
+              Tab(text: savedLabel),
             ],
           ),
         ),
