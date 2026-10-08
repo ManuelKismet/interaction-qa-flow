@@ -211,11 +211,15 @@ void main() {
       final destination = find.text('Destination: Local · this device');
       final pdf = find.text('Download / Share PDF');
       final menu = find.byTooltip('More session actions');
+      expect(
+        (tester.getCenter(destination).dy - tester.getCenter(pdf).dy).abs(),
+        lessThan(1),
+      );
       // The session list contributes 16px padding on each side.
       if (width >= 832) {
         expect(
           (tester.getCenter(title).dy - tester.getCenter(pdf).dy).abs(),
-          lessThan(16),
+          lessThan(1),
         );
         expect(
           tester.getCenter(destination).dx,
