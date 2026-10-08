@@ -1,0 +1,976 @@
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 2ad0044..8154fe5 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -1649,6 +1649,141 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     final guestGroupsState = canUseGroups
+         ? ref.watch(currentGuestGroupsProvider)
+         : null;
++    final viewport = MediaQuery.sizeOf(context);
++    final compactViewport = viewport.height < 300;
++    final narrowViewport = viewport.width < 420;
++    final workspaceNotices = <Widget>[
++      _GuestNotice(
++        isRegistered: _hasSignedInNonGuestUser,
++        saveStatus: _saveStatus,
++      ),
++      if (_unsavedChanges)
++        MaterialBanner(
++          forceActionsBelow: narrowViewport,
++          content: const Text(
++            'Your changes are not saved. Keep this page open and retry.',
++          ),
++          actions: [
++            TextButton(
++              onPressed: _flushPendingSave,
++              child: const Text('Retry saving'),
++            ),
++          ],
++        ),
++      if (widget.authUnavailable)
++        const _AccountMembershipNotice(
++          text:
++              'Account status could not be verified. This workspace is local; organisation access is not assumed.',
++        ),
++      if (_verifiedPersonalUid != null &&
++          localData != null &&
++          _hasMeaningfulWork(localData))
++        MaterialBanner(
++          forceActionsBelow: narrowViewport,
++          content: const Text(
++            'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
++          ),
++          actions: [
++            TextButton(
++              onPressed: _personalSaving || _personalLoading
++                  ? null
++                  : _openPersonalImport,
++              child: const Text('Import local work'),
++            ),
++          ],
++        ),
++      if (_personalError != null)
++        MaterialBanner(
++          forceActionsBelow: narrowViewport,
++          content: Text(_personalError!),
++          actions: [
++            TextButton(
++              onPressed: _personalImportNeedsReselection
++                  ? _openPersonalImport
++                  : _personalConflictSourceKey != null
++                  ? _personalConflictReloadFailed
++                        ? _reloadPendingPersonalConflict
++                        : _reviewPersonalConflict
++                  : _pendingPersonalImport.isNotEmpty
++                  ? _retryPersonalImport
++                  : _pendingPersonalWrites.isNotEmpty
++                  ? _retryPersonalWrites
++                  : _refreshPersonalWorkspace,
++              child: Text(
++                _personalImportNeedsReselection
++                    ? 'Change selection'
++                    : _personalConflictSourceKey != null
++                    ? _personalConflictReloadFailed
++                          ? 'Reload account version'
++                          : 'Review account change'
++                    : _pendingPersonalImport.isNotEmpty
++                    ? 'Retry import'
++                    : _pendingPersonalWrites.isNotEmpty
++                    ? 'Retry account save'
++                    : 'Retry account load',
++              ),
++            ),
++          ],
++        ),
++      if (widget.membershipStatus == AccountMembershipStatus.noMembership)
++        const _AccountMembershipNotice(
++          text:
++              'This signed-in account has no organisation membership. Groups require a verified registered account, but do not require organisation membership.',
++        ),
++      if (widget.membershipStatus == AccountMembershipStatus.inactive)
++        const _AccountMembershipNotice(
++          text:
++              'This organisation membership is inactive. You can continue local work; contact your organisation administrator about access.',
++        ),
++      if (widget.membershipStatus == AccountMembershipStatus.unavailable)
++        const _AccountMembershipNotice(
++          text:
++              'Organisation membership could not be verified. You can continue local work, but no organisation access is assumed.',
++        ),
++      if (widget.firebaseReady &&
++          _hasSignedInNonGuestUser &&
++          !widget.sharedIdentityActive)
++        Padding(
++          padding: const EdgeInsets.all(12),
++          child: canUseGroups
++              ? const Align(
++                  alignment: Alignment.centerLeft,
++                  child: _GuestInfoButton(
++                    tooltip: 'Group identity information',
++                    title: 'About Group identity',
++                    content:
++                        'Group access is associated with this signed-in verified identity. A separate account does not inherit its Group data.',
++                  ),
++                )
++              : const Text(
++                  'Verify this account’s email before using Groups. Local work remains available, and organisation membership is not required for Groups.',
++                ),
++        ),
++      if (guestGroupsState?.hasError == true)
++        MaterialBanner(
++          forceActionsBelow: narrowViewport,
++          content: const Text(
++            'Existing group access could not be checked. This does not confirm that no groups are linked.',
++          ),
++          actions: [
++            TextButton(
++              onPressed: () => ref.invalidate(currentGuestGroupsProvider),
++              child: const Text('Retry groups'),
++            ),
++          ],
++        ),
++      if (_loadError != null)
++        MaterialBanner(
++          forceActionsBelow: narrowViewport,
++          content: Text(_loadError!),
++          actions: [
++            TextButton(
++              onPressed: _load,
++              child: const Text('Retry'),
++            ),
++          ],
++        ),
++    ];
+     return PopScope(
+       canPop: !_hasPendingWorkspaceChanges,
+       onPopInvokedWithResult: (didPop, result) {
+@@ -1661,16 +1796,35 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         initialIndex: widget.initialWorkspaceTab,
+         child: Scaffold(
+           appBar: AppBar(
+-            title: Text(
+-              _verifiedPersonalUid != null
+-                  ? 'Personal workspace'
+-                  : _hasSignedInNonGuestUser
+-                  ? 'Registered local workspace'
+-                  : 'IntQAFlow guest workspace',
+-              maxLines: 1,
+-              overflow: TextOverflow.ellipsis,
+-            ),
++            title: viewport.width < 320
++                ? null
++                : Text(
++                    _verifiedPersonalUid != null
++                        ? 'Personal workspace'
++                        : _hasSignedInNonGuestUser
++                        ? 'Registered local workspace'
++                        : 'IntQAFlow guest workspace',
++                    maxLines: 1,
++                    overflow: TextOverflow.ellipsis,
++                  ),
+             actions: [
++              if (compactViewport)
++                Builder(
++                  builder: (context) => PopupMenuButton<int>(
++                    tooltip: 'Switch Knowledge or Interact',
++                    onSelected: (index) {
++                      if (widget.onWorkspaceTabChanged != null) {
++                        _handleWorkspaceTabChanged(index);
++                      } else {
++                        DefaultTabController.of(context).animateTo(index);
++                      }
++                    },
++                    itemBuilder: (context) => const [
++                      PopupMenuItem(value: 0, child: Text('Knowledge')),
++                      PopupMenuItem(value: 1, child: Text('Interact')),
++                    ],
++                  ),
++                ),
+               _accountMenu(),
+               PopupMenuButton<String>(
+                 tooltip: _hasSignedInNonGuestUser
+@@ -1712,13 +1866,18 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                 ],
+               ),
+             ],
+-            bottom: TabBar(
+-              onTap: _handleWorkspaceTabChanged,
+-              tabs: [
+-                Tab(text: 'Knowledge', icon: Icon(Icons.search)),
+-                Tab(text: 'Interact', icon: Icon(Icons.account_tree_outlined)),
+-              ],
+-            ),
++            bottom: compactViewport
++                ? null
++                : TabBar(
++                    onTap: _handleWorkspaceTabChanged,
++                    tabs: [
++                      Tab(text: 'Knowledge', icon: Icon(Icons.search)),
++                      Tab(
++                        text: 'Interact',
++                        icon: Icon(Icons.account_tree_outlined),
++                      ),
++                    ],
++                  ),
+           ),
+           body: data == null
+               ? Center(
+@@ -1742,230 +1901,108 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                           ),
+                         ),
+                 )
+-              : Column(
+-                  children: [
+-                    Flexible(
+-                      fit: FlexFit.loose,
+-                      child: ConstrainedBox(
+-                        constraints: const BoxConstraints(maxHeight: 220),
+-                        child: SingleChildScrollView(
+-                          child: Column(
+-                            mainAxisSize: MainAxisSize.min,
+-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+-                            children: [
+-                    _GuestNotice(
+-                      isRegistered: _hasSignedInNonGuestUser,
+-                      saveStatus: _saveStatus,
+-                    ),
+-                    if (_unsavedChanges)
+-                      MaterialBanner(
+-                        content: const Text(
+-                          'Your changes are not saved. Keep this page open and retry.',
+-                        ),
+-                        actions: [
+-                          TextButton(
+-                            onPressed: _flushPendingSave,
+-                            child: const Text('Retry saving'),
+-                          ),
+-                        ],
+-                      ),
+-                    if (widget.authUnavailable)
+-                      const _AccountMembershipNotice(
+-                        text:
+-                            'Account status could not be verified. This workspace is local; organisation access is not assumed.',
+-                      ),
+-                    if (_verifiedPersonalUid != null &&
+-                        localData != null &&
+-                        _hasMeaningfulWork(localData))
+-                      MaterialBanner(
+-                        content: const Text(
+-                          'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
+-                        ),
+-                        actions: [
+-                          TextButton(
+-                            onPressed: _personalSaving || _personalLoading
+-                                ? null
+-                                : _openPersonalImport,
+-                            child: const Text('Import local work'),
+-                          ),
+-                        ],
+-                      ),
+-                    if (_personalError != null)
+-                      MaterialBanner(
+-                        content: Text(_personalError!),
+-                        actions: [
+-                          TextButton(
+-                            onPressed: _personalImportNeedsReselection
+-                                ? _openPersonalImport
+-                                : _personalConflictSourceKey != null
+-                                ? _personalConflictReloadFailed
+-                                      ? _reloadPendingPersonalConflict
+-                                      : _reviewPersonalConflict
+-                                : _pendingPersonalImport.isNotEmpty
+-                                ? _retryPersonalImport
+-                                : _pendingPersonalWrites.isNotEmpty
+-                                ? _retryPersonalWrites
+-                                : _refreshPersonalWorkspace,
+-                            child: Text(
+-                              _personalImportNeedsReselection
+-                                  ? 'Change selection'
+-                                  : _personalConflictSourceKey != null
+-                                  ? _personalConflictReloadFailed
+-                                        ? 'Reload account version'
+-                                        : 'Review account change'
+-                                  : _pendingPersonalImport.isNotEmpty
+-                                  ? 'Retry import'
+-                                  : _pendingPersonalWrites.isNotEmpty
+-                                  ? 'Retry account save'
+-                                  : 'Retry account load',
++              : LayoutBuilder(
++                  builder: (context, constraints) {
++                    final scrollNotices = workspaceNotices.length > 1;
++                    final noticeHeight = (constraints.maxHeight * 0.45)
++                        .clamp(0.0, 220.0)
++                        .toDouble();
++                    return Column(
++                      children: [
++                        if (scrollNotices)
++                          SizedBox(
++                            height: noticeHeight,
++                            child: SingleChildScrollView(
++                              child: Column(
++                                mainAxisSize: MainAxisSize.min,
++                                crossAxisAlignment: CrossAxisAlignment.stretch,
++                                children: workspaceNotices,
++                              ),
+                             ),
+-                          ),
+-                        ],
+-                      ),
+-                    if (widget.membershipStatus ==
+-                        AccountMembershipStatus.noMembership)
+-                      const _AccountMembershipNotice(
+-                        text:
+-                            'This signed-in account has no organisation '
+-                            'membership. Groups require a verified registered '
+-                            'account, but do not require organisation membership.',
+-                      ),
+-                    if (widget.membershipStatus ==
+-                        AccountMembershipStatus.inactive)
+-                      const _AccountMembershipNotice(
+-                        text:
+-                            'This organisation membership is inactive. You can continue local work; contact your organisation administrator about access.',
+-                      ),
+-                    if (widget.membershipStatus ==
+-                        AccountMembershipStatus.unavailable)
+-                      const _AccountMembershipNotice(
+-                        text:
+-                            'Organisation membership could not be verified. You can continue local work, but no organisation access is assumed.',
+-                      ),
+-                    if (widget.firebaseReady &&
+-                        _hasSignedInNonGuestUser &&
+-                        !widget.sharedIdentityActive)
+-                      Padding(
+-                        padding: const EdgeInsets.all(12),
+-                        child: canUseGroups
+-                            ? const Align(
+-                                alignment: Alignment.centerLeft,
+-                                child: _GuestInfoButton(
+-                                  tooltip: 'Group identity information',
+-                                  title: 'About Group identity',
+-                                  content:
+-                                      'Group access is associated with this '
+-                                      'signed-in verified identity. A separate '
+-                                      'account does not inherit its Group data.',
++                          )
++                        else
++                          ...workspaceNotices,
++                        Expanded(
++                          child: TabBarView(
++                            children: [
++                              _GuestKnowledgeTab(
++                                items: data.knowledge,
++                                initialKnowledgeItemId:
++                                    widget.initialKnowledgeItemId,
++                                initialKnowledgeSection:
++                                    widget.initialKnowledgeSection,
++                                onKnowledgeSectionChanged:
++                                    _handleKnowledgeSectionChanged,
++                                onOpenGroup: _openGroupKnowledge,
++                                privateWorkspace: _verifiedPersonalUid != null,
++                                searchIdentityKey:
++                                    _verifiedPersonalUid == null
++                                    ? null
++                                    : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
++                                searchOrganization: null,
++                                searchPersonal: _verifiedPersonalUid == null
++                                    ? null
++                                    : (query) => ref
++                                          .read(
++                                            personalWorkspaceRepositoryProvider,
++                                          )
++                                          .searchKnowledge(
++                                            query,
++                                            expectedUid:
++                                                _verifiedPersonalUid!,
++                                          ),
++                                searchGroups: _verifiedPersonalUid == null
++                                    ? null
++                                    : (query) => ref
++                                          .read(guestGroupRepositoryProvider)
++                                          .searchKnowledge(query),
++                                reloadPersonalWorkspace:
++                                    _refreshPersonalWorkspace,
++                                storageStatus: (item) =>
++                                    _storageStatus('knowledge', item),
++                                isPersonalAccount: (item) => _storageStatus(
++                                  'knowledge',
++                                  item,
++                                ).startsWith('Personal account'),
++                                onCreate: (item) => _createWorkspaceItem(
++                                  kind: 'knowledge',
++                                  item: item,
++                                  updated: data.copyWith(
++                                    knowledge: [item, ...data.knowledge],
++                                  ),
+                                 ),
+-                              )
+-                            : const Text(
+-                                'Verify this account’s email before using Groups. '
+-                                'Local work remains available, and organisation '
+-                                'membership is not required for Groups.',
++                                onUpdate: (item) => _save(
++                                  data.copyWith(
++                                    knowledge: [
++                                      for (final current in data.knowledge)
++                                        current['id'] == item['id']
++                                            ? item
++                                            : current,
++                                    ],
++                                  ),
++                                ),
++                                onDelete: (id) =>
++                                    _deleteKnowledge(data, id),
++                              ),
++                              _GuestInteractTab(
++                                data: data,
++                                privateWorkspace: _verifiedPersonalUid != null,
++                                storageStatus: _storageStatus,
++                                onChange: _save,
++                                onCreateItem: (kind, item, updated) =>
++                                    _createWorkspaceItem(
++                                      kind: kind,
++                                      item: item,
++                                      updated: updated,
++                                    ),
++                                onPrint: _printReport,
+                               ),
+-                      ),
+-                    if (guestGroupsState?.hasError == true)
+-                      MaterialBanner(
+-                        content: const Text(
+-                          'Existing group access could not be checked. This does not confirm that no groups are linked.',
+-                        ),
+-                        actions: [
+-                          TextButton(
+-                            onPressed: () =>
+-                                ref.invalidate(currentGuestGroupsProvider),
+-                            child: const Text('Retry groups'),
+-                          ),
+-                        ],
+-                      ),
+-                    if (_loadError != null)
+-                      MaterialBanner(
+-                        content: Text(_loadError!),
+-                        actions: [
+-                          TextButton(
+-                            onPressed: _load,
+-                            child: const Text('Retry'),
+-                          ),
+-                        ],
+-                      ),
+                             ],
+                           ),
+                         ),
+-                      ),
+-                    ),
+-                    Expanded(
+-                      child: TabBarView(
+-                        children: [
+-                          _GuestKnowledgeTab(
+-                            items: data.knowledge,
+-                            initialKnowledgeItemId:
+-                                widget.initialKnowledgeItemId,
+-                            initialKnowledgeSection:
+-                                widget.initialKnowledgeSection,
+-                            onKnowledgeSectionChanged:
+-                                _handleKnowledgeSectionChanged,
+-                            onOpenGroup: _openGroupKnowledge,
+-                            privateWorkspace: _verifiedPersonalUid != null,
+-                            searchIdentityKey: _verifiedPersonalUid == null
+-                                ? null
+-                                : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
+-                            searchOrganization: null,
+-                            searchPersonal: _verifiedPersonalUid == null
+-                                ? null
+-                                : (query) => ref
+-                                      .read(personalWorkspaceRepositoryProvider)
+-                                      .searchKnowledge(
+-                                        query,
+-                                        expectedUid: _verifiedPersonalUid!,
+-                                      ),
+-                            searchGroups: _verifiedPersonalUid == null
+-                                ? null
+-                                : (query) => ref
+-                                      .read(guestGroupRepositoryProvider)
+-                                      .searchKnowledge(query),
+-                            reloadPersonalWorkspace: _refreshPersonalWorkspace,
+-                            storageStatus: (item) =>
+-                                _storageStatus('knowledge', item),
+-                            isPersonalAccount: (item) => _storageStatus(
+-                              'knowledge',
+-                              item,
+-                            ).startsWith('Personal account'),
+-                            onCreate: (item) => _createWorkspaceItem(
+-                              kind: 'knowledge',
+-                              item: item,
+-                              updated: data.copyWith(
+-                                knowledge: [item, ...data.knowledge],
+-                              ),
+-                            ),
+-                            onUpdate: (item) => _save(
+-                              data.copyWith(
+-                                knowledge: [
+-                                  for (final current in data.knowledge)
+-                                    current['id'] == item['id']
+-                                        ? item
+-                                        : current,
+-                                ],
+-                              ),
+-                            ),
+-                            onDelete: (id) => _deleteKnowledge(data, id),
+-                          ),
+-                          _GuestInteractTab(
+-                            data: data,
+-                            privateWorkspace: _verifiedPersonalUid != null,
+-                            storageStatus: _storageStatus,
+-                            onChange: _save,
+-                            onCreateItem: (kind, item, updated) =>
+-                                _createWorkspaceItem(
+-                                  kind: kind,
+-                                  item: item,
+-                                  updated: updated,
+-                                ),
+-                            onPrint: _printReport,
+-                          ),
+-                        ],
+-                      ),
+-                    ),
+-                  ],
++                      ],
++                    );
++                  },
+                 ),
+         ),
+       ),
+@@ -2426,17 +2463,22 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
+         ],
+       ],
+-      child: const Padding(
+-        padding: EdgeInsets.symmetric(horizontal: 8),
+-        child: Row(
+-          mainAxisSize: MainAxisSize.min,
+-          children: [
+-            Icon(Icons.account_circle_outlined),
+-            SizedBox(width: 4),
+-            Text('Account'),
+-          ],
+-        ),
+-      ),
++      child: MediaQuery.sizeOf(context).width < 380
++          ? const Padding(
++              padding: EdgeInsets.all(8),
++              child: Icon(Icons.account_circle_outlined),
++            )
++          : const Padding(
++              padding: EdgeInsets.symmetric(horizontal: 8),
++              child: Row(
++                mainAxisSize: MainAxisSize.min,
++                children: [
++                  Icon(Icons.account_circle_outlined),
++                  SizedBox(width: 4),
++                  Text('Account'),
++                ],
++              ),
++            ),
+     );
+   }
+ }
+diff --git a/apps/flutter_app/lib/shared/widgets/app_shell.dart b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+index c0b7e0c..296df3a 100644
+--- a/apps/flutter_app/lib/shared/widgets/app_shell.dart
++++ b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+@@ -285,6 +285,7 @@ class AppShell extends ConsumerWidget {
+         }).toList();
+     final isWide =
+         MediaQuery.sizeOf(context).width >= Responsive.navigationRailBreakpoint;
++    final compactToolbar = MediaQuery.sizeOf(context).width < 380;
+ 
+     return PopScope(
+       canPop: !pendingWorkspaceChanges,
+@@ -298,17 +299,24 @@ class AppShell extends ConsumerWidget {
+             ? null
+             : AppBar(
+                 backgroundColor: const Color(0xFFFFFBF4),
+-                title: const Text('IntQAFlow'),
++                title: MediaQuery.sizeOf(context).width < 280
++                    ? null
++                    : const Text('IntQAFlow'),
+                 actions: [
+                   if (membership != null)
+                     _workspaceSwitcher(
+                       context,
+                       ref: ref,
+                       personalWorkspace: personalWorkspace,
+-                      showLabel: true,
++                      showLabel: !compactToolbar,
+                     ),
+                   if (membership != null)
+-                    _accountMenu(context, ref, membership, showLabel: true),
++                    _accountMenu(
++                      context,
++                      ref,
++                      membership,
++                      showLabel: !compactToolbar,
++                    ),
+                 ],
+               ),
+         body: Row(
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index e839c37..a26fedd 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -403,6 +403,31 @@ Future<void> _ensureVisibleInVerticalList(
+   expect(target.hitTestable(), findsOneWidget);
+ }
+ 
++Future<void> _tapVisibleTarget(WidgetTester tester, Finder target) async {
++  await tester.ensureVisible(target);
++  await tester.pumpAndSettle();
++  final hitTarget = target.hitTestable();
++  expect(hitTarget, findsOneWidget);
++  await tester.tap(hitTarget);
++}
++
++Future<void> _ensureVisibleInDialog(
++  WidgetTester tester,
++  Finder target,
++) async {
++  final scrollable = find
++      .descendant(
++        of: find.byType(AlertDialog),
++        matching: find.byType(Scrollable),
++      )
++      .first;
++  await tester.scrollUntilVisible(target, 140, scrollable: scrollable);
++  await tester.pumpAndSettle();
++  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
++  await tester.pumpAndSettle();
++  expect(target.hitTestable(), findsOneWidget);
++}
++
+ Future<void> _tapPersonalNavigation(
+   WidgetTester tester,
+   String label,
+@@ -481,7 +506,11 @@ void main() {
+     String initialLocation = '/personal/ask',
+   }) async {
+     tester.view.physicalSize = const Size(720, 600);
+-    addTearDown(tester.view.resetPhysicalSize);
++    tester.view.devicePixelRatio = 1;
++    addTearDown(() {
++      tester.view.resetPhysicalSize();
++      tester.view.resetDevicePixelRatio();
++    });
+     Widget page({
+       int tab = 0,
+       KnowledgeSection section = KnowledgeSection.ask,
+@@ -800,6 +829,11 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.text('Saved Q&A'));
+     await tester.pumpAndSettle();
++    await _ensureVisibleInVerticalList(
++      tester,
++      find.text('Account A private item'),
++      anchor: find.text('Saved Q&A'),
++    );
+     expect(find.text('Account A private item'), findsOneWidget);
+     expect((await storage.load()).knowledge, isEmpty);
+     await tester.tap(find.text('Back to add a local question'));
+@@ -814,6 +848,11 @@ void main() {
+     await tester.pumpAndSettle();
+ 
+     expect(find.text('Account A private item'), findsNothing);
++    await _ensureVisibleInVerticalList(
++      tester,
++      find.text('Account B private item'),
++      anchor: find.text('Saved Q&A'),
++    );
+     expect(find.text('Account B private item'), findsOneWidget);
+     expect(repository.listCalls, 2);
+     expect((await storage.load()).knowledge, isEmpty);
+@@ -1177,6 +1216,11 @@ void main() {
+     expect((await store.load()).knowledge, isEmpty);
+     await tester.tap(find.text('Saved Q&A'));
+     await tester.pumpAndSettle();
++    await _ensureVisibleInVerticalList(
++      tester,
++      find.text('Personal account item'),
++      anchor: find.text('Saved Q&A'),
++    );
+     expect(find.text('Personal account item'), findsOneWidget);
+     expect(repository.deleteCalls, 0);
+   });
+@@ -1204,14 +1248,10 @@ void main() {
+         repository: repository,
+         store: store,
+       );
+-      await tester.tap(find.text('Import local work'));
++      await _tapVisibleTarget(tester, find.text('Import local work'));
+       await tester.pumpAndSettle();
+-      await tester.tap(
+-        find.descendant(
+-          of: find.byType(AlertDialog),
+-          matching: find.text('Keep this item local'),
+-        ),
+-      );
++      await _ensureVisibleInDialog(tester, find.text('Keep this item local'));
++      await tester.tap(find.text('Keep this item local').hitTestable());
+       await tester.pumpAndSettle();
+       await tester.tap(find.text('Import selected work'));
+       await tester.pumpAndSettle();
+@@ -1294,7 +1334,7 @@ void main() {
+       ),
+     );
+     await tester.pumpAndSettle();
+-    await tester.tap(find.text('Import local work'));
++    await _tapVisibleTarget(tester, find.text('Import local work'));
+     await tester.pumpAndSettle();
+     await tester.tap(find.text('Import selected work'));
+     await tester.pumpAndSettle();
+@@ -1369,7 +1409,14 @@ void main() {
+       await tester.pumpAndSettle();
+       await tester.tap(find.text('Saved Q&A'));
+       await tester.pumpAndSettle();
+-      await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
++      await _ensureVisibleInVerticalList(
++        tester,
++        find.byTooltip('Edit personal-account Knowledge'),
++        anchor: find.text('Saved Q&A'),
++      );
++      await tester.tap(
++        find.byTooltip('Edit personal-account Knowledge').hitTestable(),
++      );
+       await tester.pumpAndSettle();
+       await tester.enterText(
+         find
+@@ -1390,7 +1437,7 @@ void main() {
+ 
+       expect(repository.updateRevisions, [1]);
+       expect(find.text('My pending edit'), findsOneWidget);
+-      await tester.tap(find.text('Review account change'));
++      await _tapVisibleTarget(tester, find.text('Review account change'));
+       await tester.pumpAndSettle();
+       expect(
+         find.textContaining('Latest saved version (revision 2)'),
+@@ -1401,7 +1448,7 @@ void main() {
+       await tester.pumpAndSettle();
+       expect(find.text('My pending edit'), findsOneWidget);
+ 
+-      await tester.tap(find.text('Review account change'));
++      await _tapVisibleTarget(tester, find.text('Review account change'));
+       await tester.pumpAndSettle();
+       await tester.tap(find.text('Save my pending edit'));
+       await tester.pumpAndSettle();
+@@ -1539,7 +1586,7 @@ void main() {
+       (await store.load()).knowledge.single['id'],
+       'local-knowledge',
+     );
+-    await tester.tap(find.text('Import local work'));
++    await _tapVisibleTarget(tester, find.text('Import local work'));
+     await tester.pumpAndSettle();
+     await tester.tap(find.text('Import selected work'));
+     await tester.pumpAndSettle();
+@@ -1892,7 +1939,7 @@ void main() {
+       );
+       unawaited(router.push<void>('/personal/ask'));
+       await tester.pumpAndSettle();
+-      await tester.tap(find.text('Import local work'));
++      await _tapVisibleTarget(tester, find.text('Import local work'));
+       await tester.pumpAndSettle();
+       await tester.tap(find.text('Import selected work'));
+       await tester.pump();
+@@ -1936,7 +1983,7 @@ void main() {
+         repository: repository,
+         store: store,
+       );
+-      await tester.tap(find.text('Import local work'));
++      await _tapVisibleTarget(tester, find.text('Import local work'));
+       await tester.pumpAndSettle();
+       await tester.tap(find.text('Import selected work'));
+       await tester.pumpAndSettle();
+@@ -1973,7 +2020,7 @@ void main() {
+         repository: repository,
+         store: store,
+       );
+-      await tester.tap(find.text('Import local work'));
++      await _tapVisibleTarget(tester, find.text('Import local work'));
+       await tester.pumpAndSettle();
+       await tester.tap(find.text('Import selected work'));
+       await tester.pumpAndSettle();
+diff --git a/apps/flutter_app/test/ask_page_test.dart b/apps/flutter_app/test/ask_page_test.dart
+index aca6462..0190c14 100644
+--- a/apps/flutter_app/test/ask_page_test.dart
++++ b/apps/flutter_app/test/ask_page_test.dart
+@@ -370,6 +370,21 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.text('Private account policy'));
+     await tester.pumpAndSettle();
++    final personalQuestionsList = find
++        .ancestor(of: find.text('Saved Q&A'), matching: find.byType(Scrollable))
++        .first;
++    await tester.scrollUntilVisible(
++      find.text('Private account policy'),
++      180,
++      scrollable: personalQuestionsList,
++    );
++    await tester.pumpAndSettle();
++    await Scrollable.ensureVisible(
++      tester.element(find.text('Private account policy')),
++      alignment: 0.5,
++    );
++    await tester.pumpAndSettle();
++    expect(find.text('Private account policy').hitTestable(), findsOneWidget);
+     expect(find.text('Saved Q&A'), findsOneWidget);
+     expect(find.text('Private account policy'), findsOneWidget);
+     _expectKnowledgeSubtitle(
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index 14ac705..32f2ff7 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -1160,7 +1160,11 @@ void main() {
+     );
+     await tester.enterText(question, 'Keep this draft');
+     final save = find.widgetWithText(FilledButton, 'Save locally');
+-    await tester.ensureVisible(save);
++    await _ensureVisibleInVerticalList(
++      tester,
++      save,
++      anchor: question,
++    );
+     await tester.pumpAndSettle();
+     await tester.tap(save);
+     await tester.pump(const Duration(milliseconds: 300));
+@@ -1894,6 +1898,25 @@ void main() {
+   }
+ }
+ 
++Future<void> _ensureVisibleInVerticalList(
++  WidgetTester tester,
++  Finder target, {
++  required Finder anchor,
++}) async {
++  final scrollable = find
++      .ancestor(of: anchor, matching: find.byType(Scrollable))
++      .first;
++  expect(
++    tester.widget<Scrollable>(scrollable).axisDirection,
++    AxisDirection.down,
++  );
++  await tester.scrollUntilVisible(target, 180, scrollable: scrollable);
++  await tester.pumpAndSettle();
++  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
++  await tester.pumpAndSettle();
++  expect(target.hitTestable(), findsOneWidget);
++}
++
+ Future<void> _pumpUntilEnabled(WidgetTester tester, Finder finder) async {
+   for (var attempt = 0; attempt < 40; attempt++) {
+     await tester.pump(const Duration(milliseconds: 50));
+diff --git a/apps/flutter_app/test/guest_interact_widget_test.dart b/apps/flutter_app/test/guest_interact_widget_test.dart
+index df7c6d3..3c70b69 100644
+--- a/apps/flutter_app/test/guest_interact_widget_test.dart
++++ b/apps/flutter_app/test/guest_interact_widget_test.dart
+@@ -114,6 +114,11 @@ void main() {
+ 
+       await tester.enterText(localSearch, '');
+       await tester.pumpAndSettle();
++      await _ensureVisibleInGuestList(
++        tester,
++        find.text('Incident response'),
++        anchor: find.text('Saved Q&A'),
++      );
+       expect(find.text('Password rotation'), findsOneWidget);
+       expect(find.text('Incident response'), findsOneWidget);
+       final passwordRotationCard = find.ancestor(
+@@ -253,6 +258,11 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.text('Interact').first);
+     await tester.pumpAndSettle();
++    await _ensureVisibleInGuestList(
++      tester,
++      find.text('A long session title that should truncate cleanly'),
++      anchor: find.text('Create session locally'),
++    );
+     await tester.tap(
+       find.text('A long session title that should truncate cleanly'),
+     );
+@@ -361,7 +371,12 @@ void main() {
+       await tester.pumpAndSettle();
+       await tester.tap(find.text('Interact').first);
+       await tester.pumpAndSettle();
+-      await tester.tap(find.text('Legacy session'));
++      await _ensureVisibleInGuestList(
++        tester,
++        find.text('Legacy session'),
++        anchor: find.text('Create session locally'),
++      );
++      await tester.tap(find.text('Legacy session').hitTestable());
+       await tester.pumpAndSettle();
+ 
+       expect(find.textContaining('duplicate participant IDs'), findsOneWidget);
+@@ -469,14 +484,24 @@ void main() {
+         await tester.pumpAndSettle();
+         await tester.tap(find.text('Interact').first);
+         await tester.pumpAndSettle();
+-        await tester.tap(find.text('Two-person interview'));
++        await _ensureVisibleInGuestList(
++          tester,
++          find.text('Two-person interview'),
++          anchor: find.text('Create session locally'),
++        );
++        await tester.tap(find.text('Two-person interview').hitTestable());
+         await tester.pumpAndSettle();
+       }
+ 
+       await showWorkspace();
+       expect(find.byTooltip('Active participant help'), findsOneWidget);
+       expect(find.byTooltip('Prepared question help'), findsOneWidget);
+-      await tester.tap(find.byTooltip('Prepared question help'));
++      await _ensureVisibleInGuestList(
++        tester,
++        find.byTooltip('Prepared question help'),
++        anchor: find.text('Two-person interview'),
++      );
++      await tester.tap(find.byTooltip('Prepared question help').hitTestable());
+       await tester.pumpAndSettle();
+       expect(
+         find.text(
+@@ -540,6 +565,11 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.text('Interact').first);
+     await tester.pumpAndSettle();
++    await _ensureVisibleInGuestList(
++      tester,
++      find.text('Two-person interview'),
++      anchor: find.text('Create session locally'),
++    );
+     await tester.tap(find.text('Two-person interview'));
+     await tester.pumpAndSettle();
+     await tester.tap(find.text('Download / Share PDF'));
+@@ -1271,6 +1301,25 @@ Finder _field(String label) => find.byWidgetPredicate(
+   (widget) => widget is TextField && widget.decoration?.labelText == label,
+ );
+ 
++Future<void> _ensureVisibleInGuestList(
++  WidgetTester tester,
++  Finder target, {
++  required Finder anchor,
++}) async {
++  final scrollable = find
++      .ancestor(of: anchor, matching: find.byType(Scrollable))
++      .first;
++  expect(
++    tester.widget<Scrollable>(scrollable).axisDirection,
++    AxisDirection.down,
++  );
++  await tester.scrollUntilVisible(target, 180, scrollable: scrollable);
++  await tester.pumpAndSettle();
++  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
++  await tester.pumpAndSettle();
++  expect(target.hitTestable(), findsOneWidget);
++}
++
+ TextField _answerField(WidgetTester tester) =>
+     tester.widget<TextField>(_field('Local answer').first);
+ 
