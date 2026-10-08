@@ -1,5 +1,11 @@
 # Interact parity batch 4 — authorised implementation, 2026-10-08
 
+## Batch 4 timeout recovery — 2026-10-08, 17:47 BST
+
+First session timed out after 25m31s. Durable checkpoint independently fetched: `9fa5caa84fb4da1f3b25f81602385c60336ca8e0` on `copilot/fixinteract-parity-batch4-edit-shared-copy` (prior editor commit `8db08bd`). Pushed source/editor integration, backend and widget tests and IP01–IP24 acceptance matrix inspected; saved `batch4-widget.log` confirms 35 Group widget passes. Copilot reports 115 existing Flutter and 198 PostgreSQL-enabled backend passes, not independently rerun. Final full Flutter/release, human-readable validation receipts, original mailbox/provenance and unchanged git-am proof were missing.
+
+Founder authorised completing batch 4. ONE completion request sent to SAME task `49641b6c-45e3-447f-9db4-2675b4a3fdde` / SAME branch from exact checkpoint; UI confirms **Queued, 2 sessions**, preparing environment. No competing job or main/base restart. Require final complete validation and immutable original exact-5a2dd264 mailbox; disclose early temporary environment captured then removed, ensure clean final source and complete reproducible mailbox without silently filtering history. Independent review follows coherent delivery. Batch 4 is NOT accepted or deployed. DEV remains batch 3, Codespace stopped; hosted auth investigation paused again by founder, device/authenticated acceptance OPEN.
+
 Founder authorised "start batch 4 work" and selected **Edit shared copy**: existing members with edit permission may edit a Group's shared Interact questions and answers; the original personal/local session remains independent. No live link or automatic synchronisation to originals. Groups already supports Knowledge and Interact copies.
 
 ## Exact baseline and workflow
