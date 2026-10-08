@@ -25,7 +25,7 @@ class GuidedPage extends ConsumerWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(32, 28, 32, 12),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -33,18 +33,22 @@ class GuidedPage extends ConsumerWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(
-                  'IntQAFlow Interact',
-                  style: Theme.of(context).textTheme.headlineMedium,
+                  'Interact',
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                Tooltip(
-                  message: 'Import legacy Interact JSON',
-                  child: IconButton(
-                    icon: const Icon(Icons.upload_file_outlined),
-                    onPressed: () => _guidedAction(
-                      context,
-                      () => _importLegacy(context, ref),
-                    ),
+                PopupMenuButton<String>(
+                  tooltip: 'Interact options',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (_) => _guidedAction(
+                    context,
+                    () => _importLegacy(context, ref),
                   ),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'import',
+                      child: Text('Import legacy Interact JSON'),
+                    ),
+                  ],
                 ),
                 FilledButton.icon(
                   icon: const Icon(Icons.add),
@@ -60,10 +64,10 @@ class GuidedPage extends ConsumerWidget {
           const TabBar(
             isScrollable: true,
             tabs: [
-              Tab(text: 'Active sessions'),
+              Tab(text: 'Active'),
               Tab(text: 'Templates'),
-              Tab(text: 'Completed sessions'),
-              Tab(text: 'Archived sessions'),
+              Tab(text: 'Completed'),
+              Tab(text: 'Archived'),
             ],
           ),
           Expanded(
