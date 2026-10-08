@@ -712,7 +712,16 @@ void main() {
   ) async {
     await pumpGuestWorkspace(tester);
 
-    expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+    expect(find.text('Guest workspace'), findsOneWidget);
+    expect(find.textContaining('Guest workspace ·'), findsNothing);
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Guest workspace · Saved on this device'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Groups'), findsNothing);
     await tester.tap(find.byTooltip('Guest workspace options'));
     await tester.pumpAndSettle();
@@ -758,7 +767,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+    expect(find.text('Guest workspace'), findsOneWidget);
     expect(find.byTooltip('Groups'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -789,7 +798,7 @@ void main() {
     await tester.tap(find.text('Back to workspace'));
     await tester.pumpAndSettle();
 
-    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+    expect(find.text('Guest workspace'), findsOneWidget);
     await tester.tap(find.text('Interact').first);
     await tester.pumpAndSettle();
     expect(find.text('Work in progress'), findsOneWidget);
@@ -843,7 +852,16 @@ void main() {
       sharedIdentityActive: true,
     );
 
-    expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+    expect(find.text('Guest workspace'), findsOneWidget);
+    expect(find.textContaining('Guest workspace ·'), findsNothing);
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Guest workspace · Saved on this device'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Workspace storage information'));
     await tester.pumpAndSettle();
     expect(
@@ -2698,18 +2716,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Registered local workspace'), findsOneWidget);
-    expect(find.text('IntQAFlow guest workspace'), findsNothing);
+    expect(find.text('Guest workspace'), findsNothing);
     expect(find.byTooltip('Workspace options'), findsOneWidget);
     expect(find.byTooltip('Guest workspace options'), findsNothing);
     expect(find.textContaining('guest'), findsNothing);
     expect(
-      find.text(
+      find.textContaining('Registered personal account · Local copy'),
+      findsNothing,
+    );
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(
         'Registered personal account · Local copy · Saved on this device',
       ),
       findsOneWidget,
     );
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
     expect(
       find.textContaining(
         'Local drafts stay in this browser profile and may be visible to people using it.',
@@ -2746,7 +2768,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Checking account'), findsOneWidget);
-    expect(find.text('IntQAFlow guest workspace'), findsNothing);
+    expect(find.text('Guest workspace'), findsNothing);
   });
 
   testWidgets('auth errors retain the signed-in status as unavailable', (
