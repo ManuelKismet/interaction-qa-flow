@@ -1,6 +1,20 @@
 # Batch 3 independent review — 2026-10-08
 
-Status: **NOT ACCEPTED / NOT DEPLOYED**. Founder authorised independent next steps at 15:06 BST.
+## Batch 3 DEV frontend rollout — 2026-10-08 (current)
+
+**Reviewed batch3 frontend source `5a2dd26410a428b6a0b516efe53afc37d89362b7` is deployed to DEV.** Repository tree`46e373deec7f3351dd307d5b68d3e7042d75122b`, app subtree`1a3642d9fde6dd377300c056966712174dcae89a`. Includes batches1+2 and independently reviewed batch3 organisation/guest/personal editor, scoped clipboard safety and uncertain-delete/Undo recovery. Three immutable mailbox handoffs independently match exact bytes/SHA/tree. No repository merge or production change.
+
+Independent final gates: Flutter298PASS exit0 (38s), locked offline pubgetPASS, format2correctionfiles0changes, analyzer0errors0warnings12baselineinfos(exit1 solelyinfos). ConfiguredDEVreleasePASS using existing publicDEVdefines and AUTH_DIAGNOSTICS=true/no-wasm-dry-run/pwa-strategy=none in isolated Codespace worktree; runner54.5s. No appsource changes after validation. Backend unchanged; existing158backend/PG receipt retained, not new rerun.
+
+Hosting **release`1791473511974000` / version`f2b2a3b33b4acd94`**,36files, deploy exit0. BOTH origins (`intqaflow-dev.firebaseapp.com`, `intqaflow-dev.web.app`) served exact reviewed build bytes for index/bootstrap/main. Main.dart.js4645494bytes SHA256`90e2dfda9ebbbc777b89d70d249e3ba30402291826c4592325c7d52b7dc995cd`; index1531bytes SHA`a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858`; bootstrap9805bytes SHA`0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67`.
+
+API **`intqaflow-dev-api-review80f421d`100%traffic unchanged**, public health200/ready200. No API deployment, DB/proxy/schema/migration/IAM/serviceidentity/credential/firewall/access change. Hosting rollback retained **prior version`fd994b8bd5fe8b22` / release`1791460845367000`**, no rollback triggered; leave additive schema/account data intact.
+
+Codespace **bookish happiness STOPPED**, explicitly confirmed GitHub toast and Last used (no Active). Isolated source`/workspaces/intqaflow-batch3-independent-20261008`, receipts`/workspaces/batch3-independent-receipts-20261008` (build-receipt.json/publication-verified.json/logs). Root four pre-existing dirty docs preserved. No ongoing test/build/deploy worker or DB started.
+
+**Still OPEN:** IP19guest/nonmember reload returns to list (no routing/persistence decision implemented); hosted authenticated personal/organisation/Groups and physical/device/accessibility acceptance (earlier cloud-browser auth issue, founder paused). Hosted-file and API verification are not an authenticated UI acceptance pass. No new hosted guest scenario matrix executed after this rollout. Batch4Groupcollaboration/fullcrossroleacceptance not started. See `interact-parity-batch3-independent-review-20261008.md` for independent gates/findings and source receipts. Next remaining product work is guest reload decision and batch4; authenticated checks remain founder/manual pending as previously agreed.
+
+Status: **FINAL CORRECTED SOURCE VALIDATED AND DEPLOYED TO DEV (scoped acceptance)**. Guest reload decision and hosted authenticated acceptance remain OPEN. Earlier review entries below are historical; current outcome follows.
 
 ## Verified delivery and provenance
 
