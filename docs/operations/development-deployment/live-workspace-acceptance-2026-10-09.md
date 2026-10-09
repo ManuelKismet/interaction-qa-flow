@@ -85,3 +85,29 @@ Owner identity and scoped delegation remain unconfirmed. No source or deployment
 Cloud Run request logs confirm the two member PATCH requests at 2026-10-09T11:12:44.867833Z and 11:14:01.177128Z returned HTTP 403. Read-only SQL transaction against intqaflow-dev:europe-west2:intqaflow-dev-pg / intqaflow_dev confirms organisation_owners has no records for organisation 15f73358-dbee-46e4-a5fa-c30c3301a282. adminuser@test.com remains admin with no primary department; regularuser1@test.com remains employee in dc65db82-a4e6-4188-8e90-59620d4f8c7d (E2E Operations Department). This organisation has no actual owner configured. DEV connection credentials stayed in process memory and were not printed. Temporary SQL proxy terminated after the query. No database mutation performed. Initial proxy runtime lookup failed, resolved by adding the existing gcloud binary directory to the proxy's process PATH.
 
 To complete owner/delegation acceptance, a controlled DEV-only assignment of the existing adminuser account as initial owner of this existing test organisation requires separate approval. The previous temporary answer-owner approval does not cover granting organisation ownership. Codespace is stopped again after read-only investigation.
+
+## Owner and request continuation — 9 October 2026, 13:35 London
+
+This section supersedes earlier owner/delegation prerequisites. Founder approved assigning adminuser@test.com as owner of the exact DEV E2E organisation. The preceding session reported the backend assignment and audit event verified; this continuation independently observed My organisation displaying Organisation owner and owner administration controls. No new ownership grant was performed in this continuation.
+
+### Scoped verification and complete restoration
+- Fresh regularuser1 sign-in showed answer_owner in DEV QA 20261009 test department; unrelated team-management/request-review capabilities remained ungranted.
+- Created synthetic question 28606837-1f2d-48cc-bfc7-21ffefd85d48 in that department, submitted its synthetic answer, and verified through the ordinary confirmation dialog. UI showed resolved and Verified by regularuser1@test.com, review 2027-04-07.
+- Existing unassigned question b7d13d8c-db9a-4341-8904-213ba87d14b2 had no Verify control. This is a UI scope check, not a direct API denial test for every other department.
+- As owner, restored Employee and E2E Operations Department. A separate department-answer-owner record remained after role restoration; explicitly removed it. Fresh reload showed employee/original department and No answer owners assigned.
+- Subsequent regularuser1 sign-in confirmed original teams, all four delegated capabilities Not granted, and Admin/Review navigation absent. Restoration is complete; no temporary verification authority remains.
+
+### Membership requests and owner review
+- Add member rejects malformed email. Existing-member submission opens an explicit change confirmation; cancelled without changing the restored membership.
+- Owner administration lists Create Teams, Manage Team membership, Review, and Approve answers. Grants/owner appointment are separate from administrator titles.
+- Submitted one test-team request as adminuser and one as regularuser1. A repeat member submission left one visible pending item in the member view. Owner review showed two request IDs: 5b15e236-cdf8-41fd-ab4d-2332e93c15c1 and fcada1d0-6d17-471e-8dcb-52e9cd3b1873, both targeting test team 49402f87-13b7-43b4-9c5a-bd70408f2707.
+- Declined both through owner review. Queue then showed No requests are pending in your scopes, and the test team remained empty. No membership approval or access expansion occurred.
+- Earlier inference that the two requests proved a duplicate bug is withdrawn: two accounts submitted requests. Likewise initial absence of the owner's request from review does not prove self-review protection. Requester names are absent, so request ownership/self-review/duplicate handling need source or backend confirmation.
+- Review cards expose raw target/request UUIDs instead of member and team names; record as a clarity finding.
+
+### Remaining and source diagnosis
+- Successful membership approval and post-approval member state remain untested. No group invitation redemption/approval is claimed by the organisation membership tests.
+- Organisation question reload resetting to root is supported by source: sessionDeepLinkInitialLocation accepts only guided/personal Interact session routes, and app_router uses overridePlatformDefaultLocation: true. Other routes default to '/'. Application fix/tests remain Copilot scope; no fix or deployment performed here.
+- Private organisation session denial spinner, personal-session reload, proposals' repeat submission/feedback, CSV/print, lifecycle edges and live narrow-screen checks remain open or unverified as previously recorded.
+- Earlier 392 Flutter/201 backend passes belong to the deployment receipt; no suites rerun in this continuation. Existing Codespace was not started here.
+- Evidence saved: intqaflow-permissions-restored.jpg and intqaflow-request-review.jpg. Browser retains the owner session for remaining checks.
