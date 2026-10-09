@@ -110,6 +110,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
     this.onKnowledgeSectionChanged,
     this.initialWorkspaceTab = 0,
     this.onWorkspaceTabChanged,
+    this.onGuestLocationChanged,
     this.personalWorkspaceEnabled = false,
     this.sharedIdentityActive = false,
     this.accountUser,
@@ -129,6 +130,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
   final ValueChanged<KnowledgeSection>? onKnowledgeSectionChanged;
   final int initialWorkspaceTab;
   final ValueChanged<int>? onWorkspaceTabChanged;
+  final void Function(int, String?)? onGuestLocationChanged;
   final bool personalWorkspaceEnabled;
   final bool sharedIdentityActive;
   final User? accountUser;
@@ -1379,12 +1381,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (!mounted) return;
     setState(() => _openSessionId = id);
     widget.onSessionRouteChanged?.call(id);
+    widget.onGuestLocationChanged?.call(1, id);
   }
 
   void _closeSession() {
     if (!mounted || _openSessionId == null) return;
     setState(() => _openSessionId = null);
     widget.onSessionRouteChanged?.call(null);
+    widget.onGuestLocationChanged?.call(1, null);
   }
 
   void _closeAccountScopedDialogs() {
@@ -1499,6 +1503,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }
 
   void _handleWorkspaceTabChanged(int index) {
+    widget.onGuestLocationChanged?.call(index, _openSessionId);
     final onChanged = widget.onWorkspaceTabChanged;
     if (onChanged == null) return;
     unawaited(() async {
