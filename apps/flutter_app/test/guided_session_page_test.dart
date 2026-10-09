@@ -57,10 +57,14 @@ void main() {
     tester.view.physicalSize = const Size(360, 800);
     addTearDown(tester.view.resetPhysicalSize);
     var requestCount = 0;
+    var allowRecovery = false;
     Future<GuidedSessionDetail> loadSession() async {
       requestCount++;
-      if (requestCount == 1) {
-        throw const ApiException('That item could not be found.');
+      if (!allowRecovery) {
+        throw const ApiException(
+          'That item could not be found.',
+          statusCode: 404,
+        );
       }
       return _session;
     }
@@ -105,15 +109,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(requestCount, 1);
+    final deniedRequestCount = requestCount;
+    expect(deniedRequestCount, greaterThanOrEqualTo(1));
+    await tester.pump(const Duration(seconds: 5));
+    expect(requestCount, deniedRequestCount);
     expect(find.text('Unable to load this Interact session.'), findsOneWidget);
     expect(find.text('What happened?'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
+    allowRecovery = true;
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
-    expect(requestCount, 3);
+    expect(requestCount, deniedRequestCount + 2);
     expect(find.text('Unable to load this Interact session.'), findsNothing);
     expect(find.text('What happened?'), findsOneWidget);
     expect(
