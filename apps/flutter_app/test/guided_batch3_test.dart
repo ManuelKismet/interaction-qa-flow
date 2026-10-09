@@ -118,6 +118,7 @@ class _FakeRepository extends GuidedRepository {
   @override
   Future<void> transition(String sessionId, String action) async {
     calls.add('transition:$action');
+    if (action == 'reopen') session = _session(status: 'active');
   }
 
   @override
@@ -408,6 +409,61 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('completed session is read-only until explicit reopen', (
+    tester,
+  ) async {
+    final repository = await _mount(tester, status: 'completed');
+    expect(
+      find.byKey(const ValueKey('guided-session-completed-notice')),
+      findsOneWidget,
+    );
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Add participant'), findsNothing);
+    expect(find.byTooltip('Active participant actions'), findsNothing);
+    expect(repository.calls.where((call) => !call.startsWith('get')), isEmpty);
+    await _tapVisible(tester, find.byTooltip('Session actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit session details'), findsNothing);
+    expect(find.text('Archive session'), findsOneWidget);
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Reopen session'));
+    await tester.tap(find.text('Reopen session'));
+    await tester.pumpAndSettle();
+    expect(
+      repository.calls.where((call) => call == 'transition:reopen'),
+      hasLength(1),
+    );
+    expect(
+      find.byKey(const ValueKey('guided-session-completed-notice')),
+      findsNothing,
+    );
+    expect(find.text('Complete'), findsOneWidget);
+    expect(find.byType(TextField), findsWidgets);
+    expect(find.text('Add participant'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('completed viewer has reports but no reopen or edit controls', (
+    tester,
+  ) async {
+    await _mount(tester, status: 'completed', userId: 'employee-2');
+    expect(
+      find.byKey(const ValueKey('guided-session-completed-notice')),
+      findsOneWidget,
+    );
+    expect(find.text('Reopen session'), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+    await _expectHistoryOnlyActions(tester);
+    await _tapVisible(tester, find.byTooltip('Reports and export'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All participants report'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Secret answer A'), findsWidgets);
+    expect(find.textContaining('Secret answer B'), findsWidgets);
+    expect(find.byType(TextField), findsNothing);
   });
 
   testWidgets('archived session is read-only with no reopen control', (
