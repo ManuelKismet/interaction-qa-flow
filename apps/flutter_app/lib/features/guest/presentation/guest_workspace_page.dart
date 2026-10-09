@@ -6457,7 +6457,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           title: Text(
             action == 'transfer_admin'
                 ? 'Request group administration?'
-                : 'Remove this guest member?',
+                : 'Remove this Group member?',
           ),
           content: Text(
             action == 'transfer_admin'
