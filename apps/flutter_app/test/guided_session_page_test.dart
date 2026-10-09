@@ -113,7 +113,12 @@ void main() {
     expect(deniedRequestCount, greaterThanOrEqualTo(1));
     await tester.pump(const Duration(seconds: 5));
     expect(requestCount, deniedRequestCount);
-    expect(find.text('Unable to load this Interact session.'), findsOneWidget);
+    expect(
+      find.text(
+        'This Interact session is unavailable or you do not have permission to view it.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('What happened?'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
@@ -122,7 +127,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(requestCount, deniedRequestCount + 2);
-    expect(find.text('Unable to load this Interact session.'), findsNothing);
+    expect(
+      find.text(
+        'This Interact session is unavailable or you do not have permission to view it.',
+      ),
+      findsNothing,
+    );
     expect(find.text('What happened?'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('guided-session-read-only-notice')),
