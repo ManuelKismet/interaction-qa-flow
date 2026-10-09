@@ -1,0 +1,26 @@
+name: Organisation request refresh validation
+on:
+  pull_request:
+    paths:
+      - 'apps/flutter_app/lib/features/organisation/**'
+      - 'apps/flutter_app/test/organisation*'
+      - '.github/workflows/organisation-request-validation.yml'
+permissions:
+  contents: read
+jobs:
+  organisation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib/features/organisation/presentation/organisation_page.dart test/organisation_scope_test.dart
+      - run: flutter test test/organisation_scope_test.dart test/organisation_page_test.dart test/responsive_organisation_test.dart

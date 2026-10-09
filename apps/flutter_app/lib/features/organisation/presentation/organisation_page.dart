@@ -77,6 +77,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
           );
       if (mounted && _isCurrentScope(scope, profile)) {
         ref.invalidate(myOrganisationJoinRequestsProvider);
+        ref.invalidate(pendingOrganisationJoinRequestsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Membership request saved.')),
         );
