@@ -119,12 +119,14 @@ class QuestionsRepository {
     String? body,
     String? departmentId,
     String? teamId,
+    String visibility = 'organisation',
   }) async {
     try {
       final response = await _client.post<Map<String, dynamic>>(
         '/api/v1/questions',
         data: {
           'title': title,
+          'visibility': visibility,
           if (body != null && body.isNotEmpty) 'body': body,
           'department_id': ?departmentId,
           'team_id': ?teamId,
@@ -151,6 +153,7 @@ class QuestionsRepository {
     String? body,
     String? departmentId,
     String? teamId,
+    String? visibility,
     String? reason,
   }) async {
     await _request(
@@ -161,6 +164,7 @@ class QuestionsRepository {
           'body': body,
           'department_id': departmentId,
           'team_id': teamId,
+          if (visibility != null) 'visibility': visibility,
           if (reason != null) 'reason': reason,
         },
       ),
