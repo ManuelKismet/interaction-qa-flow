@@ -80,3 +80,8 @@ Additional live passes:
 - After regularuser2 sign-out, guest search returns only Local fixtures and excludes its Private/group content.
 
 Owner identity and scoped delegation remain unconfirmed. No source or deployment changes made.
+
+## Read-only DEV ownership confirmation
+Cloud Run request logs confirm the two member PATCH requests at 2026-10-09T11:12:44.867833Z and 11:14:01.177128Z returned HTTP 403. Read-only SQL transaction against intqaflow-dev:europe-west2:intqaflow-dev-pg / intqaflow_dev confirms organisation_owners has no records for organisation 15f73358-dbee-46e4-a5fa-c30c3301a282. adminuser@test.com remains admin with no primary department; regularuser1@test.com remains employee in dc65db82-a4e6-4188-8e90-59620d4f8c7d (E2E Operations Department). This organisation has no actual owner configured. DEV connection credentials stayed in process memory and were not printed. Temporary SQL proxy terminated after the query. No database mutation performed. Initial proxy runtime lookup failed, resolved by adding the existing gcloud binary directory to the proxy's process PATH.
+
+To complete owner/delegation acceptance, a controlled DEV-only assignment of the existing adminuser account as initial owner of this existing test organisation requires separate approval. The previous temporary answer-owner approval does not cover granting organisation ownership. Codespace is stopped again after read-only investigation.
