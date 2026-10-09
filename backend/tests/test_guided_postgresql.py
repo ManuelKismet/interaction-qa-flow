@@ -86,3 +86,30 @@ async def test_postgres_guided_concurrent_edits_reject_stale_revision(postgres_s
         assert (await session.get(GuidedQuestion, question.id)).text == ("Changed question" if first == "question" else "Original question")
         assert (await session.get(GuidedAnswer, answer.id)).body == ("" if first == "answer" else "Original answer")
         assert await session.scalar(select(func.count()).select_from(GuidedSessionRevision)) == before + 1
+
+
+@pytest.mark.asyncio
+async def test_postgres_concurrent_knowledge_submissions_share_pending_proposal(postgres_sessions):
+    from app.models.guided import KnowledgeProposal
+    from app.schemas.guided import KnowledgeProposalCreate
+    from app.services.guided_knowledge import GuidedKnowledgeService
+
+    ids = await seed_postgres(postgres_sessions)
+    organisation_id, actor_id = ids["organisation_id"], ids["member"]
+    async with postgres_sessions() as session:
+        service = GuidedService(session)
+        guided = await service.create_session(organisation_id, actor_id, GuidedSessionCreate(title="Proposal concurrency"))
+        participant = await service.add_participant(guided.id, organisation_id, actor_id, GuidedParticipantCreate(name="Alice"))
+        question = await service.add_question(guided.id, organisation_id, actor_id, GuidedQuestionCreate(text="Question", scope="shared"))
+        answer = await service.upsert_answer(question.id, organisation_id, actor_id, GuidedAnswerUpsert(participant_id=participant.id, body="Answer"))
+        payload = KnowledgeProposalCreate(guided_question_id=question.id, guided_answer_id=answer.id)
+
+    async def submit():
+        async with postgres_sessions() as session:
+            return await GuidedKnowledgeService(session).create_proposal(organisation_id, actor_id, payload)
+
+    results = await asyncio.wait_for(asyncio.gather(submit(), submit()), timeout=10)
+    assert results[0].id == results[1].id
+    assert sorted(r.already_pending for r in results) == [False, True]
+    async with postgres_sessions() as session:
+        assert await session.scalar(select(func.count()).select_from(KnowledgeProposal).where(KnowledgeProposal.guided_answer_id == answer.id)) == 1
