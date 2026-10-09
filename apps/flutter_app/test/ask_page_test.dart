@@ -81,12 +81,14 @@ class _QuestionsRepository extends QuestionsRepository {
     String? body,
     String? departmentId,
     String? teamId,
+    String visibility = 'organisation',
   }) async {
     createdQuestions.add({
       'title': title,
       'body': body,
       'departmentId': departmentId,
       'teamId': teamId,
+      'visibility': visibility,
     });
     return 'created-question';
   }
@@ -256,6 +258,103 @@ void _expectKnowledgeSubtitle({
 }
 
 void main() {
+  for (final visibility in ['department', 'team']) {
+    testWidgets(
+      'Ask submits explicit $visibility visibility and requires its scope',
+      (tester) async {
+        final questions = _QuestionsRepository()..returnNoResults = true;
+        final router = GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => const Scaffold(body: AskPage()),
+            ),
+            GoRoute(
+              path: '/questions/:id',
+              builder: (_, _) => const Text('Submitted'),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              questionsRepositoryProvider.overrideWithValue(questions),
+              departmentsProvider.overrideWith((ref) async => [_department()]),
+              teamsProvider.overrideWith((ref) async => [_team()]),
+              personalWorkspaceRepositoryProvider.overrideWithValue(
+                _PersonalRepository(),
+              ),
+              guestGroupRepositoryProvider.overrideWithValue(
+                _GroupRepository(),
+              ),
+              guestWorkspaceStoreProvider.overrideWithValue(
+                GuestWorkspaceStore(_MemoryGuestStorage()),
+              ),
+              askSearchIdentityProvider.overrideWithValue(
+                const AskSearchIdentity(
+                  verifiedUid: 'verified-uid',
+                  membershipState: 'active',
+                  organisationId: 'org-id',
+                ),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.widgetWithText(TextField, 'Ask a question'),
+          'Scoped question',
+        );
+        await tester.pumpAndSettle(const Duration(seconds: 1));
+        final visibilityField = find.byKey(
+          const ValueKey('question-visibility-organisation'),
+        );
+        await tester.ensureVisible(visibilityField);
+        await tester.tap(visibilityField);
+        await tester.pumpAndSettle();
+        final label = visibility == 'team'
+            ? 'Selected team only'
+            : 'Selected department only';
+        await tester.tap(find.text(label).last);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+          isNull,
+        );
+        await tester.ensureVisible(
+          find.text('Details and assignment (optional)'),
+        );
+        await tester.tap(find.text('Details and assignment (optional)'));
+        await tester.pumpAndSettle();
+        if (visibility == 'team') {
+          await tester.ensureVisible(find.text('No team'));
+          await tester.tap(find.text('No team'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Security · Identity').last);
+        } else {
+          await tester.ensureVisible(find.text('No department'));
+          await tester.tap(find.text('No department'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Security').last);
+        }
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byType(ElevatedButton));
+        await tester.tap(find.byType(ElevatedButton));
+        await tester.pumpAndSettle();
+        expect(find.text('Submitted'), findsOneWidget);
+        expect(questions.createdQuestions.single['visibility'], visibility);
+        expect(
+          questions.createdQuestions.single[visibility == 'team'
+              ? 'teamId'
+              : 'departmentId'],
+          visibility == 'team' ? 'team' : 'dept',
+        );
+      },
+    );
+  }
+
   testWidgets('Ask suggestions show unified source badges and open source', (
     tester,
   ) async {
@@ -537,6 +636,7 @@ void main() {
           'body': 'I typed this detail.',
           'departmentId': 'dept',
           'teamId': 'team',
+          'visibility': 'organisation',
         },
       ]);
       expect(

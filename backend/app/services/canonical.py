@@ -129,7 +129,7 @@ class CanonicalQuestionService:
         question = await self.canonical.question(question_id, organisation_id)
         if not question:
             raise NotFoundError("Question not found")
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         if self.embedding_provider is None:
             raise RuntimeError("Embedding provider is required for duplicate candidates")
         query = "\n\n".join(
@@ -165,8 +165,8 @@ class CanonicalQuestionService:
         )
         if not question or not target:
             raise NotFoundError("Question not found")
-        self.permissions.require_question_visibility(actor, question)
-        self.permissions.require_question_visibility(actor, target)
+        await self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, target)
         target = await self._root(target, organisation_id, actor)
         if question.id == target.id or question.canonical_question_id == target.id:
             raise ConflictError("Question already resolves to this canonical question")
@@ -288,6 +288,8 @@ class CanonicalQuestionService:
             affected.update((question.id, question) for question in descendants)
         for question in (canonical, *affected.values()):
             await self._validate_structure(question, organisation_id)
+            if self._audience(question) != self._audience(canonical):
+                raise ConflictError("Questions with different visibility audiences cannot be merged")
         await self._require_manager(actor, canonical, *affected.values())
 
         selected = None
@@ -384,7 +386,7 @@ class CanonicalQuestionService:
     ) -> Question:
         seen = {question.id}
         current = question
-        self.permissions.require_question_visibility(actor, current)
+        await self.permissions.require_question_visibility(actor, current)
         while current.canonical_question_id is not None:
             if current.canonical_question_id in seen:
                 raise ConflictError("Circular canonical question relationship detected")
@@ -394,16 +396,25 @@ class CanonicalQuestionService:
             )
             if not parent:
                 raise NotFoundError("Canonical question not found")
-            self.permissions.require_question_visibility(actor, parent)
+            await self.permissions.require_question_visibility(actor, parent)
             current = parent
         return current
 
     async def _require_manager(self, actor: User, *questions: Question) -> None:
         for question in questions:
-            self.permissions.require_question_visibility(actor, question)
+            await self.permissions.require_question_visibility(actor, question)
             await self.permissions.require_answer_manager(
                 actor, question, self.governance, permission="review"
             )
+
+    @staticmethod
+    def _audience(question: Question):
+        scope = {
+            "department": question.department_id,
+            "team": question.team_id,
+            "private": question.author_id,
+        }.get(question.visibility.value)
+        return question.visibility, scope
 
     async def _validate_structure(
         self,

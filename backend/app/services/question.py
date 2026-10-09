@@ -19,7 +19,9 @@ from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedEr
 from app.models.answer import Answer, AnswerStatus
 from app.models.answer_version import AnswerVersion
 from app.models.audit_event import AuditAction, AuditEvent
-from app.models.question import Question, QuestionStatus
+from app.models.question import Question, QuestionStatus, QuestionVisibility
+from app.models.team import Team, TeamStatus
+from app.models.team_membership import TeamMembership
 from app.models.question_change_request import (
     ChangeRequestStatus,
     QuestionChangeRequest,
@@ -101,6 +103,10 @@ class QuestionService:
         await self._validate_team(
             data.team_id, data.department_id, data.organisation_id
         )
+        actor = await self.permissions.actor(data.author_id, data.organisation_id)
+        await self._validate_visibility_scope(
+            actor, data.visibility, data.department_id, data.team_id
+        )
 
         question = Question(**data.model_dump())
         await self.questions.add(question)
@@ -163,7 +169,7 @@ class QuestionService:
         if not detail:
             raise NotFoundError("Question not found")
         question, author, department, team = detail
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         canonical_question = None
         aliases = []
         if question.canonical_question_id:
@@ -242,7 +248,7 @@ class QuestionService:
             canonical = await self.questions.get_for_organisation(
                 canonical_id, organisation_id
             )
-            if not canonical or not self.permissions.can_view_question(
+            if not canonical or not await self.permissions.can_view_question(
                 actor, canonical
             ):
                 return None
@@ -271,6 +277,12 @@ class QuestionService:
         }
         if not changes:
             return question
+        await self._validate_visibility_scope(
+            actor,
+            changes.get("visibility", question.visibility),
+            changes.get("department_id", question.department_id),
+            changes.get("team_id", question.team_id),
+        )
         if (protected or has_contributions) and not await self.permissions.has_permission(
             actor,
             "review",
@@ -314,6 +326,32 @@ class QuestionService:
         if embedding_changed:
             await self._sync_embedding_safely(question)
         return question
+
+    async def _validate_visibility_scope(
+        self, actor: User, visibility: QuestionVisibility,
+        department_id: UUID | None, team_id: UUID | None,
+    ) -> None:
+        if visibility is None:
+            raise ConflictError("Choose a question visibility")
+        if visibility == QuestionVisibility.DEPARTMENT:
+            if department_id is None:
+                raise ConflictError("Department visibility requires a department")
+            if actor.department_id != department_id:
+                raise PermissionDeniedError("Choose your own department for restricted visibility")
+        if visibility == QuestionVisibility.TEAM:
+            if team_id is None:
+                raise ConflictError("Team visibility requires a team")
+            member = await self.session.scalar(select(TeamMembership.id).join(
+                Team, (Team.id == TeamMembership.team_id)
+                & (Team.organisation_id == TeamMembership.organisation_id)
+            ).where(
+                TeamMembership.organisation_id == actor.organisation_id,
+                TeamMembership.user_id == actor.id,
+                TeamMembership.team_id == team_id,
+                Team.status == TeamStatus.ACTIVE,
+            ))
+            if member is None:
+                raise PermissionDeniedError("Choose an active team you belong to for restricted visibility")
 
     async def _validate_team(
         self,
@@ -488,7 +526,7 @@ class QuestionService:
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         if actor.id != question.author_id:
             raise PermissionDeniedError(
                 "Only the question author can request a change review"
@@ -562,7 +600,7 @@ class QuestionService:
         if not row:
             raise NotFoundError("Change request not found")
         request, question = row
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         await self.permissions.require_permission(
             actor,
             "review",
@@ -625,7 +663,7 @@ class QuestionService:
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         return [
             QuestionVersionResponse.model_validate(
                 {
@@ -771,7 +809,7 @@ class QuestionService:
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         await self.permissions.require_question_owner_or_admin(actor, question)
         return question, actor
 

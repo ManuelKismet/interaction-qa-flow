@@ -216,7 +216,7 @@ class GovernanceService:
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         await self.permissions.require_answer_manager(
             actor, question, self.governance, permission="review"
         )
@@ -443,7 +443,7 @@ class GovernanceService:
             )
         )
         async def may_access(question: Question, permission: str) -> bool:
-            if not self.permissions.can_view_question(actor, question):
+            if not await self.permissions.can_view_question(actor, question):
                 return False
             department_id = question.department_id
             if department_id is None and question.team_id is not None:
@@ -584,7 +584,7 @@ class GovernanceService:
         if question.status == QuestionStatus.ARCHIVED:
             raise ConflictError("Archived questions cannot be governed")
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         return answer, question, actor
 
     async def _managed_answer(
