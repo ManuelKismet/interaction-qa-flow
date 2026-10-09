@@ -5,7 +5,7 @@ Process: handle one numbered item at a time. Implementation does not establish h
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
-| F01 | Reload loses organisation question / organisation Interact / Personal Interact route | Implemented on fix/reload-route-20261009; Flutter and hosted validation pending |
+| F01 | Reload loses organisation question / organisation Interact / Personal Interact route | Implemented; automated validation passed; DEV deployment / hosted reload retest pending |
 | F02 | Another creator's private organisation session stays on a spinner | Pending |
 | F03 | Requests you can review remains stale after request submission | Pending |
 | F04 | Request cards show UUIDs rather than requester/team names | Pending |
@@ -38,3 +38,7 @@ Validation so far: production route resolver executed with Dart 3.11.1: 38 route
 - C06 Permanent Group deletion database cascade: not independently asserted; hosted UI deletion passed.
 
 Corrections retained: duplicate membership requests and self-approval bypass were not established defects. Earlier sign-in typo/stale pre-verification state did not establish App Check/cloud-browser rejection. Earlier full-suite failure gate was resolved by 392 Flutter/201 backend release passes.
+
+## F01 automated validation completed
+
+GitHub Actions routing run 37954911646 / job 113902856678 succeeded on PR #22 source b1f02a443c2deb8b029bcbe4324dc3c5d1bc1905 (merge ref 6e1b342b8fbf8daddca22cfc6ade67b62f337850). Flutter 3.41.4: 81 routing/account-state tests passed, including all five new authentication-loading route regressions. Formatting gate passed. Backend validation run 37954911649 also succeeded. Production parser's 38 direct Dart assertions and isolated analysis passed locally. Earlier pending CI text is superseded. F01 is not yet deployed or hosted-verified; F02–F14 unchanged.
