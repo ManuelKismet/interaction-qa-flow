@@ -3538,6 +3538,39 @@ void main() {
       expect(repository.items, hasLength(1));
     });
 
+    testWidgets(
+      'completed-delete Undo does not overwrite a newer account copy',
+      (tester) async {
+        final session = accountSession('s1', 'Removable account session');
+        final repository = _TestPersonalWorkspaceRepository([
+          accountRecord(session),
+        ]);
+        final store = GuestWorkspaceStore(_MemoryGuestStorage());
+        await tester.pumpWidget(
+          accountPage(
+            user: verified('a'),
+            store: store,
+            repository: repository,
+            initialSessionId: 's1',
+          ),
+        );
+        await tester.pumpAndSettle();
+        await deleteOpenSession(tester);
+        await tester.pumpAndSettle();
+        final newer = accountRecord(
+          accountSession('s1', 'Newer account version'),
+        );
+        repository.items = [newer];
+        await tapUndo(tester);
+        await tester.pumpAndSettle();
+        expect(repository.items.single, newer);
+        expect(repository.importUids, isEmpty);
+        expect(repository.updateUids, isEmpty);
+        expect(find.textContaining('changed elsewhere'), findsWidgets);
+        expect((await store.load()).sessions, isEmpty);
+      },
+    );
+
     testWidgets('Undo during an in-flight account DELETE restores one item', (
       tester,
     ) async {
