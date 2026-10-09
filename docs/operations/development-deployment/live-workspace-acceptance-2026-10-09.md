@@ -218,3 +218,10 @@ Created private template DEV QA 20261009 private template validation from origin
 Removed only the new roundtrip session through Delete session. List excludes it and shows removal queued with Undo. Invoking Undo restores it as Local on this device; toast explicitly says private account removal is not undone. Record recovery limitation: Undo restores local content only, not account persistence. Original session and saved template unchanged. Roundtrip local copy retained for investigation.
 
 Checkpoint published through connected GitHub API after CLI lacked credentials. GitHub qa/live-acceptance-20261009 branch was created from copilot/fixinteract-parity-batch4-edit-shared-copy. Existing checkpoint contents replaced with approved local checkpoint, commit b16d9588eeabf0c15bf6b4605180d848ace7d430. Local 60b23fa commit itself was not pushed.
+
+
+## Group archive/restore — 9 October 2026, after 15:12 London
+
+Owner archived only DEV QA 20261009 invitation acceptance. Confirmation states 30-day same-Firebase-account recovery; archive UI lists deadline 2026-11-08T14:13:49.442201+00:00. Restore succeeded; Group returned to approved selector. Reopened member management confirms only QA Owner admin/active and no invitations; removed Contributor remains removed. Evidence intqaflow-group-restore-membership-20261009.jpg. No permanent deletion performed. Owner Group detail uses a modal without a content URL, so no exact deep-link reference was acquired through the visible UI.
+
+Admin staged regularuser1@test.com for DEV QA 20261009 test team. Add team member not submitted; action-time confirmation awaited for temporary membership and subsequent employee-side verification/cleanup. Evidence intqaflow-team-access-retest-ready-20261009.jpg.
