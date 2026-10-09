@@ -5,8 +5,8 @@ Process: handle one numbered item at a time. Implementation does not establish h
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
-| F01 | Reload loses organisation question / organisation Interact / Personal Interact route | Implemented; automated validation passed; DEV deployment / hosted reload retest pending |
-| F02 | Another creator's private organisation session stays on a spinner | Implemented in PR #23; automated validation running; held for combined DEV deployment |
+| F01 | Reload loses organisation question / organisation Interact / Personal Interact route | Fixed / automated-validated in PR #22; held for combined DEV confirmation |
+| F02 | Another creator's private organisation session stays on a spinner | Fixed / automated-validated in PR #23; held for combined DEV confirmation |
 | F03 | Requests you can review remains stale after request submission | Pending |
 | F04 | Request cards show UUIDs rather than requester/team names | Pending |
 | F05 | Repeated Interact-to-Knowledge proposals create duplicate pending proposals / unclear immediate feedback | Pending |
@@ -46,3 +46,12 @@ GitHub Actions routing run 37954911646 / job 113902856678 succeeded on PR #22 so
 ## F02 implementation / combined deployment instruction
 
 PR #23, fix/private-session-denial-20261009, stacked on PR #22. Session-detail provider stops automatic retry on ApiException 403/404; other errors retain ProviderContainer.defaultRetry. Error view gives a safe unavailable/no-permission message and Back to Interact, retaining explicit Try again. Backend private-session rules remain unchanged. Added owner/employee x 403/404 regressions with production retry enabled, no title/response/export/write exposure, no automatic replay, explicit retry and return navigation; transient 503 still recovers. Guided safety/page and route CI running. No merge/deployment. F01 remains automated-validated; F03–F14 pending. F12 wording clarified to Knowledge questions: backend GuidedSessionVisibility separately includes TEAM.
+
+
+## F02 automated validation completed — 9 October 2026
+
+Final source/test commit 23ccfee5a5748eaf446f51616d24e06ae736f49e; GitHub Actions Private session denial validation run 37957307102, job 113910975134: 81 Flutter tests passed (guided_safety_test.dart, guided_page_test.dart, session_deep_link_test.dart); formatting gate passed. Covers owner/employee 403 and 404, no automatic denial retry across 10 seconds, no content/export/write exposure, explicit Try again, Back to Interact, transient 503 recovery, and the existing identity/authority safety and reload regressions. Backend validation run 37957308347 passed. Fresh local isolated API run: tests/test_guided.py and tests/test_guided_safety.py => 41 passed in 5.00s (SQLite/test authentication; not hosted acceptance).
+
+Earlier CI runs failed new test setup/count assumptions, not the existing suite: settle authority by pumping Flutter's fake async zone, and distinguish the successful page's participant-scoped read from retries of the original query. These corrections retained strict single-read denial and two-read original-query recovery assertions. Final complete suite passed; earlier running/failure text is superseded.
+
+F01/F02 are source-fixed and automated-validated, not hosted-verified. Per user instruction, hold all deployment until the findings have been addressed, then perform one combined DEV rollout and hosted retests. F03–F14 and C01–C06 stay tracked. No merge or deployment performed.
