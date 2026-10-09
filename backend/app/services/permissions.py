@@ -7,6 +7,8 @@ from app.models.organisation import Organisation
 from app.models.organisation_owner import OrganisationOwner
 from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.question import Question, QuestionVisibility
+from app.models.team import Team, TeamStatus
+from app.models.team_membership import TeamMembership
 from app.models.user import User, UserRole
 from app.repositories.governance import GovernanceRepository
 from app.repositories.user import UserRepository
@@ -177,6 +179,18 @@ class PermissionService:
                 question.visibility == QuestionVisibility.PRIVATE,
                 question.author_id == actor.id,
             ),
+            and_(
+                question.visibility == QuestionVisibility.TEAM,
+                select(TeamMembership.id)
+                .join(Team, (Team.id == TeamMembership.team_id)
+                      & (Team.organisation_id == TeamMembership.organisation_id))
+                .where(
+                    TeamMembership.organisation_id == actor.organisation_id,
+                    TeamMembership.user_id == actor.id,
+                    TeamMembership.team_id == question.team_id,
+                    Team.status == TeamStatus.ACTIVE,
+                ).exists(),
+            ),
         )
         if actor.department_id is not None:
             visibility = or_(
@@ -188,24 +202,15 @@ class PermissionService:
             )
         return visibility
 
-    @staticmethod
-    def can_view_question(actor: User, question: Question) -> bool:
-        if question.visibility.value == "organisation":
-            return True
-        if question.visibility.value == "private" and question.author_id == actor.id:
-            return True
-        if (
-            question.visibility.value == "department"
-            and actor.department_id is not None
-            and question.department_id is not None
-            and actor.department_id == question.department_id
-        ):
-            return True
-        return False
+    async def can_view_question(self, actor: User, question: Question) -> bool:
+        return bool(await self.session.scalar(select(Question.id).where(
+            Question.id == question.id,
+            Question.organisation_id == actor.organisation_id,
+            self.question_visibility_clause(actor),
+        )))
 
-    @staticmethod
-    def require_question_visibility(actor: User, question: Question) -> None:
-        if PermissionService.can_view_question(actor, question):
+    async def require_question_visibility(self, actor: User, question: Question) -> None:
+        if await self.can_view_question(actor, question):
             return
         raise PermissionDeniedError("You do not have permission to view this question")
 
