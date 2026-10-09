@@ -62,6 +62,20 @@ class _FakeGovernanceRepository extends GovernanceRepository {
   String? assignedOwnerId;
   String? teamMemberId;
   List<TeamMembership> teamMemberships = const [];
+  final editedRoles = <String?>[];
+  final editedDepartments = <String?>[];
+
+  @override
+  Future<OrganisationMember> updateOrganisationMember(
+    String memberId, {
+    String? role,
+    String? departmentId,
+    bool clearDepartment = false,
+  }) async {
+    editedRoles.add(role);
+    editedDepartments.add(departmentId);
+    return adminMember;
+  }
 
   @override
   Future<void> assignOwner(String departmentId, String userId) async {
@@ -92,6 +106,65 @@ class _FakeGovernanceRepository extends GovernanceRepository {
 }
 
 void main() {
+  for (final owner in [false, true]) {
+    testWidgets(
+      '${owner ? 'owner' : 'non-owner admin'} member editor matches role authority',
+      (tester) async {
+        final repository = _FakeGovernanceRepository();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              organisationProfileProvider.overrideWith(
+                (ref) async => OrganisationProfile(
+                  organisationId: 'org-1',
+                  organisationName: 'Example',
+                  userId: 'actor',
+                  role: 'admin',
+                  primaryDepartment: null,
+                  teams: [],
+                  isOwner: owner,
+                  permissions: const {'legacy_admin'},
+                  permissionScopes: [],
+                  assignmentManagers: [],
+                ),
+              ),
+              governanceRepositoryProvider.overrideWithValue(repository),
+              departmentsProvider.overrideWith((ref) async => const [finance]),
+              teamsProvider.overrideWith((ref) async => const []),
+              departmentOwnersProvider.overrideWith((ref) async => const []),
+              organisationMembersProvider.overrideWith(
+                (ref) async => const [adminMember],
+              ),
+            ],
+            child: const MaterialApp(home: Scaffold(body: AdminPage())),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Manage'));
+        await tester.pumpAndSettle();
+        final roleField = find.byKey(
+          const ValueKey('organisation-member-role'),
+        );
+        expect(roleField, owner ? findsOneWidget : findsNothing);
+        if (owner) {
+          await tester.tap(roleField);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Department answer owner').last);
+          await tester.pumpAndSettle();
+        } else {
+          expect(
+            find.text('Only an organisation owner can change this role.'),
+            findsOneWidget,
+          );
+        }
+        await tester.tap(find.text('Save changes'));
+        await tester.pumpAndSettle();
+        expect(repository.editedRoles, [owner ? 'answer_owner' : null]);
+        expect(repository.editedDepartments, [finance.id]);
+      },
+    );
+  }
+
   test('linked team suggests its parent department', () {
     expect(
       suggestedDepartmentForTeam(const [payroll], payroll.id, null),

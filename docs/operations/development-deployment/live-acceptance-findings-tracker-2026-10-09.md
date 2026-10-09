@@ -1,7 +1,7 @@
 # Live acceptance findings tracker — 9 October 2026
 
 Source: live-workspace-acceptance-2026-10-09.md, through commit 077f02f.
-Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F08 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
+Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F09 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Process: handle one numbered item at a time. Implementation does not establish h
 | F06 | Redeemed invitation still previews as valid although join rejects cross-account reuse | Fixed / automated-validated in PR #27; held for combined DEV confirmation |
 | F07 | Registered Group member removal says guest member | Fixed / automated-validated in PR #28; held for combined DEV confirmation |
 | F08 | Personal Interact Undo restores local content without restoring account persistence | Fixed / automated-validated in PR #29; held for combined DEV confirmation |
-| F09 | Non-owner admin role-editing controls offered although server rejects with 403 | Pending; historical state, non-owner UI not retested |
+| F09 | Non-owner admin role-editing controls offered although server rejects with 403 | Fixed / automated-validated in PR #30; held for combined DEV confirmation |
 | F10 | Inaccessible Group deep link silently falls back to another approved Group | Pending |
 | F11 | Guest reload returns Knowledge; saved Interact can be reopened | Pending behavior review; reopening previously accepted |
 | F12 | Knowledge question team/department assignment alone does not restrict organisation-visible questions; Interact separately supports explicit team visibility | Pending behavior review; current policy verified |
@@ -109,3 +109,13 @@ Undo retains original account intent and UID. For a completed deletion it queues
 Final tested source commit 9609385fe06fab5be8d6e0b1a9f3cc08215a59d2. Personal session Undo validation run 37967446579 / job 113945235239: 109 tests passed (account_state_widget_test.dart, guest_interact_widget_test.dart, guest_workspace_store_test.dart); formatting passed. New completed-delete Undo regression asserts one restored account item, original content, original UID, no session in guest browser storage, and survival after reconstructing the page with fresh browser storage. New concurrent-account-content regression asserts a newer remote copy is not overwritten and explicit conflict review is shown. Existing pending/in-flight/failed/uncertain deletion, lost acknowledgement, conflict, UID/signout and guest-storage cases pass. Group dialog/repository run 37967446508 / job 113945234797: 39 tests passed. Backend validation run 37967446477 / job 113945234688: 173 passed, 33 skipped; analysis/compile/dependency checks passed. Local format and git diff --check passed. Earlier initial 108-test pass was superseded by the final reconciliation/conflict regression.
 
 F01–F08 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F09–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.
+
+## F09 implementation and automated validation — 9 October 2026
+
+Draft PR #30: https://github.com/ManuelKismet/interaction-qa-flow/pull/30, branch fix/owner-only-role-controls-20261009, stacked on PR #29. Fresh source review confirmed the historical mismatch: Manage member only excluded granting Admin for non-owners, while other existing-role changes remained offered; every update included role, even a department-only save. Backend update_member rejects any role/status field from a non-owner.
+
+Existing-member editor now renders role as read-only with an owner-only explanation for non-owner legacy admins. Their update passes null role, which the existing GovernanceRepository omits from the PATCH body; department editing remains available. Owners retain the role dropdown and existing Admin confirmation. New-member creation and backend permission rules remain unchanged. No F10–F14 work performed.
+
+Tested source/workflow commit d044f85d4336564195359ff52ce4f80095003c50. Owner role controls validation run 37968435458 / job 113948601611: 14 Flutter tests passed across team_ui_test.dart, organisation_page_test.dart and organisation_scope_test.dart, with formatting passed. Two new routed-surface widget cases assert no role dropdown for non-owner, owner-only explanation, null role on non-owner department save, owner dropdown permitting answer-owner change, submitted owner role, and preserved department value. Existing team/membership controls and organisation identity/capability tests passed. Backend validation run 37968435284 / job 113948600880: 173 passed, 33 skipped; analysis/compilation/dependency gates passed. Local formatting and git diff --check passed. Hosted non-owner retest remains pending the combined deployment.
+
+F01–F09 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F10–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.

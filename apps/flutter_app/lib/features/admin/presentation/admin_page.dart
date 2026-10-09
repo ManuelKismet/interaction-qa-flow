@@ -594,6 +594,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
       initialDepartmentId: member.departmentId,
       includeEmail: false,
       allowAdminRole: allowAdminRole,
+      canEditRole: allowAdminRole,
     );
     if (values == null || !mounted) return;
     final confirmAdmin = values['role'] == 'admin' && member.role != 'admin';
@@ -625,7 +626,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
           .read(governanceRepositoryProvider)
           .updateOrganisationMember(
             member.id,
-            role: values['role'] as String,
+            role: allowAdminRole ? values['role'] as String : null,
             departmentId: values['department_id'] as String?,
             clearDepartment: values['department_id'] == null,
           );
@@ -638,6 +639,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
     required String initialRole,
     required bool includeEmail,
     required bool allowAdminRole,
+    bool canEditRole = true,
     String? initialDepartmentId,
   }) => showDialog<Map<String, dynamic>>(
     context: context,
@@ -648,6 +650,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
       initialDepartmentId: initialDepartmentId,
       includeEmail: includeEmail,
       allowAdminRole: allowAdminRole,
+      canEditRole: canEditRole,
     ),
   );
 
@@ -704,6 +707,7 @@ class _OrganisationMemberEditorDialog extends StatefulWidget {
     required this.initialDepartmentId,
     required this.includeEmail,
     required this.allowAdminRole,
+    required this.canEditRole,
   });
 
   final String title;
@@ -712,6 +716,7 @@ class _OrganisationMemberEditorDialog extends StatefulWidget {
   final String? initialDepartmentId;
   final bool includeEmail;
   final bool allowAdminRole;
+  final bool canEditRole;
 
   @override
   State<_OrganisationMemberEditorDialog> createState() =>
@@ -747,21 +752,26 @@ class _OrganisationMemberEditorDialogState
                 labelText: 'Verified registered email',
               ),
             ),
-          DropdownButtonFormField<String>(
-            initialValue: _role,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Organisation role'),
-            items: [
-              DropdownMenuItem(value: 'employee', child: Text('Employee')),
-              DropdownMenuItem(
-                value: 'answer_owner',
-                child: Text('Department answer owner'),
-              ),
-              if (widget.allowAdminRole || widget.initialRole == 'admin')
-                DropdownMenuItem(value: 'admin', child: Text('Admin')),
-            ],
-            onChanged: (value) => setState(() => _role = value ?? _role),
-          ),
+          if (!widget.canEditRole) ...[
+            Text('Organisation role: ${widget.initialRole}'),
+            const Text('Only an organisation owner can change this role.'),
+          ] else
+            DropdownButtonFormField<String>(
+              key: const ValueKey('organisation-member-role'),
+              initialValue: _role,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Organisation role'),
+              items: [
+                DropdownMenuItem(value: 'employee', child: Text('Employee')),
+                DropdownMenuItem(
+                  value: 'answer_owner',
+                  child: Text('Department answer owner'),
+                ),
+                if (widget.allowAdminRole || widget.initialRole == 'admin')
+                  DropdownMenuItem(value: 'admin', child: Text('Admin')),
+              ],
+              onChanged: (value) => setState(() => _role = value ?? _role),
+            ),
           DropdownButtonFormField<String?>(
             initialValue: _departmentId,
             isExpanded: true,

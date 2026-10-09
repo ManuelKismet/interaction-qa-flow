@@ -1,0 +1,26 @@
+name: Owner role controls validation
+on:
+  pull_request:
+    paths:
+      - 'apps/flutter_app/lib/features/admin/presentation/admin_page.dart'
+      - 'apps/flutter_app/test/team_ui_test.dart'
+      - '.github/workflows/owner-role-controls-validation.yml'
+permissions:
+  contents: read
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib/features/admin/presentation/admin_page.dart test/team_ui_test.dart
+      - run: flutter test test/team_ui_test.dart test/organisation_page_test.dart test/organisation_scope_test.dart
