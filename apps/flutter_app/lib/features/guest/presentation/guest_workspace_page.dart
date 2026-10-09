@@ -2155,7 +2155,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                             AccountMembershipStatus.noMembership,
                         saveStatus: _saveStatus,
                       ),
-                      if (hasWorkspaceNavigation) workspaceHelp,
+                      if (hasWorkspaceNavigation &&
+                          _verifiedPersonalUid == null)
+                        workspaceHelp,
                     ],
                   ),
             actions: [
@@ -2168,7 +2170,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       AccountMembershipStatus.noMembership,
                   saveStatus: _saveStatus,
                 ),
-              if (viewport.width < 320 && hasWorkspaceNavigation) workspaceHelp,
+              if (viewport.width < 320 &&
+                  hasWorkspaceNavigation &&
+                  _verifiedPersonalUid == null)
+                workspaceHelp,
               if (compactViewport && !hasWorkspaceNavigation)
                 Builder(
                   builder: (context) => PopupMenuButton<int>(
@@ -2912,7 +2917,9 @@ class _GuestNotice extends StatelessWidget {
     return _GuestInfoButton(
       tooltip: 'Workspace storage information',
       title: 'About this workspace',
-      content: '$status\n\n$explanation$membership',
+      content:
+          '$status\n\n$explanation$membership'
+          '${isPrivateAccount ? "\n\nSearch covers Local, Private, Group and Organisation Knowledge and Interact within your access permissions. Interact search includes session titles, questions, answers and follow-ups. Only your query is sent; local content stays on this device.\n\nNew Interact sessions are private to your account. Imported sessions and their edits stay in your personal account; group sharing is separate." : ""}',
     );
   }
 }
