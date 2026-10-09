@@ -469,3 +469,61 @@ async def test_last_owner_guard_and_permission_revocation_take_effect_immediatel
         assert len(audit) == 1
         assert audit[0].actor_id == ids["owner"]
         assert audit[0].event_metadata["outcome"] == "revoked"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("request_type,target_key,target_name", [
+    ("team", "team", "People operations"),
+    ("department", "department", "People"),
+])
+async def test_request_lists_include_names_only_for_authorized_requests(
+    app_client, request_type, target_key, target_name
+):
+    client, session_factory = app_client
+    ids = await seed_administration(session_factory)
+    created = await client.post(
+        "/api/v1/organisation/join-requests",
+        headers=headers(ids, "requester"),
+        json={"request_type": request_type, "target_id": str(ids[target_key])},
+    )
+    assert created.status_code == 201
+    for user, suffix in (("owner", ""), ("requester", "?mine=true")):
+        response = await client.get(
+            f"/api/v1/organisation/join-requests{suffix}", headers=headers(ids, user)
+        )
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+        assert response.json()[0]["requester_name"] == "Requester"
+        assert response.json()[0]["target_name"] == target_name
+        assert response.json()[0]["id"] == created.json()["id"]
+    for user, organisation in (("admin_title_only", "organisation"),
+                               ("outsider", "other_organisation")):
+        response = await client.get(
+            "/api/v1/organisation/join-requests",
+            headers=headers(ids, user, organisation),
+        )
+        assert response.status_code == 200
+        assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_request_name_resolution_is_tenant_scoped(app_client):
+    from app.services.organisation_administration import OrganisationAdministrationService
+
+    _, session_factory = app_client
+    ids = await seed_administration(session_factory)
+    async with session_factory() as session:
+        # A historical/invalid target must not reveal a foreign department name.
+        request = OrganisationJoinRequest(
+            organisation_id=ids["organisation"], requester_id=ids["requester"],
+            request_type="department", target_id=ids["foreign_department"],
+            status="pending",
+        )
+        session.add(request)
+        await session.commit()
+        await session.refresh(request)
+        summaries = await OrganisationAdministrationService(session).request_summaries(
+            ids["organisation"], [request]
+        )
+        assert summaries[0].requester_name == "Requester"
+        assert summaries[0].target_name is None
