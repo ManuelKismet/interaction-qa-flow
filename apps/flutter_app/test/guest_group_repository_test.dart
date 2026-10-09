@@ -8,6 +8,26 @@ import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
 import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 
 void main() {
+  for (final preview in [
+    (body: '{"valid":true,"used":false}', valid: true, used: false),
+    (body: '{"valid":false,"used":true}', valid: false, used: true),
+    (body: '{"valid":true,"used":true}', valid: true, used: true),
+    (body: '{"valid":false}', valid: false, used: false),
+  ]) {
+    test('invitation preview decodes ${preview.body}', () async {
+      final adapter = _RecordingAdapter(responseBody: preview.body);
+      final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+        ..httpClientAdapter = adapter;
+      addTearDown(client.close);
+      final result = await GuestGroupRepository(
+        client,
+      ).previewInvitation('token');
+      expect(result, (valid: preview.valid, used: preview.used));
+      expect(adapter.requestPath, '/api/v1/guest/invitations/preview');
+      expect(adapter.requestBody, {'token': 'token'});
+    });
+  }
+
   test('entry read uses the exact Group and entry endpoint', () async {
     final adapter = _RecordingAdapter(
       responseBody: '{"id":"entry-id","revision":7,"data":{"questions":[]}}',
