@@ -19,6 +19,7 @@ class QuestionStatus(str, enum.Enum):
 class QuestionVisibility(str, enum.Enum):
     ORGANISATION = "organisation"
     DEPARTMENT = "department"
+    TEAM = "team"
     PRIVATE = "private"
 
 
