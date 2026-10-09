@@ -28,3 +28,21 @@ Regular sign-in works. User confirmed the earlier failure was a credential typo;
 - Final archive/permanent deletion/security-sensitive permission expansion require action-time browser confirmation if tested; none performed here.
 
 Synthetic fixtures retained for cross-account checks. Existing user content and permissions unchanged. Earlier release receipt records 392 Flutter and 201 backend passing tests; these suites were not rerun in this live test session.
+
+## Admin acceptance update — 2026-10-09
+The deployed organisation model has no distinct owner reference and its user roles are employee, answer_owner and admin. User agreed adminuser@test.com covers organisation admin/owner testing. Firebase Authentication identity confirmed; DEV Firestore has no configured database. App roles are backend records, not Firebase user-list ownership.
+
+Passed live:
+- Account menu confirms adminuser@test.com, organisation admin. My organisation lists all four capabilities organisation-wide.
+- Member Manage offers Employee/Department answer owner and primary department. Team expansion displays members and add/remove controls. No membership or permission changes applied.
+- Created isolated DEV QA 20261009 test department and DEV QA 20261009 test team linked to that department. No members added.
+- Admin unified query 20261009 returns organisation Knowledge and local-device items, excludes employee personal Knowledge/private Interact, private organisation session and isolated group content (admin is not a group member).
+- Direct employee private-account session URL shows unavailable/belongs to another account; nothing changed.
+- Review queue shows synthetic question needing verification. Admin verifies its answer; UI records Verified by adminuser@test.com, review 2027-04-07. Answer history v1 verified/Answer verified. Reopen to open and accept back to resolved preserve verified status.
+- Invalid JSON import rejected with No session was imported.
+- Valid exported synthetic organisation session imported as a new admin-owned private draft, 74a7d293-a50c-4de5-830d-0fc591ef9067. Sharing/lifecycle/template/account links intentionally reset. All-participant report retains revised question, independent A/B answers and B-only follow-up.
+
+Open finding:
+Direct navigation as admin to another creator's private organisation session 17d72509-e354-4e66-bf0f-563ac41fddef remains on a loading spinner across several observations. No private content exposed, but denial UX is unconfirmed and needs investigation. Personal-account private denial displays correctly.
+
+Remaining: no-organisation registered account creation and DEV email verification/sign-in; actual permission-delegation mutations with action-time confirmation; other edges previously listed. No source/deployment changes. Codespace remains stopped.
