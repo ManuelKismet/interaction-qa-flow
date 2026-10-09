@@ -8,3 +8,12 @@ Complete durable F01–F14 and C01–C06 ledger: live-acceptance-findings-tracke
 
 
 F01 validation completion: GitHub Actions reload-routing run 37954911646 succeeded: 81 Flutter routing/account-state tests passed, including the five auth-loading route regressions. Formatting gate passed; backend validation run 37954911649 succeeded. PR #22 contains only F01 implementation plus regression validation and tracking. Status: implemented / automated validation passed / DEV deployment and hosted refresh retest pending. Other findings remain pending.
+
+
+## Finding F02 private organisation session denial repair — 9 October 2026
+
+User authorized only F02 and explicitly instructed holding all fixes for one DEV rollout after the findings are resolved. PR #23 is stacked on PR #22; session-detail retry stops on 403/404, safe unavailable/no-permission view replaces the prolonged spinner and provides Back to Interact / explicit Try again. Transient errors retain default retry; backend access rules unchanged.
+
+Validation: 81 Flutter guided safety/page/reload tests passed in run 37957307102 on 23ccfee5a5748eaf446f51616d24e06ae736f49e; formatting passed; backend CI 37957308347 succeeded. Local session/access suites: 41 passed in 5.00s, isolated SQLite/test auth rather than hosted. New fixture initialization/query-count assumptions corrected before the final passing run; all five regressions pass.
+
+Complete F01–F14 / C01–C06 ledger retained in live-acceptance-findings-tracker-2026-10-09.md. F01/F02 fixed and automated-validated, held for combined DEV deployment and hosted confirmation. F03–F14 unchanged/pending. No merge or deployment. Knowledge assignment/visibility finding F12 does not generalize to Interact's explicit TEAM visibility mode.
