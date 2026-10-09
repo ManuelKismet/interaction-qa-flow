@@ -84,8 +84,9 @@ final questionDetailProvider = FutureProvider.autoDispose
 
 Duration? _retryQuestionLoad(int count, Object error) {
   if (error is ApiException &&
-      (error.statusCode == 403 || error.statusCode == 404))
+      (error.statusCode == 403 || error.statusCode == 404)) {
     return null;
+  }
   return ProviderContainer.defaultRetry(count, error);
 }
 
