@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:int_qa_flow/core/api/api_exception.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
@@ -71,7 +72,15 @@ final guidedSessionProvider = FutureProvider.autoDispose
           mode: query.viewMode,
         ),
       );
-    });
+    }, retry: _retrySessionLoad);
+
+Duration? _retrySessionLoad(int retryCount, Object error) {
+  // A denial or missing record cannot be recovered by replaying the same read.
+  if (error is ApiException && {403, 404}.contains(error.statusCode)) {
+    return null;
+  }
+  return ProviderContainer.defaultRetry(retryCount, error);
+}
 
 void invalidateGuidedLists(WidgetRef ref) {
   ref.invalidate(activeGuidedSessionsProvider);
