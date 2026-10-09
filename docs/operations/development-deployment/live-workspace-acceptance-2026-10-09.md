@@ -235,3 +235,10 @@ User gave action-time approval. Owner Add team member applied only regularuser1@
 ## Employee active-team permission checks — 9 October 2026, after 15:25 London
 
 Manual regularuser1 sign-in succeeded after secure-form sign-in surfaced Check your email and password. No credential cause inferred. My organisation confirms DEV QA test team plus the two original teams, employee role and original E2E Operations Department. Your permissions shows Create Teams, Manage Team membership, Review requests and proposals, Approve answers all Not granted. Direct Admin and Review routes deny access. Evidence intqaflow-employee-test-team-permissions-20261009.jpg. No test-team scoped content fixture was exercised. Temporary test-team membership remains active awaiting owner cleanup; no other privileges changed.
+
+
+## Final temporary-team cleanup — 9 October 2026, after 15:30 London
+
+Owner removed only regularuser1 from DEV QA 20261009 test team. Expanded test team empty; both original team expansions retain regularuser1 employee; Department owners says No answer owners assigned. Original primary department/role shown unchanged in Members. Evidence intqaflow-team-final-cleanup-20261009.jpg. No temporary memberships/delegations remain from these checks.
+
+Synthetic invitation acceptance Group rearchived for final permanent-delete test, recoverable until 2026-11-08T14:32:19.357454+00:00. Exact permanent-delete dialog staged: deletes Group/content/memberships irreversibly; existing exports/local copies unaffected. Delete permanently not submitted, awaiting action-time user confirmation. Evidence intqaflow-test-group-permanent-delete-ready-20261009.jpg.
