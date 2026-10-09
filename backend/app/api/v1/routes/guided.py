@@ -226,6 +226,18 @@ async def archive_session(
     return await transition(session_id, GuidedSessionStatus.ARCHIVED, identity, session)
 
 
+@router.post("/sessions/{session_id}/reopen", response_model=GuidedSessionResponse)
+async def reopen_session(
+    session_id: UUID,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> GuidedSessionResponse:
+    return await GuidedService(session).transition_session(
+        session_id, identity.organisation_id, identity.user_id,
+        GuidedSessionStatus.ACTIVE, reopening=True,
+    )
+
+
 @router.get("/sessions/{session_id}/revisions", response_model=list[GuidedRevisionResponse])
 async def revisions(
     session_id: UUID,

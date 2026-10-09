@@ -227,27 +227,34 @@ class GuidedService:
         organisation_id: UUID,
         user_id: UUID,
         target: GuidedSessionStatus,
+        *,
+        reopening: bool = False,
     ) -> GuidedSessionResponse:
-        session = await self._owned_session(session_id, organisation_id, user_id)
+        session = await self._owned_session(session_id, organisation_id, user_id, require_edit=False)
         allowed = {
             GuidedSessionStatus.DRAFT: {GuidedSessionStatus.ACTIVE, GuidedSessionStatus.ARCHIVED},
             GuidedSessionStatus.ACTIVE: {GuidedSessionStatus.COMPLETED, GuidedSessionStatus.ARCHIVED},
             GuidedSessionStatus.COMPLETED: {GuidedSessionStatus.ARCHIVED},
             GuidedSessionStatus.ARCHIVED: set(),
         }
-        if target not in allowed[session.status]:
+        if reopening:
+            if session.status != GuidedSessionStatus.COMPLETED or target != GuidedSessionStatus.ACTIVE:
+                raise ConflictError("Only a completed session can be reopened")
+        elif target not in allowed[session.status]:
             raise ConflictError(f"Cannot move session from {session.status.value} to {target.value}")
         session.status = target
         now = datetime.now(UTC)
         if target == GuidedSessionStatus.ACTIVE:
             session.started_at = session.started_at or now
-            action = AuditAction.GUIDED_SESSION_STARTED
+            if reopening:
+                session.completed_at = None
+            action = AuditAction.GUIDED_SESSION_REOPENED if reopening else AuditAction.GUIDED_SESSION_STARTED
         elif target == GuidedSessionStatus.COMPLETED:
             session.completed_at = now
             action = AuditAction.GUIDED_SESSION_COMPLETED
         else:
             action = AuditAction.GUIDED_SESSION_ARCHIVED
-        await self._save_revision(session, user_id, f"Session {target.value}")
+        await self._save_revision(session, user_id, "Session reopened" if reopening else f"Session {target.value}")
         await self._audit(organisation_id, user_id, action, "guided_session", session.id)
         await self.session.commit()
         return await self.get_session(session.id, organisation_id, user_id)
@@ -1274,7 +1281,7 @@ class GuidedService:
         return session
 
     async def _owned_session(
-        self, session_id: UUID, organisation_id: UUID, user_id: UUID
+        self, session_id: UUID, organisation_id: UUID, user_id: UUID, *, require_edit: bool = True
     ) -> GuidedSession:
         actor = await self.permissions.actor(user_id, organisation_id)
         session = await self._session(session_id, organisation_id, for_update=True)
@@ -1283,6 +1290,8 @@ class GuidedService:
             or not await self.permissions.is_organisation_admin(actor)
         ):
             raise PermissionDeniedError("Only the session owner can change a private session")
+        if require_edit and session.status not in {GuidedSessionStatus.DRAFT, GuidedSessionStatus.ACTIVE}:
+            raise ConflictError("This session is read-only. Reopen a completed session before editing; archived sessions cannot be reopened")
         return session
 
     @staticmethod
