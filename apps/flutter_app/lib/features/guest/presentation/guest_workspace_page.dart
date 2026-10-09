@@ -5764,15 +5764,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (!_isCurrentLoad(uid, generation)) return false;
       final archivedGroups = await _repository.listArchivedGroups();
       if (!_isCurrentLoad(uid, generation)) return false;
-      final preferred = preferredGroupId ?? _groupId;
-      final selected = groups.any((group) => group['id'] == preferred)
-          ? _groupId
+      final preferred = preferredGroupId ?? _groupId ?? widget.initialGroupId;
+      final unavailable =
+          preferred != null && !groups.any((group) => group['id'] == preferred);
+      final selectedGroupId = preferred != null
+          ? unavailable
+                ? null
+                : preferred
           : groups.isEmpty
           ? null
           : groups.first['id'] as String;
-      final selectedGroupId = groups.any((group) => group['id'] == preferred)
-          ? preferred
-          : selected;
       if (!_isCurrentLoad(uid, generation)) return false;
       setState(() {
         _groups = groups;
@@ -5780,6 +5781,11 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         _uncertainArchivedDeletionIds.clear();
         _archivedDeleteNeedsSafeRefresh = false;
         _groupId = selectedGroupId;
+        if (unavailable) {
+          _error =
+              'The requested Group is unavailable or you do not have access. '
+              'Choose one of your approved Groups to continue.';
+        }
       });
       if (selectedGroupId != null) {
         final loaded = await _loadGroup(
@@ -5787,7 +5793,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           uid: uid,
           generation: generation,
         );
-        if (loaded && widget.initialEntryId != null && !_initialEntryOpened) {
+        if (loaded &&
+            selectedGroupId == widget.initialGroupId &&
+            widget.initialEntryId != null &&
+            !_initialEntryOpened) {
           for (final entry in _entries) {
             if (entry['id'] == widget.initialEntryId) {
               _initialEntryOpened = true;
@@ -7535,6 +7544,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         if (_groups.isNotEmpty) ...[
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
+            key: const ValueKey('approved-group-selection'),
             initialValue: _groupId,
             isExpanded: true,
             decoration: const InputDecoration(
