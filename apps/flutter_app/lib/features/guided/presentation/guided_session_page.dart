@@ -701,13 +701,25 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
   Future<void> _propose(GuidedQuestion question, GuidedAnswer answer) async {
     final repository = ref.read(guidedRepositoryProvider);
     final sessionId = widget.sessionId;
-    await _save(() => repository.proposeKnowledge(question, answer));
+    if (_saveState == GuidedSaveState.saving) return;
+    var alreadyPending = false;
+    await _save(() async {
+      alreadyPending = await repository.proposeKnowledge(question, answer);
+    });
     if (mounted &&
         _isCurrent(repository, sessionId) &&
         _saveState == GuidedSaveState.saved) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sent to Knowledge review.')),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              alreadyPending
+                  ? 'Already sent to Knowledge review. Your proposal is pending.'
+                  : 'Sent to Knowledge review. Your proposal is pending.',
+            ),
+          ),
+        );
     }
   }
 
