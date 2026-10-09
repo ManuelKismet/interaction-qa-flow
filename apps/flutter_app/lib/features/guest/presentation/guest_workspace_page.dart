@@ -1676,8 +1676,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (confirmed != true ||
         !mounted ||
         accountUid != _verifiedPersonalUid ||
-        _personalImportSaving)
+        _personalImportSaving) {
       return;
+    }
     final hadUnpersistedWork = _savedRevision < _dataRevision;
     _autosaveTimer?.cancel();
     _autosaveTimer = null;
