@@ -1,5 +1,7 @@
 import pytest
 from sqlalchemy import delete
+from uuid import UUID
+from app.models.question import Question, QuestionStatus, QuestionVisibility
 
 from app.models.team import Team, TeamStatus
 from app.models.team_membership import TeamMembership
@@ -41,6 +43,22 @@ async def test_restricted_question_surfaces_and_membership_revocation(app_client
     answer_id = answer.json()['id']
     assert (await client.post(base + '/comments', headers=headers(ids, 'employee'),
                               json={'body': 'F12 private discussion'})).status_code == 201
+    async with factory() as session:
+        # Public aliases must not reveal restricted canonical answers; restricted
+        # aliases must not leak their matching text through a public root.
+        public_root = Question(organisation_id=ids['organisation'], author_id=ids['employee'],
+                               title='Unrelated public root', status=QuestionStatus.OPEN)
+        session.add(public_root)
+        await session.flush()
+        session.add_all([
+            Question(organisation_id=ids['organisation'], author_id=ids['employee'],
+                     title='F12 public alias', canonical_question_id=UUID(question_id)),
+            Question(organisation_id=ids['organisation'], author_id=ids['employee'],
+                     title='F12 secret alias', visibility=QuestionVisibility(visibility),
+                     department_id=ids['finance_department'], team_id=ids['team'],
+                     canonical_question_id=public_root.id),
+        ])
+        await session.commit()
     for actor in ['employee', 'finance_owner', 'people_owner', 'admin', 'outsider']:
         allowed = actor in ['employee', 'finance_owner']
         expected = 200 if allowed else (404 if actor == 'outsider' else 403)
@@ -63,6 +81,8 @@ async def test_restricted_question_surfaces_and_membership_revocation(app_client
         assert (question_id in {item['question_id'] for item in search.json()}) == allowed
         if not allowed:
             assert 'Restricted question detail' not in search.text
+            assert 'F12 restricted answer' not in search.text
+            assert 'F12 secret alias' not in search.text
             assert (await client.post(base + '/answers', headers=headers(ids, actor),
                                       json={'body': 'Unauthorized write'})).status_code == expected
             assert (await client.post(base + '/comments', headers=headers(ids, actor),
@@ -85,7 +105,8 @@ async def test_restricted_question_surfaces_and_membership_revocation(app_client
 async def test_explicit_visibility_validation_and_assignment_independence(app_client):
     client, factory = app_client
     ids = await seed_scope(factory)
-    create = lambda data: client.post('/api/v1/questions', headers=headers(ids, 'employee'), json=data)
+    def create(data):
+        return client.post('/api/v1/questions', headers=headers(ids, 'employee'), json=data)
     for visibility in ['department', 'team']:
         response = await create({'title': 'Missing scope', 'visibility': visibility})
         assert response.status_code == 409
@@ -103,6 +124,7 @@ async def test_explicit_visibility_validation_and_assignment_independence(app_cl
     assert (await client.patch(base, headers=headers(ids, 'employee'), json={'visibility': 'team'})).status_code == 200
     assert (await client.get(base, headers=headers(ids, 'people_owner'))).status_code == 403
     assert (await client.patch(base, headers=headers(ids, 'employee'), json={'team_id': None})).status_code == 409
+    assert (await client.patch(base, headers=headers(ids, 'employee'), json={'visibility': None})).status_code == 409
     # Multiple-team membership works; a removed team cannot provide access.
     second = await create({'title': 'Second team', 'visibility': 'team', 'team_id': str(ids['second_team'])})
     assert second.status_code == 201
