@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/core/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -283,7 +284,11 @@ Future<void> _mount(
         ),
         guestGroupRepositoryProvider.overrideWithValue(repository),
       ],
-      child: const MaterialApp(home: SharedGuestGroupsPage()),
+      child: MaterialApp(
+        theme: AppTheme.light,
+        builder: AppTheme.responsiveBuilder,
+        home: const SharedGuestGroupsPage(),
+      ),
     ),
   );
   await tester.pumpAndSettle();

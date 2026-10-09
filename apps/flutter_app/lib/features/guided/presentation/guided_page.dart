@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/shared/utils/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,17 +33,12 @@ class GuidedPage extends ConsumerWidget {
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(
-                  'Interact',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+                Text('Interact', style: Theme.of(context).textTheme.bodyMedium),
                 PopupMenuButton<String>(
                   tooltip: 'Interact options',
                   icon: const Icon(Icons.more_vert),
-                  onSelected: (_) => _guidedAction(
-                    context,
-                    () => _importLegacy(context, ref),
-                  ),
+                  onSelected: (_) =>
+                      _guidedAction(context, () => _importLegacy(context, ref)),
                   itemBuilder: (_) => const [
                     PopupMenuItem(
                       value: 'import',
@@ -346,7 +342,7 @@ class _SessionsList extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1040),
         child: ListView.separated(
-          padding: const EdgeInsets.all(32),
+          padding: Responsive.pagePadding(context, desktop: 32),
           itemCount: sessions.length,
           separatorBuilder: (_, _) => const Divider(),
           itemBuilder: (context, index) {
@@ -397,7 +393,7 @@ class _TemplatesList extends ConsumerWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1040),
           child: ListView(
-            padding: const EdgeInsets.all(32),
+            padding: Responsive.pagePadding(context, desktop: 32),
             children: [
               Align(
                 alignment: Alignment.centerLeft,

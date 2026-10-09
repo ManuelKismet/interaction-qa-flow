@@ -5,6 +5,75 @@ abstract final class AppTheme {
   static const _paper = Color(0xFFF7F4EE);
   static const _ink = Color(0xFF17201B);
 
+  /// Compact visible controls on phones without changing accessibility scaling.
+  static Widget responsiveBuilder(BuildContext context, Widget? child) {
+    final width = MediaQuery.sizeOf(context).width;
+    final base = Theme.of(context);
+    if (width >= 600) return child ?? const SizedBox.shrink();
+    final small = width < 380;
+    final textTheme = base.textTheme.copyWith(
+      headlineMedium: base.textTheme.headlineMedium?.copyWith(
+        fontSize: small ? 26 : 28,
+      ),
+      headlineSmall: base.textTheme.headlineSmall?.copyWith(fontSize: 22),
+      titleLarge: base.textTheme.titleLarge?.copyWith(
+        fontSize: small ? 18 : 20,
+      ),
+      bodyLarge: base.textTheme.bodyLarge?.copyWith(fontSize: 15, height: 1.4),
+    );
+    // Keep 48 logical pixels for taps; save space in labels and horizontal padding.
+    final compactButton = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(64, 48)),
+      padding: WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: small ? 12 : 16, vertical: 8),
+      ),
+      textStyle: const WidgetStatePropertyAll(
+        TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+      tapTargetSize: MaterialTapTargetSize.padded,
+    );
+    return Theme(
+      data: base.copyWith(
+        textTheme: textTheme,
+        iconTheme: base.iconTheme.copyWith(size: 20),
+        appBarTheme: base.appBarTheme.copyWith(
+          titleTextStyle: textTheme.titleLarge,
+        ),
+        inputDecorationTheme: base.inputDecorationTheme.copyWith(
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: small ? 12 : 14,
+            vertical: 14,
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: base.elevatedButtonTheme.style?.merge(compactButton),
+        ),
+        filledButtonTheme: FilledButtonThemeData(style: compactButton),
+        outlinedButtonTheme: OutlinedButtonThemeData(style: compactButton),
+        textButtonTheme: TextButtonThemeData(style: compactButton),
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(
+            iconSize: 20,
+            minimumSize: const Size(48, 48),
+          ),
+        ),
+        navigationBarTheme: base.navigationBarTheme.copyWith(
+          height:
+              64 +
+              (MediaQuery.textScalerOf(context).scale(12) - 12).clamp(
+                    0.0,
+                    double.infinity,
+                  ) *
+                  2,
+          labelBehavior: small
+              ? NavigationDestinationLabelBehavior.onlyShowSelected
+              : NavigationDestinationLabelBehavior.alwaysShow,
+        ),
+      ),
+      child: child ?? const SizedBox.shrink(),
+    );
+  }
+
   static ThemeData get light {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: _forest,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/shared/utils/responsive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
@@ -20,9 +21,8 @@ class QuestionsPage extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () => ref.refresh(questionsProvider.future),
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: Responsive.pagePadding(context, desktop: 16),
         children: [
-
           const KnowledgeSectionTabs(selected: KnowledgeSection.questions),
           const SizedBox(height: 12),
           SegmentedButton<QuestionFilter>(
@@ -40,63 +40,83 @@ class QuestionsPage extends ConsumerWidget {
             key: const PageStorageKey('organisation-question-filters'),
             tilePadding: EdgeInsets.zero,
             maintainState: true,
-            initiallyExpanded: scope.departmentId != null || scope.teamId != null,
+            initiallyExpanded:
+                scope.departmentId != null || scope.teamId != null,
             title: const Text('Filters'),
-            subtitle: Text([
-              if (scope.departmentId != null)
-                'Department: ${departments.value?.where((item) => item.id == scope.departmentId).firstOrNull?.name ?? 'Selected'}',
-              if (scope.teamId != null)
-                'Team: ${teams.value?.where((item) => item.id == scope.teamId).firstOrNull?.name ?? 'Selected'}',
-              if (scope.departmentId == null && scope.teamId == null)
-                'All departments and teams',
-            ].join(' · ')),
+            subtitle: Text(
+              [
+                if (scope.departmentId != null)
+                  'Department: ${departments.value?.where((item) => item.id == scope.departmentId).firstOrNull?.name ?? 'Selected'}',
+                if (scope.teamId != null)
+                  'Team: ${teams.value?.where((item) => item.id == scope.teamId).firstOrNull?.name ?? 'Selected'}',
+                if (scope.departmentId == null && scope.teamId == null)
+                  'All departments and teams',
+              ].join(' · '),
+            ),
             children: [
-Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              SizedBox(
-                width: 220,
-                child: departments.when(
-                  data: (items) => DropdownButtonFormField<String?>(
-                    initialValue: scope.departmentId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Department'),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('All departments')),
-                      for (final department in items)
-                        DropdownMenuItem(value: department.id, child: Text(department.name)),
-                    ],
-                    onChanged: (value) => ref
-                        .read(questionScopeFilterProvider.notifier)
-                        .select(departmentId: value, teamId: scope.teamId),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(
+                    width: 220,
+                    child: departments.when(
+                      data: (items) => DropdownButtonFormField<String?>(
+                        initialValue: scope.departmentId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Department',
+                        ),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('All departments'),
+                          ),
+                          for (final department in items)
+                            DropdownMenuItem(
+                              value: department.id,
+                              child: Text(department.name),
+                            ),
+                        ],
+                        onChanged: (value) => ref
+                            .read(questionScopeFilterProvider.notifier)
+                            .select(departmentId: value, teamId: scope.teamId),
+                      ),
+                      loading: () => const LinearProgressIndicator(),
+                      error: (_, _) => const Text('Departments unavailable'),
+                    ),
                   ),
-                  loading: () => const LinearProgressIndicator(),
-                  error: (_, _) => const Text('Departments unavailable'),
-                ),
-              ),
-              SizedBox(
-                width: 220,
-                child: teams.when(
-                  data: (items) => DropdownButtonFormField<String?>(
-                    initialValue: scope.teamId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Team'),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('All teams')),
-                      for (final team in items)
-                        DropdownMenuItem(value: team.id, child: Text(team.name)),
-                    ],
-                    onChanged: (value) => ref
-                        .read(questionScopeFilterProvider.notifier)
-                        .select(departmentId: scope.departmentId, teamId: value),
+                  SizedBox(
+                    width: 220,
+                    child: teams.when(
+                      data: (items) => DropdownButtonFormField<String?>(
+                        initialValue: scope.teamId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Team'),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('All teams'),
+                          ),
+                          for (final team in items)
+                            DropdownMenuItem(
+                              value: team.id,
+                              child: Text(team.name),
+                            ),
+                        ],
+                        onChanged: (value) => ref
+                            .read(questionScopeFilterProvider.notifier)
+                            .select(
+                              departmentId: scope.departmentId,
+                              teamId: value,
+                            ),
+                      ),
+                      loading: () => const LinearProgressIndicator(),
+                      error: (_, _) => const Text('Teams unavailable'),
+                    ),
                   ),
-                  loading: () => const LinearProgressIndicator(),
-                  error: (_, _) => const Text('Teams unavailable'),
-                ),
+                ],
               ),
-            ],
-          ),
             ],
           ),
           const SizedBox(height: 12),
@@ -145,11 +165,15 @@ class _QuestionRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(question.title, style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    question.title,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     [
-                      if (question.department != null) question.department!.name,
+                      if (question.department != null)
+                        question.department!.name,
                       if (question.team != null) question.team!.name,
                       '${question.answerCount} answers',
                       '${date.day}/${date.month}/${date.year}',

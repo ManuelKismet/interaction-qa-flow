@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/shared/utils/responsive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
@@ -41,7 +42,7 @@ class _AskPageState extends ConsumerState<AskPage> {
     return SafeArea(
       child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: Responsive.pagePadding(context, desktop: 24),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
             child: Column(

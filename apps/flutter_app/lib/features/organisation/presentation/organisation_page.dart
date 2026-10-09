@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/shared/utils/responsive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
@@ -162,12 +163,9 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
         ? ref.watch(pendingOrganisationJoinRequestsProvider)
         : null;
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: Responsive.pagePadding(context, desktop: 24),
       children: [
-        Text(
-          'My organisation',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        Text('My organisation', style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 20),
         Card(
           child: Padding(
@@ -206,36 +204,38 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
         ),
         const SizedBox(height: 20),
         ExpansionTile(
-          key: ValueKey('permissions:${profile.userId}:${profile.organisationId}'),
+          key: ValueKey(
+            'permissions:${profile.userId}:${profile.organisationId}',
+          ),
           tilePadding: EdgeInsets.zero,
           maintainState: true,
           title: const Text('Your permissions'),
           children: [
-        for (final item in const [
-          ('team_create', 'Create Teams'),
-          ('team_membership', 'Manage Team membership'),
-          ('review', 'Review requests and proposals'),
-          ('answer_approval', 'Approve answers'),
-        ])
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(
-              profile.can(item.$1) ||
-                      profile.permissionScopes.any(
-                        (grant) => grant.permission == item.$1,
-                      )
-                  ? Icons.check_circle_outline
-                  : Icons.lock_outline,
-            ),
-            title: Text(item.$2),
-            subtitle: Text(_permissionScopes(profile, item.$1)),
-          ),
-        if (profile.role == 'admin' &&
-            !profile.isOwner &&
-            !profile.permissions.contains('legacy_admin'))
-          const Text(
-            'The administrator title alone grants no organisation permissions.',
-          ),
+            for (final item in const [
+              ('team_create', 'Create Teams'),
+              ('team_membership', 'Manage Team membership'),
+              ('review', 'Review requests and proposals'),
+              ('answer_approval', 'Approve answers'),
+            ])
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  profile.can(item.$1) ||
+                          profile.permissionScopes.any(
+                            (grant) => grant.permission == item.$1,
+                          )
+                      ? Icons.check_circle_outline
+                      : Icons.lock_outline,
+                ),
+                title: Text(item.$2),
+                subtitle: Text(_permissionScopes(profile, item.$1)),
+              ),
+            if (profile.role == 'admin' &&
+                !profile.isOwner &&
+                !profile.permissions.contains('legacy_admin'))
+              const Text(
+                'The administrator title alone grants no organisation permissions.',
+              ),
           ],
         ),
         const SizedBox(height: 16),
@@ -247,7 +247,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
           crossAxisAlignment: WrapCrossAlignment.end,
           children: [
             SizedBox(
-              width: 220,
+              width: Responsive.fieldWidth(context, maximum: 220),
               child: DropdownButtonFormField<String>(
                 initialValue: _requestType,
                 isExpanded: true,
@@ -272,7 +272,10 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
                       },
               ),
             ),
-            SizedBox(width: 280, child: _targetDropdown(departments, teams)),
+            SizedBox(
+              width: Responsive.fieldWidth(context, maximum: 280),
+              child: _targetDropdown(departments, teams),
+            ),
             FilledButton(
               onPressed: _busy || _targetId == null
                   ? null
@@ -470,7 +473,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
 
   Widget _state(String message, {VoidCallback? retry}) => Center(
     child: Padding(
-      padding: const EdgeInsets.all(24),
+      padding: Responsive.pagePadding(context, desktop: 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -559,7 +562,6 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
         const Text('Administrator titles do not grant permissions.'),
         members.when(
           loading: () => const LinearProgressIndicator(),
@@ -568,6 +570,7 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
             () => ref.invalidate(organisationMembersProvider),
           ),
           data: (items) => DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: items.any((item) => item.id == _memberId)
                 ? _memberId
                 : null,
@@ -637,6 +640,7 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
           ),
         ),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: _permission,
           decoration: const InputDecoration(labelText: 'Permission'),
           items: [
@@ -655,6 +659,7 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
           }),
         ),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: _scopeType,
           decoration: const InputDecoration(labelText: 'Scope type'),
           items: [
@@ -744,6 +749,7 @@ class _OwnerAdministrationState extends ConsumerState<_OwnerAdministration> {
                   .map((item) => (item.id, item.name))
                   .toList();
         return DropdownButtonFormField<String>(
+          isExpanded: true,
           key: ValueKey('grant-scope-$_scopeType'),
           initialValue: options.any((item) => item.$1 == _scopeId)
               ? _scopeId

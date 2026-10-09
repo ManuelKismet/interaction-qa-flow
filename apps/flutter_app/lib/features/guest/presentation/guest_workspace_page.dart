@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/shared/utils/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -3183,7 +3184,7 @@ class _GuestKnowledgeTabState extends ConsumerState<_GuestKnowledgeTab> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 840),
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: Responsive.pagePadding(context, desktop: 16),
             children: [
               if (widget.privateWorkspace) ...[
                 KnowledgeSectionTabs(
@@ -3290,7 +3291,7 @@ class _GuestKnowledgeTabState extends ConsumerState<_GuestKnowledgeTab> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 840),
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: Responsive.pagePadding(context, desktop: 16),
           children: [
             if (widget.privateWorkspace) ...[
               KnowledgeSectionTabs(
@@ -3801,7 +3802,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1040),
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: Responsive.pagePadding(context, desktop: 16),
           children: [
             if (MediaQuery.sizeOf(context).height < 300)
               Align(
@@ -3958,7 +3959,7 @@ class _GuestMissingSession extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
     child: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: Responsive.pagePadding(context),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
         child: Column(
@@ -7360,7 +7361,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       ],
     ),
     body: ListView(
-      padding: const EdgeInsets.all(16),
+      padding: Responsive.pagePadding(context, desktop: 16),
       children: [
         if (_group == null) ...[
           Wrap(

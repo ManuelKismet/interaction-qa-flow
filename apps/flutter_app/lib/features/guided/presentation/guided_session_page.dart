@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/shared/utils/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -263,7 +264,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
           ),
           if (drafts != null && drafts.error != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: EdgeInsets.symmetric(
+                horizontal: Responsive.pageInset(context),
+              ),
               child: Wrap(
                 spacing: 12,
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -310,7 +313,12 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
             ),
           if (!_reportMode)
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+              padding: EdgeInsets.fromLTRB(
+                Responsive.pageInset(context),
+                12,
+                Responsive.pageInset(context),
+                8,
+              ),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -1865,7 +1873,7 @@ class GuidedReportView extends StatelessWidget {
     }
     return ListView(
       key: const ValueKey('guided-report-list'),
-      padding: const EdgeInsets.all(32),
+      padding: Responsive.pagePadding(context, desktop: 32),
       children: [
         Text(session.title, style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 8),

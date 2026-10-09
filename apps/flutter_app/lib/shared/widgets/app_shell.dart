@@ -285,7 +285,8 @@ class AppShell extends ConsumerWidget {
         }).toList();
     final isWide =
         MediaQuery.sizeOf(context).width >= Responsive.navigationRailBreakpoint;
-    final compactToolbar = MediaQuery.sizeOf(context).width < 380;
+    final compactToolbar =
+        MediaQuery.sizeOf(context).width < Responsive.phoneBreakpoint;
 
     return PopScope(
       canPop: !pendingWorkspaceChanges,

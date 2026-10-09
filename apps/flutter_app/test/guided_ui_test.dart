@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/core/theme/app_theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_session_page.dart';
@@ -50,6 +51,8 @@ const shared = GuidedQuestion(
 
 Widget flow({GuidedQuestion question = shared, String participant = 'alice'}) {
   return MaterialApp(
+    theme: AppTheme.light,
+    builder: AppTheme.responsiveBuilder,
     home: Scaffold(
       body: GuidedFlowView(
         questions: [question],
