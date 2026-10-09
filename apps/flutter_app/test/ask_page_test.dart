@@ -308,9 +308,11 @@ void main() {
           'Scoped question',
         );
         await tester.pumpAndSettle(const Duration(seconds: 1));
-        await tester.tap(
-          find.byKey(const ValueKey('question-visibility-organisation')),
+        final visibilityField = find.byKey(
+          const ValueKey('question-visibility-organisation'),
         );
+        await tester.ensureVisible(visibilityField);
+        await tester.tap(visibilityField);
         await tester.pumpAndSettle();
         final label = visibility == 'team'
             ? 'Selected team only'
