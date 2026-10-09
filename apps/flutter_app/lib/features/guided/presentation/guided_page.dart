@@ -33,7 +33,6 @@ class GuidedPage extends ConsumerWidget {
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text('Interact', style: Theme.of(context).textTheme.bodyMedium),
                 PopupMenuButton<String>(
                   tooltip: 'Interact options',
                   icon: const Icon(Icons.more_vert),
@@ -42,7 +41,7 @@ class GuidedPage extends ConsumerWidget {
                   itemBuilder: (_) => const [
                     PopupMenuItem(
                       value: 'import',
-                      child: Text('Import legacy Interact JSON'),
+                      child: Text('Import session'),
                     ),
                   ],
                 ),
@@ -245,14 +244,14 @@ class GuidedPage extends ConsumerWidget {
       context: context,
       repository: repository,
       builder: (context) => AlertDialog(
-        title: const Text('Import legacy Interact JSON'),
+        title: const Text('Import session'),
         content: SizedBox(
           width: 620,
           child: TextField(
             controller: payload,
             minLines: 10,
             maxLines: 18,
-            decoration: const InputDecoration(labelText: 'Legacy JSON'),
+            decoration: const InputDecoration(labelText: 'Session JSON'),
           ),
         ),
         actions: [
