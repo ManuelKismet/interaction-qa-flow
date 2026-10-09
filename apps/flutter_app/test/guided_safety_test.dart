@@ -30,7 +30,7 @@ void main() {
     final h = _Harness(useDefaultRetry: true);
     h.adapter.sessionReadStatuses.add(503);
     addTearDown(h.close);
-    await tester.runAsync(h.ready);
+    await _settleAuthority(tester, h);
     await _mount(tester, h);
     expect(find.text('Organisation session'), findsOneWidget);
     expect(h.adapter.reads, hasLength(2));
@@ -49,7 +49,7 @@ void main() {
           addTearDown(h.close);
           // Settle auth/authority first so its startup invalidation is not
           // mistaken for an automatic retry of the session denial.
-          await tester.runAsync(h.ready);
+          await _settleAuthority(tester, h);
           await _mount(tester, h);
           const message =
               'This Interact session is unavailable or you do not have permission to view it.';
@@ -1150,6 +1150,18 @@ void main() {
     },
   );
 }
+
+Future<void> _settleAuthority(WidgetTester tester, _Harness h) => _pumpUntil(
+  tester,
+  () {
+    final state = h.container.read(organisationProfileProvider);
+    return !state.isLoading &&
+        !state.hasError &&
+        state.value?.isOwner == h.isOwner;
+  },
+  reason:
+      'Authentication and organisation authority must settle before the session read.',
+);
 
 Future<GoRouter> _mount(WidgetTester tester, _Harness h) async {
   tester.view.physicalSize = const Size(1100, 900);
