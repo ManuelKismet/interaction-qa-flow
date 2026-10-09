@@ -8,4 +8,4 @@ Validation: fresh full Flutter suite 392 passed; affected account/import suites 
 
 Firebase Hosting: HOSTING_RELEASE sites/intqaflow-dev/releases/1791535916149000 FILES 37 VERSION sites/intqaflow-dev/versions/070f7f727569b0c2. Both DEV origins match all four tested release files (eight SHA-256 comparisons). API health 200; backend source and revision remain unchanged from the independently validated 201-test release. No database or production changes.
 
-Authenticated Personal/Organisation visual acceptance remains external/manual because cloud-browser Firebase sign-in remains unavailable. Codespace shutdown follows this receipt push.
+Update: cloud-browser sign-in now works; the user confirmed the earlier regular-user failure was a credential typo. Live organisation-member, Personal-mode, group and guest acceptance results are recorded in live-workspace-acceptance-2026-10-09.md. Owner and no-organisation account checks remain pending. Codespace is stopped.
