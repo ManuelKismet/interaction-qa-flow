@@ -53,3 +53,17 @@ User created regularuser2@test.com through the app registration form. Firebase U
 User approved trusting the existing Codespace folder and DEV-only email verification. Secure GitHub sign-in succeeded. Existing Codespace resumed. Firebase Admin lookup/update/fresh lookup confirmed emailVerified False -> True for this exact DEV account; identity/email asserted before mutation. First read-only lookup failed HTTP 403 because a quota project was missing, fixed by explicit intqaflow-dev quota-project header. No credentials or tokens printed. No organisation membership or other privileges added.
 
 After app reload it shows Personal workspace, but account and group loading fail; account retry remains unsuccessful. Fresh sign-in is needed to distinguish cached pre-verification auth state from an application defect. Verified no-organisation personal CRUD/group acceptance is not yet marked passed. Codespace shutdown follows this checkpoint.
+
+## Fresh verified no-organisation acceptance
+Fresh sign-out/sign-in as regularuser2@test.com cleared the account/group loading errors after backend email verification. Those stale-session errors are not currently classified as an app defect.
+
+Passed live:
+- Private Knowledge `DEV QA 20261009 no-org Knowledge` saved with Personal account · saved, retained exact question/details/answer after full reload.
+- Private Interact `DEV QA 20261009 no-org Interact`, participant QA No-org Participant, shared question `QA no-org shared checkpoint?` and answer `QA no-org answer: persisted privately.` saved and retained after full reload and session-list reopening; content verified visually.
+- Unified query 20261009 returns this account's Private Knowledge/Interact and device-local fixtures only; excludes other account/private/organisation/group fixtures.
+- Verified no-organisation user can access Groups, create isolated `DEV QA 20261009 no-org group` as admin, preview private Interact and share its selected synthetic copy. Group report retains question, participant and answer.
+- Organisation question direct navigation returns the root without exposing organisation question content; explicit denial messaging remains unconfirmed.
+
+Transient Flutter semantics/control delays observed during live browser actions; private-result click navigation in this no-organisation search was not accepted as passed. A reload restored normal tab/session-list interaction. The earlier direct-route reload/spinner findings remain open. Codespace remains stopped; no source/deployment changes.
+
+The full matrix remains partial: actual scoped permission delegation, cross-account invitation/approval, templates, CSV/browser print and live narrow-screen edges are still untested.
