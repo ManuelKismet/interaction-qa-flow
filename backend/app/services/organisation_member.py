@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_event import AuditAction, AuditEvent
 from app.models.department import Department
+from app.models.department_answer_owner import DepartmentAnswerOwner
 from app.models.firebase_uid_mapping import FirebaseUidMapping
 from app.models.organisation import Organisation
 from app.models.organisation_owner import OrganisationOwner
@@ -133,7 +134,7 @@ class OrganisationMemberService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Active organisation member not found",
             )
-        if ("role" in fields_set or "status" in fields_set) and not actor_is_owner:
+        if ("role" in fields_set or "status" in fields_set or update.clear_department_answer_owners) and not actor_is_owner:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only an organisation owner can appoint admins or change membership status",
@@ -239,6 +240,24 @@ class OrganisationMemberService:
                     )
                 )
                 member.department_id = new_department_id
+
+        if update.clear_department_answer_owners:
+            assignments = await self.session.scalars(
+                select(DepartmentAnswerOwner).where(
+                    DepartmentAnswerOwner.organisation_id == organisation_id,
+                    DepartmentAnswerOwner.user_id == member.id,
+                ).with_for_update()
+            )
+            for assignment in assignments:
+                self.session.add(AuditEvent(
+                    organisation_id=organisation_id,
+                    actor_id=actor_id,
+                    action=AuditAction.DEPARTMENT_OWNER_REMOVED.value,
+                    entity_type="department_answer_owner",
+                    entity_id=assignment.id,
+                    event_metadata={"department_id": str(assignment.department_id), "user_id": str(member.id)},
+                ))
+                await self.session.delete(assignment)
 
         try:
             await self.session.commit()
