@@ -91,6 +91,17 @@ class _AdminPageState extends ConsumerState<AdminPage> {
               label: const Text('Add organisation member'),
             ),
           ),
+          if (owners.isLoading)
+            const Text('Loading department assignments before member editing.'),
+          if (owners.hasError) ...[
+            const Text(
+              'Department assignments are unavailable. Retry before editing a member.',
+            ),
+            TextButton(
+              onPressed: () => ref.invalidate(departmentOwnersProvider),
+              child: const Text('Retry department assignments'),
+            ),
+          ],
           members.when(
             data: (items) => items.isEmpty
                 ? const Text('No active organisation members.')
@@ -105,11 +116,17 @@ class _AdminPageState extends ConsumerState<AdminPage> {
                             '${member.departmentName ?? 'No primary department'}',
                           ),
                           trailing: TextButton(
-                            onPressed: _busy
+                            onPressed:
+                                _busy || owners.isLoading || owners.hasError
                                 ? null
                                 : () => _editMember(
                                     member,
                                     departments,
+                                    answerOwnerAssignments: owners.requireValue
+                                        .where(
+                                          (item) => item.user.id == member.id,
+                                        )
+                                        .toList(),
                                     allowAdminRole: organisation.isOwner,
                                   ),
                             child: const Text('Manage'),
@@ -586,6 +603,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
     OrganisationMember member,
     AsyncValue<List<DepartmentSummary>> departments, {
     required bool allowAdminRole,
+    required List<DepartmentAnswerOwner> answerOwnerAssignments,
   }) async {
     final values = await _showMemberEditor(
       title: 'Manage ${member.displayName}',
@@ -595,6 +613,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
       includeEmail: false,
       allowAdminRole: allowAdminRole,
       canEditRole: allowAdminRole,
+      answerOwnerAssignments: answerOwnerAssignments,
     );
     if (values == null || !mounted) return;
     final confirmAdmin = values['role'] == 'admin' && member.role != 'admin';
@@ -629,6 +648,8 @@ class _AdminPageState extends ConsumerState<AdminPage> {
             role: allowAdminRole ? values['role'] as String : null,
             departmentId: values['department_id'] as String?,
             clearDepartment: values['department_id'] == null,
+            clearDepartmentAnswerOwners:
+                values['clear_department_answer_owners'] == true,
           );
     });
   }
@@ -640,6 +661,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
     required bool includeEmail,
     required bool allowAdminRole,
     bool canEditRole = true,
+    List<DepartmentAnswerOwner> answerOwnerAssignments = const [],
     String? initialDepartmentId,
   }) => showDialog<Map<String, dynamic>>(
     context: context,
@@ -651,6 +673,7 @@ class _AdminPageState extends ConsumerState<AdminPage> {
       includeEmail: includeEmail,
       allowAdminRole: allowAdminRole,
       canEditRole: canEditRole,
+      answerOwnerAssignments: answerOwnerAssignments,
     ),
   );
 
@@ -708,6 +731,7 @@ class _OrganisationMemberEditorDialog extends StatefulWidget {
     required this.includeEmail,
     required this.allowAdminRole,
     required this.canEditRole,
+    required this.answerOwnerAssignments,
   });
 
   final String title;
@@ -717,6 +741,7 @@ class _OrganisationMemberEditorDialog extends StatefulWidget {
   final bool includeEmail;
   final bool allowAdminRole;
   final bool canEditRole;
+  final List<DepartmentAnswerOwner> answerOwnerAssignments;
 
   @override
   State<_OrganisationMemberEditorDialog> createState() =>
@@ -729,6 +754,7 @@ class _OrganisationMemberEditorDialogState
   late String _role = widget.initialRole;
   late String? _departmentId = widget.initialDepartmentId;
   String? _error;
+  bool _clearDepartmentAnswerOwners = false;
 
   @override
   void dispose() {
@@ -741,71 +767,107 @@ class _OrganisationMemberEditorDialogState
     title: Text(widget.title),
     content: SizedBox(
       width: (MediaQuery.sizeOf(context).width - 64).clamp(0, 440).toDouble(),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.includeEmail)
-            TextField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Verified registered email',
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.includeEmail)
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Verified registered email',
+                ),
               ),
-            ),
-          if (!widget.canEditRole) ...[
-            Text('Organisation role: ${widget.initialRole}'),
-            const Text('Only an organisation owner can change this role.'),
-          ] else
-            DropdownButtonFormField<String>(
-              key: const ValueKey('organisation-member-role'),
-              initialValue: _role,
+            if (!widget.canEditRole) ...[
+              Text('Organisation role: ${widget.initialRole}'),
+              const Text('Only an organisation owner can change this role.'),
+            ] else
+              DropdownButtonFormField<String>(
+                key: const ValueKey('organisation-member-role'),
+                initialValue: _role,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Organisation role',
+                ),
+                items: [
+                  DropdownMenuItem(value: 'employee', child: Text('Employee')),
+                  DropdownMenuItem(
+                    value: 'answer_owner',
+                    child: Text('Department answer owner'),
+                  ),
+                  if (widget.allowAdminRole || widget.initialRole == 'admin')
+                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                ],
+                onChanged: (value) => setState(() => _role = value ?? _role),
+              ),
+            DropdownButtonFormField<String?>(
+              initialValue: _departmentId,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Organisation role'),
+              decoration: const InputDecoration(
+                labelText: 'Primary department',
+              ),
               items: [
-                DropdownMenuItem(value: 'employee', child: Text('Employee')),
-                DropdownMenuItem(
-                  value: 'answer_owner',
-                  child: Text('Department answer owner'),
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('No primary department'),
                 ),
-                if (widget.allowAdminRole || widget.initialRole == 'admin')
-                  DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                if (_departmentId != null &&
+                    !widget.departments.any(
+                      (department) => department.id == _departmentId,
+                    ))
+                  DropdownMenuItem<String?>(
+                    value: _departmentId,
+                    child: const Text('Current department unavailable'),
+                  ),
+                for (final department in widget.departments)
+                  DropdownMenuItem<String?>(
+                    value: department.id,
+                    child: Text(
+                      department.name,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
               ],
-              onChanged: (value) => setState(() => _role = value ?? _role),
+              onChanged: (value) => setState(() => _departmentId = value),
             ),
-          DropdownButtonFormField<String?>(
-            initialValue: _departmentId,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Primary department'),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('No primary department'),
+            if (widget.answerOwnerAssignments.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Department answer-owner assignments are separate from the organisation role. They remain assigned unless explicitly removed.',
               ),
-              if (_departmentId != null &&
-                  !widget.departments.any(
-                    (department) => department.id == _departmentId,
-                  ))
-                DropdownMenuItem<String?>(
-                  value: _departmentId,
-                  child: const Text('Current department unavailable'),
+              for (final assignment in widget.answerOwnerAssignments)
+                Text(assignment.department.name),
+              if (widget.canEditRole)
+                CheckboxListTile(
+                  key: const ValueKey(
+                    'remove-department-answer-owner-assignments',
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Remove all department answer-owner assignments on save',
+                  ),
+                  value: _clearDepartmentAnswerOwners,
+                  onChanged: (value) => setState(
+                    () => _clearDepartmentAnswerOwners = value ?? false,
+                  ),
                 ),
-              for (final department in widget.departments)
-                DropdownMenuItem<String?>(
-                  value: department.id,
-                  child: Text(department.name, overflow: TextOverflow.ellipsis),
-                ),
+              Text(
+                _clearDepartmentAnswerOwners
+                    ? 'Saving will remove these assignments and record their removal.'
+                    : 'Saving will keep these department answer-owner assignments.',
+              ),
             ],
-            onChanged: (value) => setState(() => _departmentId = value),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     ),
     actions: [
@@ -824,6 +886,7 @@ class _OrganisationMemberEditorDialogState
             'email': email,
             'role': _role,
             'department_id': _departmentId,
+            'clear_department_answer_owners': _clearDepartmentAnswerOwners,
           });
         },
         child: Text(widget.includeEmail ? 'Add member' : 'Save changes'),
