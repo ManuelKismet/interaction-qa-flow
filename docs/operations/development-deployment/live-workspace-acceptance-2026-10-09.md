@@ -153,3 +153,17 @@ Findings reproduced:
 - Full reload of the employee Personal Interact session returns to root; reopening exact route loads retained source content.
 
 Next: owner sign-in to identify and approve the employee's pending request, subject to action-time confirmation for adding test-team membership, then verify employee state and restore the temporary membership. Group invitation and actual narrow-screen/PDF output remain unpassed. No privileges changed in this continuation.
+
+## Approved membership and Group invitation setup — 9 October 2026, after 14:07 London
+
+User gave action-time approval for temporary regularuser1 membership in DEV QA 20261009 test team and cleanup.
+
+Passed live:
+- Owner approved exact pending request 2520ce47-048c-492b-af74-ee5edcfd9c0a. Pending queue becomes empty.
+- Admin team expansion lists regularuser1@test.com as employee. Full page reload followed by reopening Admin and expanding the test team confirms persisted membership.
+- Removed only that test-team membership; fresh team list is empty. Both original E2E Department Handover Team and E2E Operations Team still list regularuser1. Organisation role remains employee and primary department E2E Operations Department; department answer-owner list is empty.
+- Created isolated empty Group DEV QA 20261009 invitation acceptance as QA Owner, admin. Required display-name validation was exercised.
+
+Browser-input qualification: semantic field filling showed a value that did not reach the display-name controller and submission reported empty. Direct visible-field click, keyboard input, blur and coordinate submission succeeded. Do not classify this as an established application form defect.
+
+Invitation is staged at Create invitation with Contributor — own content. No invitation token generated and no new Group member added. Action-time approval is pending for invitation creation and subsequent access approval. Employee-side view while the temporary organisation team membership was active was not exercised; approval persistence and cleanup are owner-side live checks. Evidence: intqaflow-team-membership-approved-20261009.jpg.
