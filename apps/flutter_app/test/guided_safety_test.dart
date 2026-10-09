@@ -1053,7 +1053,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Interact options'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Import legacy Interact JSON'));
+      await tester.tap(find.text('Import session'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byType(TextField),
@@ -1083,7 +1083,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Interact options'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Import legacy Interact JSON'));
+      await tester.tap(find.text('Import session'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byType(TextField),
