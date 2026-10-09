@@ -24,6 +24,63 @@ import 'guided_test_support.dart';
 const _authorizationScheme = 'Bearer';
 
 void main() {
+  testWidgets('transient session load still retries and recovers', (
+    tester,
+  ) async {
+    final h = _Harness(useDefaultRetry: true);
+    h.adapter.sessionReadStatuses.add(503);
+    addTearDown(h.close);
+    await _settleAuthority(tester, h);
+    await _mount(tester, h);
+    expect(find.text('Organisation session'), findsOneWidget);
+    // A successful page selects its first participant and performs a separate
+    // scoped read. Count retries of the original unfiltered query only.
+    expect(
+      h.adapter.reads.where(
+        (request) => request.queryParameters['participant_id'] == null,
+      ),
+      hasLength(2),
+    );
+  });
+
+  for (final status in [403, 404]) {
+    for (final owner in [false, true]) {
+      testWidgets(
+        '${owner ? 'owner' : 'employee'} sees terminal $status session denial without retry spinner',
+        (tester) async {
+          // Keep Riverpod's production retry policy: disabling container retry
+          // would hide the bug that this regression is intended to catch.
+          final h = _Harness(useDefaultRetry: true);
+          h.isOwner = owner;
+          h.adapter.sessionReadStatus = status;
+          addTearDown(h.close);
+          // Settle auth/authority first so its startup invalidation is not
+          // mistaken for an automatic retry of the session denial.
+          await _settleAuthority(tester, h);
+          await _mount(tester, h);
+          const message =
+              'This Interact session is unavailable or you do not have permission to view it.';
+          expect(find.text(message), findsOneWidget);
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(find.text('Organisation session'), findsNothing);
+          expect(find.text('Private secret marker'), findsNothing);
+          expect(find.byTooltip('Reports and export'), findsNothing);
+          expect(h.adapter.reads, hasLength(1));
+          expect(h.adapter.writes, isEmpty);
+          await tester.pump(const Duration(seconds: 10));
+          expect(h.adapter.reads, hasLength(1));
+          await tester.tap(find.text('Try again'));
+          await tester.pumpAndSettle();
+          expect(h.adapter.reads, hasLength(2));
+          expect(find.text(message), findsOneWidget);
+          await tester.tap(find.text('Back to Interact'));
+          await tester.pumpAndSettle();
+          expect(find.text('Session list'), findsOneWidget);
+        },
+      );
+    }
+  }
+
   for (final transition in ['uid', 'organisation', 'user', 'permission']) {
     test(
       'real guided provider rejects delayed read after $transition change',
@@ -1101,6 +1158,18 @@ void main() {
   );
 }
 
+Future<void> _settleAuthority(WidgetTester tester, _Harness h) => _pumpUntil(
+  tester,
+  () {
+    final state = h.container.read(organisationProfileProvider);
+    return !state.isLoading &&
+        !state.hasError &&
+        state.value?.isOwner == h.isOwner;
+  },
+  reason:
+      'Authentication and organisation authority must settle before the session read.',
+);
+
 Future<GoRouter> _mount(WidgetTester tester, _Harness h) async {
   tester.view.physicalSize = const Size(1100, 900);
   tester.view.devicePixelRatio = 1;
@@ -1142,11 +1211,11 @@ Future<GoRouter> _mount(WidgetTester tester, _Harness h) async {
 }
 
 class _Harness {
-  _Harness() {
+  _Harness({bool useDefaultRetry = false}) {
     tokens = _Tokens(() => uid);
     client = createApiClient(tokens, adapter: adapter);
     container = ProviderContainer(
-      retry: (_, _) => null,
+      retry: useDefaultRetry ? null : (_, _) => null,
       overrides: [
         apiClientProvider.overrideWithValue(client),
         authStateProvider.overrideWith(
@@ -1304,6 +1373,8 @@ class _Adapter implements HttpClientAdapter {
   final List<RequestOptions> cancelledReads = [];
   final List<RequestOptions> exports = [];
   bool holdReads = false;
+  int? sessionReadStatus;
+  final List<int> sessionReadStatuses = [];
   bool holdExports = false;
   bool failWrites = false;
   bool failAfterWrite = false;
@@ -1469,6 +1540,14 @@ class _Adapter implements HttpClientAdapter {
     }
     if (options.path.contains('/sessions/session-')) {
       reads.add(options);
+      final status = sessionReadStatuses.isNotEmpty
+          ? sessionReadStatuses.removeAt(0)
+          : sessionReadStatus;
+      if (status != null) {
+        return _response({
+          'detail': 'Private secret marker',
+        }, status: status).open();
+      }
       if (holdReads) {
         readGate ??= Completer<_Response>();
         return _heldResponse(readGate!, options, cancelFuture);

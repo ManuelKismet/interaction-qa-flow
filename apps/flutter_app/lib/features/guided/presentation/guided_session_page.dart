@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
+import 'package:int_qa_flow/core/api/api_exception.dart';
 import 'package:int_qa_flow/core/platform/print_page.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/application/guided_pending_edits.dart';
@@ -159,9 +160,18 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Unable to load this Interact session.'),
+            Text(
+              error is ApiException && {403, 404}.contains(error.statusCode)
+                  ? 'This Interact session is unavailable or you do not have permission to view it.'
+                  : 'Unable to load this Interact session.',
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 12),
             OutlinedButton(onPressed: _refresh, child: const Text('Try again')),
+            TextButton(
+              onPressed: () => context.go('/guided'),
+              child: const Text('Back to Interact'),
+            ),
           ],
         ),
       ),

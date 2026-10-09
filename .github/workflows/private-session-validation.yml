@@ -1,0 +1,27 @@
+name: Private session denial validation
+on:
+  pull_request:
+    paths:
+      - 'apps/flutter_app/lib/features/guided/application/guided_providers.dart'
+      - 'apps/flutter_app/lib/features/guided/presentation/guided_session_page.dart'
+      - 'apps/flutter_app/test/guided_safety_test.dart'
+      - '.github/workflows/private-session-validation.yml'
+permissions:
+  contents: read
+jobs:
+  guided:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib/features/guided/application/guided_providers.dart lib/features/guided/presentation/guided_session_page.dart test/guided_safety_test.dart
+      - run: flutter test test/guided_safety_test.dart test/guided_page_test.dart test/session_deep_link_test.dart
