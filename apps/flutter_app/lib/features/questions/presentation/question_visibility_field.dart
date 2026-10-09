@@ -25,6 +25,7 @@ class QuestionVisibilityField extends StatelessWidget {
       DropdownButtonFormField<String>(
         key: ValueKey('question-visibility-$value'),
         initialValue: value,
+        isExpanded: true,
         decoration: const InputDecoration(
           labelText: 'Who can see this question?',
         ),
