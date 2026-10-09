@@ -30,6 +30,7 @@ void main() {
     final h = _Harness(useDefaultRetry: true);
     h.adapter.sessionReadStatuses.add(503);
     addTearDown(h.close);
+    await tester.runAsync(h.ready);
     await _mount(tester, h);
     expect(find.text('Organisation session'), findsOneWidget);
     expect(h.adapter.reads, hasLength(2));
@@ -46,6 +47,9 @@ void main() {
           h.isOwner = owner;
           h.adapter.sessionReadStatus = status;
           addTearDown(h.close);
+          // Settle auth/authority first so its startup invalidation is not
+          // mistaken for an automatic retry of the session denial.
+          await tester.runAsync(h.ready);
           await _mount(tester, h);
           const message =
               'This Interact session is unavailable or you do not have permission to view it.';
