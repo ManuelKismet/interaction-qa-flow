@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.embedding_provider import EmbeddingProvider, get_embedding_provider
@@ -9,6 +10,7 @@ from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedEr
 from app.models.audit_event import AuditAction, AuditEvent
 from app.models.guided import (
     GuidedSessionVisibility,
+    GuidedAnswer,
     KnowledgeProposal,
     KnowledgeProposalStatus,
 )
@@ -59,7 +61,13 @@ class GuidedKnowledgeService:
     ) -> KnowledgeProposalResponse:
         actor = await self.permissions.actor(user_id, organisation_id)
         question = await self.guided.question(data.guided_question_id, organisation_id)
-        answer = await self.guided.answer(data.guided_answer_id, organisation_id)
+        # Serialize submissions for this answer, including overlapping requests.
+        answer = await self.session.scalar(
+            select(GuidedAnswer).where(
+                GuidedAnswer.id == data.guided_answer_id,
+                GuidedAnswer.organisation_id == organisation_id,
+            ).with_for_update()
+        )
         if not question or not answer or answer.question_id != question.id:
             raise NotFoundError("Guided question and answer pair not found")
         session = await self.guided.guided_session(question.session_id, organisation_id)
@@ -75,6 +83,18 @@ class GuidedKnowledgeService:
         department_id = data.department_id if data.department_id is not None else session.department_id
         team_id = data.team_id if data.team_id is not None else session.team_id
         await self._validate_team(department_id, team_id, organisation_id)
+        existing = await self.session.scalar(
+            select(KnowledgeProposal).where(
+                KnowledgeProposal.organisation_id == organisation_id,
+                KnowledgeProposal.guided_question_id == question.id,
+                KnowledgeProposal.guided_answer_id == answer.id,
+                KnowledgeProposal.status == KnowledgeProposalStatus.PENDING,
+            )
+        )
+        if existing is not None:
+            return KnowledgeProposalResponse.model_validate(existing).model_copy(
+                update={"already_pending": True}
+            )
         proposal = KnowledgeProposal(
             organisation_id=organisation_id,
             guided_session_id=session.id,

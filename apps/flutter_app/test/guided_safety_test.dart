@@ -24,6 +24,36 @@ import 'guided_test_support.dart';
 const _authorizationScheme = 'Bearer';
 
 void main() {
+  testWidgets(
+    'knowledge submission confirms new and already pending proposals',
+    (tester) async {
+      final h = _Harness();
+      addTearDown(h.close);
+      await _settleAuthority(tester, h);
+      await _mount(tester, h);
+      final propose = find.text('Propose for Knowledge').first;
+      await tester.ensureVisible(propose);
+      await tester.tap(propose);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Sent to Knowledge review. Your proposal is pending.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Propose for Knowledge').first);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Already sent to Knowledge review. Your proposal is pending.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        h.adapter.writes.where((r) => r.path.endsWith('/knowledge-proposals')),
+        hasLength(2),
+      );
+    },
+  );
+
   testWidgets('transient session load still retries and recovers', (
     tester,
   ) async {
@@ -1368,6 +1398,7 @@ class _Tokens implements ApiTokenSource {
 }
 
 class _Adapter implements HttpClientAdapter {
+  bool proposalPending = false;
   final List<RequestOptions> writes = [];
   final List<RequestOptions> reads = [];
   final List<RequestOptions> cancelledReads = [];
@@ -1495,6 +1526,11 @@ class _Adapter implements HttpClientAdapter {
     if (options.method != 'GET') {
       writes.add(options);
       if (failWrites) return _response({}, status: 503).open();
+      if (options.path.endsWith('/knowledge-proposals')) {
+        final existing = proposalPending;
+        proposalPending = true;
+        return _response({'already_pending': existing}).open();
+      }
       final expected = options.data['expected_revision'];
       if (expected != null && expected != revision) {
         return _response({}, status: 409).open();
