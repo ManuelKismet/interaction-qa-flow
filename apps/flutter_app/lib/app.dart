@@ -15,6 +15,7 @@ class IntQaFlowApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(initialAppLocationProvider);
     if (!firebaseReady) return _guestApp(firebaseReady: false);
     return ref
         .watch(authStateProvider)
