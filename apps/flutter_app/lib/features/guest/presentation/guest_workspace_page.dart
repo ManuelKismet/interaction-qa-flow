@@ -593,6 +593,36 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     );
   }
 
+  void _restorePersonalSession(
+    String expectedUid,
+    Map<String, dynamic> session,
+    GuestWorkspaceData updated,
+  ) {
+    if (expectedUid != _verifiedPersonalUid) return;
+    final sourceId = session['id'] as String;
+    final key = 'interact_session:$sourceId';
+    final exists = _personalItems.any(
+      (record) =>
+          record['kind'] == 'interact_session' &&
+          (record['data'] as Map?)?['id'] == sourceId,
+    );
+    if (!exists && !_pendingPersonalWrites.containsKey(key)) {
+      _enqueuePersonalWrite(
+        _PersonalWorkspaceWrite(
+          action: 'create',
+          kind: 'interact_session',
+          sourceKey: _personalSourceKey('interact_session', sourceId),
+          sourceId: sourceId,
+          title: _personalTitle('interact_session', session),
+          data: session,
+        ),
+      );
+    }
+    // Existing pending deletes keep their uncertainty/conflict reconciliation.
+    // A completed deletion needs the explicit create queued above.
+    _save(updated, accountPrivateKeys: {key});
+  }
+
   Future<void> _syncPersonalWorkspace(
     String uid,
     GuestWorkspaceData submitted,
@@ -2362,6 +2392,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                               _GuestInteractTab(
                                 data: data,
                                 privateWorkspace: _verifiedPersonalUid != null,
+                                accountUid: _verifiedPersonalUid,
+                                onRestorePersonalSession:
+                                    _restorePersonalSession,
                                 storageStatus: _storageStatus,
                                 onChange: _save,
                                 onCreateItem: (kind, item, updated) =>
@@ -3555,6 +3588,8 @@ class _GuestInteractTab extends StatefulWidget {
   const _GuestInteractTab({
     required this.data,
     required this.privateWorkspace,
+    required this.accountUid,
+    required this.onRestorePersonalSession,
     required this.storageStatus,
     required this.localSaveStatus,
     required this.onChange,
@@ -3571,6 +3606,9 @@ class _GuestInteractTab extends StatefulWidget {
 
   final GuestWorkspaceData data;
   final bool privateWorkspace;
+  final String? accountUid;
+  final void Function(String, Map<String, dynamic>, GuestWorkspaceData)
+  onRestorePersonalSession;
   final String Function(String, Map<String, dynamic>) storageStatus;
   final String localSaveStatus;
   final ValueChanged<GuestWorkspaceData> onChange;
@@ -3669,6 +3707,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
 
   void _deleteSession(Map<String, dynamic> session) {
     final isPersonalAccount = _isPersonal(session);
+    final accountUid = widget.accountUid;
     if (widget.openSessionId == session['id']) widget.onCloseSession();
     widget.onChange(
       widget.data.copyWith(
@@ -3690,21 +3729,36 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
           label: 'Undo',
           onPressed: () {
             if (!mounted) return;
-            widget.onChange(
-              widget.data.copyWith(
-                sessions: [session, ...widget.data.sessions],
-              ),
+            if (isPersonalAccount &&
+                (accountUid == null || accountUid != widget.accountUid)) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'The account changed. This session was not restored.',
+                  ),
+                ),
+              );
+              return;
+            }
+            final restored = widget.data.copyWith(
+              sessions: [
+                session,
+                ...widget.data.sessions.where(
+                  (item) => item['id'] != session['id'],
+                ),
+              ],
             );
-            final restoredToAccount = _isPersonal(session);
+            if (isPersonalAccount) {
+              widget.onRestorePersonalSession(accountUid!, session, restored);
+            } else {
+              widget.onChange(restored);
+            }
             messenger.showSnackBar(
               SnackBar(
                 content: Text(
-                  restoredToAccount
+                  isPersonalAccount
                       ? 'Session restore queued for your private account. '
                             'Check the save status.'
-                      : isPersonalAccount
-                      ? 'Session restored as a local copy on this device. '
-                            'The private account removal is not undone.'
                       : 'Local session restored.',
                 ),
               ),
