@@ -1,13 +1,13 @@
 # Live acceptance findings tracker — 9 October 2026
 
 Source: live-workspace-acceptance-2026-10-09.md, through commit 077f02f.
-Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01 and F02 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
+Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01, F02 and F03 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
 | F01 | Reload loses organisation question / organisation Interact / Personal Interact route | Fixed / automated-validated in PR #22; held for combined DEV confirmation |
 | F02 | Another creator's private organisation session stays on a spinner | Fixed / automated-validated in PR #23; held for combined DEV confirmation |
-| F03 | Requests you can review remains stale after request submission | Pending |
+| F03 | Requests you can review remains stale after request submission | Fixed / automated-validated in PR #24; held for combined DEV confirmation |
 | F04 | Request cards show UUIDs rather than requester/team names | Pending |
 | F05 | Repeated Interact-to-Knowledge proposals create duplicate pending proposals / unclear immediate feedback | Pending |
 | F06 | Redeemed invitation still previews as valid although join rejects cross-account reuse | Pending |
@@ -55,3 +55,13 @@ Final source/test commit 23ccfee5a5748eaf446f51616d24e06ae736f49e; GitHub Action
 Earlier CI runs failed new test setup/count assumptions, not the existing suite: settle authority by pumping Flutter's fake async zone, and distinguish the successful page's participant-scoped read from retries of the original query. These corrections retained strict single-read denial and two-read original-query recovery assertions. Final complete suite passed; earlier running/failure text is superseded.
 
 F01/F02 are source-fixed and automated-validated, not hosted-verified. Per user instruction, hold all deployment until the findings have been addressed, then perform one combined DEV rollout and hosted retests. F03–F14 and C01–C06 stay tracked. No merge or deployment performed.
+
+## F03 implementation and automated validation — 9 October 2026
+
+Draft PR #24: https://github.com/ManuelKismet/interaction-qa-flow/pull/24, branch fix/reviewer-request-refresh-20261009, stacked on PR #23. Successful membership submission now invalidates both myOrganisationJoinRequestsProvider and pendingOrganisationJoinRequestsProvider within the existing mounted/current-scope guard. No review authority, self-approval, backend policy, or other finding behavior changed.
+
+Source/test/workflow commit 73cf15007b291b6b37ac7b1525b95d92dc8d7d2a. GitHub Actions Organisation request refresh validation run 37958624256 / job 113915450707 succeeded: 20 Flutter tests passed across organisation_scope_test.dart, organisation_page_test.dart and responsive_organisation_test.dart, with the formatting gate passed. New routed widget regression submits a membership request through the real repository/HTTP test adapter, observes updated personal and reviewer lists without navigation, and confirms /organisation remains selected. Existing revoked-review, UID/signout, owner controls and narrow viewport tests also pass. Backend validation run 37958624065 passed. Local Dart format and git diff --check passed; Flutter execution used CI because local dependency setup remains unavailable.
+
+Workflow ownership guidance checked in docs/operations/isolated-development.md and cloud-development.md. User offered Copilot collaboration as optional; this small fix was implemented directly and independently checked. No Copilot handoff claimed.
+
+F01–F03 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F04–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.
