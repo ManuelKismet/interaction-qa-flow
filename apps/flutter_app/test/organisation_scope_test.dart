@@ -14,6 +14,7 @@ import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
 import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 import 'package:int_qa_flow/features/organisation/presentation/organisation_page.dart';
+import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 void main() {
   test(
@@ -127,6 +128,35 @@ void main() {
   );
 
   testWidgets(
+    'membership submission refreshes both request lists without navigation',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final adapter = _OrganisationAdapter()..reviewerUids.add('user-a');
+      final mounted = await _mountRoutedPage(tester, adapter: adapter);
+      await tester.pumpAndSettle();
+      expect(find.text('Request submitted-request'), findsNothing);
+      expect(find.text('No pending or recent requests.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('organisation-request-team')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Request team').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Submit request'));
+      await tester.pumpAndSettle();
+      expect(find.text('Membership request saved.'), findsOneWidget);
+      expect(find.text('Team request · pending'), findsOneWidget);
+      expect(find.text('Request submitted-request'), findsOneWidget);
+      expect(
+        mounted.router.routeInformationProvider.value.uri.path,
+        '/organisation',
+      );
+      mounted.close();
+    },
+  );
+
+  testWidgets(
     'routed page refreshes revoked review capability and retries list errors',
     (tester) async {
       tester.view.physicalSize = const Size(900, 1800);
@@ -227,7 +257,11 @@ Future<_MountedPage> _mountRoutedPage(
         authStateProvider.overrideWith((ref) => _authEvents(auth, events)),
         apiClientProvider.overrideWithValue(client),
         departmentsProvider.overrideWith((ref) async => const []),
-        teamsProvider.overrideWith((ref) async => const []),
+        teamsProvider.overrideWith(
+          (ref) async => const [
+            TeamSummary(id: 'request-team', name: 'Request team'),
+          ],
+        ),
         organisationMembersProvider.overrideWith((ref) async => const []),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -340,6 +374,7 @@ class _OrganisationAdapter implements HttpClientAdapter {
   String? holdListsForUid;
   bool failMyRequestsOnce = false;
   bool rejectJoinDecisions = false;
+  bool membershipSubmitted = false;
   final reviewerUids = <String>{};
   final ownerUids = <String>{};
   final roleByUid = <String, String>{
@@ -361,6 +396,11 @@ class _OrganisationAdapter implements HttpClientAdapter {
     final path = options.uri.path;
     final mine = options.queryParameters['mine']?.toString() == 'true';
     requests.add(_RequestRecord(uid, path));
+    if (path == '/api/v1/organisation/join-requests' &&
+        options.method == 'POST') {
+      membershipSubmitted = true;
+      return _response(null);
+    }
     final key = '$uid:$path:$mine';
     _attempts[key] = (_attempts[key] ?? 0) + 1;
 
@@ -441,7 +481,7 @@ class _OrganisationAdapter implements HttpClientAdapter {
             : <Map<String, Object?>>[],
       '/api/v1/organisation/join-requests' =>
         mine == true
-            ? <Map<String, Object?>>[]
+            ? [if (membershipSubmitted) _submittedRequest]
             : isReviewer
             ? [
                 {
@@ -456,12 +496,22 @@ class _OrganisationAdapter implements HttpClientAdapter {
                   'created_at': '2026-10-07T00:00:00Z',
                   'reviewed_at': null,
                 },
+                if (membershipSubmitted) _submittedRequest,
               ]
             : <Map<String, Object?>>[],
       _ => <String, Object?>{},
     };
     return _response(value);
   }
+
+  Map<String, Object?> get _submittedRequest => {
+    'id': 'submitted-request',
+    'requester_id': 'db-user-a',
+    'request_type': 'team',
+    'target_id': 'request-team',
+    'status': 'pending',
+    'created_at': '2026-10-09T00:00:00Z',
+  };
 
   @override
   void close({bool force = false}) {}
