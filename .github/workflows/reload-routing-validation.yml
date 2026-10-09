@@ -1,0 +1,27 @@
+name: Reload routing validation
+on:
+  pull_request:
+    paths:
+      - 'apps/flutter_app/lib/app.dart'
+      - 'apps/flutter_app/lib/core/routing/**'
+      - 'apps/flutter_app/test/session_deep_link_test.dart'
+      - '.github/workflows/reload-routing-validation.yml'
+permissions:
+  contents: read
+jobs:
+  routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib/app.dart lib/core/routing/app_router.dart lib/core/routing/session_deep_link.dart test/session_deep_link_test.dart
+      - run: flutter test test/session_deep_link_test.dart test/account_state_widget_test.dart

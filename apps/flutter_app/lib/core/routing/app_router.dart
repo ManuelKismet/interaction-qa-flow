@@ -15,12 +15,18 @@ import 'package:int_qa_flow/features/organisation/presentation/organisation_page
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
 
+// Capture before the temporary authentication MaterialApps can replace the URL.
+final launchUriProvider = Provider<Uri>((ref) => Uri.base);
+final initialAppLocationProvider = Provider<String>(
+  (ref) => sessionDeepLinkInitialLocation(ref.watch(launchUriProvider)),
+);
+
 final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
   ref,
   _,
 ) {
   final router = GoRouter(
-    initialLocation: sessionDeepLinkInitialLocation(Uri.base),
+    initialLocation: ref.watch(initialAppLocationProvider),
     overridePlatformDefaultLocation: true,
     routes: [
       ShellRoute(
