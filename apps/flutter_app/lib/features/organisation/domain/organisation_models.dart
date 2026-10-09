@@ -109,6 +109,8 @@ class OrganisationJoinRequest {
     required this.targetId,
     required this.status,
     required this.reason,
+    this.requesterName,
+    this.targetName,
   });
 
   final String id;
@@ -116,6 +118,8 @@ class OrganisationJoinRequest {
   final String targetId;
   final String status;
   final String? reason;
+  final String? requesterName;
+  final String? targetName;
 
   factory OrganisationJoinRequest.fromJson(Map<String, dynamic> json) =>
       OrganisationJoinRequest(
@@ -124,6 +128,8 @@ class OrganisationJoinRequest {
         targetId: json['target_id'] as String,
         status: json['status'] as String,
         reason: json['reason'] as String?,
+        requesterName: json['requester_name'] as String?,
+        targetName: json['target_name'] as String?,
       );
 }
 

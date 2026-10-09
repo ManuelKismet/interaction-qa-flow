@@ -20,6 +20,7 @@ from app.schemas.organisation_administration import (
     OrganisationCapability,
     OrganisationJoinRequestCreate,
     OrganisationJoinRequestDecision,
+    OrganisationJoinRequestResponse,
     OrganisationOwnerSummary,
     OrganisationPermissionCreate,
 )
@@ -481,6 +482,41 @@ class OrganisationAdministrationService:
                 filtered_requests.append(request)
             return filtered_requests
         return list(result)
+
+    async def request_summaries(
+        self, organisation_id: UUID, requests: list[OrganisationJoinRequest]
+    ) -> list[OrganisationJoinRequestResponse]:
+        """Resolve labels only for the caller's already-authorized requests."""
+        if not requests:
+            return []
+        requester_ids = {request.requester_id for request in requests}
+        rows = await self.session.execute(
+            select(User.id, User.display_name).where(
+                User.organisation_id == organisation_id,
+                User.id.in_(requester_ids),
+            )
+        )
+        names = {row[0]: row[1] for row in rows}
+        targets = {}
+        for request_type, model in (("team", Team), ("department", Department)):
+            target_ids = {r.target_id for r in requests if r.request_type == request_type}
+            if target_ids:
+                rows = await self.session.execute(
+                    select(model.id, model.name).where(
+                        model.organisation_id == organisation_id,
+                        model.id.in_(target_ids),
+                    )
+                )
+                targets.update({(request_type, row[0]): row[1] for row in rows})
+        return [
+            OrganisationJoinRequestResponse.model_validate(request).model_copy(
+                update={
+                    "requester_name": names.get(request.requester_id),
+                    "target_name": targets.get((request.request_type, request.target_id)),
+                }
+            )
+            for request in requests
+        ]
 
     async def decide_request(
         self,

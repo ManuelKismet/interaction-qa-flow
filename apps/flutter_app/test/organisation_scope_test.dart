@@ -137,7 +137,7 @@ void main() {
       final adapter = _OrganisationAdapter()..reviewerUids.add('user-a');
       final mounted = await _mountRoutedPage(tester, adapter: adapter);
       await tester.pumpAndSettle();
-      expect(find.text('Request submitted-request'), findsNothing);
+      expect(find.text('Submitted requester'), findsNothing);
       expect(find.text('No pending or recent requests.'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('organisation-request-team')));
       await tester.pumpAndSettle();
@@ -147,7 +147,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Membership request saved.'), findsOneWidget);
       expect(find.text('Team request · pending'), findsOneWidget);
-      expect(find.text('Request submitted-request'), findsOneWidget);
+      expect(find.text('Request team'), findsWidgets);
+      expect(find.text('Team membership · Request team'), findsOneWidget);
+      expect(find.textContaining('submitted-request'), findsNothing);
+      expect(find.textContaining('pending-target-a'), findsNothing);
+      expect(find.text('Requester unavailable'), findsOneWidget);
+      expect(
+        find.text('Department change · Department unavailable'),
+        findsOneWidget,
+      );
+      expect(find.text('Submitted requester'), findsOneWidget);
       expect(
         mounted.router.routeInformationProvider.value.uri.path,
         '/organisation',
@@ -506,6 +515,8 @@ class _OrganisationAdapter implements HttpClientAdapter {
 
   Map<String, Object?> get _submittedRequest => {
     'id': 'submitted-request',
+    'requester_name': 'Submitted requester',
+    'target_name': 'Request team',
     'requester_id': 'db-user-a',
     'request_type': 'team',
     'target_id': 'request-team',
