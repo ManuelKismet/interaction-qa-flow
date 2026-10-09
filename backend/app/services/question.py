@@ -331,6 +331,8 @@ class QuestionService:
         self, actor: User, visibility: QuestionVisibility,
         department_id: UUID | None, team_id: UUID | None,
     ) -> None:
+        if visibility is None:
+            raise ConflictError("Choose a question visibility")
         if visibility == QuestionVisibility.DEPARTMENT:
             if department_id is None:
                 raise ConflictError("Department visibility requires a department")
