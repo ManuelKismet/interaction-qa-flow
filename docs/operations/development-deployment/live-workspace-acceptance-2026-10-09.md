@@ -46,3 +46,10 @@ Open finding:
 Direct navigation as admin to another creator's private organisation session 17d72509-e354-4e66-bf0f-563ac41fddef remains on a loading spinner across several observations. No private content exposed, but denial UX is unconfirmed and needs investigation. Personal-account private denial displays correctly.
 
 Remaining: no-organisation registered account creation and DEV email verification/sign-in; actual permission-delegation mutations with action-time confirmation; other edges previously listed. No source/deployment changes. Codespace remains stopped.
+
+## No-organisation registration / verification checkpoint
+User created regularuser2@test.com through the app registration form. Firebase UID cxfQXQjxpFPP6L7TFwMLRGUrofX2. App confirmed no organisation membership, displayed registered local workspace and required verified email for Groups. Query 20261009 returned only device-local fixtures, excluding other accounts, groups and organisation results.
+
+User approved trusting the existing Codespace folder and DEV-only email verification. Secure GitHub sign-in succeeded. Existing Codespace resumed. Firebase Admin lookup/update/fresh lookup confirmed emailVerified False -> True for this exact DEV account; identity/email asserted before mutation. First read-only lookup failed HTTP 403 because a quota project was missing, fixed by explicit intqaflow-dev quota-project header. No credentials or tokens printed. No organisation membership or other privileges added.
+
+After app reload it shows Personal workspace, but account and group loading fail; account retry remains unsuccessful. Fresh sign-in is needed to distinguish cached pre-verification auth state from an application defect. Verified no-organisation personal CRUD/group acceptance is not yet marked passed. Codespace shutdown follows this checkpoint.
