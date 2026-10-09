@@ -183,3 +183,7 @@ Source qualification: join_invitation returns the existing pending membership wh
 ## Group administrator pending readback — 9 October 2026, after 14:26 London
 
 Fresh adminuser sign-in. Isolated invitation acceptance Group member list contains QA Owner admin/active and exactly one QA Contributor contributor/pending after the employee repeated redemption. Active invitation list is empty (redeemed invitation no longer listed). This establishes one pending member and no duplicate caused by retry. Contributor activation awaits action-time confirmation. No Group privileges changed here. Evidence: intqaflow-contributor-approval-ready-20261009.jpg.
+
+## Contributor activated — 9 October 2026, after 14:28 London
+
+User approved activation. Owner approved QA Contributor; reopening Group member management twice confirms contributor/active, QA Owner admin/active, no active invitations. Added synthetic owner-authored Knowledge `DEV QA 20261009 owner group policy` with answer `Synthetic owner content. Contributors may read this but only edit their own items.` for cross-author permission checks. No existing Group content changed. Contributor-side read/own-create/other-author-edit boundaries and cleanup remain pending. Evidence: intqaflow-contributor-active-20261009.jpg.
