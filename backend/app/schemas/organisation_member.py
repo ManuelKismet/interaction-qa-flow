@@ -23,6 +23,7 @@ class OrganisationMemberUpdate(BaseModel):
     role: UserRole | None = None
     department_id: UUID | None = Field(default=None)
     status: str | None = None
+    clear_department_answer_owners: bool = False
 
 
 class OrganisationMemberResponse(BaseModel):
