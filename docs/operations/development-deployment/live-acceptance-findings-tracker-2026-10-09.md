@@ -1,7 +1,7 @@
 # Live acceptance findings tracker — 9 October 2026
 
 Source: live-workspace-acceptance-2026-10-09.md, through commit 077f02f.
-Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F05 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
+Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F06 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ Process: handle one numbered item at a time. Implementation does not establish h
 | F03 | Requests you can review remains stale after request submission | Fixed / automated-validated in PR #24; held for combined DEV confirmation |
 | F04 | Request cards show UUIDs rather than requester/team names | Fixed / automated-validated in PR #25; held for combined DEV confirmation |
 | F05 | Repeated Interact-to-Knowledge proposals create duplicate pending proposals / unclear immediate feedback | Fixed / automated-validated in PR #26; held for combined DEV confirmation |
-| F06 | Redeemed invitation still previews as valid although join rejects cross-account reuse | Pending |
+| F06 | Redeemed invitation still previews as valid although join rejects cross-account reuse | Fixed / automated-validated in PR #27; held for combined DEV confirmation |
 | F07 | Registered Group member removal says guest member | Pending |
 | F08 | Private-session Undo restores local content only, not account persistence | Pending behavior review |
 | F09 | Non-owner admin role-editing controls offered although server rejects with 403 | Pending; historical state, non-owner UI not retested |
@@ -83,3 +83,11 @@ No migration or destructive cleanup: previously created duplicate rows are retai
 Tested source/workflow commit 1cce3e9adc309ac2caebde0605123dc2e4228b90. Flutter validation run 37960501480 / job 113921825971: 82 tests passed (guided safety/page and session routes), formatting passed, including new and already-pending feedback. Backend validation run 37960501485 / job 113921825600: 173 passed, 33 skipped; dependency checks, analysis and compilation passed. Dedicated PostgreSQL/pgvector concurrency run 37960502367 / job 113921829046: 1 passed, executing the race otherwise skipped in the default suite. Two concurrent requests return one proposal ID with one new and one already-pending result and one stored row. Local guided API/safety suite: 42 passed, including repeated-submission content preservation and one creation audit; existing acceptance/rejection and safety tests remain passing. Dart format and git diff --check passed.
 
 F01–F05 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F06–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.
+
+## F06 implementation and automated validation — 9 October 2026
+
+Draft PR #27: https://github.com/ManuelKismet/interaction-qa-flow/pull/27, branch fix/redeemed-invitation-preview-20261009, stacked on PR #26. Preview returns valid=false and used=true for an available but redeemed invitation, except the existing same-Firebase-account pending membership retry allowed by join (valid=true, used=true). Approved/removed memberships cannot reuse it. Unavailable/expired/revoked invitations retain generic valid=false, used=false. The response carries only these booleans, never redeemer identity or group metadata. Flutter displays an explicit already-used message asking for a new invitation and offers no Request access confirmation or join write for that preview. Existing join authorization/idempotency remains unchanged; no membership or invitation cleanup performed.
+
+Tested source/workflow commit 52a5f0898bcde9e719ca118d450627bae3aeae3f. Invitation preview Flutter validation run 37963462055 / job 113931820727: 39 Group dialog/repository tests passed and formatting passed. New UI regression verifies already-used explanation, no join dialog/action/write and no token displayed outside input; four repository cases cover unused, redeemed, same-account pending and older generic-unavailable responses. Backend validation run 37963462039 / job 113931820740 succeeded: 173 passed, 33 skipped; analysis/dependency/compilation gates passed. Local Group API suite: 14 passed. Extended lifecycle assertions check unused preview, cross-account used preview and 409 join denial, same-account pending preview and idempotent retry ID, approved account used preview, and expired/revoked/unavailable cases. Dart format and git diff --check passed.
+
+F01–F06 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F07–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.

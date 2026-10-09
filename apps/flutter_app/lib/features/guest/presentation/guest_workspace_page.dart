@@ -6186,9 +6186,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     _joinTokenDraft = inviteToken;
     _joinDisplayNameDraft = memberName;
     final succeeded = await _run(() async {
-      if (!await _repository.previewInvitation(inviteToken)) {
-        throw const ApiException(
-          'This invitation is unavailable, expired or revoked.',
+      final preview = await _repository.previewInvitation(inviteToken);
+      if (!preview.valid) {
+        throw ApiException(
+          preview.used
+              ? 'This invitation has already been used. Ask the group host for a new invitation.'
+              : 'This invitation is unavailable, expired or revoked.',
         );
       }
       if (!mounted) return;
