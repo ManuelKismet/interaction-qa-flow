@@ -30,7 +30,7 @@ Regular sign-in works. User confirmed the earlier failure was a credential typo;
 Synthetic fixtures retained for cross-account checks. Existing user content and permissions unchanged. Earlier release receipt records 392 Flutter and 201 backend passing tests; these suites were not rerun in this live test session.
 
 ## Admin acceptance update — 2026-10-09
-The deployed organisation model has no distinct owner reference and its user roles are employee, answer_owner and admin. User agreed adminuser@test.com covers organisation admin/owner testing. Firebase Authentication identity confirmed; DEV Firestore has no configured database. App roles are backend records, not Firebase user-list ownership.
+CORRECTION: the deployed backend does have separate OrganisationOwner records in addition to employee, answer_owner and admin roles. Admin capabilities do not establish ownership. Earlier acceptance of adminuser@test.com as owner was incorrect; owner testing is not passed. Firebase Authentication identity is confirmed, but Firebase user-list identity does not establish backend ownership.
 
 Passed live:
 - Account menu confirms adminuser@test.com, organisation admin. My organisation lists all four capabilities organisation-wide.
@@ -67,3 +67,16 @@ Passed live:
 Transient Flutter semantics/control delays observed during live browser actions; private-result click navigation in this no-organisation search was not accepted as passed. A reload restored normal tab/session-list interaction. The earlier direct-route reload/spinner findings remain open. Codespace remains stopped; no source/deployment changes.
 
 The full matrix remains partial: actual scoped permission delegation, cross-account invitation/approval, templates, CSV/browser print and live narrow-screen edges are still untested.
+
+## Delegation and template/proposal acceptance update
+User approved a temporary regularuser1@test.com Department answer owner role, primary department DEV QA 20261009 test department, scoped verification test and restoration. Two UI saves closed the dialog but did not persist. Fresh reload confirms employee / E2E Operations Department and no department owner assignment. No privilege expansion persisted, so restoration was unnecessary. Backend release 6f33bcc OrganisationMemberService.update_member requires a separate owner record whenever the request includes role or status; the frontend shows Employee/Department answer owner controls to legacy admins and always sends role. This source restriction explains the observed failure, but the exact HTTP response was not captured. Record owner/admin distinction and misleading non-owner role editing as an open UI/permission alignment finding, rather than treating it as a successful delegation test.
+
+Additional live passes:
+- Organisation template DEV QA 20261009 admin template created v1 with two shared questions.
+- Using template creates admin-private draft session 7c9cd6eb-00aa-4109-9d23-9bc6130abca8. Answer one saves; report retains both questions, exact answer and No answer recorded for question two.
+- Check Knowledge dialog opens with organisation candidates.
+- Propose for Knowledge submits to admin review queue. Repeated submission created two pending proposals from the same source; success feedback was not visible during immediate observations. Duplicate submission prevention/feedback remains an open finding.
+- Approved one synthetic proposal via Create new Q&A: resulting question appears Needs verification. Rejected the duplicate: No Interact proposals pending. Existing proposals/items unchanged.
+- After regularuser2 sign-out, guest search returns only Local fixtures and excludes its Private/group content.
+
+Owner identity and scoped delegation remain unconfirmed. No source or deployment changes made.
