@@ -1,7 +1,7 @@
 # Live acceptance findings tracker — 9 October 2026
 
 Source: live-workspace-acceptance-2026-10-09.md, through commit 077f02f.
-Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F12 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
+Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F13 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ Process: handle one numbered item at a time. Implementation does not establish h
 | F10 | Inaccessible Group deep link silently falls back to another approved Group | Fixed / automated-validated in PR #31; held for combined DEV confirmation |
 | F11 | Guest reload returns Knowledge; saved Interact can be reopened | Fixed / automated-validated in PR #32; held for combined DEV confirmation |
 | F12 | Knowledge question team/department assignment alone does not restrict organisation-visible questions; Interact separately supports explicit team visibility | Fixed / automated-validated in PR #33 with explicit visibility; held for combined DEV confirmation |
-| F13 | Completed Interact remains editable | Pending behavior review; current design |
+| F13 | Completed organisation Interact remains editable | Fixed / automated-validated in PR #34 with explicit Reopen session; held for combined DEV confirmation |
 | F14 | Restoring employee role leaves separate department-answer-owner assignment until explicitly removed | Pending behavior review; cleanup completed |
 
 ## F01 implementation
@@ -149,3 +149,16 @@ Final tested source commit 1db9f3f6afdf9557b643fa35c7129e1310712644. Knowledge v
 Backend validation run 37973214900 / job 113964842130: 177 passed, 34 skipped; dependency consistency, Ruff analysis and compilation passed. Four new API regressions cover department/team detail/list/search/answer/comment/version/challenge boundaries, unauthorized writes, alias/canonical search leakage, author membership loss, multiple-team membership, inactive teams, missing/null scope validation, explicit restriction of an existing question, assignment independence, and cross-audience merge protection. Local targeted API tests passed; local full backend suite passed before addition of the PostgreSQL-only skipped case. All 24 uploaded source/test/workflow blobs match local hashes; local formatting and git diff --check passed. Earlier lint failures and test-scroll/mobile-dropdown issues were corrected; the final complete validation above supersedes them.
 
 F01–F12 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F13–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed. F12 hosted member/non-member direct-link and search retests remain pending the combined rollout; automated viewport checks do not close physical-device coverage.
+
+## F13 implementation and automated validation — 9 October 2026
+
+Draft PR #34: https://github.com/ManuelKismet/interaction-qa-flow/pull/34, branch fix/completed-interact-read-only-20261009, stacked on PR #33. Completed organisation Interact sessions are read-only in both the UI and API. Details, participant changes, question edits/deletion/restoration, answers, branch state and follow-ups are rejected with 409 under the session row lock. The same guard enforces the existing archived read-only policy. Reports, JSON/CSV exports, revision history, template creation and authorised archiving remain available.
+
+Only the explicit POST /guided/sessions/{id}/reopen action returns Completed to Active. It uses existing creator/admin and visibility authorisation, preserves original started_at, clears current completed_at, increments the revision and records a distinct GUIDED_SESSION_REOPENED audit event and “Session reopened” revision; earlier completion history remains. Ordinary Start cannot reopen a completed session, and archived sessions cannot reopen. UI displays a completed/read-only notice, hides all content editing controls, suspends queued autosaves when editing access changes, and offers Reopen session only to authorised editors. Reopening restores editing controls. Personal/account and local guest sessions have no Completed lifecycle and remain unchanged.
+
+Final tested source commit ff3c93d110d2570fd4af16664528544c4160b118. Completed Interact validation run 37975604100: Flutter job 113972997789 passed 86 tests across guided_batch3, guided_safety, guided_page and guided_session_page, with formatting and focused analysis clean; PostgreSQL job 113972997294 passed the completion-versus-waiting-edit race (1 test). New narrow-screen cases prove completed owners/viewers have no content controls, authorised explicit reopening restores controls, viewers cannot reopen, and completed reports remain readable. The older session-denial fixture was stabilised across authority initialisation, given an actual 404 and the existing safe denial message, and now asserts no automatic retries while denied plus explicit recovery.
+
+Private session denial validation run 37975603979 / job 113972996702 passed 84 tests. Backend validation run 37975604110 / job 113972997395 passed 179 tests, 35 skipped; dependency consistency, Ruff analysis and compilation passed. Two new API scenarios cover private and organisation sessions, all 12 write surfaces denied without stored graph/audit/revision changes, creator/admin/non-authorised reopening, completion/reopen timestamps and history, ordinary Start rejection, re-completion and archived write/reopen denial. The skipped PostgreSQL race was separately executed successfully above. Existing proposal race run 37975604009 / job 113972996983 passed (1 test). Local full backend suite also passed 179 tests, 35 skipped. All nine uploaded source/test/workflow blob hashes match local files; local formatting and git diff --check passed. Earlier style and test-fixture failures were corrected and are superseded by these final successful checks.
+
+F01–F13 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F14 and C01–C06 remain tracked. No merge or deployment performed. F13 hosted completion/reopen/permissions checks and archive/export acceptance remain pending the combined rollout; automated API/export and narrow viewport tests do not close the hosted or physical-device coverage items.
+
