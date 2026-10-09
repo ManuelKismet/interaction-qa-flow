@@ -1,0 +1,78 @@
+{
+  "source_commit": "acf30470e9004baefbc37bcaca735ddab3a8f8c6",
+  "api_revision": "intqaflow-dev-api-release6f33bcc",
+  "api_url": "https://intqaflow-dev-api-bycdjb22qq-nw.a.run.app",
+  "traffic_percent": 100,
+  "health_status": 200,
+  "auth_me_unauthenticated": 401,
+  "hosting_result": "HOSTING_RELEASE sites/intqaflow-dev/releases/1791508359447000 FILES 37 VERSION sites/intqaflow-dev/versions/ab9d1ef7e5175302",
+  "verified_files": [
+    {
+      "origin": "https://intqaflow-dev.web.app",
+      "file": "index.html",
+      "sha256": "a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858"
+    },
+    {
+      "origin": "https://intqaflow-dev.web.app",
+      "file": "flutter_bootstrap.js",
+      "sha256": "dd52dda813bc4d7d8ab87031cc08a6b1217e1b3536c5c8dfc07c8a58b820acd1"
+    },
+    {
+      "origin": "https://intqaflow-dev.web.app",
+      "file": "main.dart.js",
+      "sha256": "a8bf5c019d273f938f640bde3fa32982b69b21d6f2b45ab4da492c6f1bf25558"
+    },
+    {
+      "origin": "https://intqaflow-dev.web.app",
+      "file": "release-info.json",
+      "sha256": "b412db23bf7814fdec3cbb2c7b23b5cbf7bb1727f81d1515197184880a2057c8"
+    },
+    {
+      "origin": "https://intqaflow-dev.firebaseapp.com",
+      "file": "index.html",
+      "sha256": "a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858"
+    },
+    {
+      "origin": "https://intqaflow-dev.firebaseapp.com",
+      "file": "flutter_bootstrap.js",
+      "sha256": "dd52dda813bc4d7d8ab87031cc08a6b1217e1b3536c5c8dfc07c8a58b820acd1"
+    },
+    {
+      "origin": "https://intqaflow-dev.firebaseapp.com",
+      "file": "main.dart.js",
+      "sha256": "a8bf5c019d273f938f640bde3fa32982b69b21d6f2b45ab4da492c6f1bf25558"
+    },
+    {
+      "origin": "https://intqaflow-dev.firebaseapp.com",
+      "file": "release-info.json",
+      "sha256": "b412db23bf7814fdec3cbb2c7b23b5cbf7bb1727f81d1515197184880a2057c8"
+    }
+  ],
+  "staged_smoke": [
+    {
+      "check": "health",
+      "status": 200
+    },
+    {
+      "check": "auth_me_unauthenticated",
+      "status": 401
+    },
+    {
+      "check": "invalid_token_rejected",
+      "status": 401
+    },
+    {
+      "check": "/api/v1/personal/interact/search unauthenticated",
+      "status": 401
+    },
+    {
+      "check": "/api/v1/guided/sessions/search unauthenticated",
+      "status": 401
+    },
+    {
+      "check": "hosted_origin_cors",
+      "status": 200,
+      "origin": "https://intqaflow-dev.web.app"
+    }
+  ]
+}

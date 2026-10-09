@@ -19,7 +19,7 @@ Read-only and archived session checks now explicitly assert that Save history re
 
 ## Release status
 
-Backend image built from the exact backend tree above, staged as intqaflow-dev-api-release6f33bcc with zero live traffic. Frontend and backend publishing and hosted smoke results will be recorded after release. Production and security configuration remain outside this DEV rollout.
+Deployed source: acf30470e9004baefbc37bcaca735ddab3a8f8c6. API revision intqaflow-dev-api-release6f33bcc serves 100% of DEV traffic; health returns 200. Firebase Hosting release 1791508359447000, version ab9d1ef7e5175302, publishes 37 files. Both https://intqaflow-dev.web.app and https://intqaflow-dev.firebaseapp.com match the tested index.html, flutter_bootstrap.js, main.dart.js and release-info.json SHA-256 values (eight comparisons). Missing/invalid user tokens and unauthenticated Personal/Organisation Interact search return 401; hosted-origin CORS passes. Production and existing security configuration were not changed. Disposable PostgreSQL is stopped; the existing Codespace will be stopped after the receipt push.
 
 Authenticated hosted phone/search acceptance remains external/manual because the cloud-browser sign-in issue is paused. Automated mock/widget tests do not establish real Firebase sign-in acceptance.
 
