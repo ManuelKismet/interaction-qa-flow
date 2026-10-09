@@ -185,7 +185,10 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
 
 class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
   @override
-  Future<Map<String, dynamic>> searchInteract(String query, {required String expectedUid}) async => {'results': <Map<String, dynamic>>[], 'partial': false};
+  Future<Map<String, dynamic>> searchInteract(
+    String query, {
+    required String expectedUid,
+  }) async => {'results': <Map<String, dynamic>>[], 'partial': false};
 
   _TestPersonalWorkspaceRepository(this.items) : super(Dio());
 
@@ -1276,12 +1279,10 @@ void main() {
     expect(searchCount, 1);
     expect(find.text('Partial result'), findsOneWidget);
     expect(
-      find.text(
-        'Personal-account search reached its result limit. Some matches may be omitted.',
-      ),
+      find.text('Some sources reached their result limit: Private.'),
       findsOneWidget,
     );
-    final retryButton = find.text('Retry available sources');
+    final retryButton = find.text('Retry search');
     await tester.ensureVisible(retryButton);
     await tester.tap(retryButton);
     await tester.pump(const Duration(milliseconds: 301));
@@ -1290,9 +1291,7 @@ void main() {
     expect(searchCount, 2);
     expect(find.text('Complete result'), findsOneWidget);
     expect(
-      find.text(
-        'Personal-account search reached its result limit. Some matches may be omitted.',
-      ),
+      find.text('Some sources reached their result limit: Private.'),
       findsNothing,
     );
   });
@@ -1334,6 +1333,18 @@ void main() {
               expect(uid, user.uid);
               return {
                 'results': [
+                  {
+                    'id': 'private-record',
+                    'source_id': 'private-answer-match',
+                    'title': 'Private answer evidence',
+                    'data': {
+                      'id': 'private-answer-match',
+                      'answer': 'Another precise needle phrase appears here.',
+                    },
+                    'snippet': 'Another precise needle phrase appears here.',
+                    'match_method': 'keyword',
+                    'relevance_score': 1.5,
+                  },
                   {
                     'id': 'semantic-record',
                     'source_id': 'semantic-only',
@@ -1382,8 +1393,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
 
-      Finder resultCard(String title) =>
-          find.ancestor(of: find.text(title), matching: find.byType(Card));
+      Finder resultCard(String title) => find
+          .ancestor(of: find.text(title), matching: find.byType(InkWell))
+          .first;
 
       final localCard = resultCard('Local answer evidence');
       final privateCard = resultCard('Private answer evidence');
@@ -1406,10 +1418,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: privateCard,
-          matching: find.text('Personal account · saved'),
-        ),
+        find.descendant(of: privateCard, matching: find.text('Knowledge')),
         findsOneWidget,
       );
       expect(
@@ -2274,7 +2283,7 @@ void main() {
         anchor: find.text('Saved'),
       );
       expect(find.text('Refresh race question'), findsOneWidget);
-      expect(find.text('Personal account · saved'), findsOneWidget);
+      expect(find.text('Knowledge'), findsOneWidget);
     },
   );
 

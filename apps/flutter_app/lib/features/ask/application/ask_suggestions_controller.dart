@@ -16,9 +16,10 @@ final askSuggestionsProvider =
     );
 
 final localAskSuggestionsProvider =
-    AsyncNotifierProvider.autoDispose<LocalAskSuggestionsController, AskSuggestions>(
-      LocalAskSuggestionsController.new,
-    );
+    AsyncNotifierProvider.autoDispose<
+      LocalAskSuggestionsController,
+      AskSuggestions
+    >(LocalAskSuggestionsController.new);
 
 class LocalAskSuggestionsController extends AskSuggestionsController {
   @override
@@ -91,7 +92,6 @@ class AskSearchIdentity {
 
   bool sameScopeAs(AskSearchIdentity other) =>
       verifiedUid == other.verifiedUid &&
-      membershipState == other.membershipState &&
       organisationId == other.organisationId;
 }
 
@@ -117,10 +117,7 @@ final askSearchIdentityProvider = Provider<AskSearchIdentity>((ref) {
     }
     final status = membershipStatus.requireValue;
     if (status != AccountMembershipStatus.active) {
-      return AskSearchIdentity(
-        verifiedUid: uid,
-        membershipState: status.name,
-      );
+      return AskSearchIdentity(verifiedUid: uid, membershipState: status.name);
     }
     final membership = ref.watch(currentMembershipProvider);
     if (membership.isLoading) {
@@ -155,15 +152,16 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
 
   @override
   Future<AskSuggestions> build() async {
-    if (!localOnly) ref.listen(askSearchIdentityProvider, (previous, next) {
-      if (previous != null &&
-          !previous.sameScopeAs(next) &&
-          _latestQuery.isNotEmpty &&
-          (_lastSearchQuery != _latestQuery ||
-              _lastSearchIdentity?.sameScopeAs(next) != true)) {
-        _scheduleQuery(_latestQuery, preserveResults: false);
-      }
-    });
+    if (!localOnly)
+      ref.listen(askSearchIdentityProvider, (previous, next) {
+        if (previous != null &&
+            !previous.sameScopeAs(next) &&
+            _latestQuery.isNotEmpty &&
+            (_lastSearchQuery != _latestQuery ||
+                _lastSearchIdentity?.sameScopeAs(next) != true)) {
+          _scheduleQuery(_latestQuery, preserveResults: false);
+        }
+      });
     ref.onDispose(() {
       _debounce?.cancel();
       _queryGeneration++;
@@ -186,7 +184,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
     _debounce?.cancel();
     final generation = ++_queryGeneration;
     _latestQuery = query.trim();
-    if (_latestQuery.length < 2) {
+    if (_latestQuery.length < (localOnly ? 1 : 2)) {
       state = const AsyncData(AskSuggestions());
       return;
     }
@@ -211,11 +209,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
     }
     _debounce = Timer(
       const Duration(milliseconds: 300),
-      () => _search(
-        requestedQuery,
-        generation,
-        previousResults: previous,
-      ),
+      () => _search(requestedQuery, generation, previousResults: previous),
     );
   }
 
@@ -262,11 +256,17 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
                       ),
             searchPrivateInteract: identity.verifiedUid == null
                 ? null
-                : (value) => ref.read(personalWorkspaceRepositoryProvider)
-                    .searchInteract(value, expectedUid: identity.verifiedUid!),
+                : (value) => ref
+                      .read(personalWorkspaceRepositoryProvider)
+                      .searchInteract(
+                        value,
+                        expectedUid: identity.verifiedUid!,
+                      ),
             searchOrganisationInteract: identity.organisationId == null
                 ? null
-                : (value) => ref.read(questionsRepositoryProvider).searchInteract(value),
+                : (value) => ref
+                      .read(questionsRepositoryProvider)
+                      .searchInteract(value),
             searchGroups: identity.verifiedUid == null
                 ? null
                 : (value) => ref
@@ -311,16 +311,13 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
             localKnowledgeRelevance(query, item),
             (account?['relevance_score'] as num?)?.toDouble() ?? 0,
           ].reduce((left, right) => left > right ? left : right),
-          snippet: _snippet(
-            query,
-            [
-              _string(account?['snippet']),
-              _string(item['answer']),
-              _string(item['body']),
-              _string(privateData['answer']),
-              _string(privateData['body']),
-            ],
-          ),
+          snippet: _snippet(query, [
+            _string(account?['snippet']),
+            _string(item['answer']),
+            _string(item['body']),
+            _string(privateData['answer']),
+            _string(privateData['body']),
+          ]),
           status: 'Knowledge',
           destination: 'personal',
         ),
@@ -418,27 +415,31 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
       final source = result['source'] as String?;
       if (sessionId == null || source == null) continue;
       if (result['owner_uid'] != null &&
-          result['owner_uid'] != identity.verifiedUid) continue;
-      hits.add(AskKnowledgeHit(
-        id: result['id'] as String? ?? sessionId,
-        sessionId: sessionId,
-        questionId: result['question_id'] as String?,
-        participantId: result['participant_id'] as String?,
-        kind: 'interact_session',
-        title: result['title'] as String? ?? 'Interact session',
-        source: source,
-        attribution: [
-          ..._attribution(result),
-          if (result['visibility'] is String)
-            'Visibility: ${result['visibility']}',
-        ],
-        matchMethod: 'Keyword or prefix match',
-        relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
-        snippet: _string(result['snippet']),
-        status: 'Interact · ${result['matched_in'] ?? 'session'} · ${result['status'] ?? ''}',
-        destination: result['destination'] as String? ?? 'personal',
-        groupId: result['group_id'] as String?,
-      ));
+          result['owner_uid'] != identity.verifiedUid)
+        continue;
+      hits.add(
+        AskKnowledgeHit(
+          id: result['id'] as String? ?? sessionId,
+          sessionId: sessionId,
+          questionId: result['question_id'] as String?,
+          participantId: result['participant_id'] as String?,
+          kind: 'interact_session',
+          title: result['title'] as String? ?? 'Interact session',
+          source: source,
+          attribution: [
+            ..._attribution(result),
+            if (result['visibility'] is String)
+              'Visibility: ${result['visibility']}',
+          ],
+          matchMethod: 'Keyword or prefix match',
+          relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
+          snippet: _string(result['snippet']),
+          status:
+              'Interact · ${result['matched_in'] ?? 'session'} · ${result['status'] ?? ''}',
+          destination: result['destination'] as String? ?? 'personal',
+          groupId: result['group_id'] as String?,
+        ),
+      );
     }
     final errors = {...sources.failedSources};
     if (localFailed) errors.add('Local');
@@ -485,7 +486,7 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
         isRefreshing: false,
         notice: query.length > 100
             ? 'Shorten the query to 100 characters to search other accessible '
-                'sources. Local Knowledge and Interact were searched.'
+                  'sources. Local Knowledge and Interact were searched.'
             : null,
       ),
     );
@@ -501,7 +502,8 @@ class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
   }
 
   static String _hitSourceName(AskKnowledgeHit hit) {
-    if (!hit.isInteract || hit.source == 'Local') return _sourceName(hit.source);
+    if (!hit.isInteract || hit.source == 'Local')
+      return _sourceName(hit.source);
     return hit.destination == 'organisation_interact'
         ? 'Organisation Interact'
         : 'Private and Group Interact';

@@ -65,8 +65,12 @@ class _UnifiedSearchResultsState extends State<UnifiedSearchResults> {
 
 class _SearchResultList extends StatelessWidget {
   const _SearchResultList({
-    required this.suggestions, required this.onRetry, required this.filter,
-    required this.onOpenLocalInteract, this.onOpenPersonalKnowledge, this.onOpenGroupResult,
+    required this.suggestions,
+    required this.onRetry,
+    required this.filter,
+    required this.onOpenLocalInteract,
+    this.onOpenPersonalKnowledge,
+    this.onOpenGroupResult,
   });
 
   final AsyncValue<AskSuggestions> suggestions;
@@ -80,11 +84,15 @@ class _SearchResultList extends StatelessWidget {
   Widget build(BuildContext context) {
     return suggestions.when(
       data: (items) {
-        final hits = items.hits.where((hit) => switch (filter) {
-          SearchResultFilter.all => true,
-          SearchResultFilter.knowledge => !hit.isInteract,
-          SearchResultFilter.interact => hit.isInteract,
-        }).toList();
+        final hits = items.hits
+            .where(
+              (hit) => switch (filter) {
+                SearchResultFilter.all => true,
+                SearchResultFilter.knowledge => !hit.isInteract,
+                SearchResultFilter.interact => hit.isInteract,
+              },
+            )
+            .toList();
         if (hits.isEmpty &&
             items.failedSources.isEmpty &&
             items.partialSources.isEmpty &&
@@ -104,7 +112,9 @@ class _SearchResultList extends StatelessWidget {
               if (hits.any((hit) => hit.isInteract))
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
-                  child: Text('Interact content is session work, not approved Knowledge.'),
+                  child: Text(
+                    'Interact content is session work, not approved Knowledge.',
+                  ),
                 ),
               if (items.notice != null)
                 Padding(
@@ -123,18 +133,14 @@ class _SearchResultList extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      for (
-                        var index = 0;
-                        index < hits.length;
-                        index++
-                      ) ...[
+                      for (var index = 0; index < hits.length; index++) ...[
                         _SuggestionRow(
-                          result: hits[index], onOpenLocalInteract: onOpenLocalInteract,
+                          result: hits[index],
+                          onOpenLocalInteract: onOpenLocalInteract,
                           onOpenPersonalKnowledge: onOpenPersonalKnowledge,
                           onOpenGroupResult: onOpenGroupResult,
                         ),
-                        if (index < hits.length - 1)
-                          const Divider(height: 1),
+                        if (index < hits.length - 1) const Divider(height: 1),
                       ],
                     ],
                   ),
@@ -194,7 +200,8 @@ class _SearchResultList extends StatelessWidget {
 
 class _SuggestionRow extends StatelessWidget {
   const _SuggestionRow({
-    required this.result, required this.onOpenLocalInteract,
+    required this.result,
+    required this.onOpenLocalInteract,
     this.onOpenPersonalKnowledge,
     this.onOpenGroupResult,
   });
@@ -216,7 +223,8 @@ class _SuggestionRow extends StatelessWidget {
           }
           final params = <String, String>{
             if (result.questionId != null) 'questionId': result.questionId!,
-            if (result.participantId != null) 'participantId': result.participantId!,
+            if (result.participantId != null)
+              'participantId': result.participantId!,
           };
           if (result.destination == 'group') {
             if (onOpenGroupResult != null) {
@@ -224,12 +232,18 @@ class _SuggestionRow extends StatelessWidget {
               return;
             }
             params.addAll({'groupId': result.groupId!, 'entryId': result.id});
-            context.go(Uri(path: '/guest/groups', queryParameters: params).toString());
+            context.go(
+              Uri(path: '/guest/groups', queryParameters: params).toString(),
+            );
           } else {
             final path = result.destination == 'organisation_interact'
                 ? '/guided/sessions/${Uri.encodeComponent(result.sessionId!)}'
                 : '/personal/interact/sessions/${Uri.encodeComponent(result.sessionId!)}';
-            context.go(Uri.parse(path).replace(queryParameters: params.isEmpty ? null : params).toString());
+            context.go(
+              Uri.parse(path)
+                  .replace(queryParameters: params.isEmpty ? null : params)
+                  .toString(),
+            );
           }
           return;
         }
@@ -241,16 +255,25 @@ class _SuggestionRow extends StatelessWidget {
               onOpenGroupResult!(result);
               return;
             }
-            context.go(Uri(path: '/guest/groups', queryParameters: {
-              'groupId': result.groupId ?? '', 'entryId': result.id,
-            }).toString());
+            context.go(
+              Uri(
+                path: '/guest/groups',
+                queryParameters: {
+                  'groupId': result.groupId ?? '',
+                  'entryId': result.id,
+                },
+              ).toString(),
+            );
           default:
             if (onOpenPersonalKnowledge != null) {
               onOpenPersonalKnowledge!(result.id);
             } else {
-              context.go(Uri(path: '/personal/questions', queryParameters: {
-                'knowledgeItemId': result.id,
-              }).toString());
+              context.go(
+                Uri(
+                  path: '/personal/questions',
+                  queryParameters: {'knowledgeItemId': result.id},
+                ).toString(),
+              );
             }
         }
       },
@@ -279,7 +302,10 @@ class _SuggestionRow extends StatelessWidget {
                     runSpacing: 4,
                     children: [
                       if (result.isInteract)
-                        const Chip(visualDensity: VisualDensity.compact, label: Text('Interact')),
+                        const Chip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text('Interact'),
+                        ),
                       Chip(
                         visualDensity: VisualDensity.compact,
                         label: Text(result.source),

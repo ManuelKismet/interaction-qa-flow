@@ -15,33 +15,45 @@ List<Map<String, dynamic>> searchLocalInteract(
     if (folded.startsWith(needle)) return 1.7;
     return 1.5;
   }
+
   String snippet(String text) {
     final folded = text.toLowerCase();
     final positions = terms.map(folded.indexOf).where((index) => index >= 0);
     final start = folded.length != text.length || positions.isEmpty
         ? 0
-        : (positions.reduce((a, b) => a < b ? a : b) - 50).clamp(0, text.length).toInt();
+        : (positions.reduce((a, b) => a < b ? a : b) - 50)
+              .clamp(0, text.length)
+              .toInt();
     final end = (start + 220).clamp(0, text.length).toInt();
     return '${start > 0 ? '…' : ''}${text.substring(start, end)}${end < text.length ? '…' : ''}';
   }
+
   final hits = <Map<String, dynamic>>[];
   for (final session in sessions) {
     final id = session['id'];
     if (id is! String || id.isEmpty) continue;
     final metadata = <String, dynamic>{
-      'id': id, 'session_id': id,
+      'id': id,
+      'session_id': id,
       'title': session['title'] as String? ?? 'Interact session',
-      'source': 'Local', 'destination': 'personal',
-      'kind': 'interact_session', 'match_method': 'keyword',
+      'source': 'Local',
+      'destination': 'personal',
+      'kind': 'interact_session',
+      'match_method': 'keyword',
       'status': session['status'] as String? ?? 'Local session',
     };
     final titleScore = score(session['title']);
     if (titleScore > 0) {
-      hits.add({...metadata, 'matched_in': 'session title',
-        'snippet': snippet(session['title'] as String), 'relevance_score': titleScore});
+      hits.add({
+        ...metadata,
+        'matched_in': 'session title',
+        'snippet': snippet(session['title'] as String),
+        'relevance_score': titleScore,
+      });
     }
     final stack = <_SearchQuestion>[
-      for (final question in (session['questions'] as List? ?? const []).reversed)
+      for (final question
+          in (session['questions'] as List? ?? const []).reversed)
         if (question is Map<String, dynamic>) _SearchQuestion(question, null),
     ];
     final seen = <Map<String, dynamic>>{};
@@ -49,7 +61,8 @@ List<Map<String, dynamic>> searchLocalInteract(
       final pending = stack.removeLast();
       final question = pending.question;
       if (!seen.add(question) || question['deleted_at'] != null) continue;
-      String? participant = question['target_participant_id'] as String? ?? pending.participant;
+      String? participant =
+          question['target_participant_id'] as String? ?? pending.participant;
       var relevance = score(question['text']);
       var text = question['text'] as String? ?? '';
       var matchedIn = pending.participant == null ? 'question' : 'follow-up';
@@ -62,19 +75,29 @@ List<Map<String, dynamic>> searchLocalInteract(
           participant = answer['participant_id'] as String?;
           matchedIn = 'answer';
         }
-        for (final child in (answer['follow_ups'] as List? ?? const []).reversed) {
+        for (final child
+            in (answer['follow_ups'] as List? ?? const []).reversed) {
           if (child is Map<String, dynamic>) {
-            stack.add(_SearchQuestion(child, answer['participant_id'] as String?));
+            stack.add(
+              _SearchQuestion(child, answer['participant_id'] as String?),
+            );
           }
         }
       }
-      for (final child in (question['follow_ups'] as List? ?? const []).reversed) {
-        if (child is Map<String, dynamic>) stack.add(_SearchQuestion(child, participant));
+      for (final child
+          in (question['follow_ups'] as List? ?? const []).reversed) {
+        if (child is Map<String, dynamic>)
+          stack.add(_SearchQuestion(child, participant));
       }
       if (relevance > 0 && question['id'] is String) {
-        hits.add({...metadata, 'question_id': question['id'],
-          'participant_id': participant, 'matched_in': matchedIn,
-          'snippet': snippet(text), 'relevance_score': relevance});
+        hits.add({
+          ...metadata,
+          'question_id': question['id'],
+          'participant_id': participant,
+          'matched_in': matchedIn,
+          'snippet': snippet(text),
+          'relevance_score': relevance,
+        });
       }
     }
   }

@@ -16,7 +16,9 @@ import 'package:int_qa_flow/features/organisation/application/organisation_provi
 
 class GuidedSessionPage extends ConsumerStatefulWidget {
   const GuidedSessionPage({
-    required this.sessionId, this.initialQuestionId, this.initialParticipantId,
+    required this.sessionId,
+    this.initialQuestionId,
+    this.initialParticipantId,
     super.key,
   });
   final String sessionId;
@@ -423,7 +425,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                           key: ValueKey((session.id, repository)),
                           questions: session.questions,
                           searchQuestionId: _searchQuestionId,
-                          onShowAllQuestions: () => setState(() => _searchQuestionId = null),
+                          onShowAllQuestions: () =>
+                              setState(() => _searchQuestionId = null),
                           participantId: _participantId,
                           participantName: activeParticipant?.name,
                           readOnly: readOnly,
@@ -461,18 +464,20 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                                     spacing: 8,
                                     runSpacing: 8,
                                     children: [
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Shared question'),
-                      onPressed: () => _addQuestion('shared'),
-                    ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.person_outline),
-                      label: const Text('Participant question'),
-                      onPressed: activeParticipant == null
-                          ? null
-                          : () => _addQuestion('participant'),
-                    ),
+                                      OutlinedButton.icon(
+                                        icon: const Icon(Icons.add),
+                                        label: const Text('Shared question'),
+                                        onPressed: () => _addQuestion('shared'),
+                                      ),
+                                      OutlinedButton.icon(
+                                        icon: const Icon(Icons.person_outline),
+                                        label: const Text(
+                                          'Participant question',
+                                        ),
+                                        onPressed: activeParticipant == null
+                                            ? null
+                                            : () => _addQuestion('participant'),
+                                      ),
                                     ],
                                   ),
                                 )
@@ -1201,15 +1206,19 @@ class _SessionHeader extends StatelessWidget {
         itemBuilder: (_) => [
           PopupMenuItem(
             value: 'participant',
-            child: Text(reportMode && !allParticipantsReport
-                ? 'Return to editing'
-                : 'Active participant report'),
+            child: Text(
+              reportMode && !allParticipantsReport
+                  ? 'Return to editing'
+                  : 'Active participant report',
+            ),
           ),
           PopupMenuItem(
             value: 'all',
-            child: Text(reportMode && allParticipantsReport
-                ? 'Return to editing'
-                : 'All participants report'),
+            child: Text(
+              reportMode && allParticipantsReport
+                  ? 'Return to editing'
+                  : 'All participants report',
+            ),
           ),
           const PopupMenuDivider(),
           const PopupMenuItem(value: 'json', child: Text('JSON')),
@@ -1378,7 +1387,9 @@ class GuidedFlowView extends StatelessWidget {
     }
     final matches = searchQuestionId == null
         ? visibleQuestions
-        : visibleQuestions.where((item) => item.question.id == searchQuestionId).toList();
+        : visibleQuestions
+              .where((item) => item.question.id == searchQuestionId)
+              .toList();
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1100),
@@ -1388,13 +1399,21 @@ class GuidedFlowView extends StatelessWidget {
           children: [
             if (questions.isEmpty) const Text('No questions in this view.'),
             if (searchQuestionId != null)
-              Row(children: [
-                Expanded(child: Text(matches.isEmpty
-                    ? 'The matched question is no longer available.'
-                    : 'Search match')),
-                TextButton(onPressed: onShowAllQuestions,
-                    child: const Text('Show all questions')),
-              ]),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      matches.isEmpty
+                          ? 'The matched question is no longer available.'
+                          : 'Search match',
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: onShowAllQuestions,
+                    child: const Text('Show all questions'),
+                  ),
+                ],
+              ),
             for (final visible in matches)
               GuidedQuestionNode(
                 question: visible.question,

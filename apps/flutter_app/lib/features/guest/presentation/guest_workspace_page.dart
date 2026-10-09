@@ -1319,11 +1319,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final groupId = hit.groupId!;
     final entryId = hit.id;
     if (widget.onWorkspaceTabChanged != null) {
-      context.push(Uri(path: '/guest/groups', queryParameters: {
-        'groupId': groupId, 'entryId': entryId,
-        if (hit.questionId != null) 'questionId': hit.questionId!,
-        if (hit.participantId != null) 'participantId': hit.participantId!,
-      }).toString());
+      context.push(
+        Uri(
+          path: '/guest/groups',
+          queryParameters: {
+            'groupId': groupId,
+            'entryId': entryId,
+            if (hit.questionId != null) 'questionId': hit.questionId!,
+            if (hit.participantId != null) 'participantId': hit.participantId!,
+          },
+        ).toString(),
+      );
       return;
     }
     await Navigator.of(context).push<void>(
@@ -1990,7 +1996,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final hasWorkspaceNavigation =
         widget.personalWorkspaceEnabled && widget.onWorkspaceTabChanged != null;
     final workspaceHelp = widget.initialWorkspaceTab == 0
-        ? _knowledgeInfoButton
+        ? _knowledgeInfoButton(_verifiedPersonalUid != null)
         : _interactInfoButton(_verifiedPersonalUid != null);
     final narrowViewport = viewport.width < 420;
     final workspaceNotices = <Widget>[
@@ -2238,7 +2244,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            _knowledgeInfoButton,
+                            _knowledgeInfoButton(_verifiedPersonalUid != null),
                           ],
                         ),
                       ),
@@ -2362,7 +2368,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                 localSaveStatus: _saveStatus,
                                 openSessionId: _openSessionId,
                                 initialQuestionId: widget.initialQuestionId,
-                                initialParticipantId: widget.initialParticipantId,
+                                initialParticipantId:
+                                    widget.initialParticipantId,
                                 sessionLoading:
                                     _personalLoading ||
                                     (_verifiedPersonalUid != null &&
@@ -2909,15 +2916,12 @@ class _GuestNotice extends StatelessWidget {
   }
 }
 
-const _knowledgeInfoButton = _GuestInfoButton(
+Widget _knowledgeInfoButton(bool privateWorkspace) => _GuestInfoButton(
   tooltip: 'Search help',
-  title: 'About Knowledge search',
-  content:
-      'Search local Knowledge on this device and all '
-      'personal-account Knowledge in your account, plus authorised '
-      'organisation and Group Knowledge when available. Only your '
-      'query is sent to those services; local content is never '
-      'uploaded by search.',
+  title: 'About search',
+  content: privateWorkspace
+      ? 'Search Local, Private, Group and Organisation Knowledge and Interact within your access permissions. Interact includes session titles, questions, answers and follow-ups. Only your query is sent; local content stays on this device.'
+      : 'Search Knowledge and Interact stored on this device, including session titles, questions, answers and follow-ups. This search stays local.',
 );
 
 Widget _interactInfoButton(bool privateWorkspace) => _GuestInfoButton(
@@ -3052,7 +3056,7 @@ class _GuestKnowledgeTabState extends ConsumerState<_GuestKnowledgeTab> {
   void didUpdateWidget(covariant _GuestKnowledgeTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.privateWorkspace != widget.privateWorkspace ||
-        oldWidget.items != widget.items) {
+        jsonEncode(oldWidget.items) != jsonEncode(widget.items)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _query.text.trim().isNotEmpty) {
           _scheduleRemoteSearch(_query.text);
@@ -3148,6 +3152,11 @@ class _GuestKnowledgeTabState extends ConsumerState<_GuestKnowledgeTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(
+      widget.privateWorkspace
+          ? askSuggestionsProvider
+          : localAskSuggestionsProvider,
+    );
     final query = _query.text;
     final matches = widget.items
         .where((item) => matchesGuestKeywordOrPrefix(query, item))
@@ -3158,7 +3167,7 @@ class _GuestKnowledgeTabState extends ConsumerState<_GuestKnowledgeTab> {
         labelText: 'Search Knowledge & Interact',
         prefixIcon: const Icon(Icons.search),
         suffixIcon: MediaQuery.sizeOf(context).height < 300
-            ? _knowledgeInfoButton
+            ? _knowledgeInfoButton(widget.privateWorkspace)
             : null,
       ),
       onChanged: (value) {
@@ -3187,7 +3196,6 @@ class _GuestKnowledgeTabState extends ConsumerState<_GuestKnowledgeTab> {
               ],
               if (!widget.privateWorkspace) ...[
                 searchField,
-                _remoteSearchResults(context, query, const []),
                 const SizedBox(height: 16),
               ],
               Align(
@@ -4045,7 +4053,8 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
   void initState() {
     super.initState();
     _searchQuestionId = widget.initialQuestionId;
-    _selectedParticipantId = widget.initialParticipantId ??
+    _selectedParticipantId =
+        widget.initialParticipantId ??
         _participants.firstOrNull?['id'] as String?;
   }
 
@@ -4794,8 +4803,9 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
         participants.firstOrNull;
     final activeParticipantId = activeParticipant?['id'] as String?;
     final allQuestions = widget.session['questions'] as List? ?? const [];
-    final searchQuestion = _searchQuestionId == null ? null :
-        _findGuestQuestion(allQuestions, _searchQuestionId!);
+    final searchQuestion = _searchQuestionId == null
+        ? null
+        : _findGuestQuestion(allQuestions, _searchQuestionId!);
     final questions = (searchQuestion == null ? allQuestions : [searchQuestion])
         .whereType<Map<String, dynamic>>()
         .where((question) {
@@ -4865,15 +4875,23 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               ),
             ),
           if (_searchQuestionId != null)
-            padded(Row(children: [
-              Expanded(child: Text(searchQuestion == null
-                  ? 'The matched question is no longer available.'
-                  : 'Search match')),
-              TextButton(
-                onPressed: () => setState(() => _searchQuestionId = null),
-                child: const Text('Show all questions'),
+            padded(
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      searchQuestion == null
+                          ? 'The matched question is no longer available.'
+                          : 'Search match',
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _searchQuestionId = null),
+                    child: const Text('Show all questions'),
+                  ),
+                ],
               ),
-            ])),
+            ),
           if (questions.isEmpty && participants.isNotEmpty)
             padded(
               const Padding(
@@ -4892,11 +4910,18 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                     ? const []
                     : [activeParticipant],
                 onRemove: () {
-                  final owner = _guestFollowUpOwner(allQuestions, question['id'] as String);
+                  final owner = _guestFollowUpOwner(
+                    allQuestions,
+                    question['id'] as String,
+                  );
                   if (owner == null) {
                     _removeRootQuestion(question);
                   } else {
-                    _removeFollowUp(owner.$1, owner.$2, question['id'] as String);
+                    _removeFollowUp(
+                      owner.$1,
+                      owner.$2,
+                      question['id'] as String,
+                    );
                   }
                 },
                 onRemoveFollowUp: _removeFollowUp,
@@ -6527,8 +6552,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     final uid = _activeUid;
     final generation = _loadGeneration;
     if (groupId == null || uid == null || !_canCreate || _busy) return;
-    bool current() => _isCurrentLoad(uid, generation) &&
-        _groupId == groupId && _canCreate;
+    bool current() =>
+        _isCurrentLoad(uid, generation) && _groupId == groupId && _canCreate;
     await _run(() async {
       final local = await ref.read(guestWorkspaceStoreProvider).load();
       if (!current()) return;
@@ -6544,6 +6569,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         sources[key] = source;
         sessions.add({...session, 'id': key});
       }
+
       for (final session in local.sessions) {
         add('local-${session['id']}', session, 'Local');
       }
@@ -6551,7 +6577,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         if (item['kind'] != 'interact_session') continue;
         final data = item['data'];
         if (data is! Map<String, dynamic> || item['id'] is! String) {
-          throw const FormatException('A private Interact session could not be loaded.');
+          throw const FormatException(
+            'A private Interact session could not be loaded.',
+          );
         }
         add('private-${item['id']}', {
           ...data,
@@ -6575,8 +6603,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         groupId: groupId,
         expectedUid: uid,
         sessions: {
-          for (final key in selection.sessionIds)
-            key: originals[key]!,
+          for (final key in selection.sessionIds) key: originals[key]!,
         },
       );
       if (!current()) return;
@@ -6612,7 +6639,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           child: _GuestGroupEntryContent(
             entry: entry,
             questionId: entry['id'] == widget.initialEntryId
-                ? widget.initialQuestionId : null,
+                ? widget.initialQuestionId
+                : null,
           ),
         ),
         actions: [
@@ -7296,10 +7324,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'create',
-                child: Text('Create group'),
-              ),
+              const PopupMenuItem(value: 'create', child: Text('Create group')),
               const PopupMenuItem(
                 value: 'join',
                 child: Text('Join with invitation'),
@@ -7348,7 +7373,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 label: const Text('Create group'),
               ),
               OutlinedButton.icon(
-                onPressed: _busy || !_canCreateOrJoin ? null : _joinByInvitation,
+                onPressed: _busy || !_canCreateOrJoin
+                    ? null
+                    : _joinByInvitation,
                 icon: const Icon(Icons.link),
                 label: const Text('Join with invitation'),
               ),
@@ -7490,7 +7517,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                   title: Text(entry['title'] as String? ?? 'Shared content'),
                   dense: true,
                   subtitle: Text(
-                    entry['kind'] == 'interact_session' ? 'Interact' : 'Knowledge',
+                    entry['kind'] == 'interact_session'
+                        ? 'Interact'
+                        : 'Knowledge',
                   ),
                   trailing: _GuestInfoButton(
                     tooltip: 'Shared item details',
@@ -8025,7 +8054,8 @@ class _GuestGroupEntryContent extends StatefulWidget {
   final String? questionId;
 
   @override
-  State<_GuestGroupEntryContent> createState() => _GuestGroupEntryContentState();
+  State<_GuestGroupEntryContent> createState() =>
+      _GuestGroupEntryContentState();
 }
 
 class _GuestGroupEntryContentState extends State<_GuestGroupEntryContent> {
@@ -8053,7 +8083,10 @@ class _GuestGroupEntryContentState extends State<_GuestGroupEntryContent> {
       );
     }
     final matchedQuestion = !_showAll && widget.questionId != null
-        ? _findGuestQuestion(data['questions'] as List? ?? const [], widget.questionId!)
+        ? _findGuestQuestion(
+            data['questions'] as List? ?? const [],
+            widget.questionId!,
+          )
         : null;
     final report = composeGuestReport(
       session: {
@@ -8069,15 +8102,21 @@ class _GuestGroupEntryContentState extends State<_GuestGroupEntryContent> {
       shrinkWrap: true,
       children: [
         if (!_showAll && widget.questionId != null)
-          Row(children: [
-            Expanded(child: Text(matchedQuestion == null
-                ? 'The matched question is no longer available.'
-                : 'Search match')),
-            TextButton(
-              onPressed: () => setState(() => _showAll = true),
-              child: const Text('Show all questions'),
-            ),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  matchedQuestion == null
+                      ? 'The matched question is no longer available.'
+                      : 'Search match',
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _showAll = true),
+                child: const Text('Show all questions'),
+              ),
+            ],
+          ),
         Text(
           'All participants · ${report.participantNames.join(', ')}',
           style: Theme.of(context).textTheme.bodySmall,
@@ -8323,7 +8362,8 @@ bool _replaceInQuestions(List questions, Map<String, dynamic> updated) {
 
 (String, String)? _guestFollowUpOwner(List questions, String questionId) {
   for (final question in questions.whereType<Map<String, dynamic>>()) {
-    for (final answer in (question['answers'] as List? ?? const []).whereType<Map>()) {
+    for (final answer
+        in (question['answers'] as List? ?? const []).whereType<Map>()) {
       final children = answer['follow_ups'] as List? ?? const [];
       if (children.whereType<Map>().any((child) => child['id'] == questionId)) {
         final parentId = question['id'];

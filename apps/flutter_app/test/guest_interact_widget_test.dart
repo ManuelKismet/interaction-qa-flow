@@ -10,6 +10,101 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
 import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
 
 void main() {
+  testWidgets(
+    'search opens a collapsed nested question without altering branches',
+    (tester) async {
+      _registerGuestCleanup(tester);
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        const GuestWorkspaceData(
+          sessions: [
+            {
+              'id': 'search-session',
+              'title': 'Interview',
+              'status': 'draft',
+              'participants': [
+                {'id': 'alice', 'name': 'Alice'},
+                {'id': 'bob', 'name': 'Bob'},
+              ],
+              'questions': [
+                {
+                  'id': 'root',
+                  'text': 'Root prompt',
+                  'scope': 'shared',
+                  'answers': [
+                    {
+                      'participant_id': 'alice',
+                      'body': 'Root answer',
+                      'branches_collapsed': true,
+                      'follow_ups': [
+                        {
+                          'id': 'nested',
+                          'text': 'Nested match',
+                          'scope': 'participant',
+                          'target_participant_id': 'alice',
+                          'answers': [
+                            {
+                              'participant_id': 'alice',
+                              'body': 'Nested answer',
+                              'follow_ups': [],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      'participant_id': 'bob',
+                      'body': 'Other answer',
+                      'follow_ups': [],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+          child: const MaterialApp(
+            home: GuestWorkspacePage(
+              firebaseReady: false,
+              initialWorkspaceTab: 1,
+              initialSessionId: 'search-session',
+              initialQuestionId: 'nested',
+              initialParticipantId: 'alice',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Search match'), findsOneWidget);
+      Finder field(String value) => find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.controller?.text == value,
+      );
+      expect(field('Nested match'), findsOneWidget);
+      expect(field('Root prompt'), findsNothing);
+      final before = (await store.load()).sessions.single;
+      expect(
+        (((before['questions'] as List).single as Map)['answers'] as List)
+            .first['branches_collapsed'],
+        isTrue,
+      );
+      await tester.tap(find.text('Show all questions'));
+      await tester.pumpAndSettle();
+      expect(field('Root prompt'), findsOneWidget);
+      expect(find.text('Search match'), findsNothing);
+      final after = (await store.load()).sessions.single;
+      expect(
+        (((after['questions'] as List).single as Map)['answers'] as List)
+            .first['branches_collapsed'],
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('guest workspace heading is compact and subtle', (tester) async {
     _registerGuestCleanup(tester);
     final store = GuestWorkspaceStore(_MemoryGuestStorage());
@@ -377,10 +472,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          'Search local Knowledge on this device and all personal-account '
-          'Knowledge in your account, plus authorised organisation and Group '
-          'Knowledge when available. Only your query is sent to those services; '
-          'local content is never uploaded by search.',
+          'Search Knowledge and Interact stored on this device, including session titles, questions, answers and follow-ups. This search stays local.',
         ),
         findsOneWidget,
       );
@@ -392,7 +484,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Password rotation'), findsOneWidget);
       expect(find.widgetWithText(Chip, 'Local'), findsOneWidget);
-      expect(find.textContaining('Local on this device'), findsOneWidget);
+      expect(find.text('Knowledge'), findsWidgets);
       await tester.tap(find.text('Password rotation'));
       await tester.pumpAndSettle();
       expect(localSearch, findsOneWidget);

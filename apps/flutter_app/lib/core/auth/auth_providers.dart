@@ -87,13 +87,15 @@ class ActiveMembership {
   /// a separate namespace and must never be compared to Firebase UIDs.
   final String? firebaseUid;
 
-  factory ActiveMembership.fromJson(Map<String, dynamic> json, {String? firebaseUid}) =>
-      ActiveMembership(
-        userId: json['user_id'] as String,
-        organisationId: json['organisation_id'] as String,
-        email: json['email'] as String,
-        displayName: json['display_name'] as String,
-        role: json['role'] as String,
-        firebaseUid: firebaseUid,
-      );
+  factory ActiveMembership.fromJson(
+    Map<String, dynamic> json, {
+    String? firebaseUid,
+  }) => ActiveMembership(
+    userId: json['user_id'] as String,
+    organisationId: json['organisation_id'] as String,
+    email: json['email'] as String,
+    displayName: json['display_name'] as String,
+    role: json['role'] as String,
+    firebaseUid: firebaseUid,
+  );
 }

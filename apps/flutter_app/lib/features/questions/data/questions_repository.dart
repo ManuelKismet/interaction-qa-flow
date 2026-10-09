@@ -15,9 +15,7 @@ class QuestionsRepository {
 
   Future<List<DepartmentSummary>> listDepartments() async {
     try {
-      final response = await _client.get<List<dynamic>>(
-        '/api/v1/departments',
-      );
+      final response = await _client.get<List<dynamic>>('/api/v1/departments');
       return (response.data ?? const [])
           .map(
             (item) => DepartmentSummary.fromJson(item as Map<String, dynamic>),
@@ -42,9 +40,7 @@ class QuestionsRepository {
 
   Future<List<TeamSummary>> listTeams() async {
     try {
-      final response = await _client.get<List<dynamic>>(
-        '/api/v1/teams',
-      );
+      final response = await _client.get<List<dynamic>>('/api/v1/teams');
       return (response.data ?? const [])
           .map((item) => TeamSummary.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -144,9 +140,7 @@ class QuestionsRepository {
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/answers',
-        data: {
-          'body': body,
-        },
+        data: {'body': body},
       ),
     );
   }
@@ -218,9 +212,8 @@ class QuestionsRepository {
       );
       return (response.data ?? const [])
           .map(
-            (item) => QuestionChangeRequest.fromJson(
-              item as Map<String, dynamic>,
-            ),
+            (item) =>
+                QuestionChangeRequest.fromJson(item as Map<String, dynamic>),
           )
           .toList();
     } on DioException catch (error) {
@@ -236,10 +229,7 @@ class QuestionsRepository {
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/change-requests/$requestId/review',
-        data: {
-          'decision': decision,
-          if (note != null) 'review_note': note,
-        },
+        data: {'decision': decision, if (note != null) 'review_note': note},
       ),
     );
   }
@@ -252,10 +242,7 @@ class QuestionsRepository {
     await _request(
       () => _client.patch<void>(
         '/api/v1/answers/$answerId',
-        data: {
-          'body': body,
-          if (reason != null) 'reason': reason,
-        },
+        data: {'body': body, if (reason != null) 'reason': reason},
       ),
     );
   }
@@ -313,9 +300,7 @@ class QuestionsRepository {
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/comments',
-        data: {
-          'body': body,
-        },
+        data: {'body': body},
       ),
     );
   }

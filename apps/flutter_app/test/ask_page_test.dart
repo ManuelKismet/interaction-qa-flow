@@ -33,7 +33,10 @@ class _MemoryGuestStorage implements GuestStorage {
 
 class _QuestionsRepository extends QuestionsRepository {
   @override
-  Future<Map<String, dynamic>> searchInteract(String query) async => {'results': <Map<String, dynamic>>[], 'partial': false};
+  Future<Map<String, dynamic>> searchInteract(String query) async => {
+    'results': <Map<String, dynamic>>[],
+    'partial': false,
+  };
 
   _QuestionsRepository() : super(Dio());
 
@@ -91,7 +94,10 @@ class _QuestionsRepository extends QuestionsRepository {
 
 class _PersonalRepository extends PersonalWorkspaceRepository {
   @override
-  Future<Map<String, dynamic>> searchInteract(String query, {required String expectedUid}) async => {'results': <Map<String, dynamic>>[], 'partial': false};
+  Future<Map<String, dynamic>> searchInteract(
+    String query, {
+    required String expectedUid,
+  }) async => {'results': <Map<String, dynamic>>[], 'partial': false};
 
   _PersonalRepository() : super(Dio());
 
@@ -497,7 +503,9 @@ void main() {
       expect(find.text('Local-only secret phrase.'), findsOneWidget);
       expect(find.text('Private-only account detail.'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Details and assignment (optional)'));
+      await tester.ensureVisible(
+        find.text('Details and assignment (optional)'),
+      );
       await tester.tap(find.text('Details and assignment (optional)'));
       await tester.pumpAndSettle();
       final detailField = find.byWidgetPredicate(

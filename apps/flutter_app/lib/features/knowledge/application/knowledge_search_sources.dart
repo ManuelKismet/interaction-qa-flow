@@ -4,7 +4,8 @@ typedef OrganisationKnowledgeSearch =
     Future<List<SemanticSearchResult>> Function(String query);
 typedef PrivateKnowledgeSearch =
     Future<Map<String, dynamic>> Function(String query);
-typedef GroupKnowledgeSearch = Future<Map<String, dynamic>> Function(String query);
+typedef GroupKnowledgeSearch =
+    Future<Map<String, dynamic>> Function(String query);
 
 class KnowledgeSearchSources {
   const KnowledgeSearchSources({
@@ -39,11 +40,16 @@ Future<KnowledgeSearchSources> searchKnowledgeSources(
   final failed = <String>{};
   final partial = <String>{};
 
-  Future<void> interactSource(String name, PrivateKnowledgeSearch search) async {
+  Future<void> interactSource(
+    String name,
+    PrivateKnowledgeSearch search,
+  ) async {
     try {
       final response = await search(query);
-      interact.addAll((response['results'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, dynamic>>());
+      interact.addAll(
+        (response['results'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>(),
+      );
       if (response['partial'] == true) partial.add(name);
     } on Object {
       failed.add(name);
@@ -111,7 +117,9 @@ double localKnowledgeRelevance(String query, Map<String, dynamic> item) {
     item['body'],
   ].whereType<String>().join(' ').toLowerCase();
   if (answerAndBody.contains(foldedQuery)) return 2.5;
-  final terms = foldedQuery.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
+  final terms = foldedQuery
+      .split(RegExp(r'\s+'))
+      .where((term) => term.isNotEmpty);
   if (terms.isNotEmpty && terms.every(answerAndBody.contains)) return 1.6;
   return 0.9;
 }

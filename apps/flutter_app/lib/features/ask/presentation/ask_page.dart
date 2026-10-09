@@ -47,7 +47,6 @@ class _AskPageState extends ConsumerState<AskPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-
                 const KnowledgeSectionTabs(selected: KnowledgeSection.ask),
                 const SizedBox(height: 12),
                 Text(
@@ -69,7 +68,8 @@ class _AskPageState extends ConsumerState<AskPage> {
                 ),
                 UnifiedSearchResults(
                   suggestions: suggestions,
-                  onOpenLocalInteract: (hit) => openLocalInteractSearchResult(context, hit),
+                  onOpenLocalInteract: (hit) =>
+                      openLocalInteractSearchResult(context, hit),
                   onRetry: ref.read(askSuggestionsProvider.notifier).retry,
                 ),
                 const SizedBox(height: 12),
@@ -84,78 +84,79 @@ class _AskPageState extends ConsumerState<AskPage> {
                       ? const Text('Assignment selected')
                       : null,
                   children: [
-                TextField(
-                  controller: _detailController,
-                  focusNode: _detailFocus,
-                  textInputAction: TextInputAction.newline,
-                  minLines: 3,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    hintText: 'Add detail (optional)',
-                  ),
-                  onChanged: (_) => _questionChanged(),
-                ),
-                const SizedBox(height: 12),
-                departments.when(
-                  data: (items) => DropdownButtonFormField<String?>(
-                    initialValue: _departmentId,
-                    decoration: const InputDecoration(
-                      labelText: 'Department (optional)',
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('No department'),
+                    TextField(
+                      controller: _detailController,
+                      focusNode: _detailFocus,
+                      textInputAction: TextInputAction.newline,
+                      minLines: 3,
+                      maxLines: 6,
+                      decoration: const InputDecoration(
+                        hintText: 'Add detail (optional)',
                       ),
-                      for (final department in items)
-                        DropdownMenuItem(
-                          value: department.id,
-                          child: Text(department.name),
+                      onChanged: (_) => _questionChanged(),
+                    ),
+                    const SizedBox(height: 12),
+                    departments.when(
+                      data: (items) => DropdownButtonFormField<String?>(
+                        initialValue: _departmentId,
+                        decoration: const InputDecoration(
+                          labelText: 'Department (optional)',
                         ),
-                    ],
-                    onChanged: (value) => setState(() => _departmentId = value),
-                  ),
-                  loading: () => const LinearProgressIndicator(),
-                  error: (error, stackTrace) =>
-                      const Text('Departments are unavailable.'),
-                ),
-                const SizedBox(height: 12),
-                teams.when(
-                  data: (items) => DropdownButtonFormField<String?>(
-                    initialValue: _teamId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Team (optional)',
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('No team'),
-                      ),
-                      for (final team in items.where(
-                        (team) => team.status != 'inactive',
-                      ))
-                        DropdownMenuItem(
-                          value: team.id,
-                          child: Text(
-                            team.department == null
-                                ? team.name
-                                : '${team.department!.name} · ${team.name}',
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('No department'),
                           ),
+                          for (final department in items)
+                            DropdownMenuItem(
+                              value: department.id,
+                              child: Text(department.name),
+                            ),
+                        ],
+                        onChanged: (value) =>
+                            setState(() => _departmentId = value),
+                      ),
+                      loading: () => const LinearProgressIndicator(),
+                      error: (error, stackTrace) =>
+                          const Text('Departments are unavailable.'),
+                    ),
+                    const SizedBox(height: 12),
+                    teams.when(
+                      data: (items) => DropdownButtonFormField<String?>(
+                        initialValue: _teamId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Team (optional)',
                         ),
-                    ],
-                    onChanged: (value) => setState(() {
-                      _teamId = value;
-                      _departmentId = suggestedDepartmentForTeam(
-                        items,
-                        value,
-                        _departmentId,
-                      );
-                    }),
-                  ),
-                  loading: () => const LinearProgressIndicator(),
-                  error: (_, _) => const Text('Teams are unavailable.'),
-                ),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('No team'),
+                          ),
+                          for (final team in items.where(
+                            (team) => team.status != 'inactive',
+                          ))
+                            DropdownMenuItem(
+                              value: team.id,
+                              child: Text(
+                                team.department == null
+                                    ? team.name
+                                    : '${team.department!.name} · ${team.name}',
+                              ),
+                            ),
+                        ],
+                        onChanged: (value) => setState(() {
+                          _teamId = value;
+                          _departmentId = suggestedDepartmentForTeam(
+                            items,
+                            value,
+                            _departmentId,
+                          );
+                        }),
+                      ),
+                      loading: () => const LinearProgressIndicator(),
+                      error: (_, _) => const Text('Teams are unavailable.'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -215,4 +216,3 @@ class _AskPageState extends ConsumerState<AskPage> {
     );
   }
 }
-

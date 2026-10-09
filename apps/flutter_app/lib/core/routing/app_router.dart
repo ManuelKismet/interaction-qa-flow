@@ -69,7 +69,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
               final entry = extra is Map ? extra : const {};
               return SharedGuestGroupsPage(
                 initialQuestionId: state.uri.queryParameters['questionId'],
-                initialParticipantId: state.uri.queryParameters['participantId'],
+                initialParticipantId:
+                    state.uri.queryParameters['participantId'],
                 initialGroupId:
                     state.uri.queryParameters['groupId'] ??
                     entry['groupId'] as String?,
@@ -162,25 +163,27 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
 /// The personal Interact list and its session editor share one page key so the
 /// workspace state (pending account writes, local save timers) is kept while
 /// the URL switches between the list and a session.
-Page<void> _personalInteractPage(BuildContext context, {
-  String? sessionId, String? questionId, String? participantId,
-}) =>
-    MaterialPage<void>(
-      key: const ValueKey('personal-interact-workspace'),
-      child: GuestWorkspacePage(
-        firebaseReady: true,
-        personalWorkspaceEnabled: true,
-        membershipStatus: AccountMembershipStatus.active,
-        initialWorkspaceTab: 1,
-        initialSessionId: sessionId,
-        initialQuestionId: questionId,
-        initialParticipantId: participantId,
-        onSessionRouteChanged: (id) => context.go(
-          id == null
-              ? '/personal/interact'
-              : '/personal/interact/sessions/${Uri.encodeComponent(id)}',
-        ),
-        onWorkspaceTabChanged: (index) =>
-            context.go(index == 0 ? '/personal' : '/personal/interact'),
-      ),
-    );
+Page<void> _personalInteractPage(
+  BuildContext context, {
+  String? sessionId,
+  String? questionId,
+  String? participantId,
+}) => MaterialPage<void>(
+  key: const ValueKey('personal-interact-workspace'),
+  child: GuestWorkspacePage(
+    firebaseReady: true,
+    personalWorkspaceEnabled: true,
+    membershipStatus: AccountMembershipStatus.active,
+    initialWorkspaceTab: 1,
+    initialSessionId: sessionId,
+    initialQuestionId: questionId,
+    initialParticipantId: participantId,
+    onSessionRouteChanged: (id) => context.go(
+      id == null
+          ? '/personal/interact'
+          : '/personal/interact/sessions/${Uri.encodeComponent(id)}',
+    ),
+    onWorkspaceTabChanged: (index) =>
+        context.go(index == 0 ? '/personal' : '/personal/interact'),
+  ),
+);
