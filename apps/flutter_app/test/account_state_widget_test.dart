@@ -745,12 +745,13 @@ void main() {
       isNull,
     );
     expect(find.byTooltip('Switch Knowledge or Interact'), findsNothing);
-    expect(find.byTooltip('Search help'), findsOneWidget);
+    expect(find.byTooltip('Workspace storage information'), findsOneWidget);
+    expect(find.byTooltip('Search help'), findsNothing);
     expect(find.byTooltip('Interact privacy information'), findsNothing);
 
     await _tapPersonalNavigation(tester, 'Interact');
     expect(find.text('Create private session'), findsOneWidget);
-    expect(find.byTooltip('Interact privacy information'), findsOneWidget);
+    expect(find.byTooltip('Interact privacy information'), findsNothing);
     expect(find.byTooltip('Search help'), findsNothing);
     expect(
       tester

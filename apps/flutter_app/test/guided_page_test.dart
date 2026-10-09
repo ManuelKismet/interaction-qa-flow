@@ -98,7 +98,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Interact'), findsOneWidget);
+    expect(find.text('Interact'), findsNothing);
     expect(find.text('Active'), findsOneWidget);
     expect(find.byTooltip('Interact options'), findsOneWidget);
     expect(find.text('New session'), findsOneWidget);
