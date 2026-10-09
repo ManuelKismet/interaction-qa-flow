@@ -1405,7 +1405,7 @@ class GuidedFlowView extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Text('Add or select a participant to begin.'),
-          if (questionActions != null) questionActions!,
+          ?questionActions,
         ],
       );
     }
@@ -1491,7 +1491,7 @@ class GuidedFlowView extends StatelessWidget {
                 onKnowledgeSearch: onKnowledgeSearch,
                 onPropose: onPropose,
               ),
-            if (questionActions != null) questionActions!,
+            ?questionActions,
           ],
         ),
       ),
