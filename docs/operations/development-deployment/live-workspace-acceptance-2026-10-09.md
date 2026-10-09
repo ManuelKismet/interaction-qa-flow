@@ -27,3 +27,11 @@ Source/test/workflow commit 73cf15007b291b6b37ac7b1525b95d92dc8d7d2a. GitHub Act
 Workflow ownership guidance checked in docs/operations/isolated-development.md and cloud-development.md. User offered Copilot collaboration as optional; this small fix was implemented directly and independently checked. No Copilot handoff claimed.
 
 F01–F03 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F04–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.
+
+## F04 implementation and automated validation — 9 October 2026
+
+Draft PR #25: https://github.com/ManuelKismet/interaction-qa-flow/pull/25, branch fix/request-display-names-20261009, stacked on PR #24. Request-list API adds optional requester_name and target_name, resolved in batches only after existing per-request authorization filtering, with organisation constraints on every user/team/department lookup. Flutter personal request cards show target names; reviewer cards show target and requester names. Missing/blank names use Team unavailable, Department unavailable, or Requester unavailable; internal IDs remain in data for unchanged decision actions. No migrations or expanded directory permissions.
+
+Tested source commit f42d3fbd0358f785c6bb65edc97073637f178758. Flutter Organisation request refresh validation run 37959477426 / job 113918345587: 20 tests passed and formatting passed. Regression exercises named requester/team rendering, suppresses displayed internal request/target IDs, handles legacy/missing department/requester names, and retains the F03 refresh and route assertion. Existing role/UID/signout/revocation and responsive cases pass. Backend validation run 37959477501 / job 113918345629: 172 passed, 32 skipped; dependency check, analysis and compilation passed. Three new API cases cover team and department names for owners/personal lists, no requests for unauthorized reviewers or foreign organisations, and no foreign department name resolution. Local targeted organisation administration/member tests: 15 passed. Dart formatting and git diff --check passed. Local ruff was unavailable; CI analysis passed.
+
+F01–F04 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F05–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.
