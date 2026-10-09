@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:int_qa_flow/core/api/api_exception.dart';
+import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
@@ -45,6 +48,31 @@ QuestionDetail _questionWithVerifiedAnswer(DepartmentSummary? department) =>
     );
 
 void main() {
+  testWidgets(
+    'restricted Knowledge link gives safe denial without automatic retries',
+    (tester) async {
+      final repository = _DeniedQuestionsRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            questionsRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: QuestionDetailPage(questionId: 'restricted')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Unable to load this question.'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byTooltip('Back to Questions'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 10));
+      expect(repository.reads, 1);
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(repository.reads, 2);
+    },
+  );
   testWidgets('question author can open prefilled correction dialog', (
     tester,
   ) async {
@@ -60,6 +88,7 @@ void main() {
       id: 'question-1',
       title: 'How do I fix a mileage claim?',
       body: 'The amount is incorrect.',
+      visibility: 'team',
       status: 'open',
       author: UserSummary(
         id: 'user-1',
@@ -120,6 +149,7 @@ void main() {
     );
     expect(find.text('Finance'), findsOneWidget);
     expect(find.text('Finance · Expenses'), findsOneWidget);
+    expect(find.text('Selected team only'), findsOneWidget);
   });
 
   for (final testCase in [
@@ -161,19 +191,16 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-              questionDetailProvider(
-                'question-1',
-              ).overrideWith(
-                (ref) async => _questionWithVerifiedAnswer(
-                  switch (testCase.departmentId) {
-                    'department-1' => department,
-                    'department-2' => const DepartmentSummary(
-                      id: 'department-2',
-                      name: 'Operations',
-                    ),
-                    _ => null,
-                  },
-                ),
+              questionDetailProvider('question-1').overrideWith(
+                (ref) async =>
+                    _questionWithVerifiedAnswer(switch (testCase.departmentId) {
+                      'department-1' => department,
+                      'department-2' => const DepartmentSummary(
+                        id: 'department-2',
+                        name: 'Operations',
+                      ),
+                      _ => null,
+                    }),
               ),
               currentMembershipProvider.overrideWith(
                 (ref) async => const ActiveMembership(
@@ -206,5 +233,15 @@ void main() {
         );
       },
     );
+  }
+}
+
+class _DeniedQuestionsRepository extends QuestionsRepository {
+  _DeniedQuestionsRepository() : super(Dio());
+  var reads = 0;
+  @override
+  Future<QuestionDetail> getQuestion(String id) async {
+    reads++;
+    throw const ApiException('Unavailable', statusCode: 403);
   }
 }
