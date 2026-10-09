@@ -171,3 +171,11 @@ Invitation is staged at Create invitation with Contributor — own content. No i
 ## Contributor invitation creation — 9 October 2026, after 14:14 London
 
 User approved Contributor invitation creation in the isolated empty DEV QA 20261009 invitation acceptance Group. Created a one-time invitation and observed its role/expiry. Revoked the unused first invitation, then created the replacement and copied its code through the app; clipboard delivery succeeded. Final member list shows only QA Owner admin/active and one active contributor invitation, expiring 2026-10-10T13:16:27.459498+00:00. No new member has joined or been approved. Invitation code remains only in browser-session memory/clipboard, is not printed or stored in docs. Next: regularuser1 manual sign-in for invitation redemption and pending-member isolation. Evidence screenshot omits the token.
+
+## Pending Contributor join — 9 October 2026, after 14:20 London
+
+User signed in as regularuser1. Organisation view confirms approved test-team request history but only the two original teams after cleanup; original employee/department restored.
+
+Passed live: invitation preview reveals no Group content, explicitly states admin approval is required, and Request access submits. Employee approved-Group dropdown still contains only their original DEV QA 20261009 group acceptance Group; invitation acceptance Group is absent. Repeating the same token preview/request succeeds without granting access; owner-side pending-member count remains to be checked.
+
+Source qualification: join_invitation returns the existing pending membership when the redeemed token belongs to the same UID, making retries idempotent. A different UID or non-pending reuse is rejected with 409. preview_invitation only checks expiry, revocation and group availability, so an already-redeemed token can still preview as valid. Record this as a preview/join messaging mismatch, not an access bypass. Live cross-account reuse denial and membership approval remain pending. Invitation code remains private browser memory only.
