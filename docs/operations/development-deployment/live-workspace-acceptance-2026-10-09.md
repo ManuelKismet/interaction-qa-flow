@@ -111,3 +111,99 @@ This section supersedes earlier owner/delegation prerequisites. Founder approved
 - Private organisation session denial spinner, personal-session reload, proposals' repeat submission/feedback, CSV/print, lifecycle edges and live narrow-screen checks remain open or unverified as previously recorded.
 - Earlier 392 Flutter/201 backend passes belong to the deployment receipt; no suites rerun in this continuation. Existing Codespace was not started here.
 - Evidence saved: intqaflow-permissions-restored.jpg and intqaflow-request-review.jpg. Browser retains the owner session for remaining checks.
+
+## Continued acceptance — 9 October 2026, from 13:42 London
+
+Owner session was retained and independently confirmed as Organisation owner. No application source, deployment or permission changes were made.
+
+Passed live:
+- All-participant organisation report for synthetic template-derived session 7c9cd6eb-00aa-4109-9d23-9bc6130abca8 retains both question texts, Participant 1's exact answer and the unanswered second question.
+- CSV dialog renders its header and the answered/unanswered rows. Copy was invoked, but browser clipboard reads returned empty, so clipboard delivery is not passed.
+- Dedicated printable HTML preview opens in another tab with session title, participant, scope, status, UTC generation timestamp, answer and Unanswered marker. Print button produced no observable browser print dialog; PDF generation/pagination is not passed.
+- Synthetic session transitioned Draft -> Active -> Completed with Saved feedback. Save history records Session active revision 3 and Session completed revision 4. Completed editing remains enabled, consistent with existing design. Session is now Completed.
+- Archive confirmation clearly says organisation archiving is read-only and has no reopen/restore. Cancelled; archive mutation is not passed.
+- Created owner test-team request 6da4b0b2-127f-4f0b-9246-0f2029c6bb2d, then declined it. Fresh review list has no pending requests; no membership/access expansion occurred.
+
+Reproduced findings:
+- Full reload of the owner's own organisation session URL returns to root Ask & search. This extends the earlier question/private-account reload finding; source cause for this session variant is not established merely by the route allowlist.
+- Owner navigation to regularuser1's private organisation session 17d72509-e354-4e66-bf0f-563ac41fddef remains on the spinner across separate observations. No private content displayed.
+- Successful request submission refreshes Your requests but leaves Requests you can review stale. Leaving for Admin and returning shows the pending item. Source OrganisationPage._request invalidates only myOrganisationJoinRequestsProvider on success, supporting this UI refresh defect.
+
+Read-only source confirmation (not a new live API test):
+- Membership request service returns the existing pending request for the same requester/type/target; concurrent duplicates are handled after IntegrityError.
+- Membership request approval explicitly rejects actor == requester with HTTP 403. The listing does not hide the owner's own request; no self-approval bug is established.
+- GuidedKnowledgeService.create_proposal creates a fresh pending proposal without checking for an existing matching pending proposal, supporting the earlier repeated-proposal finding.
+- Request cards render target/request UUIDs without requester/team names, confirming the previously observed clarity problem.
+
+Remaining blockers: regularuser1 sign-in for employee cross-account checks and a new member request; successful membership approval requires action-time permission confirmation. Group invitation redemption/approval, actual narrow-screen browser/device coverage, irreversible archive/delete and generated PDF/clipboard delivery remain unpassed. No test suites were rerun; earlier 392 Flutter/201 backend results remain deployment evidence only. Owner signed out normally and app is on the Sign in form for continued testing.
+
+## Employee continuation — 9 October 2026, after 13:55 London
+
+User completed manual regularuser1 sign-in. My organisation independently confirms employee, original E2E Operations Department and two original teams.
+
+Passed live:
+- Direct /admin shows No organisation administration permission is assigned.
+- Direct /review-queue shows You do not have access to this queue.
+- Group Interact shared-copy question edited to `QA private shared checkpoint? Group edit` and saved as revision 2. Revision history lists revisions 1 and 2. Flutter automation input exhibited append/timeout behavior; exact saved draft was inspected before saving, and this is not classified as an application keyboard defect.
+- Private original session guest-v2-4f1f35c3ded320b82170756785e8ef01-1 still visually shows original `QA private shared checkpoint?` and exact original answer after reopening; Group edits do not overwrite the private original.
+- Employee team selector excludes the two existing memberships, offers only the isolated test team. Submitted test-team request; repeated submission leaves one pending item in Your requests. Original memberships remain unchanged while pending.
+
+Findings reproduced:
+- Employee direct navigation to owner's private organisation session 7c9cd6eb-00aa-4109-9d23-9bc6130abca8 remains on a spinner; no private content displayed. This reproduces private-denial UX in both directions.
+- Full reload of the employee Personal Interact session returns to root; reopening exact route loads retained source content.
+
+Next: owner sign-in to identify and approve the employee's pending request, subject to action-time confirmation for adding test-team membership, then verify employee state and restore the temporary membership. Group invitation and actual narrow-screen/PDF output remain unpassed. No privileges changed in this continuation.
+
+## Approved membership and Group invitation setup — 9 October 2026, after 14:07 London
+
+User gave action-time approval for temporary regularuser1 membership in DEV QA 20261009 test team and cleanup.
+
+Passed live:
+- Owner approved exact pending request 2520ce47-048c-492b-af74-ee5edcfd9c0a. Pending queue becomes empty.
+- Admin team expansion lists regularuser1@test.com as employee. Full page reload followed by reopening Admin and expanding the test team confirms persisted membership.
+- Removed only that test-team membership; fresh team list is empty. Both original E2E Department Handover Team and E2E Operations Team still list regularuser1. Organisation role remains employee and primary department E2E Operations Department; department answer-owner list is empty.
+- Created isolated empty Group DEV QA 20261009 invitation acceptance as QA Owner, admin. Required display-name validation was exercised.
+
+Browser-input qualification: semantic field filling showed a value that did not reach the display-name controller and submission reported empty. Direct visible-field click, keyboard input, blur and coordinate submission succeeded. Do not classify this as an established application form defect.
+
+Invitation is staged at Create invitation with Contributor — own content. No invitation token generated and no new Group member added. Action-time approval is pending for invitation creation and subsequent access approval. Employee-side view while the temporary organisation team membership was active was not exercised; approval persistence and cleanup are owner-side live checks. Evidence: intqaflow-team-membership-approved-20261009.jpg.
+## Contributor invitation creation — 9 October 2026, after 14:14 London
+
+User approved Contributor invitation creation in the isolated empty DEV QA 20261009 invitation acceptance Group. Created a one-time invitation and observed its role/expiry. Revoked the unused first invitation, then created the replacement and copied its code through the app; clipboard delivery succeeded. Final member list shows only QA Owner admin/active and one active contributor invitation, expiring 2026-10-10T13:16:27.459498+00:00. No new member has joined or been approved. Invitation code remains only in browser-session memory/clipboard, is not printed or stored in docs. Next: regularuser1 manual sign-in for invitation redemption and pending-member isolation. Evidence screenshot omits the token.
+
+
+## Pending Contributor join — 9 October 2026, after 14:20 London
+
+User signed in as regularuser1. Organisation view confirms approved test-team request history but only the two original teams after cleanup; original employee/department restored.
+
+Passed live: invitation preview reveals no Group content, explicitly states admin approval is required, and Request access submits. Employee approved-Group dropdown excludes the invitation acceptance Group. Visual inspection shows three pre-existing approved Groups (DEV QA 20261009 group acceptance, E2E Lifecycle Acceptance 20261005, E2E Registered Shared Group); early accessibility snapshots omitted offscreen menu items. Repeating the same token preview/request succeeds without granting access; owner-side pending-member count remains to be checked.
+
+Source qualification: join_invitation returns the existing pending membership when the redeemed token belongs to the same UID, making retries idempotent. A different UID or non-pending reuse is rejected with 409. preview_invitation only checks expiry, revocation and group availability, so an already-redeemed token can still preview as valid. Record this as a preview/join messaging mismatch, not an access bypass. Live cross-account reuse denial and membership approval remain pending. Invitation code remains private browser memory only.
+
+
+## Group administrator pending readback — 9 October 2026, after 14:26 London
+
+Fresh adminuser sign-in. Isolated invitation acceptance Group member list contains QA Owner admin/active and exactly one QA Contributor contributor/pending after the employee repeated redemption. Active invitation list is empty (redeemed invitation no longer listed). This establishes one pending member and no duplicate caused by retry. Contributor activation awaits action-time confirmation. No Group privileges changed here. Evidence: intqaflow-contributor-approval-ready-20261009.jpg.
+
+
+## Contributor activated — 9 October 2026, after 14:28 London
+
+User approved activation. Owner approved QA Contributor; reopening Group member management twice confirms contributor/active, QA Owner admin/active, no active invitations. Added synthetic owner-authored Knowledge `DEV QA 20261009 owner group policy` with answer `Synthetic owner content. Contributors may read this but only edit their own items.` for cross-author permission checks. No existing Group content changed. Contributor-side read/own-create/other-author-edit boundaries and cleanup remain pending. Evidence: intqaflow-contributor-active-20261009.jpg.
+
+
+## Contributor checks and cleanup — 9 October 2026, after 14:52 London
+
+Prior live continuation recorded Contributor owner-item read with no Edit/Delete, own Knowledge create/edit with revisions 1 and 2, member-list visibility without management/invitation/archive controls, unified search opening approved Group owner Knowledge, and editable shared Interact copy revision 2 while private original retained its question/answer. Those checks were performed in the preceding conversation, not rerun here.
+
+Fresh owner sign-in independently confirmed adminuser@test.com and My organisation Role: Organisation owner. Removed only QA Contributor from DEV QA 20261009 invitation acceptance through Remove member. Reopening member management shows only QA Owner admin/active and no active invitations. Synthetic Group content retained. Evidence: intqaflow-contributor-removed-20261009.jpg.
+
+New wording finding: removal confirmation title says “Remove this guest member?” for the registered Contributor. Employee-side post-removal approved-list/search/direct-content denial remains pending and requires regularuser1 sign-in. No source or deployment changes and no automated suites rerun.
+
+
+## Post-removal employee acceptance — 9 October 2026, after 14:58 London
+
+User completed regularuser1 sign-in. My organisation confirms employee, E2E Operations Department, and exactly the two original teams (E2E Department Handover Team and E2E Operations Team). Approved Groups dropdown visually lists only the three original approved Groups; DEV QA 20261009 invitation acceptance is absent. Personal unified search for policy returns No matching results, excluding the removed Group owner policy fixture. The broad fixture title query matches individual words and returns other authorised organisation fixtures, so it was not used as evidence of exact-match behavior.
+
+Group creation → invitation/revocation/replacement → repeated pending join → approval → Contributor own-content boundaries → removal → approved-list/search exclusion is now covered. Direct removed-Group content request denial is not marked passed: exact Group/content IDs were not retained in this browser session. Evidence: intqaflow-removed-group-excluded-20261009.jpg.
+
+Outstanding coverage: direct removed-Group content denial; cross-account redeemed-invitation reuse denial; employee-side access while temporary test-team membership is active; actual narrow-screen/device checks; independently parsed generated PDF; irreversible archive/delete. Full acceptance remains partial. No source/deployment changes or new automated-suite results.
