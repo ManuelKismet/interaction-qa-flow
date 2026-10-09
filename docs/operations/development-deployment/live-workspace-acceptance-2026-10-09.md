@@ -207,3 +207,14 @@ User completed regularuser1 sign-in. My organisation confirms employee, E2E Oper
 Group creation → invitation/revocation/replacement → repeated pending join → approval → Contributor own-content boundaries → removal → approved-list/search exclusion is now covered. Direct removed-Group content request denial is not marked passed: exact Group/content IDs were not retained in this browser session. Evidence: intqaflow-removed-group-excluded-20261009.jpg.
 
 Outstanding coverage: direct removed-Group content denial; cross-account redeemed-invitation reuse denial; employee-side access while temporary test-team membership is active; actual narrow-screen/device checks; independently parsed generated PDF; irreversible archive/delete. Full acceptance remains partial. No source/deployment changes or new automated-suite results.
+
+
+## PDF, template and removal validation — 9 October 2026, after 15:05 London
+
+Downloaded selected-participant PDF independently parsed with pdftotext and rendered with Poppler. Title, participant, original shared question/answer and answer-owned follow-up are present; one-page visual review shows no clipping/overlap.
+
+Created private template DEV QA 20261009 private template validation from original synthetic session. Saved template appears as Personal account saved, 1 questions. Created DEV QA 20261009 template roundtrip, session guest-v2-c2688a8edd8657545a30bddefeca1861-3. Visual readback retains shared question and follow-up, replaces original participant name with Participant 1 and leaves answers empty. Personal account saved confirmed. Evidence intqaflow-template-roundtrip-20261009.jpg.
+
+Removed only the new roundtrip session through Delete session. List excludes it and shows removal queued with Undo. Invoking Undo restores it as Local on this device; toast explicitly says private account removal is not undone. Record recovery limitation: Undo restores local content only, not account persistence. Original session and saved template unchanged. Roundtrip local copy retained for investigation.
+
+Checkpoint published through connected GitHub API after CLI lacked credentials. GitHub qa/live-acceptance-20261009 branch was created from copilot/fixinteract-parity-batch4-edit-shared-copy. Existing checkpoint contents replaced with approved local checkpoint, commit b16d9588eeabf0c15bf6b4605180d848ace7d430. Local 60b23fa commit itself was not pushed.
