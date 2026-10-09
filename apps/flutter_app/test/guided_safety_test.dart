@@ -824,7 +824,7 @@ void main() {
     final h = _Harness();
     addTearDown(h.close);
     await _mount(tester, h);
-    await tester.tap(find.byTooltip('Export'));
+    await tester.tap(find.byTooltip('Reports and export'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('JSON'));
     await tester.pumpAndSettle();
@@ -848,7 +848,7 @@ void main() {
           final originalPage = tester.state(find.byType(GuidedSessionPage));
           final repository = h.container.read(guidedRepositoryProvider);
           h.adapter.holdExports = true;
-          await tester.tap(find.byTooltip('Export'));
+          await tester.tap(find.byTooltip('Reports and export'));
           await tester.pumpAndSettle();
           await tester.tap(find.text('JSON'));
           await tester.pumpAndSettle();
@@ -1004,7 +1004,7 @@ void main() {
           canEdit ? findsOneWidget : findsNothing,
         );
         expect(find.byType(TextField), canEdit ? findsWidgets : findsNothing);
-        expect(find.byTooltip('Export'), findsOneWidget);
+        expect(find.byTooltip('Reports and export'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }
@@ -1051,7 +1051,9 @@ void main() {
       final router = await _mount(tester, h);
       router.go('/guided/import');
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Import legacy Interact JSON'));
+      await tester.tap(find.byTooltip('Interact options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import legacy Interact JSON'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byType(TextField),
@@ -1079,7 +1081,9 @@ void main() {
       final router = await _mount(tester, h);
       router.go('/guided/import');
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Import legacy Interact JSON'));
+      await tester.tap(find.byTooltip('Interact options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import legacy Interact JSON'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byType(TextField),

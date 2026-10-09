@@ -161,7 +161,12 @@ void main() {
         tester.getSize(find.byType(ListView).first).width,
         lessThanOrEqualTo(1040),
       );
-      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(ValueKey('guided-template-${template.id}')),
+          matching: find.byType(PopupMenuButton<String>),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save as new version'));
       await tester.pumpAndSettle();
@@ -229,7 +234,12 @@ void main() {
     expect(find.text('Archived template'), findsOneWidget);
     expect(tester.widget<ListTile>(find.byType(ListTile)).onTap, isNull);
 
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(ValueKey('guided-template-${template.id}')),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Restore'), findsOneWidget);
     expect(find.text('Save as new version'), findsNothing);
@@ -245,7 +255,12 @@ void main() {
     expect(restored.questions.single.text, template.questions.single.text);
     expect(tester.widget<ListTile>(find.byType(ListTile)).onTap, isNotNull);
 
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(ValueKey('guided-template-${template.id}')),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Save as new version'), findsOneWidget);
     expect(find.text('Archive'), findsOneWidget);
@@ -291,7 +306,13 @@ void main() {
       find.byKey(const ValueKey('guided-template-other-template')),
       findsOneWidget,
     );
-    expect(find.byType(PopupMenuButton<String>), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey('guided-template-${template.id}')),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets(
@@ -332,7 +353,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Templates'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(ValueKey('guided-template-${template.id}')),
+          matching: find.byType(PopupMenuButton<String>),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Restore'), findsOneWidget);
       await tester.tap(find.text('Restore'));

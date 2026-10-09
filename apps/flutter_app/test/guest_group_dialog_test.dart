@@ -358,7 +358,11 @@ class _SharePersonalRepository extends PersonalWorkspaceRepository {
           ],
         },
       },
-      {'id': 'private-knowledge-1', 'kind': 'knowledge', 'title': 'Account Knowledge'},
+      {
+        'id': 'private-knowledge-1',
+        'kind': 'knowledge',
+        'title': 'Account Knowledge',
+      },
     ];
   }
 }
@@ -1328,7 +1332,9 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Sharing uploads all participants and answer-owned branches'),
+      find.textContaining(
+        'Sharing uploads all participants and answer-owned branches',
+      ),
       findsNWidgets(2),
     );
     expect(find.text('Local templates remain on this device'), findsNothing);
@@ -1382,7 +1388,10 @@ void main() {
     await tester.tap(find.text('Share selected with group'));
     await tester.pumpAndSettle();
 
-    expect(repository.sharedSessions!.keys.toSet(), {'local-session-1', 'private-private-record-1'});
+    expect(repository.sharedSessions!.keys.toSet(), {
+      'local-session-1',
+      'private-private-record-1',
+    });
     expect(repository.sharedUid, 'test-anonymous-uid');
     final account = repository.sharedSessions!['private-private-record-1']!;
     expect(account['id'], 'session-1');
@@ -1599,7 +1608,9 @@ void main() {
       find.textContaining('asked to accept group administration'),
       findsNothing,
     );
-    expect(find.textContaining(' · admin'), findsOneWidget);
+    await tester.tap(find.byTooltip('Groups information'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Your group role: admin.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1960,12 +1971,16 @@ Future<void> _openGroupAction(WidgetTester tester, String label) async {
       await tester.tap(menu);
       await tester.pumpAndSettle();
       await tester.tap(find.text(label).hitTestable());
-      await tester.pumpAndSettle();
+      if (label == 'Preview & share Interact') {
+        // Loading stays active behind selection until the dialog closes.
+        await tester.pump(const Duration(milliseconds: 300));
+      } else {
+        await tester.pumpAndSettle();
+      }
       return;
     }
     final button = find.byWidgetPredicate(
-      (widget) =>
-          widget is ButtonStyleButton && widget.onPressed != null,
+      (widget) => widget is ButtonStyleButton && widget.onPressed != null,
     );
     final directAction = find
         .descendant(of: button, matching: find.text(label))

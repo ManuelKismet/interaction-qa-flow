@@ -29,3 +29,7 @@ The full suite was not rerun for this UI follow-up. The independently confirmed 
 No DEV deployment was performed. Hosted frontend remains bd713485d01eaa13a7bf3d5159d2215e22e13616; API remains intqaflow-dev-api-review80f421d. Source includes earlier undeployed UI and unified search changes; do not deploy only the frontend assuming the current API implements new search routes. Authenticated hosted phone acceptance is external/manual because the cloud-browser sign-in issue is paused.
 
 Next: resolve the full-suite release gate, validate matching backend/frontend source and authorised DEV deployment, then accept actual phone layouts and permission-scoped search externally. Stop the Codespace after pushing the source receipt.
+
+## Superseding full-suite validation
+
+The remaining full-suite gate was resolved on 2026-10-09: 392 Flutter tests and 201 backend tests passed, including PostgreSQL integration checks; DEV-configured release build passed. See [DEV release validation](dev-release-validation-2026-10-09.md) for corrections and rollout status. Earlier figures above are historical checkpoints.

@@ -339,10 +339,10 @@ void main() {
     tester,
   ) async {
     final repository = await _mount(tester, userId: 'employee-2');
-    expect(find.byTooltip('Session actions'), findsNothing);
+    await _expectHistoryOnlyActions(tester);
     expect(find.byTooltip('Active participant actions'), findsNothing);
     expect(find.byTooltip('Lifecycle and recovery'), findsOneWidget);
-    expect(find.byTooltip('Export'), findsOneWidget);
+    expect(find.byTooltip('Reports and export'), findsOneWidget);
     await _tapVisible(tester, find.byTooltip('Lifecycle and recovery'));
     expect(find.text('Status: Draft'), findsWidgets);
     expect(
@@ -364,7 +364,7 @@ void main() {
     );
     expect(find.textContaining('prepared'), findsNothing);
     expect(find.textContaining('Prepared'), findsNothing);
-    expect(find.text('1 of 2 questions answered'), findsOneWidget);
+    expect(find.text('1/2 answered · 2 follow-ups'), findsOneWidget);
     final question = tester.widget<TextField>(
       find
           .byWidgetPredicate(
@@ -418,7 +418,7 @@ void main() {
       find.byKey(const ValueKey('guided-session-archived-notice')),
       findsOneWidget,
     );
-    expect(find.byTooltip('Session actions'), findsNothing);
+    await _expectHistoryOnlyActions(tester);
     expect(find.textContaining('Reopen'), findsNothing);
     expect(find.byType(TextField), findsNothing);
   });
@@ -585,10 +585,15 @@ void main() {
       scrollable: find
           .descendant(
             of: find.byKey(const ValueKey('guided-flow-list')),
-            matching: find.byType(Scrollable),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
           )
           .first,
     );
+    await tester.pumpAndSettle();
     expect(deep.hitTestable(), findsOneWidget);
     await _tapVisible(tester, find.byTooltip('Session actions'));
     expect(
@@ -597,4 +602,14 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+}
+
+Future<void> _expectHistoryOnlyActions(WidgetTester tester) async {
+  await _tapVisible(tester, find.byTooltip('Session actions'));
+  expect(find.text('Save history'), findsOneWidget);
+  expect(find.text('Edit session details'), findsNothing);
+  expect(find.text('Save as organisation template'), findsNothing);
+  expect(find.text('Archive session'), findsNothing);
+  await tester.tapAt(const Offset(5, 5));
+  await tester.pumpAndSettle();
 }

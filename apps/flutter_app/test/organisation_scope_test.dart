@@ -151,6 +151,8 @@ void main() {
       await tester.tap(find.text('Approve'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Requests you can review'), findsNothing);
+      await tester.tap(find.text('Your permissions'));
+      await tester.pumpAndSettle();
       expect(find.text('Review requests and proposals'), findsOneWidget);
       expect(find.text('Not granted'), findsWidgets);
       mounted.close();
@@ -169,6 +171,8 @@ void main() {
       final mounted = await _mountRoutedPage(tester, adapter: adapter);
       await tester.pumpAndSettle();
       expect(find.text('Owner administration'), findsOneWidget);
+      await tester.tap(find.text('Owner administration'));
+      await tester.pumpAndSettle();
       expect(find.text('Owner marker for user A'), findsOneWidget);
 
       adapter.ownerUids.remove('user-a');

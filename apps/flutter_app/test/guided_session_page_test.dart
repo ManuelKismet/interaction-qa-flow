@@ -258,10 +258,16 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('Shared question'),
       200,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('guided-flow-list')),
-        matching: find.byType(Scrollable),
-      ),
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('guided-flow-list')),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
+          )
+          .first,
     );
     expect(
       find.descendant(

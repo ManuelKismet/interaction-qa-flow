@@ -1,0 +1,17 @@
+{
+  "source_parent": "6f33bcc6d7378a65fcacec61926b152fbbca703c",
+  "flutter_passed": 392,
+  "backend_postgres_passed": 201,
+  "backend_skipped": 0,
+  "analyzer_errors": 0,
+  "analyzer_warnings": 0,
+  "analyzer_infos": 18,
+  "build_exit": 0,
+  "backend_tree": "6e7f896039fe3e982fa65cdc3e96772925510ac0",
+  "logs": {
+    "final-flutter.log": "fd362efc428e7a1016cb4320ff0fd74671597753c2524e55ec29a4aa0a69bebb",
+    "backend-postgres-full.log": "a46d0e34c6a8cdc34fb0ddb03823d7836036ee3a30c0381d26b9f8afaed162d8",
+    "final-analyze.log": "f4095d108d10bfca80b8ecaa0ac92efac41d8791758434513be1eafa309d7309",
+    "final-build.log": "0f284b92c6fd72ceed6934a9f260bfc80d5854c970ead0863e66ecc708ec6d36"
+  }
+}

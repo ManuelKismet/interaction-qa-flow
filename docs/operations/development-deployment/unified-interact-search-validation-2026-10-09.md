@@ -51,3 +51,7 @@ The 31 baseline cases still require investigation/updated acceptance checks befo
 ## Rollout
 
 Not deployed. DEV remains on its previous release. The frontend and backend must be deployed together because Interact search adds API endpoints. Hosted signed-in acceptance remains external while cloud browser authentication is unavailable.
+
+## Superseding full-suite validation
+
+The remaining full-suite gate was resolved on 2026-10-09: 392 Flutter tests and 201 backend tests passed, including PostgreSQL integration checks; DEV-configured release build passed. See [DEV release validation](dev-release-validation-2026-10-09.md) for corrections and rollout status. Earlier figures above are historical checkpoints.

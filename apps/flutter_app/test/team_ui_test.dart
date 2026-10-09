@@ -126,6 +126,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Details and assignment (optional)'));
+    await tester.pumpAndSettle();
     expect(find.text('Team (optional)'), findsOneWidget);
     await tester.tap(find.text('No team'));
     await tester.pumpAndSettle();
