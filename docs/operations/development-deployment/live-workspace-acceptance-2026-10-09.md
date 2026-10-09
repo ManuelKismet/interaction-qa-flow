@@ -111,3 +111,45 @@ This section supersedes earlier owner/delegation prerequisites. Founder approved
 - Private organisation session denial spinner, personal-session reload, proposals' repeat submission/feedback, CSV/print, lifecycle edges and live narrow-screen checks remain open or unverified as previously recorded.
 - Earlier 392 Flutter/201 backend passes belong to the deployment receipt; no suites rerun in this continuation. Existing Codespace was not started here.
 - Evidence saved: intqaflow-permissions-restored.jpg and intqaflow-request-review.jpg. Browser retains the owner session for remaining checks.
+
+## Continued acceptance — 9 October 2026, from 13:42 London
+
+Owner session was retained and independently confirmed as Organisation owner. No application source, deployment or permission changes were made.
+
+Passed live:
+- All-participant organisation report for synthetic template-derived session 7c9cd6eb-00aa-4109-9d23-9bc6130abca8 retains both question texts, Participant 1's exact answer and the unanswered second question.
+- CSV dialog renders its header and the answered/unanswered rows. Copy was invoked, but browser clipboard reads returned empty, so clipboard delivery is not passed.
+- Dedicated printable HTML preview opens in another tab with session title, participant, scope, status, UTC generation timestamp, answer and Unanswered marker. Print button produced no observable browser print dialog; PDF generation/pagination is not passed.
+- Synthetic session transitioned Draft -> Active -> Completed with Saved feedback. Save history records Session active revision 3 and Session completed revision 4. Completed editing remains enabled, consistent with existing design. Session is now Completed.
+- Archive confirmation clearly says organisation archiving is read-only and has no reopen/restore. Cancelled; archive mutation is not passed.
+- Created owner test-team request 6da4b0b2-127f-4f0b-9246-0f2029c6bb2d, then declined it. Fresh review list has no pending requests; no membership/access expansion occurred.
+
+Reproduced findings:
+- Full reload of the owner's own organisation session URL returns to root Ask & search. This extends the earlier question/private-account reload finding; source cause for this session variant is not established merely by the route allowlist.
+- Owner navigation to regularuser1's private organisation session 17d72509-e354-4e66-bf0f-563ac41fddef remains on the spinner across separate observations. No private content displayed.
+- Successful request submission refreshes Your requests but leaves Requests you can review stale. Leaving for Admin and returning shows the pending item. Source OrganisationPage._request invalidates only myOrganisationJoinRequestsProvider on success, supporting this UI refresh defect.
+
+Read-only source confirmation (not a new live API test):
+- Membership request service returns the existing pending request for the same requester/type/target; concurrent duplicates are handled after IntegrityError.
+- Membership request approval explicitly rejects actor == requester with HTTP 403. The listing does not hide the owner's own request; no self-approval bug is established.
+- GuidedKnowledgeService.create_proposal creates a fresh pending proposal without checking for an existing matching pending proposal, supporting the earlier repeated-proposal finding.
+- Request cards render target/request UUIDs without requester/team names, confirming the previously observed clarity problem.
+
+Remaining blockers: regularuser1 sign-in for employee cross-account checks and a new member request; successful membership approval requires action-time permission confirmation. Group invitation redemption/approval, actual narrow-screen browser/device coverage, irreversible archive/delete and generated PDF/clipboard delivery remain unpassed. No test suites were rerun; earlier 392 Flutter/201 backend results remain deployment evidence only. Owner signed out normally and app is on the Sign in form for continued testing.
+
+## Employee continuation — 9 October 2026, after 13:55 London
+
+User completed manual regularuser1 sign-in. My organisation independently confirms employee, original E2E Operations Department and two original teams.
+
+Passed live:
+- Direct /admin shows No organisation administration permission is assigned.
+- Direct /review-queue shows You do not have access to this queue.
+- Group Interact shared-copy question edited to `QA private shared checkpoint? Group edit` and saved as revision 2. Revision history lists revisions 1 and 2. Flutter automation input exhibited append/timeout behavior; exact saved draft was inspected before saving, and this is not classified as an application keyboard defect.
+- Private original session guest-v2-4f1f35c3ded320b82170756785e8ef01-1 still visually shows original `QA private shared checkpoint?` and exact original answer after reopening; Group edits do not overwrite the private original.
+- Employee team selector excludes the two existing memberships, offers only the isolated test team. Submitted test-team request; repeated submission leaves one pending item in Your requests. Original memberships remain unchanged while pending.
+
+Findings reproduced:
+- Employee direct navigation to owner's private organisation session 7c9cd6eb-00aa-4109-9d23-9bc6130abca8 remains on a spinner; no private content displayed. This reproduces private-denial UX in both directions.
+- Full reload of the employee Personal Interact session returns to root; reopening exact route loads retained source content.
+
+Next: owner sign-in to identify and approve the employee's pending request, subject to action-time confirmation for adding test-team membership, then verify employee state and restore the temporary membership. Group invitation and actual narrow-screen/PDF output remain unpassed. No privileges changed in this continuation.
