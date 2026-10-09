@@ -268,3 +268,26 @@ Created DEV QA 20261009 hosted boundaries 1546 as QA Boundary Owner. User approv
 ## Hosted Viewer activation and content fixture — 9 October 2026, after 16:04 London
 
 User approved Viewer activation. Owner approved QA Boundary Viewer; fresh members readback viewer/active with QA Boundary Owner admin/active, no active invitations. Added synthetic Knowledge DEV QA boundary access sentinel 1605 with synthetic post-removal test answer. Unified search sentinel 1605 returns Group badge and opens its detail. Detail is pushed internally and URL remains /#/personal; no exact Group/content IDs exposed in that visible route. Direct-content references not yet established; do not mark denial passed. Viewer remains active pending employee read and subsequent removal. Source/deployment unchanged.
+
+
+## Hosted remaining boundary checks completed — 9 October 2026, after 16:25 London
+
+Viewer read baseline: regularuser1@test.com opened DEV QA boundary access sentinel 1605 as QA Boundary Viewer viewer/active. Content readable; PDF/History/Done offered, no Edit/Delete controls. Evidence intqaflow-hosted-viewer-read-20261009.jpg.
+
+Owner then removed only QA Boundary Viewer. Fresh owner members readback shows QA Boundary Owner admin/active only, Active invitations empty. Temporary Group membership is cleaned up. Existing employee role, primary department and original teams untouched.
+
+Exact hosted Group-entry deep link obtained through organisation-root unified search (unlike personal search, this uses GoRouter and exposes IDs):
+/#/guest/groups?groupId=f4b33b33-4884-4f44-b37d-0cb71bd2c169&entryId=7831f43d-41fa-4f9e-b462-732f66337479
+Owner could open the exact entry. After user manually signed regularuser1 back in (identity confirmed Organisation workspace / employee), the same link did not open target content or detail/PDF/history actions. It fell back to another approved Group, DEV QA 20261009 group acceptance. Refresh retained exclusion; approved dropdown contains only that Group, E2E Lifecycle Acceptance 20261005 and E2E Registered Shared Group. Removed hosted boundaries Group absent. Unified search boundary access sentinel 1605 contains no removed entry (a different accessible team question matches broad keywords). Hosted direct app-link access denial PASS. Evidence intqaflow-hosted-direct-group-denial-20261009.jpg. This proves app-visible direct-link behavior, not a raw hosted API response/status or manually invoked export endpoint. Those raw endpoint cases passed in the isolated 27-test local API run. UI silently falls back rather than explaining unavailable target; record as UX observation, not content leak.
+
+Hosted team-content visibility:
+- Owner created synthetic open question DEV QA team visibility sentinel 1616, ID b63a626e-cc5a-4452-a18f-6ab54e09f9d0, assigned DEV QA test department + DEV QA test team.
+- Employee My organisation confirms primary E2E Operations Department, employee role, original E2E Department Handover Team + E2E Operations Team only. Employee is not in DEV QA test team.
+- Direct question URL opens readable title/details and both assignment labels for employee, with Answer/Discussion but no owner Edit/Archive controls.
+- Unified search returns Organisation, Department and Team badges for that question.
+- Existing member-team fixture How should the E2E department team verify its scoped checkpoint?, ID 2d4b9691-67ac-4d62-928c-28990fcf18f9, appears with E2E Department Handover Team badge and opens accepted/verified answer.
+- Evidence intqaflow-hosted-team-nonmember-visible-20261009.jpg and intqaflow-hosted-team-search-badges-20261009.jpg.
+
+Interpretation grounded in current backend PermissionService.can_view_question and SearchRepository: visibility modes organisation/private/department; team assignment is routing/governance metadata, not an exclusive team-read boundary. A department assignment alone also does not imply department visibility. Hosted member/nonmember team assignment behavior therefore matches organisation-visible policy. Do not claim nonexistent team-exclusive visibility passed. No new team grants needed for this check.
+
+These results supersede earlier pending hosted app-level invitation replay, direct Group-link denial and team-content fixture checks. All three requested hosted scenarios now exercised; no temporary Group/team memberships or delegations remain. Synthetic boundary Group/content and the open question retained as reproducible DEV fixtures. Physical-device/narrow viewport acceptance remains outstanding; full exhaustive acceptance and raw hosted HTTP status assertions not claimed. No source changes/deployment or additional automated suite runs.
