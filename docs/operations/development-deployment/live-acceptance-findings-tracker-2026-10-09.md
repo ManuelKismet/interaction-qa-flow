@@ -1,7 +1,7 @@
 # Live acceptance findings tracker — 9 October 2026
 
 Source: live-workspace-acceptance-2026-10-09.md, through commit 077f02f.
-Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F10 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
+Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F11 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ Process: handle one numbered item at a time. Implementation does not establish h
 | F08 | Personal Interact Undo restores local content without restoring account persistence | Fixed / automated-validated in PR #29; held for combined DEV confirmation |
 | F09 | Non-owner admin role-editing controls offered although server rejects with 403 | Fixed / automated-validated in PR #30; held for combined DEV confirmation |
 | F10 | Inaccessible Group deep link silently falls back to another approved Group | Fixed / automated-validated in PR #31; held for combined DEV confirmation |
-| F11 | Guest reload returns Knowledge; saved Interact can be reopened | Pending behavior review; reopening previously accepted |
+| F11 | Guest reload returns Knowledge; saved Interact can be reopened | Fixed / automated-validated in PR #32; held for combined DEV confirmation |
 | F12 | Knowledge question team/department assignment alone does not restrict organisation-visible questions; Interact separately supports explicit team visibility | Pending behavior review; current policy verified |
 | F13 | Completed Interact remains editable | Pending behavior review; current design |
 | F14 | Restoring employee role leaves separate department-answer-owner assignment until explicitly removed | Pending behavior review; cleanup completed |
@@ -127,3 +127,11 @@ Draft PR #31: https://github.com/ManuelKismet/interaction-qa-flow/pull/31, branc
 Tested source commit 748a6567d4d6fefedb947602194add4feed54670. Group dialog/repository validation run 37969482256 / job 113952136776: 41 Flutter tests passed, formatting passed. New cases cover an unavailable requested Group with another approved Group and with no Groups: clear unavailable message, no Group detail read or entry rendering, refresh retains unavailable state, and explicit approved-Group selection loads its content without opening the linked entry dialog in that different Group. Existing authorized Group/entry deep-link regression passes. Personal/account/Interact/store validation run 37969482282 / job 113952137147: 109 Flutter tests passed, including prior F08 regressions. Backend validation run 37969482395 / job 113952137465: 173 passed, 33 skipped, analysis/dependency/compilation passed. Local formatting and git diff --check passed.
 
 F01–F10 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F11–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.
+
+## F11 implementation and automated validation — 9 October 2026
+
+Draft PR #32: https://github.com/ManuelKismet/interaction-qa-flow/pull/32, branch fix/guest-interact-reload-20261009, stacked on PR #31. F01 already preserved supported launch URLs, but the local guest workspace never recorded session navigation or consumed the Interact route on startup. Guest startup now reads the captured launch route and opens its Interact tab and saved local session. Opening/closing a session and switching Knowledge/Interact update the guest browser location without replacing the guest tab controls. Question/participant query selection is retained on startup. Registered-account persistence and organisation routing are unchanged; guest data remains in the existing local store.
+
+Tested source commit aef75ecccb0e9fc9e58409455001e07341ea13c9. Reload routing validation run 37970667080 / job 113956150769: 85 Flutter tests passed, formatting passed. Two new regressions cover path and hash launch URLs: open a saved guest session from Interact, verify its recorded URL, reconstruct the app with that URL and the saved local store, verify the same editor/content reopens without duplicating the session, then verify session-list and Knowledge locations. Existing authentication-loading route and account identity/persistence tests pass. Personal session Undo validation run 37970667018 / job 113956150659: 109 tests passed. Group dialog/repository validation run 37970667023 / job 113956150633: 41 tests passed. Backend validation run 37970667086 / job 113956150842: 173 passed, 33 skipped; analysis/dependency/compilation checks passed. Local Dart format and git diff --check passed; uploaded source blobs match local file hashes. Local Flutter dependency setup remains unavailable, so execution used CI.
+
+F01–F11 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F12–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed. The F11 hosted browser reload retest remains pending the combined rollout.
