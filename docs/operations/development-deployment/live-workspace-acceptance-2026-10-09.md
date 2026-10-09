@@ -167,3 +167,7 @@ Passed live:
 Browser-input qualification: semantic field filling showed a value that did not reach the display-name controller and submission reported empty. Direct visible-field click, keyboard input, blur and coordinate submission succeeded. Do not classify this as an established application form defect.
 
 Invitation is staged at Create invitation with Contributor — own content. No invitation token generated and no new Group member added. Action-time approval is pending for invitation creation and subsequent access approval. Employee-side view while the temporary organisation team membership was active was not exercised; approval persistence and cleanup are owner-side live checks. Evidence: intqaflow-team-membership-approved-20261009.jpg.
+
+## Contributor invitation creation — 9 October 2026, after 14:14 London
+
+User approved Contributor invitation creation in the isolated empty DEV QA 20261009 invitation acceptance Group. Created a one-time invitation and observed its role/expiry. Revoked the unused first invitation, then created the replacement and copied its code through the app; clipboard delivery succeeded. Final member list shows only QA Owner admin/active and one active contributor invitation, expiring 2026-10-10T13:16:27.459498+00:00. No new member has joined or been approved. Invitation code remains only in browser-session memory/clipboard, is not printed or stored in docs. Next: regularuser1 manual sign-in for invitation redemption and pending-member isolation. Evidence screenshot omits the token.
