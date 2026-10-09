@@ -23,5 +23,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: dart format --output=none --set-exit-if-changed lib/features/guest/data/guest_group_repository.dart lib/features/guest/presentation/guest_workspace_page.dart test/guest_group_dialog_test.dart
+      - run: dart format --output=none --set-exit-if-changed lib/features/guest/data/guest_group_repository.dart lib/features/guest/presentation/guest_workspace_page.dart test/guest_group_dialog_test.dart test/guest_group_repository_test.dart
       - run: flutter test test/guest_group_dialog_test.dart
