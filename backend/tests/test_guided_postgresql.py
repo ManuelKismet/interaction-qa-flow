@@ -7,6 +7,7 @@ from app.models.guided import (
     GuidedQuestion,
     GuidedSession,
     GuidedSessionRevision,
+    GuidedSessionStatus,
 )
 from app.repositories.guided import GuidedRepository
 from app.schemas.guided import (
@@ -24,6 +25,62 @@ from tests import test_organisation_administration_postgres as postgres_tests
 
 postgres_sessions = postgres_tests.postgres_sessions
 seed_postgres = postgres_tests.seed_postgres
+
+
+@pytest.mark.asyncio
+async def test_postgres_completion_blocks_waiting_content_write(postgres_sessions, monkeypatch):
+    ids = await seed_postgres(postgres_sessions)
+    organisation_id, actor_id = ids['organisation_id'], ids['member']
+    async with postgres_sessions() as session:
+        service = GuidedService(session)
+        guided = await service.create_session(organisation_id, actor_id, GuidedSessionCreate(title='Completion race'))
+        participant = await service.add_participant(guided.id, organisation_id, actor_id, GuidedParticipantCreate(name='Alice'))
+        question = await service.add_question(guided.id, organisation_id, actor_id, GuidedQuestionCreate(text='Original question', scope='shared'))
+        answer = await service.upsert_answer(question.id, organisation_id, actor_id, GuidedAnswerUpsert(participant_id=participant.id, body='Finished answer'))
+        active = await service.transition_session(guided.id, organisation_id, actor_id, GuidedSessionStatus.ACTIVE)
+        revision = active.revision
+    locked, release = asyncio.Event(), asyncio.Event()
+    original = GuidedRepository.guided_session
+
+    async def gated(self, *args, **kwargs):
+        result = await original(self, *args, **kwargs)
+        if kwargs.get('for_update') and not locked.is_set():
+            locked.set()
+            await asyncio.wait_for(release.wait(), 5)
+        return result
+
+    monkeypatch.setattr(GuidedRepository, 'guided_session', gated)
+
+    async def complete():
+        async with postgres_sessions() as session:
+            return await GuidedService(session).transition_session(guided.id, organisation_id, actor_id, GuidedSessionStatus.COMPLETED)
+
+    async def edit():
+        async with postgres_sessions() as session:
+            await session.execute(text("SET LOCAL lock_timeout = '5s'"))
+            try:
+                await GuidedService(session).update_answer(answer.id, organisation_id, actor_id, GuidedAnswerUpdate(body='Late write', expected_revision=revision))
+                return 'saved'
+            except ConflictError:
+                await session.rollback()
+                return 'blocked'
+
+    completion = asyncio.create_task(complete())
+    editing = None
+    try:
+        await asyncio.wait_for(locked.wait(), 5)
+        editing = asyncio.create_task(edit())
+        await asyncio.sleep(0)
+        release.set()
+        results = await asyncio.wait_for(asyncio.gather(completion, editing), 10)
+        assert results[0].status == GuidedSessionStatus.COMPLETED
+        assert results[1] == 'blocked'
+    finally:
+        release.set()
+        await asyncio.gather(completion, *([editing] if editing else []), return_exceptions=True)
+    async with postgres_sessions() as session:
+        assert (await session.get(GuidedAnswer, answer.id)).body == 'Finished answer'
+        assert (await session.get(GuidedSession, guided.id)).revision == revision + 1
 
 
 @pytest.mark.asyncio
