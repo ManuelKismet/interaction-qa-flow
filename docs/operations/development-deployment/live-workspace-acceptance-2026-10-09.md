@@ -225,3 +225,8 @@ Checkpoint published through connected GitHub API after CLI lacked credentials. 
 Owner archived only DEV QA 20261009 invitation acceptance. Confirmation states 30-day same-Firebase-account recovery; archive UI lists deadline 2026-11-08T14:13:49.442201+00:00. Restore succeeded; Group returned to approved selector. Reopened member management confirms only QA Owner admin/active and no invitations; removed Contributor remains removed. Evidence intqaflow-group-restore-membership-20261009.jpg. No permanent deletion performed. Owner Group detail uses a modal without a content URL, so no exact deep-link reference was acquired through the visible UI.
 
 Admin staged regularuser1@test.com for DEV QA 20261009 test team. Add team member not submitted; action-time confirmation awaited for temporary membership and subsequent employee-side verification/cleanup. Evidence intqaflow-team-access-retest-ready-20261009.jpg.
+
+
+## Temporary test-team membership applied — 9 October 2026, after 15:17 London
+
+User gave action-time approval. Owner Add team member applied only regularuser1@test.com to DEV QA 20261009 test team. Fresh visual readback lists regularuser1 employee under that test team; primary department remains E2E Operations Department in Members. Evidence intqaflow-team-access-retest-added-20261009.jpg. Temporary membership remains active pending employee-side checks and subsequent removal. No delegation/role changes made.
