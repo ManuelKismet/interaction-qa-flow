@@ -609,7 +609,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (!exists && !_pendingPersonalWrites.containsKey(key)) {
       _enqueuePersonalWrite(
         _PersonalWorkspaceWrite(
-          action: 'create',
+          action: 'reconcile',
           kind: 'interact_session',
           sourceKey: _personalSourceKey('interact_session', sourceId),
           sourceId: sourceId,
@@ -619,7 +619,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       );
     }
     // Existing pending deletes keep their uncertainty/conflict reconciliation.
-    // A completed deletion needs the explicit create queued above.
+    // A completed deletion reconciles first, then recreates if still absent.
     _save(updated, accountPrivateKeys: {key});
   }
 
