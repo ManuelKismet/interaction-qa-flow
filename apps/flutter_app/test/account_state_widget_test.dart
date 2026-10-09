@@ -3496,6 +3496,48 @@ void main() {
       );
     });
 
+    testWidgets('Undo after completed account DELETE restores through reload', (
+      tester,
+    ) async {
+      final session = accountSession('s1', 'Removable account session');
+      final repository = _TestPersonalWorkspaceRepository([
+        accountRecord(session),
+      ]);
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await tester.pumpWidget(
+        accountPage(
+          user: verified('a'),
+          store: store,
+          repository: repository,
+          initialSessionId: 's1',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await deleteOpenSession(tester);
+      await tester.pumpAndSettle();
+      expect(repository.items, isEmpty);
+      await tapUndo(tester);
+      await tester.pumpAndSettle();
+      expectSingleRestored(repository, session, revision: 1);
+      expect(repository.importUids, ['a']);
+      expect((await store.load()).sessions, isEmpty);
+      expect(find.textContaining('restored as a local copy'), findsNothing);
+      // Reconstruct the page with a fresh browser store: account data survives.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        accountPage(
+          user: verified('a'),
+          store: GuestWorkspaceStore(_MemoryGuestStorage()),
+          repository: repository,
+          initialSessionId: 's1',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Removable account session'), findsWidgets);
+      expect(repository.items, hasLength(1));
+    });
+
     testWidgets('Undo during an in-flight account DELETE restores one item', (
       tester,
     ) async {
