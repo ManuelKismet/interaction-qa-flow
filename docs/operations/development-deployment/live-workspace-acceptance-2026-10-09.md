@@ -242,3 +242,10 @@ Manual regularuser1 sign-in succeeded after secure-form sign-in surfaced Check y
 Owner removed only regularuser1 from DEV QA 20261009 test team. Expanded test team empty; both original team expansions retain regularuser1 employee; Department owners says No answer owners assigned. Original primary department/role shown unchanged in Members. Evidence intqaflow-team-final-cleanup-20261009.jpg. No temporary memberships/delegations remain from these checks.
 
 Synthetic invitation acceptance Group rearchived for final permanent-delete test, recoverable until 2026-11-08T14:32:19.357454+00:00. Exact permanent-delete dialog staged: deletes Group/content/memberships irreversibly; existing exports/local copies unaffected. Delete permanently not submitted, awaiting action-time user confirmation. Evidence intqaflow-test-group-permanent-delete-ready-20261009.jpg.
+
+
+## Permanent synthetic-Group deletion — 9 October 2026, after 15:34 London
+
+User approved exact permanent deletion. Deleted DEV QA 20261009 invitation acceptance through named confirmation. Archived recovery card disappears. App Refresh and approved selector show only E2E Accepted Transfer 20261005; deleted Group is absent from both active and archived UI. Evidence intqaflow-test-group-deleted-20261009.jpg. This completes live Group permanent-delete UI/persistence verification; no database-level cascade assertion performed. Temporary Contributor and test-team memberships already cleaned up. Other original Groups and original private Interact untouched.
+
+Coverage limits still explicit: actual narrow-screen/physical-device coverage; cross-account redeemed invitation reuse denial (source checked, token no longer retained); direct removed-Group content request denial (modal lacks a visible deep link and IDs not retained); team-scoped content visibility (membership and privilege boundary checked, no scoped fixture). Full exhaustive acceptance not claimed. No new automated suites or source/deployment changes.
