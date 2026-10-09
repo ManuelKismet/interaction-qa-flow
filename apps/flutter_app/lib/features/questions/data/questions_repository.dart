@@ -164,8 +164,8 @@ class QuestionsRepository {
           'body': body,
           'department_id': departmentId,
           'team_id': teamId,
-          if (visibility != null) 'visibility': visibility,
-          if (reason != null) 'reason': reason,
+          'visibility': ?visibility,
+          'reason': ?reason,
         },
       ),
     );
@@ -200,8 +200,8 @@ class QuestionsRepository {
       () => _client.post<void>(
         '/api/v1/questions/$questionId/change-requests',
         data: {
-          if (title != null) 'title': title,
-          if (body != null) 'body': body,
+          'title': ?title,
+          'body': ?body,
           'archive': archive,
           'reason': reason,
         },
@@ -233,7 +233,7 @@ class QuestionsRepository {
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/change-requests/$requestId/review',
-        data: {'decision': decision, if (note != null) 'review_note': note},
+        data: {'decision': decision, 'review_note': ?note},
       ),
     );
   }
@@ -246,7 +246,7 @@ class QuestionsRepository {
     await _request(
       () => _client.patch<void>(
         '/api/v1/answers/$answerId',
-        data: {'body': body, if (reason != null) 'reason': reason},
+        data: {'body': body, 'reason': ?reason},
       ),
     );
   }
@@ -255,7 +255,7 @@ class QuestionsRepository {
     await _request(
       () => _client.delete<void>(
         '/api/v1/answers/$answerId',
-        queryParameters: {if (reason != null) 'reason': reason},
+        queryParameters: {'reason': ?reason},
       ),
     );
   }
