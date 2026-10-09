@@ -1,7 +1,7 @@
 # Live acceptance findings tracker — 9 October 2026
 
 Source: live-workspace-acceptance-2026-10-09.md, through commit 077f02f.
-Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F07 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
+Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F08 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ Process: handle one numbered item at a time. Implementation does not establish h
 | F05 | Repeated Interact-to-Knowledge proposals create duplicate pending proposals / unclear immediate feedback | Fixed / automated-validated in PR #26; held for combined DEV confirmation |
 | F06 | Redeemed invitation still previews as valid although join rejects cross-account reuse | Fixed / automated-validated in PR #27; held for combined DEV confirmation |
 | F07 | Registered Group member removal says guest member | Fixed / automated-validated in PR #28; held for combined DEV confirmation |
-| F08 | Private-session Undo restores local content only, not account persistence | Pending behavior review |
+| F08 | Personal Interact Undo restores local content without restoring account persistence | Fixed / automated-validated in PR #29; held for combined DEV confirmation |
 | F09 | Non-owner admin role-editing controls offered although server rejects with 403 | Pending; historical state, non-owner UI not retested |
 | F10 | Inaccessible Group deep link silently falls back to another approved Group | Pending |
 | F11 | Guest reload returns Knowledge; saved Interact can be reopened | Pending behavior review; reopening previously accepted |
@@ -99,3 +99,13 @@ Draft PR #28: https://github.com/ManuelKismet/interaction-qa-flow/pull/28, branc
 Tested source commit de9c36253e39526ed568e5243d6ec89a0499b94f. Flutter Group dialog/repository validation run 37965211802 / job 113937734255 succeeded: 39 tests passed, including removal confirmation, one removal request, removed status and continued mounted Group page; formatting passed. Backend validation run 37965211776 / job 113937733681 succeeded: 173 passed, 33 skipped, with analysis/compilation/dependency checks passed. Local formatting and git diff --check passed.
 
 F01–F07 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F08–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.
+
+## F08 implementation and automated validation — 9 October 2026
+
+Draft PR #29: https://github.com/ManuelKismet/interaction-qa-flow/pull/29, branch fix/personal-session-undo-20261009, stacked on PR #28. Finding clarified as Personal-workspace Interact Undo, not organisation private-session visibility. Account-owned sessions normally load from account records and are excluded from the guest browser store. The defect arose after a confirmed deletion removed the ownership record: generic Undo then treated the restored session as local.
+
+Undo retains original account intent and UID. For a completed deletion it queues account reconciliation, recreates the session privately if still absent, accepts matching already-restored content, or invokes existing conflict review if a newer account version exists. Account keys keep the restored session out of browser-only persistence. Existing in-flight/failed/uncertain deletion reconciliation and explicit retry remain intact. Account changes block stale account Undo; local guest sessions keep local Undo. Feedback says account restore queued and directs the user to save status. No broader browser-storage migration or backend policy change.
+
+Final tested source commit 9609385fe06fab5be8d6e0b1a9f3cc08215a59d2. Personal session Undo validation run 37967446579 / job 113945235239: 109 tests passed (account_state_widget_test.dart, guest_interact_widget_test.dart, guest_workspace_store_test.dart); formatting passed. New completed-delete Undo regression asserts one restored account item, original content, original UID, no session in guest browser storage, and survival after reconstructing the page with fresh browser storage. New concurrent-account-content regression asserts a newer remote copy is not overwritten and explicit conflict review is shown. Existing pending/in-flight/failed/uncertain deletion, lost acknowledgement, conflict, UID/signout and guest-storage cases pass. Group dialog/repository run 37967446508 / job 113945234797: 39 tests passed. Backend validation run 37967446477 / job 113945234688: 173 passed, 33 skipped; analysis/compile/dependency checks passed. Local format and git diff --check passed. Earlier initial 108-test pass was superseded by the final reconciliation/conflict regression.
+
+F01–F08 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F09–F14 and C01–C06 remain tracked and untouched. No merge or deployment performed.
