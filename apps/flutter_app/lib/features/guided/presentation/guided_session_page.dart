@@ -176,7 +176,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         ),
       ),
       data: (session) {
-        final canEditSession =
+        final canManageSession =
             session.status != 'archived' &&
             authority != null &&
             membership != null &&
@@ -186,6 +186,9 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                 ((authority.isOwner ||
                         authority.permissions.contains('legacy_admin')) &&
                     session.visibility != 'private'));
+        final canEditSession =
+            canManageSession &&
+            (session.status == 'draft' || session.status == 'active');
         final drafts = canEditSession
             ? ref.watch(guidedPendingEditsProvider(session.id))
             : null;
@@ -215,6 +218,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
           transition = () => _transition('start');
         } else if (canEditSession && session.status == 'active') {
           transition = () => _transition('complete');
+        } else if (canManageSession && session.status == 'completed') {
+          transition = () => _transition('reopen');
         }
         if ((_participantId == null ||
                 !session.participants.any(
@@ -256,8 +261,8 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
             }),
             onExport: (format) => _export(session, format),
             onHistory: _history,
-            onLifecycleInfo: () => _lifecycleInfo(session, canEditSession),
-            onSessionAction: canEditSession
+            onLifecycleInfo: () => _lifecycleInfo(session, canManageSession),
+            onSessionAction: canManageSession
                 ? (action) => _sessionAction(session, action)
                 : null,
             onPrint: _reportMode
@@ -307,6 +312,17 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
                 child: Text(
                   'Archived session: read-only for everyone. Reports and exports remain available; archived sessions cannot be reopened.',
                   key: ValueKey('guided-session-archived-notice'),
+                ),
+              ),
+            )
+          else if (session.status == 'completed')
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Completed session: read-only. An authorised editor can reopen it for changes. Reports and exports remain available.',
+                  key: ValueKey('guided-session-completed-notice'),
                 ),
               ),
             )
@@ -806,7 +822,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
       'draft' => 'Start makes it active. Archive is also available.',
       'active' => 'Complete marks it completed. Archive is also available.',
       'completed' =>
-        'Completed sessions stay editable by authorised editors. Archive is the only further step.',
+        'Completed sessions are read-only. Reopen session returns it to Active before editing. Archive is also available.',
       _ =>
         'Archived sessions are read-only and cannot be reopened or restored.',
     };
@@ -1238,7 +1254,10 @@ class _SessionHeader extends StatelessWidget {
             value: 'participant',
             child: Text(
               reportMode && !allParticipantsReport
-                  ? 'Return to editing'
+                  ? (session.status == 'completed' ||
+                            session.status == 'archived'
+                        ? 'Return to session'
+                        : 'Return to editing')
                   : 'Active participant report',
             ),
           ),
@@ -1246,7 +1265,10 @@ class _SessionHeader extends StatelessWidget {
             value: 'all',
             child: Text(
               reportMode && allParticipantsReport
-                  ? 'Return to editing'
+                  ? (session.status == 'completed' ||
+                            session.status == 'archived'
+                        ? 'Return to session'
+                        : 'Return to editing')
                   : 'All participants report',
             ),
           ),
@@ -1270,10 +1292,11 @@ class _SessionHeader extends StatelessWidget {
         itemBuilder: (_) => [
           const PopupMenuItem(value: 'history', child: Text('Save history')),
           if (onSessionAction != null) ...[
-            const PopupMenuItem(
-              value: 'details',
-              child: Text('Edit session details'),
-            ),
+            if (session.status == 'draft' || session.status == 'active')
+              const PopupMenuItem(
+                value: 'details',
+                child: Text('Edit session details'),
+              ),
             const PopupMenuItem(
               value: 'template',
               child: Text('Save as organisation template'),
@@ -1289,7 +1312,11 @@ class _SessionHeader extends StatelessWidget {
       if (onTransition != null)
         FilledButton(
           onPressed: onTransition,
-          child: Text(session.status == 'draft' ? 'Start' : 'Complete'),
+          child: Text(switch (session.status) {
+            'draft' => 'Start',
+            'completed' => 'Reopen session',
+            _ => 'Complete',
+          }),
         ),
     ];
     return Padding(
