@@ -33,7 +33,14 @@ void main() {
     await _settleAuthority(tester, h);
     await _mount(tester, h);
     expect(find.text('Organisation session'), findsOneWidget);
-    expect(h.adapter.reads, hasLength(2));
+    // A successful page selects its first participant and performs a separate
+    // scoped read. Count retries of the original unfiltered query only.
+    expect(
+      h.adapter.reads.where(
+        (request) => request.queryParameters['participant_id'] == null,
+      ),
+      hasLength(2),
+    );
   });
 
   for (final status in [403, 404]) {
