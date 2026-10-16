@@ -73,3 +73,6 @@ Current implementations are simple deterministic Dart matchers, not on-device le
 
 ## How to resume
 In a new ChatGPT Work conversation inside the **NOPAK** project, instruct the assistant to read this handover from one of the three HNI experimental branches and inspect the same-branch files in each GitHub repository. Reconfirm all branch statuses and recent code since this document is a snapshot. Continue work on experiment branches only.
+
+## Contextual examples and behavioural rationale
+Read **[HNI_CONTEXTUAL_EXAMPLES_AND_LOGIC.md](HNI_CONTEXTUAL_EXAMPLES_AND_LOGIC.md)** in the same experimental branch for the detailed Happnn/TempConnect/IntQAFlow scenarios, adaptive UI examples, proximity/privacy logic, and agreed versus unresolved decisions. Treat that document as part of this handover.
