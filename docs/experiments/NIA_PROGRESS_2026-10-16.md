@@ -1,7 +1,7 @@
 ## Latest priority — Happnn first,16October2026
 Founder directed proving NIA/NIC/ANI in Happnn before further IntQAFlow implementation/tests. This supersedes earlier next-product validation instructions below; this experiment is preserved and on hold. Later reuse requires separate product-specific permission/lifecycle/governance validation, not automatic acceptance. See the canonical [Happnn checkpoint](https://github.com/ManuelKismet/happnn/blob/experiment/hni-from-dev-isolation-20261016/docs/experiments/NIA_PROGRESS_2026-10-16.md).
 
-Founder requested deleting only obsolete experiment/hni-native-intelligence-poc. Recorded old tip: 1cce873d5db8b786676e26cad510f2db0d041540. Current experiment stays intact. Cleanup currently PENDING; no deletion is claimed yet. Main/dev/production/readiness untouched.
+Founder requested deleting only obsolete experiment/hni-native-intelligence-poc. Recorded old tip: 1cce873d5db8b786676e26cad510f2db0d041540. Current experiment stays intact. Cleanup COMPLETE: exact old ref deleted via GitHub UI (Deleted/Restore shown) and API NOT_FOUND verified. Current experiment preserved; main/dev unchanged. Recorded old tip supports recovery; historical pending/existence statements below are superseded. Main/dev/production/readiness untouched.
 
 # IntQAFlow — NIA recovery checkpoint,16October2026
 

@@ -1,3 +1,5 @@
+> Latest founder sequencing and cleanup,16October2026: **Happnn first**; TempConnect/IntQAFlow NIA implementation/tests are on hold until Happnn proves the architecture. All three obsolete main-based experiment/hni-native-intelligence-poc branches are now deleted and API-verified absent; current experiment/hni-from-dev-isolation-20261016 branches remain. Old pending/existence/next-product instructions below are historical. See [current checkpoint](NIA_PROGRESS_2026-10-16.md) for recovery SHAs and actual evidence. No main/dev/production changes.
+
 > NIA naming update —16October2026: **Native Intelligence Architecture (NIA)** replaces HAPPNN Native Intelligence (HNI) as the product-neutral architecture name. **NIC** is Native Intelligence Core; **ANI** is Ambient Native Intelligence; each product retains its own specialised intelligence. This is terminology only: historical HNI filenames, branch names and Dart symbols remain for compatibility; no redesign or refactoring is implied. Read [current progress checkpoint](NIA_PROGRESS_2026-10-16.md) before executing next steps.
 
 # NOPAK — NIA Intelligence-Native Applications handover (historical HNI paths retained)
