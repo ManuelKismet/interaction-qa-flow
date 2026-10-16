@@ -76,3 +76,6 @@ In a new ChatGPT Work conversation inside the **NOPAK** project, instruct the as
 
 ## Contextual examples and behavioural rationale
 Read **[HNI_CONTEXTUAL_EXAMPLES_AND_LOGIC.md](HNI_CONTEXTUAL_EXAMPLES_AND_LOGIC.md)** in the same experimental branch for the detailed Happnn/TempConnect/IntQAFlow scenarios, adaptive UI examples, proximity/privacy logic, and agreed versus unresolved decisions. Treat that document as part of this handover.
+
+## Latest brainstorm: activity formation and ambient assistance
+Read **[HNI_ACTIVITY_FORMATION_AND_AMBIENT_ASSISTANCE.md](HNI_ACTIVITY_FORMATION_AND_AMBIENT_ASSISTANCE.md)** in this experiment branch for the no-existing-activity proximity flow, temporary activity groups, host-draft handoff, micro-hints, micro-actions, intentional silence, constraints and open questions. It is a required part of this handover; these are proposals, not implemented features.
