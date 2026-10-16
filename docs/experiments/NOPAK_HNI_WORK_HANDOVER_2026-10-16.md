@@ -1,11 +1,13 @@
-# NOPAK — HNI Intelligence-Native Applications handover
+> NIA naming update —16October2026: **Native Intelligence Architecture (NIA)** replaces HAPPNN Native Intelligence (HNI) as the product-neutral architecture name. **NIC** is Native Intelligence Core; **ANI** is Ambient Native Intelligence; each product retains its own specialised intelligence. This is terminology only: historical HNI filenames, branch names and Dart symbols remain for compatibility; no redesign or refactoring is implied. Read [current progress checkpoint](NIA_PROGRESS_2026-10-16.md) before executing next steps.
+
+# NOPAK — NIA Intelligence-Native Applications handover (historical HNI paths retained)
 Date: 16 October 2026
 Status: research/prototype, isolated; no production integration
 
 ## Vision
 HAPPNN TECHNOLOGIES Ltd is exploring **Intelligence-Native Applications**: intelligence integrated into app design and workflows, not a separate visible agent or chatbot. Apps understand user intent/context, adapt guidance and UI in real time, proactively suggest relevant opportunities, and carry out only duly authorised low-risk steps, escalating consequential actions for review. Prioritise small deterministic native logic, then optional on-device ML/cloud inference as necessary. Keep UX simple and user control explicit.
 
-Working architectural names: **HAPPNN Native Intelligence (HNI)**; shared **Native Intelligence Core (NIC)**. These are exploratory names, not separately shipped products.
+Current architectural name: **Native Intelligence Architecture (NIA)** (formerly HAPPNN Native Intelligence/HNI); shared **Native Intelligence Core (NIC)** and **Ambient Native Intelligence (ANI)**. This is an architecture naming change, not separately shipped products or an implementation redesign.
 
 ## Product applications
 - **Happnn — activity intelligence**: match shared activity interests and intentions; discover relevant local real-world experiences and optionally suggest mutually opted-in nearby peers. Goal is real-world participation, not screen time.

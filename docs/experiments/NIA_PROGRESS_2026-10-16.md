@@ -1,0 +1,13 @@
+# IntQAFlow — NIA recovery checkpoint,16October2026
+
+NIA=Native Intelligence Architecture; NIC=Native Intelligence Core; ANI=Ambient Native Intelligence. Historical HNI paths/symbols retained. All three required local handovers were read and verified identical to their counterparts before terminology-only updates.
+
+Canonical cross-product recovery, ancestry table, validation blocker, next steps and lessons: [Happnn NIA checkpoint](https://github.com/ManuelKismet/happnn/blob/experiment/hni-from-dev-isolation-20261016/docs/experiments/NIA_PROGRESS_2026-10-16.md). This link avoids duplicating the full cross-product checkpoint; local product source and authority stay in this repository.
+
+Reviewed local experiment: 0e762743061cc0256a64ce8553b2144119a20861. Read-only dev baseline: 033ea2e351772774e05c0868bc1ea1df74dd6c74. Experiment8commits ahead/0behind; diff limited to experimental docs/helpers/tests. Old experiment/hni-native-intelligence-poc still exists; deletion unavailable through current connector. No AGENTS.md in full tree.
+
+Existing supplied-authorised-candidate token matcher inspected;3authored tests not executed. No retrieval permissions, tenant/workspace boundary, verification, review or audit enforcement is supplied by this helper. Next: run original tests in dedicated IntQAFlow validation environment, then define scope/threshold regressions without querying inaccessible knowledge.
+
+This continuation changes documentation only. No tests/format/analyzer/build/benchmarks, no new runtime source, no merged branches, no deployments, no trusted validation check and no production/dev/companion/readiness changes. Scope is experiment/hni-from-dev-isolation-20261016 only. Other dedicated validation environments have not been used; do not run this product in Happnn's Codespace. Proposals remain proposals and need approval for significant architecture/product/UI changes.
+
+Lessons: use current branch rather than old main-based POC; authored tests are not passes; caller flags are not permission proof; retain per-product data/infrastructure isolation. Follow the shared checkpoint and this repo's current workflows before implementation.

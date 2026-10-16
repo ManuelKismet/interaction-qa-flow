@@ -1,4 +1,6 @@
-# HNI — contextual examples and behavioural rationale
+> NIA naming update —16October2026: **Native Intelligence Architecture (NIA)** replaces HAPPNN Native Intelligence (HNI) as the product-neutral architecture name. **NIC** is Native Intelligence Core; **ANI** is Ambient Native Intelligence; each product retains its own specialised intelligence. This is terminology only: historical HNI filenames, branch names and Dart symbols remain for compatibility; no redesign or refactoring is implied. Read [current progress checkpoint](NIA_PROGRESS_2026-10-16.md) before executing next steps.
+
+# NIA — contextual examples and behavioural rationale
 Companion to NOPAK_HNI_WORK_HANDOVER_2026-10-16.md. Design examples, NOT shipped functionality.
 
 ## Principle
