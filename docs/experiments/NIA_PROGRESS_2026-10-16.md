@@ -1,3 +1,8 @@
+## Latest priority — Happnn first,16October2026
+Founder directed proving NIA/NIC/ANI in Happnn before further IntQAFlow implementation/tests. This supersedes earlier next-product validation instructions below; this experiment is preserved and on hold. Later reuse requires separate product-specific permission/lifecycle/governance validation, not automatic acceptance. See the canonical [Happnn checkpoint](https://github.com/ManuelKismet/happnn/blob/experiment/hni-from-dev-isolation-20261016/docs/experiments/NIA_PROGRESS_2026-10-16.md).
+
+Founder requested deleting only obsolete experiment/hni-native-intelligence-poc. Recorded old tip: 1cce873d5db8b786676e26cad510f2db0d041540. Current experiment stays intact. Cleanup currently PENDING; no deletion is claimed yet. Main/dev/production/readiness untouched.
+
 # IntQAFlow — NIA recovery checkpoint,16October2026
 
 NIA=Native Intelligence Architecture; NIC=Native Intelligence Core; ANI=Ambient Native Intelligence. Historical HNI paths/symbols retained. All three required local handovers were read and verified identical to their counterparts before terminology-only updates.
