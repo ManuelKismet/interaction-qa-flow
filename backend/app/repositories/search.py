@@ -8,10 +8,11 @@ from sqlalchemy.orm import aliased
 from app.models.answer import Answer, AnswerStatus
 from app.models.answer_challenge import AnswerChallenge, ChallengeStatus
 from app.models.department import Department
-from app.models.question import Question, QuestionStatus, QuestionVisibility
+from app.models.question import Question, QuestionStatus
 from app.models.question_embedding import QuestionEmbedding
 from app.models.team import Team
 from app.models.user import User
+from app.services.permissions import PermissionService
 
 
 class SearchRepository:
@@ -92,36 +93,10 @@ class SearchRepository:
             .correlate(candidate_answer)
             .scalar_subquery()
         )
-        visibility = or_(
-            Question.visibility == QuestionVisibility.ORGANISATION,
-            and_(
-                Question.visibility == QuestionVisibility.PRIVATE,
-                Question.author_id == actor.id,
-            ),
+        visibility = PermissionService.question_visibility_clause(actor)
+        canonical_visibility = PermissionService.question_visibility_clause(
+            actor, canonical_question
         )
-        if actor.department_id is not None:
-            visibility = or_(
-                visibility,
-                and_(
-                    Question.visibility == QuestionVisibility.DEPARTMENT,
-                    Question.department_id == actor.department_id,
-                ),
-            )
-        canonical_visibility = or_(
-            canonical_question.visibility == QuestionVisibility.ORGANISATION,
-            and_(
-                canonical_question.visibility == QuestionVisibility.PRIVATE,
-                canonical_question.author_id == actor.id,
-            ),
-        )
-        if actor.department_id is not None:
-            canonical_visibility = or_(
-                canonical_visibility,
-                and_(
-                    canonical_question.visibility == QuestionVisibility.DEPARTMENT,
-                    canonical_question.department_id == actor.department_id,
-                ),
-            )
 
         statement = (
             select(

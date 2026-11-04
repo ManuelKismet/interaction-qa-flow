@@ -144,10 +144,12 @@ async def list_join_requests(
     mine: bool = False,
     identity: DevelopmentIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
-) -> list[OrganisationJoinRequest]:
-    return await OrganisationAdministrationService(session).list_requests(
+) -> list[OrganisationJoinRequestResponse]:
+    service = OrganisationAdministrationService(session)
+    requests = await service.list_requests(
         identity.organisation_id, identity.user_id, pending=not mine
     )
+    return await service.request_summaries(identity.organisation_id, requests)
 
 
 @router.post(

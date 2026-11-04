@@ -49,6 +49,8 @@ class OrganisationJoinRequestResponse(BaseModel):
     id: UUID
     organisation_id: UUID
     requester_id: UUID
+    requester_name: str | None = None
+    target_name: str | None = None
     request_type: str
     target_id: UUID
     status: str

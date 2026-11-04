@@ -78,13 +78,17 @@ class GuestGroupRepository {
     return response.data!;
   });
 
-  Future<bool> previewInvitation(String token) => _request(() async {
-    final response = await _client.post<Map<String, dynamic>>(
-      '/api/v1/guest/invitations/preview',
-      data: {'token': token},
-    );
-    return response.data?['valid'] == true;
-  });
+  Future<({bool valid, bool used})> previewInvitation(String token) =>
+      _request(() async {
+        final response = await _client.post<Map<String, dynamic>>(
+          '/api/v1/guest/invitations/preview',
+          data: {'token': token},
+        );
+        return (
+          valid: response.data?['valid'] == true,
+          used: response.data?['used'] == true,
+        );
+      });
 
   Future<Map<String, dynamic>> joinInvitation({
     required String token,

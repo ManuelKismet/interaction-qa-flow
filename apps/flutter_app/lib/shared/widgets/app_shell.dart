@@ -36,6 +36,13 @@ class AppShell extends ConsumerWidget {
         ),
         if (showGroups)
           AppDestination(
+            label: 'Suggestions',
+            path: '/group-suggestions',
+            icon: Icons.lightbulb_outline,
+            selectedIcon: Icons.lightbulb,
+          ),
+        if (showGroups)
+          AppDestination(
             label: 'Groups',
             path: '/guest/groups',
             icon: Icons.group_outlined,
@@ -55,6 +62,12 @@ class AppShell extends ConsumerWidget {
         path: '/guided',
         icon: Icons.account_tree_outlined,
         selectedIcon: Icons.account_tree,
+      ),
+      AppDestination(
+        label: 'Suggestions',
+        path: '/suggestions',
+        icon: Icons.lightbulb_outline,
+        selectedIcon: Icons.lightbulb,
       ),
       if (showOrganisation)
         AppDestination(
@@ -82,6 +95,9 @@ class AppShell extends ConsumerWidget {
 
   int _selectedIndex(List<AppDestination> destinations) {
     final selectedPath = switch (currentPath) {
+      final path when path.startsWith('/suggestions') => '/suggestions',
+      final path when path.startsWith('/group-suggestions') =>
+        '/group-suggestions',
       final path when path.startsWith('/questions') => '/',
       final path
           when path.startsWith('/personal/questions') ||
@@ -262,7 +278,8 @@ class AppShell extends ConsumerWidget {
         ref.watch(firebaseAuthProvider).currentUser;
     final personalWorkspace =
         currentPath.startsWith('/personal') ||
-        currentPath.startsWith('/guest/groups');
+        currentPath.startsWith('/guest/groups') ||
+        currentPath.startsWith('/group-suggestions');
     final destinations =
         _destinations(
           personalWorkspace: personalWorkspace,
