@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/features/questions/presentation/question_visibility_field.dart';
 import 'package:int_qa_flow/shared/utils/responsive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +23,7 @@ class _AskPageState extends ConsumerState<AskPage> {
   final _optionsController = ExpansibleController();
   String? _departmentId;
   String? _teamId;
+  String _visibility = 'organisation';
 
   @override
   void dispose() {
@@ -72,6 +74,11 @@ class _AskPageState extends ConsumerState<AskPage> {
                   onOpenLocalInteract: (hit) =>
                       openLocalInteractSearchResult(context, hit),
                   onRetry: ref.read(askSuggestionsProvider.notifier).retry,
+                ),
+                const SizedBox(height: 12),
+                QuestionVisibilityField(
+                  value: _visibility,
+                  onChanged: (value) => setState(() => _visibility = value),
                 ),
                 const SizedBox(height: 12),
                 ExpansionTile(
@@ -166,7 +173,12 @@ class _AskPageState extends ConsumerState<AskPage> {
                   child: ElevatedButton.icon(
                     onPressed:
                         _titleController.text.trim().isEmpty ||
-                            submission.isLoading
+                            submission.isLoading ||
+                            !questionVisibilityHasScope(
+                              _visibility,
+                              _departmentId,
+                              _teamId,
+                            )
                         ? null
                         : _submit,
                     icon: submission.isLoading
@@ -204,6 +216,7 @@ class _AskPageState extends ConsumerState<AskPage> {
           body: _detailController.text.trim(),
           departmentId: _departmentId,
           teamId: _teamId,
+          visibility: _visibility,
         );
     if (!mounted) return;
 

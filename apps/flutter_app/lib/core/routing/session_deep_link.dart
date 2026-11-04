@@ -1,9 +1,11 @@
 final _detailRoutePattern = RegExp(
-  r'^/(questions|guided/sessions|personal/interact/sessions)/[^/]+/?$',
+  r'^/(questions|suggestions|group-suggestions|guided/sessions|personal/interact/sessions)/[^/]+/?$',
 );
 const _workspaceRoutes = {
   '/',
   '/organisation',
+  '/suggestions',
+  '/group-suggestions',
   '/questions',
   '/guided',
   '/review-queue',

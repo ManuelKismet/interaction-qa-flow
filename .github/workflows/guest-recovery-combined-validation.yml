@@ -1,0 +1,28 @@
+name: Guest recovery and combined validation
+on:
+  pull_request:
+    paths:
+      - 'apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart'
+      - 'apps/flutter_app/test/account_state_widget_test.dart'
+      - '.github/workflows/guest-recovery-combined-validation.yml'
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib/features/guest/presentation/guest_workspace_page.dart test/account_state_widget_test.dart
+      - run: flutter analyze --no-fatal-infos lib/features/guest/presentation/guest_workspace_page.dart test/account_state_widget_test.dart
+      - run: flutter test
+      - run: flutter build web --release
