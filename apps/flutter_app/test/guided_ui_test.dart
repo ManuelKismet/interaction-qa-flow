@@ -49,7 +49,11 @@ const shared = GuidedQuestion(
   followUps: [followUp],
 );
 
-Widget flow({GuidedQuestion question = shared, String participant = 'alice'}) {
+Widget flow({
+  GuidedQuestion question = shared,
+  String participant = 'alice',
+  Future<void> Function(GuidedQuestion, String)? onSaveQuestion,
+}) {
   return MaterialApp(
     theme: AppTheme.light,
     builder: AppTheme.responsiveBuilder,
@@ -59,7 +63,7 @@ Widget flow({GuidedQuestion question = shared, String participant = 'alice'}) {
         participantId: participant,
         participantName: participant == 'alice' ? 'Alice' : 'Bob',
         onEditing: () {},
-        onSaveQuestion: (_, _) async {},
+        onSaveQuestion: onSaveQuestion ?? (_, _) async {},
         onSaveAnswer: (_, _, _) async {},
         onAddFollowUp: (_) {},
         onToggleBranch: (_) {},
