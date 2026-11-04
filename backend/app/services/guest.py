@@ -486,7 +486,7 @@ class GuestService:
         await self._group(group_id, firebase_uid, admin=True)
         member = await self.guest.member_by_id(group_id, member_id, lock=True)
         if member is None or member.role == "admin":
-            raise HTTPException(status_code=404, detail="Guest member not found")
+            raise HTTPException(status_code=404, detail="Group member not found")
         member.status = "removed"
         await self.guest.commit()
 

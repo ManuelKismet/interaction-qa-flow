@@ -215,6 +215,7 @@ class GuidedKnowledgeService:
                 )
                 if not existing:
                     raise NotFoundError("Existing knowledge question not found")
+                await self.permissions.require_question_visibility(actor, existing)
                 proposal.status = KnowledgeProposalStatus.DUPLICATE
                 proposal.linked_question_id = (
                     existing.canonical_question_id or existing.id

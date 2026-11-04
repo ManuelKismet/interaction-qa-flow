@@ -6,6 +6,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 
 void main() {
+  test('create and update send explicit Knowledge visibility', () async {
+    final adapter = _RecordingAdapter();
+    final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
+      ..httpClientAdapter = adapter;
+    final repository = QuestionsRepository(client);
+    await repository.createQuestion(
+      title: 'Team secret',
+      visibility: 'team',
+      teamId: 'team-id',
+    );
+    expect(adapter.requestBody?['visibility'], 'team');
+    expect(adapter.requestBody?['team_id'], 'team-id');
+    await repository.updateQuestion(
+      'question-id',
+      title: 'Department secret',
+      visibility: 'department',
+      departmentId: 'dept-id',
+    );
+    expect(adapter.requestBody?['visibility'], 'department');
+    expect(adapter.requestBody?['department_id'], 'dept-id');
+    client.close();
+  });
   test('reopen sends an empty JSON action body', () async {
     final adapter = _RecordingAdapter();
     final client = Dio(BaseOptions(baseUrl: 'https://example.invalid'))
@@ -37,9 +59,11 @@ class _RecordingAdapter implements HttpClientAdapter {
       }
     }
     return ResponseBody.fromString(
-      '{}',
+      '{"id":"question-id"}',
       200,
-      headers: {Headers.contentTypeHeader: ['application/json']},
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
     );
   }
 
