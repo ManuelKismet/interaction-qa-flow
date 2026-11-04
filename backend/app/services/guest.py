@@ -352,8 +352,14 @@ class GuestService:
     ) -> dict[str, bool]:
         await self._rate_limit(firebase_uid, "preview_invitation")
         invitation = await self._invitation(token)
+        used = invitation is not None and invitation.redeemed_by_uid is not None
+        valid = invitation is not None and not used
+        if used and invitation.redeemed_by_uid == firebase_uid:
+            existing = await self.guest.member(invitation.group_id, firebase_uid)
+            # Match join's idempotent retry for this account's pending request.
+            valid = existing is not None and existing.status == "pending"
         await self.guest.commit()
-        return {"valid": invitation is not None}
+        return {"valid": valid, "used": used}
 
     async def join_invitation(
         self,
@@ -480,7 +486,7 @@ class GuestService:
         await self._group(group_id, firebase_uid, admin=True)
         member = await self.guest.member_by_id(group_id, member_id, lock=True)
         if member is None or member.role == "admin":
-            raise HTTPException(status_code=404, detail="Guest member not found")
+            raise HTTPException(status_code=404, detail="Group member not found")
         member.status = "removed"
         await self.guest.commit()
 

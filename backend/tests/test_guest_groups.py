@@ -497,7 +497,7 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
         json={"token": token},
     )
     assert preview.status_code == 200
-    assert preview.json() == {"valid": True}
+    assert preview.json() == {"valid": True, "used": False}
     assert "name" not in preview.json()
     pending = await client.post(
         "/api/v1/guest/invitations/join",
@@ -506,6 +506,19 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
     )
     assert pending.status_code == 200
     assert pending.json()["status"] == "pending"
+    for uid, expected_valid in (("guest-joiner", True), ("guest-other", False)):
+        used_preview = await client.post(
+            "/api/v1/guest/invitations/preview",
+            headers=bearer(uid), json={"token": token},
+        )
+        assert used_preview.status_code == 200
+        assert used_preview.json() == {"valid": expected_valid, "used": True}
+    same_account_retry = await client.post(
+        "/api/v1/guest/invitations/join", headers=bearer("guest-joiner"),
+        json={"token": token, "display_name": "Researcher"},
+    )
+    assert same_account_retry.status_code == 200
+    assert same_account_retry.json()["id"] == pending.json()["id"]
     assert (
         await client.get(
             f"/api/v1/guest/groups/{group_id}", headers=bearer("guest-joiner")
@@ -524,6 +537,11 @@ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkey
     )
     assert approve.status_code == 200
     assert approve.json()["status"] == "active"
+    active_preview = await client.post(
+        "/api/v1/guest/invitations/preview", headers=bearer("guest-joiner"),
+        json={"token": token},
+    )
+    assert active_preview.json() == {"valid": False, "used": True}
     knowledge = await client.post(
         f"/api/v1/guest/groups/{group_id}/entries",
         headers=bearer("guest-joiner"),
@@ -981,7 +999,7 @@ async def test_invite_expiry_revocation_replay_limits_and_import_idempotency(
         headers=bearer("invite-joiner"),
         json={"token": revoked.json()["token"]},
     )
-    assert preview.json() == {"valid": False}
+    assert preview.json() == {"valid": False, "used": False}
     replay = await client.post(
         "/api/v1/guest/invitations/join",
         headers=bearer("invite-joiner"),
@@ -1007,7 +1025,7 @@ async def test_invite_expiry_revocation_replay_limits_and_import_idempotency(
         headers=bearer("invite-joiner"),
         json={"token": expired.json()["token"]},
     )
-    assert expired_preview.json() == {"valid": False}
+    assert expired_preview.json() == {"valid": False, "used": False}
     expired_join = await client.post(
         "/api/v1/guest/invitations/join",
         headers=bearer("invite-joiner"),
@@ -1160,7 +1178,7 @@ async def test_archive_retains_group_data_and_restores_only_same_admin_uid(
         headers=bearer("invitee"),
         json={"token": unused_invitation.json()["token"]},
     )
-    assert preview.json() == {"valid": False}
+    assert preview.json() == {"valid": False, "used": False}
     archived_join = await client.post(
         "/api/v1/guest/invitations/join",
         headers=bearer("archived-invitee"),

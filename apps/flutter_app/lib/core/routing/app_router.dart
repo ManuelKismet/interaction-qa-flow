@@ -1,3 +1,4 @@
+import 'package:int_qa_flow/features/suggestions/suggestion_bank_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,12 +16,18 @@ import 'package:int_qa_flow/features/organisation/presentation/organisation_page
 import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
 
+// Capture before the temporary authentication MaterialApps can replace the URL.
+final launchUriProvider = Provider<Uri>((ref) => Uri.base);
+final initialAppLocationProvider = Provider<String>(
+  (ref) => sessionDeepLinkInitialLocation(ref.watch(launchUriProvider)),
+);
+
 final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
   ref,
   _,
 ) {
   final router = GoRouter(
-    initialLocation: sessionDeepLinkInitialLocation(Uri.base),
+    initialLocation: ref.watch(initialAppLocationProvider),
     overridePlatformDefaultLocation: true,
     routes: [
       ShellRoute(
@@ -28,6 +35,28 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
             AppShell(currentPath: state.uri.path, child: child),
         routes: [
           GoRoute(path: '/', builder: (context, state) => const AskPage()),
+          GoRoute(
+            path: '/suggestions',
+            builder: (context, state) => const SuggestionBankPage(),
+          ),
+          GoRoute(
+            path: '/suggestions/:suggestionId',
+            builder: (context, state) => SuggestionBankPage(
+              suggestionId: state.pathParameters['suggestionId'],
+            ),
+          ),
+          GoRoute(
+            path: '/group-suggestions',
+            builder: (context, state) =>
+                const SuggestionBankPage(realm: 'group'),
+          ),
+          GoRoute(
+            path: '/group-suggestions/:suggestionId',
+            builder: (context, state) => SuggestionBankPage(
+              realm: 'group',
+              suggestionId: state.pathParameters['suggestionId'],
+            ),
+          ),
           GoRoute(
             path: '/organisation',
             builder: (context, state) => const OrganisationPage(),
