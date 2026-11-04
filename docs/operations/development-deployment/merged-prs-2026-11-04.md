@@ -15,3 +15,7 @@ Original head 3b0b4ecfb30a98d7fd471ab3bb4249c1f6cbf668 retained in merge history
 ## PR #17 — [WIP] Improve short-query search and enhance Interact reports
 
 Original head 5f563d3b0eae2b74b7045957e9b8a41dda2d7bed retained in merge history. Current validated fixes win conflicting older implementations. Unique retained paths: none; later source already incorporates the implementation.
+
+## PR #16 — Select the keyed Payroll dropdown in admin membership test
+
+Original head ed24b0ae14fc576668469f0e5e9229cc8c8751cf retained in merge history. Current validated fixes win conflicting older implementations. Unique retained paths: none; later source already incorporates the implementation.
