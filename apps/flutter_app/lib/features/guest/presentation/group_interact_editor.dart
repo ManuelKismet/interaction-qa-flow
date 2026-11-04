@@ -721,16 +721,7 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         actions: [
-                          NiaHelpButton(
-                            topic: NiaTopic.groupCopy,
-                            tooltip: 'Group copy information',
-                            title: 'About this Group copy',
-                            facts: {
-                              'workspace': 'group:' + widget.groupId,
-                              'unsaved': _dirty,
-                              'readOnly': _unavailable,
-                            },
-                          ),
+                          const SizedBox.shrink(),
                           IconButton(
                             tooltip: 'Group copy revision history',
                             onPressed: _busy || _unavailable ? null : _history,

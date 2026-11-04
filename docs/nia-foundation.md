@@ -21,9 +21,10 @@ Contexts contain bounded primitive facts and expire after two minutes. This is a
 assistance lifetime, not a backend permission cache. Evaluation uses a 50ms budget;
 automatic presentations have a three-item session budget and two-minute cooldown.
 Explicit help remains subject to current context. Receipts are accepted only for
-actually presented current decisions. Dismissal and feedback stay in memory;
-account changes, disable/reset and disposal clear them. No persistent user
-profiling or new telemetry store is added.
+actually presented current decisions. Decision feedback stays in memory. Displayed lesson IDs and the explicit guidance
+on/off preference are stored locally per account, with bounded IDs and no draft,
+query, message or profile content. Account changes isolate these preferences.
+There is no persistent profiling, cloud telemetry or model provider.
 
 ## IntQAFlow capabilities
 
@@ -61,3 +62,24 @@ separate work; they are not claimed as completed by this release.
 Deploy only to the existing DEV backend and web Hosting. No migration, Firebase
 authority change, production release or native build is required. Retain the prior
 DEV backend revision and Hosting version for rollback.
+
+## Contextual guidance and equal navigation correction
+
+Knowledge, Interact and Groups use the same equal-width Material tab treatment.
+Groups still enters through the existing verified-account and save-before-leaving
+checks. Its tab selection follows successful navigation, and its return tabs use
+the existing back/draft guard. The two existing body tabs keep their stored state.
+
+Permanent generic help buttons and modal explanations have been removed from
+workspace, participant, session and Group controls. Essential status, privacy,
+permissions, errors and confirmations remain product UI. Optional teaching is an
+inline, dismissible hint selected from current workflow facts. It has one shared
+presentation slot, observes the real selected tab and foreground route, hides
+while typing/busy/completed, and expires after eight seconds. NIC still owns
+context validity and the automatic presentation budget/cooldown. The actual paint
+receipt records a lesson as seen; unseen candidates do not spend that memory.
+Users can turn optional NIA guidance off/on from the existing Account menu.
+
+Happnn and TempConnect were inspected read-only for presentation/lifecycle
+patterns. Their code, settings and deployments were not changed or copied into
+this public repository. IntQAFlow keeps its own product state and authority.

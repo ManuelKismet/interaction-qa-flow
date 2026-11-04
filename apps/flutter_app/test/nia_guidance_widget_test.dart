@@ -9,6 +9,7 @@ import 'package:int_qa_flow/features/suggestions/suggestion_bank_repository.dart
 
 Widget host(Widget child, {String user = 'alice', String authority = 'v1'}) =>
     NiaHost(
+      teaching: NiaTeaching(read: (_) => null, write: (_, _) {}),
       subject: user,
       authorityRevision: authority,
       child: MaterialApp(home: Scaffold(body: child)),
@@ -124,7 +125,7 @@ void main() {
     expect(find.byType(Card), findsNothing);
     expect(find.textContaining('NIA'), findsNothing);
     expect(find.textContaining('Who will respond'), findsNothing);
-    expect(find.byTooltip('Dismiss guidance'), findsNothing);
+    expect(find.byTooltip('Got it — hide this tip'), findsNothing);
   });
   testWidgets('overdue context yields a useful action that can be dismissed', (
     tester,
@@ -144,7 +145,7 @@ void main() {
     expect(find.byType(Card), findsNothing);
     await tester.tap(find.text('Review overdue'));
     expect(opened, isTrue);
-    await tester.tap(find.byTooltip('Dismiss guidance'));
+    await tester.tap(find.byTooltip('Got it — hide this tip'));
     await tester.pumpAndSettle();
     expect(find.textContaining('A review date has passed'), findsNothing);
   });
@@ -161,7 +162,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Dismiss guidance'), findsNothing);
+      expect(find.byTooltip('Got it — hide this tip'), findsNothing);
       await tester.pumpWidget(
         host(
           const NiaInlineGuidance(
@@ -172,110 +173,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Dismiss guidance'), findsNothing);
+      expect(find.byTooltip('Got it — hide this tip'), findsNothing);
     },
   );
-  testWidgets(
-    'requested guidance uses current storage facts rather than a fixed blob',
-    (tester) async {
-      await tester.pumpWidget(
-        host(
-          const NiaHelpButton(
-            topic: NiaTopic.storage,
-            tooltip: 'Storage help',
-            title: 'Current storage',
-            facts: {'private': true, 'saveStatus': 'Saved on this device'},
-          ),
-        ),
-      );
-      expect(find.textContaining('New Knowledge'), findsNothing);
-      await tester.tap(find.byTooltip('Storage help'));
-      await tester.pumpAndSettle();
-      expect(
-        find.textContaining(
-          'New Knowledge and Interact sessions are saved privately',
-        ),
-        findsOneWidget,
-      );
-      expect(find.textContaining('Saved on this device'), findsOneWidget);
-      expect(find.textContaining('Guest workspace'), findsNothing);
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-    },
-  );
-  for (final accountChange in [true, false]) {
-    testWidgets(
-      'open guidance withdraws on ' +
-          (accountChange ? 'account' : 'authority') +
-          ' change',
-      (tester) async {
-        final revision = ValueNotifier(0);
-        addTearDown(revision.dispose);
-        await tester.pumpWidget(
-          ValueListenableBuilder<int>(
-            valueListenable: revision,
-            builder: (context, value, _) => host(
-              const NiaHelpButton(
-                topic: NiaTopic.groups,
-                tooltip: 'Group help',
-                title: 'Group access',
-                facts: {'verified': true, 'role': 'editor'},
-              ),
-              user: accountChange && value == 1 ? 'bob' : 'alice',
-              authority: 'v' + value.toString(),
-            ),
-          ),
-        );
-        await tester.tap(find.byTooltip('Group help'));
-        await tester.pumpAndSettle();
-        expect(
-          find.textContaining('Your Group role is editor'),
-          findsOneWidget,
-        );
-        revision.value = 1;
-        await tester.pumpAndSettle();
-        expect(find.textContaining('Your Group role is editor'), findsNothing);
-        expect(
-          find.textContaining('workspace context changed'),
-          findsOneWidget,
-        );
-        await tester.tap(find.text('Close'));
-        await tester.pumpAndSettle();
-      },
-    );
-  }
-  testWidgets(
-    'workspace authority changes invalidate open guidance without another account owner',
-    (tester) async {
-      final role = ValueNotifier('editor');
-      addTearDown(role.dispose);
-      await tester.pumpWidget(
-        host(
-          ValueListenableBuilder<String>(
-            valueListenable: role,
-            builder: (context, value, _) => NiaWorkspaceScope(
-              workspace: 'group:one',
-              authorityRevision: value,
-              child: NiaHelpButton(
-                topic: NiaTopic.groups,
-                tooltip: 'Group help',
-                title: 'Group access',
-                facts: {'verified': true, 'role': value},
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.byTooltip('Group help'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('Your Group role is editor'), findsOneWidget);
-      role.value = 'viewer';
-      await tester.pumpAndSettle();
-      expect(find.textContaining('Your Group role is editor'), findsNothing);
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-    },
-  );
+
   testWidgets('old read cancellation cannot revoke a newer request', (
     tester,
   ) async {

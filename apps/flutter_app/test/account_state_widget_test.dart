@@ -912,13 +912,13 @@ void main() {
       isNull,
     );
     expect(find.byTooltip('Switch Knowledge or Interact'), findsNothing);
-    expect(find.byTooltip('Workspace storage information'), findsOneWidget);
-    expect(find.byTooltip('Search help'), findsOneWidget);
+    expect(find.byTooltip('Workspace storage information'), findsNothing);
+    expect(find.byTooltip('Search help'), findsNothing);
     expect(find.byTooltip('Interact privacy information'), findsNothing);
 
     await _tapPersonalNavigation(tester, 'Interact');
     expect(find.text('Create private session'), findsOneWidget);
-    expect(find.byTooltip('Interact privacy information'), findsOneWidget);
+    expect(find.byTooltip('Interact privacy information'), findsNothing);
     expect(find.byTooltip('Search help'), findsNothing);
     expect(
       tester
@@ -971,22 +971,9 @@ void main() {
       );
       expect(find.textContaining('no organisation membership'), findsNothing);
       expect(find.byTooltip('Group identity information'), findsNothing);
-      expect(find.byTooltip('Workspace storage information'), findsOneWidget);
+      expect(find.byTooltip('Workspace storage information'), findsNothing);
 
-      await tester.tap(find.byTooltip('Workspace storage information'));
-      await tester.pumpAndSettle();
-      expect(
-        find.textContaining('saved privately to your account'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('no organisation membership'), findsOneWidget);
-      expect(find.textContaining('Group sharing is separate'), findsOneWidget);
-      expect(
-        find.textContaining('Local browser work remains separate'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
+      expect(find.byTooltip('Workspace storage information'), findsNothing);
 
       await openPersonalImportFromMenu(tester);
       expect(find.text('Local draft'), findsOneWidget);
@@ -1006,14 +993,7 @@ void main() {
 
     expect(find.text('Guest workspace'), findsOneWidget);
     expect(find.textContaining('Guest workspace ·'), findsNothing);
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining('Guest workspace · Saved on this device'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
+    expect(find.byTooltip('Workspace storage information'), findsNothing);
     expect(find.byTooltip('Groups'), findsNothing);
     await tester.tap(find.byTooltip('Guest workspace options'));
     await tester.pumpAndSettle();
@@ -1026,16 +1006,7 @@ void main() {
       ),
       findsNothing,
     );
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining(
-        'People using this browser profile can see its local work.',
-      ),
-      findsOneWidget,
-    );
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
+    expect(find.byTooltip('Workspace storage information'), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
 
     await tester.tap(find.byTooltip('Account'));
@@ -1150,22 +1121,8 @@ void main() {
 
     expect(find.text('Guest workspace'), findsOneWidget);
     expect(find.textContaining('Guest workspace ·'), findsNothing);
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining('Guest workspace · Saved on this device'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining('Guest workspace · Saved on this device'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
+    expect(find.byTooltip('Workspace storage information'), findsNothing);
+    expect(find.byTooltip('Workspace storage information'), findsNothing);
     await tester.tap(find.byTooltip('Account'));
     await tester.pumpAndSettle();
     expect(find.text('Local guest workspace'), findsOneWidget);
@@ -2614,14 +2571,7 @@ void main() {
 
     await tester.tap(find.text('Interact').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Interact privacy information'));
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining('New sessions are private to your account.'),
-      findsOneWidget,
-    );
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
+    expect(find.byTooltip('Interact privacy information'), findsNothing);
     expect(find.text('Create private session'), findsOneWidget);
     await tester.enterText(
       find.widgetWithText(TextFormField, 'New Interact session'),
@@ -2917,7 +2867,7 @@ void main() {
     expect(find.text('Member One'), findsOneWidget);
     expect(find.text('member@example.test'), findsOneWidget);
     expect(find.text('Organisation workspace · answer_owner'), findsOneWidget);
-    expect(find.text('Group access information'), findsOneWidget);
+    expect(find.text('Group access information'), findsNothing);
     expect(find.text('Groups'), findsNothing);
     expect(find.text('Sign out'), findsOneWidget);
   });
@@ -3003,63 +2953,45 @@ void main() {
     expect(find.text('Admin'), findsNothing);
   });
 
-  testWidgets('registered account with no membership stays in local workspace', (
-    tester,
-  ) async {
-    final user = _TestUser(isAnonymous: false);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authStateProvider.overrideWith((ref) => Stream.value(user)),
-          accountMembershipStatusProvider.overrideWith(
-            (ref) async => AccountMembershipStatus.noMembership,
-          ),
-          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
-          guestWorkspaceStoreProvider.overrideWithValue(
-            GuestWorkspaceStore(_MemoryGuestStorage()),
-          ),
-          currentGuestGroupsProvider.overrideWith(
-            (ref) async => const <Map<String, dynamic>>[],
-          ),
-        ],
-        child: const IntQaFlowApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'registered account with no membership stays in local workspace',
+    (tester) async {
+      final user = _TestUser(isAnonymous: false);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith((ref) => Stream.value(user)),
+            accountMembershipStatusProvider.overrideWith(
+              (ref) async => AccountMembershipStatus.noMembership,
+            ),
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+            guestWorkspaceStoreProvider.overrideWithValue(
+              GuestWorkspaceStore(_MemoryGuestStorage()),
+            ),
+            currentGuestGroupsProvider.overrideWith(
+              (ref) async => const <Map<String, dynamic>>[],
+            ),
+          ],
+          child: const IntQaFlowApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Registered local workspace'), findsOneWidget);
-    expect(find.text('Guest workspace'), findsNothing);
-    expect(find.byTooltip('Workspace options'), findsOneWidget);
-    expect(find.byTooltip('Guest workspace options'), findsNothing);
-    expect(find.textContaining('guest'), findsNothing);
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining(
-        'Registered personal account · Local copy · Saved on this device',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining(
-        'Local drafts stay in this browser profile and may be visible to people using it.',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('Group and organisation access are separate'),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('no organisation membership'), findsOneWidget);
-    expect(find.text('Checking account'), findsNothing);
-    await tester.tap(find.text('Account'));
-    await tester.pumpAndSettle();
-    expect(find.text('No organisation membership'), findsOneWidget);
-    expect(find.text('Sign out'), findsOneWidget);
-    expect(find.text('Sign in'), findsNothing);
-  });
+      expect(find.text('Registered local workspace'), findsOneWidget);
+      expect(find.text('Guest workspace'), findsNothing);
+      expect(find.byTooltip('Workspace options'), findsOneWidget);
+      expect(find.byTooltip('Guest workspace options'), findsNothing);
+      expect(find.textContaining('guest'), findsNothing);
+      expect(find.byTooltip('Workspace storage information'), findsNothing);
+      expect(find.textContaining('no organisation membership'), findsOneWidget);
+      expect(find.text('Checking account'), findsNothing);
+      await tester.tap(find.text('Account'));
+      await tester.pumpAndSettle();
+      expect(find.text('No organisation membership'), findsOneWidget);
+      expect(find.text('Sign out'), findsOneWidget);
+      expect(find.text('Sign in'), findsNothing);
+    },
+  );
 
   testWidgets('auth loading is not presented as a signed-out guest', (
     tester,

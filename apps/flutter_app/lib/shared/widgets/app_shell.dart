@@ -148,17 +148,9 @@ class AppShell extends ConsumerWidget {
           return;
         }
         ref.read(firebaseAuthProvider).signOut();
-      } else if (value == 'group-info') {
-        showNiaGuidance(
-          context,
-          topic: NiaTopic.groups,
-          title: 'About Group access',
-          facts: {
-            'verified': isVerifiedRegisteredFirebaseUser(
-              ref.read(firebaseAuthProvider).currentUser,
-            ),
-          },
-        );
+      } else if (value == 'nia-guidance') {
+        final teaching = NiaHost.teachingOf(context);
+        teaching?.setEnabled(!teaching.enabled);
       }
     },
     itemBuilder: (context) => [
@@ -181,7 +173,7 @@ class AppShell extends ConsumerWidget {
       ),
       const PopupMenuDivider(),
       const PopupMenuItem(
-        value: 'group-info',
+        value: 'nia-guidance',
         child: ListTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(Icons.info_outline),

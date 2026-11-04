@@ -1,3 +1,4 @@
+import 'package:int_qa_flow/shared/widgets/workspace_tabs.dart';
 import 'package:int_qa_flow/core/nia/nia_guidance.dart';
 import 'package:int_qa_flow/features/suggestions/group_suggestion_workspace.dart';
 import 'dart:async';
@@ -1532,7 +1533,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     );
   }
 
-  Future<void> _openSharedGroups() async {
+  Future<void> _openSharedGroups({ValueChanged<int>? onReturn}) async {
     if (!await _saveBeforeLeaving() || !mounted) return;
     final user = ref.read(firebaseAuthProvider).currentUser;
     if (user != null && !user.isAnonymous && !user.emailVerified) {
@@ -1593,9 +1594,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       }
       return;
     }
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const SharedGuestGroupsPage()),
+    final selected = await Navigator.of(context).push<int>(
+      MaterialPageRoute<int>(
+        builder: (_) => const SharedGuestGroupsPage(workspaceNavigation: true),
+      ),
     );
+    if (mounted && selected != null) onReturn?.call(selected);
   }
 
   Future<void> _signOut() async {
@@ -2067,13 +2071,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ? ref.watch(currentGuestGroupsProvider)
         : null;
     final viewport = MediaQuery.sizeOf(context);
-    final compactViewport = viewport.height < 300;
     final hasWorkspaceNavigation =
         widget.personalWorkspaceEnabled && widget.onWorkspaceTabChanged != null;
-    final workspaceHelp = _WorkspaceGuidance(
-      privateWorkspace: _verifiedPersonalUid != null,
-      initialTab: widget.initialWorkspaceTab,
-    );
     final narrowViewport = viewport.width < 420;
     final needsGuestRecovery =
         localData != null &&
@@ -2157,12 +2156,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           child: canUseGroups
               ? const Align(
                   alignment: Alignment.centerLeft,
-                  child: NiaHelpButton(
-                    topic: NiaTopic.identity,
-                    tooltip: 'Group identity information',
-                    title: 'About Group identity',
-                    facts: const {},
-                  ),
+                  child: const SizedBox.shrink(),
                 )
               : const Text(
                   'Verify this account’s email before using Groups. Local work remains available, and organisation membership is not required for Groups.',
@@ -2209,33 +2203,38 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                 : Row(
                     children: [
                       Flexible(
-                        child: Text(
-                          _verifiedPersonalUid != null
-                              ? 'Personal workspace'
-                              : _hasSignedInNonGuestUser
-                              ? 'Registered local workspace'
-                              : 'Guest workspace',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w400,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _verifiedPersonalUid != null
+                                  ? 'Personal workspace'
+                                  : _hasSignedInNonGuestUser
+                                  ? 'Registered local workspace'
+                                  : 'Guest workspace',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w400,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            _GuestNotice(
+                              isRegistered: _hasSignedInNonGuestUser,
+                              isPrivateAccount: _verifiedPersonalUid != null,
+                              noOrganisationMembership:
+                                  widget.membershipStatus ==
+                                  AccountMembershipStatus.noMembership,
+                              saveStatus: _saveStatus,
+                            ),
+                          ],
                         ),
                       ),
-                      _GuestNotice(
-                        isRegistered: _hasSignedInNonGuestUser,
-                        isPrivateAccount: _verifiedPersonalUid != null,
-                        noOrganisationMembership:
-                            widget.membershipStatus ==
-                            AccountMembershipStatus.noMembership,
-                        saveStatus: _saveStatus,
-                      ),
-                      if (!compactViewport) workspaceHelp,
                     ],
                   ),
             actions: [
@@ -2247,32 +2246,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       widget.membershipStatus ==
                       AccountMembershipStatus.noMembership,
                   saveStatus: _saveStatus,
-                ),
-              if (viewport.width < 320 && !compactViewport) workspaceHelp,
-              if (compactViewport && !hasWorkspaceNavigation)
-                Builder(
-                  builder: (context) => PopupMenuButton<int>(
-                    tooltip: 'Switch Knowledge or Interact',
-                    onSelected: (index) {
-                      if (widget.onWorkspaceTabChanged != null) {
-                        _handleWorkspaceTabChanged(index);
-                      } else {
-                        DefaultTabController.of(context).animateTo(index);
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(value: 0, child: Text('Knowledge')),
-                      PopupMenuItem(value: 1, child: Text('Interact')),
-                    ],
-                  ),
-                ),
-              if (compactViewport &&
-                  !hasWorkspaceNavigation &&
-                  widget.firebaseReady)
-                IconButton(
-                  tooltip: 'Groups',
-                  onPressed: _openSharedGroups,
-                  icon: const Icon(Icons.group_outlined),
                 ),
               _accountMenu(),
               PopupMenuButton<String>(
@@ -2334,28 +2307,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                 ],
               ),
             ],
-            bottom: compactViewport || hasWorkspaceNavigation
+            bottom: hasWorkspaceNavigation
                 ? null
-                : PreferredSize(
-                    preferredSize: const Size.fromHeight(48),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TabBar(
-                            onTap: _handleWorkspaceTabChanged,
-                            tabs: const [
-                              Tab(text: 'Knowledge'),
-                              Tab(text: 'Interact'),
-                            ],
-                          ),
-                        ),
-                        if (widget.firebaseReady)
-                          TextButton(
-                            onPressed: _openSharedGroups,
-                            child: const Text('Groups'),
-                          ),
-                      ],
-                    ),
+                : WorkspaceBodyTabs(
+                    groupsAvailable: widget.firebaseReady,
+                    onTabChanged: _handleWorkspaceTabChanged,
+                    onGroups: (onReturn) =>
+                        _openSharedGroups(onReturn: onReturn),
                   ),
           ),
           body: data == null
@@ -2407,71 +2365,100 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                                 ? const NeverScrollableScrollPhysics()
                                 : null,
                             children: [
-                              _GuestKnowledgeTab(
-                                items: data.knowledge,
-                                initialKnowledgeItemId:
-                                    widget.initialKnowledgeItemId,
-                                initialKnowledgeSection:
-                                    widget.initialKnowledgeSection,
-                                onKnowledgeSectionChanged:
-                                    _handleKnowledgeSectionChanged,
-                                onOpenGroupResult: _openGroupSearchResult,
-                                privateWorkspace: _verifiedPersonalUid != null,
-                                reloadPersonalWorkspace:
-                                    _refreshPersonalWorkspace,
-                                storageStatus: (item) =>
-                                    _storageStatus('knowledge', item),
-                                isPersonalAccount: (item) => _storageStatus(
-                                  'knowledge',
-                                  item,
-                                ).startsWith('Personal account'),
-                                onCreate: (item) => _createWorkspaceItem(
-                                  kind: 'knowledge',
-                                  item: item,
-                                  updated: data.copyWith(
-                                    knowledge: [item, ...data.knowledge],
-                                  ),
-                                ),
-                                onUpdate: (item) => _save(
-                                  data.copyWith(
-                                    knowledge: [
-                                      for (final current in data.knowledge)
-                                        current['id'] == item['id']
-                                            ? item
-                                            : current,
-                                    ],
-                                  ),
-                                ),
-                                onDelete: (id) => _deleteKnowledge(data, id),
-                              ),
-                              _GuestInteractTab(
-                                data: data,
-                                privateWorkspace: _verifiedPersonalUid != null,
-                                accountUid: _verifiedPersonalUid,
-                                onRestorePersonalSession:
-                                    _restorePersonalSession,
-                                storageStatus: _storageStatus,
-                                onChange: _save,
-                                onCreateItem: (kind, item, updated) =>
-                                    _createWorkspaceItem(
-                                      kind: kind,
+                              NiaTabSurface(
+                                index: 0,
+                                child: NiaWorkflowSurface(
+                                  topic: NiaTopic.knowledge,
+                                  lessonId: 'knowledge.search',
+                                  facts: {
+                                    'private': _verifiedPersonalUid != null,
+                                  },
+                                  busy: _hasPendingWorkspaceChanges,
+                                  child: _GuestKnowledgeTab(
+                                    items: data.knowledge,
+                                    initialKnowledgeItemId:
+                                        widget.initialKnowledgeItemId,
+                                    initialKnowledgeSection:
+                                        widget.initialKnowledgeSection,
+                                    onKnowledgeSectionChanged:
+                                        _handleKnowledgeSectionChanged,
+                                    onOpenGroupResult: _openGroupSearchResult,
+                                    privateWorkspace:
+                                        _verifiedPersonalUid != null,
+                                    reloadPersonalWorkspace:
+                                        _refreshPersonalWorkspace,
+                                    storageStatus: (item) =>
+                                        _storageStatus('knowledge', item),
+                                    isPersonalAccount: (item) => _storageStatus(
+                                      'knowledge',
+                                      item,
+                                    ).startsWith('Personal account'),
+                                    onCreate: (item) => _createWorkspaceItem(
+                                      kind: 'knowledge',
                                       item: item,
-                                      updated: updated,
+                                      updated: data.copyWith(
+                                        knowledge: [item, ...data.knowledge],
+                                      ),
                                     ),
-                                onPrint: _printReport,
-                                localSaveStatus: _saveStatus,
-                                openSessionId: _openSessionId,
-                                initialQuestionId: widget.initialQuestionId,
-                                initialParticipantId:
-                                    widget.initialParticipantId,
-                                sessionLoading:
-                                    _personalLoading ||
-                                    (_verifiedPersonalUid != null &&
-                                        _personalLoadedUid !=
-                                            _verifiedPersonalUid),
-                                onOpenSession: _openSession,
-                                onCloseSession: _closeSession,
-                                onCopySessionJson: _copySessionJson,
+                                    onUpdate: (item) => _save(
+                                      data.copyWith(
+                                        knowledge: [
+                                          for (final current in data.knowledge)
+                                            current['id'] == item['id']
+                                                ? item
+                                                : current,
+                                        ],
+                                      ),
+                                    ),
+                                    onDelete: (id) =>
+                                        _deleteKnowledge(data, id),
+                                  ),
+                                ),
+                              ),
+                              NiaTabSurface(
+                                index: 1,
+                                child: NiaWorkflowSurface(
+                                  topic: _openSessionId == null
+                                      ? NiaTopic.interact
+                                      : NiaTopic.participant,
+                                  lessonId: _openSessionId == null
+                                      ? 'interact.start'
+                                      : 'interact.participant',
+                                  facts: {
+                                    'private': _verifiedPersonalUid != null,
+                                  },
+                                  busy: _hasPendingWorkspaceChanges,
+                                  child: _GuestInteractTab(
+                                    data: data,
+                                    privateWorkspace:
+                                        _verifiedPersonalUid != null,
+                                    accountUid: _verifiedPersonalUid,
+                                    onRestorePersonalSession:
+                                        _restorePersonalSession,
+                                    storageStatus: _storageStatus,
+                                    onChange: _save,
+                                    onCreateItem: (kind, item, updated) =>
+                                        _createWorkspaceItem(
+                                          kind: kind,
+                                          item: item,
+                                          updated: updated,
+                                        ),
+                                    onPrint: _printReport,
+                                    localSaveStatus: _saveStatus,
+                                    openSessionId: _openSessionId,
+                                    initialQuestionId: widget.initialQuestionId,
+                                    initialParticipantId:
+                                        widget.initialParticipantId,
+                                    sessionLoading:
+                                        _personalLoading ||
+                                        (_verifiedPersonalUid != null &&
+                                            _personalLoadedUid !=
+                                                _verifiedPersonalUid),
+                                    onOpenSession: _openSession,
+                                    onCloseSession: _closeSession,
+                                    onCopySessionJson: _copySessionJson,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -2899,6 +2886,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         }
       },
       itemBuilder: (context) => [
+        niaGuidanceMenuItem(context),
         PopupMenuItem(
           enabled: false,
           child: SizedBox(
@@ -2969,80 +2957,16 @@ class _GuestNotice extends StatelessWidget {
   final bool isRegistered, isPrivateAccount, noOrganisationMembership;
   final String saveStatus;
   @override
-  Widget build(BuildContext context) => NiaHelpButton(
-    topic: NiaTopic.storage,
-    tooltip: 'Workspace storage information',
-    title: 'About this workspace',
-    facts: {
-      'private': isPrivateAccount,
-      'registered': isRegistered,
-      'saveStatus': saveStatus,
-      'noOrganisation': noOrganisationMembership,
-      'workspace': isPrivateAccount ? 'personal' : 'local',
-    },
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.zero,
+    child: Text(
+      saveStatus,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
   );
 }
-
-Widget _knowledgeInfoButton(bool privateWorkspace) => NiaHelpButton(
-  topic: NiaTopic.knowledge,
-  tooltip: 'Search help',
-  title: 'About search',
-  facts: {
-    'private': privateWorkspace,
-    'workspace': privateWorkspace ? 'personal' : 'local',
-  },
-);
-
-class _WorkspaceGuidance extends StatefulWidget {
-  const _WorkspaceGuidance({
-    required this.privateWorkspace,
-    required this.initialTab,
-  });
-  final bool privateWorkspace;
-  final int initialTab;
-  @override
-  State<_WorkspaceGuidance> createState() => _WorkspaceGuidanceState();
-}
-
-class _WorkspaceGuidanceState extends State<_WorkspaceGuidance> {
-  TabController? controller;
-  void changed() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final next = DefaultTabController.maybeOf(context);
-    if (controller != next) {
-      controller?.removeListener(changed);
-      controller = next;
-      controller?.addListener(changed);
-    }
-  }
-
-  @override
-  void dispose() {
-    controller?.removeListener(changed);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      (controller?.index ?? widget.initialTab) == 0
-      ? _knowledgeInfoButton(widget.privateWorkspace)
-      : _interactInfoButton(widget.privateWorkspace);
-}
-
-Widget _interactInfoButton(bool privateWorkspace) => NiaHelpButton(
-  topic: NiaTopic.interact,
-  tooltip: 'Interact privacy information',
-  title: 'About Interact storage',
-  facts: {
-    'private': privateWorkspace,
-    'workspace': privateWorkspace ? 'personal' : 'local',
-  },
-);
 
 class _AccountMembershipNotice extends StatelessWidget {
   const _AccountMembershipNotice({required this.text});
@@ -3244,7 +3168,7 @@ class _GuestKnowledgeTabState extends ConsumerState<_GuestKnowledgeTab> {
         labelText: 'Search Knowledge & Interact',
         prefixIcon: const Icon(Icons.search),
         suffixIcon: MediaQuery.sizeOf(context).height < 300
-            ? _knowledgeInfoButton(widget.privateWorkspace)
+            ? const SizedBox.shrink()
             : null,
       ),
       onChanged: (value) {
@@ -3904,7 +3828,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
             if (MediaQuery.sizeOf(context).height < 300)
               Align(
                 alignment: Alignment.centerRight,
-                child: _interactInfoButton(widget.privateWorkspace),
+                child: const SizedBox.shrink(),
               ),
             if (widget.data.templates.isNotEmpty)
               DropdownButtonFormField<String?>(
@@ -4758,13 +4682,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                   ),
                 if (widget.groupName != null)
                   Text('Shared · Group: ${widget.groupName}'),
-                if (widget.groupName == null)
-                  const NiaHelpButton(
-                    topic: NiaTopic.session,
-                    tooltip: 'Session lifecycle information',
-                    title: 'About session lifecycle',
-                    facts: const {},
-                  ),
+                if (widget.groupName == null) const SizedBox.shrink(),
               ],
             ),
           ],
@@ -4792,12 +4710,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Active participant',
-                  suffixIcon: NiaHelpButton(
-                    topic: NiaTopic.participant,
-                    tooltip: 'Active participant help',
-                    title: 'About the active participant',
-                    facts: const {},
-                  ),
+                  suffixIcon: const SizedBox.shrink(),
                 ),
                 items: [
                   for (final participant in participants)
@@ -4850,12 +4763,7 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                const NiaHelpButton(
-                  topic: NiaTopic.questions,
-                  tooltip: 'Question help',
-                  title: 'About shared and participant questions',
-                  facts: const {},
-                ),
+                const SizedBox.shrink(),
                 FilledButton.tonal(
                   onPressed: hasParticipants
                       ? () => _addQuestion(shared: true)
@@ -5639,12 +5547,14 @@ class _GuestAnswerEditorState extends State<_GuestAnswerEditor> {
 class SharedGuestGroupsPage extends ConsumerStatefulWidget {
   const SharedGuestGroupsPage({
     super.key,
+    this.workspaceNavigation = false,
     this.initialGroupId,
     this.initialEntryId,
     this.initialQuestionId,
     this.initialParticipantId,
   });
 
+  final bool workspaceNavigation;
   final String? initialGroupId;
   final String? initialEntryId;
   final String? initialQuestionId;
@@ -7391,6 +7301,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
 
   Widget _buildGroupsScaffold() => Scaffold(
     appBar: AppBar(
+      bottom: widget.workspaceNavigation
+          ? WorkspaceTabs(
+              selectedIndex: 2,
+              onSelected: (index) => Navigator.of(context).maybePop<int>(index),
+            )
+          : null,
+
       toolbarHeight: 48,
       title: Row(
         children: [
@@ -7404,16 +7321,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
               ),
             ),
           ),
-          NiaHelpButton(
-            topic: NiaTopic.groups,
-            tooltip: 'Groups information',
-            title: 'About groups',
-            facts: {
-              'verified': _canCreateOrJoin,
-              'role': _group?['role'] as String? ?? '',
-              'workspace': 'group:' + (_groupId ?? 'none'),
-            },
-          ),
+          const SizedBox.shrink(),
         ],
       ),
       actions: [
@@ -7491,6 +7399,18 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     body: ListView(
       padding: Responsive.pagePadding(context, desktop: 16),
       children: [
+        NiaInlineGuidance(
+          topic: NiaTopic.groups,
+          lessonId: 'groups.access',
+          eligible: _canCreateOrJoin,
+          busy: _busy,
+          facts: {
+            'verified': _canCreateOrJoin,
+            'role': _group?['role'] ?? '',
+            'workspace': 'group:' + (_groupId ?? 'none'),
+          },
+        ),
+
         if (_group == null) ...[
           Wrap(
             spacing: 8,
@@ -7651,15 +7571,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                         ? 'Interact'
                         : 'Knowledge',
                   ),
-                  trailing: NiaHelpButton(
-                    topic: NiaTopic.sharedItem,
-                    tooltip: 'Shared item details',
-                    title: 'About this shared item',
-                    facts: {
-                      'revision': entry['revision'] as num? ?? 0,
-                      'workspace': 'group:' + (_groupId ?? 'none'),
-                    },
-                  ),
+                  trailing: const SizedBox.shrink(),
                   onTap: () => _openEntry(entry),
                 ),
               ),
