@@ -1,6 +1,6 @@
 # IntQAFlow
 
-IntQAFlow is a multi-tenant internal knowledge platform with two connected
+IntQAFlow is a multi-tenant internal knowledge platform with three connected
 modules:
 
 - **IntQAFlow Knowledge** provides organisational Q&A, semantic retrieval,
@@ -8,6 +8,8 @@ modules:
 - **IntQAFlow Interact** provides structured sessions, participants, shared and
   participant-specific questions, answer-triggered follow-ups, templates,
   reports, and deliberate knowledge capture.
+
+- **IntQAFlow Suggestion Bank** connects employee ideas, review responses, tracked proposals and standing workplace practices to Knowledge and Interact. See [the module guide](docs/suggestion-bank.md).
 
 They are modules of the same platform, not separate applications. Interact can
 produce reusable Knowledge, and Knowledge can be referenced during Interact
