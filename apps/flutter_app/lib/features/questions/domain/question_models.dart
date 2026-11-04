@@ -272,6 +272,7 @@ class QuestionDetail {
     this.team,
     this.protectedAt,
     this.archivedAt,
+    this.visibility = 'organisation',
   });
 
   factory QuestionDetail.fromJson(Map<String, dynamic> json) => QuestionDetail(
@@ -308,6 +309,7 @@ class QuestionDetail {
     resolvedAt: _date(json['resolved_at']),
     protectedAt: _date(json['protected_at']),
     archivedAt: _date(json['archived_at']),
+    visibility: json['visibility'] as String? ?? 'organisation',
   );
 
   final String id;
@@ -325,6 +327,7 @@ class QuestionDetail {
   final DateTime? resolvedAt;
   final DateTime? protectedAt;
   final DateTime? archivedAt;
+  final String visibility;
 }
 
 class QuestionChangeRequest {

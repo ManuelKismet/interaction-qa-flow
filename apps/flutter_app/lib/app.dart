@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/routing/app_router.dart';
@@ -130,14 +131,51 @@ MaterialApp _guestApp({
   debugShowCheckedModeBanner: false,
   theme: AppTheme.light,
   builder: AppTheme.responsiveBuilder,
-  home: GuestWorkspacePage(
-    firebaseReady: firebaseReady,
-    personalWorkspaceEnabled: true,
-    accountUser: accountUser,
-    sharedIdentityActive: sharedIdentityActive,
-    membershipStatus: membershipStatus,
-    authUnavailable: authUnavailable,
-    onRetryAccount: onRetryAccount,
+  home: Consumer(
+    builder: (context, ref, child) {
+      final localGuest = accountUser == null || accountUser.isAnonymous;
+      final location = Uri.parse(ref.watch(initialAppLocationProvider));
+      final interact =
+          localGuest && location.path.startsWith('/personal/interact');
+      final segments = location.pathSegments;
+      final sessionId =
+          interact && segments.length == 4 && segments[2] == 'sessions'
+          ? segments[3]
+          : null;
+      return GuestWorkspacePage(
+        firebaseReady: firebaseReady,
+        personalWorkspaceEnabled: true,
+        accountUser: accountUser,
+        sharedIdentityActive: sharedIdentityActive,
+        membershipStatus: membershipStatus,
+        authUnavailable: authUnavailable,
+        onRetryAccount: onRetryAccount,
+        initialWorkspaceTab: interact ? 1 : 0,
+        initialSessionId: sessionId,
+        initialQuestionId: interact
+            ? location.queryParameters['questionId']
+            : null,
+        initialParticipantId: interact
+            ? location.queryParameters['participantId']
+            : null,
+        onGuestLocationChanged: localGuest
+            ? (index, id) {
+                unawaited(
+                  SystemNavigator.routeInformationUpdated(
+                    uri: Uri.parse(
+                      index == 0
+                          ? '/personal'
+                          : id == null
+                          ? '/personal/interact'
+                          : '/personal/interact/sessions/${Uri.encodeComponent(id)}',
+                    ),
+                    replace: true,
+                  ),
+                );
+              }
+            : null,
+      );
+    },
   ),
 );
 

@@ -616,9 +616,9 @@ class GuidedRepository {
     });
   }
 
-  Future<void> proposeKnowledge(GuidedQuestion question, GuidedAnswer answer) {
+  Future<bool> proposeKnowledge(GuidedQuestion question, GuidedAnswer answer) {
     return _request(() async {
-      await _client.post<void>(
+      final response = await _client.post<Map<String, dynamic>>(
         '/api/v1/guided/knowledge-proposals',
         data: {
           'guided_question_id': question.id,
@@ -627,6 +627,7 @@ class GuidedRepository {
         options: _options,
         cancelToken: cancelToken,
       );
+      return response.data?['already_pending'] == true;
     });
   }
 

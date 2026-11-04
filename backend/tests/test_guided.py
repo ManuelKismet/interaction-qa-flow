@@ -564,3 +564,23 @@ async def test_knowledge_proposal_can_link_existing_primary_question(app_client)
     assert linked.status_code == 200, linked.text
     assert linked.json()["status"] == "duplicate"
     assert linked.json()["linked_question_id"] == str(ids["finance_question"])
+
+@pytest.mark.asyncio
+async def test_repeated_knowledge_submission_reuses_pending_proposal(app_client):
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    guided = await create_session(client, ids)
+    participant = await add_participant(client, ids, guided["id"], "Alice")
+    question = await add_question(client, ids, guided["id"], "Mileage?")
+    recorded = await answer(client, ids, question["id"], participant["id"], "Expenses portal")
+    payload = {"guided_question_id": question["id"], "guided_answer_id": recorded["id"]}
+    first = await client.post("/api/v1/guided/knowledge-proposals", headers=headers(ids, "employee"), json=payload)
+    repeated = await client.post("/api/v1/guided/knowledge-proposals", headers=headers(ids, "employee"), json={**payload, "proposed_answer_text": "Changed retry"})
+    assert first.status_code == repeated.status_code == 201
+    assert first.json()["already_pending"] is False
+    assert repeated.json()["already_pending"] is True
+    assert repeated.json()["id"] == first.json()["id"]
+    assert repeated.json()["proposed_answer_text"] == "Expenses portal"
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(KnowledgeProposal)) == 1
+        assert await session.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.action == AuditAction.KNOWLEDGE_PROPOSAL_CREATED)) == 1
