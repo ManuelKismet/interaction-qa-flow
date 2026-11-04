@@ -11,6 +11,24 @@ import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
 import 'package:int_qa_flow/features/guided/presentation/guided_scope_dialog.dart';
 import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 
+/// Import stays owned by Interact; the shell supplies its app-bar placement.
+class GuidedInteractMenu extends ConsumerWidget {
+  const GuidedInteractMenu({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    const page = GuidedPage();
+    return PopupMenuButton<String>(
+      tooltip: 'Interact options',
+      icon: const Icon(Icons.more_vert),
+      onSelected: (_) =>
+          _guidedAction(context, () => page._importLegacy(context, ref)),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'import', child: Text('Import session')),
+      ],
+    );
+  }
+}
+
 class GuidedPage extends ConsumerWidget {
   const GuidedPage({super.key});
 
@@ -33,18 +51,6 @@ class GuidedPage extends ConsumerWidget {
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                PopupMenuButton<String>(
-                  tooltip: 'Interact options',
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (_) =>
-                      _guidedAction(context, () => _importLegacy(context, ref)),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: 'import',
-                      child: Text('Import session'),
-                    ),
-                  ],
-                ),
                 FilledButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('New session'),

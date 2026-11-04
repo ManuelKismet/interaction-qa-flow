@@ -1018,12 +1018,7 @@ class SuggestionBankService:
             "related": related,
             "knowledge": knowledge,
             "method": "Scoped keyword and typo matching; no automatic decisions",
-            "prompts": [
-                "Who will respond, and by when?",
-                "What evidence or examples would help?",
-                "Does an existing workplace practice already cover this?",
-                "Use an Interact review for an agreed proposal, then submit the outcome through Knowledge review.",
-            ],
+            "prompts": [],
         }
         await self.session.commit()
         return result

@@ -721,15 +721,15 @@ class _GroupInteractEditorState extends ConsumerState<_GroupInteractEditor>
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         actions: [
-                          _GuestInfoButton(
+                          NiaHelpButton(
+                            topic: NiaTopic.groupCopy,
                             tooltip: 'Group copy information',
                             title: 'About this Group copy',
-                            content:
-                                'Group: ${widget.groupName} · Shared copy\n\n'
-                                'Edits affect this Group copy only. Personal/local '
-                                'originals stay separate. Use Save Group copy to '
-                                'confirm changes; closing an unsaved draft requires '
-                                'your choice. Revision history shows saved copies.',
+                            facts: {
+                              'workspace': 'group:' + widget.groupId,
+                              'unsaved': _dirty,
+                              'readOnly': _unavailable,
+                            },
                           ),
                           IconButton(
                             tooltip: 'Group copy revision history',

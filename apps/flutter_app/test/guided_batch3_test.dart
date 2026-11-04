@@ -345,9 +345,9 @@ void main() {
     expect(find.byTooltip('Lifecycle and recovery'), findsOneWidget);
     expect(find.byTooltip('Reports and export'), findsOneWidget);
     await _tapVisible(tester, find.byTooltip('Lifecycle and recovery'));
-    expect(find.text('Status: Draft'), findsWidgets);
+    expect(find.textContaining('Draft sessions can be prepared'), findsWidgets);
     expect(
-      find.text('You can view this session but cannot change it.'),
+      find.textContaining('Your current role cannot change this session.'),
       findsOneWidget,
     );
     expect(repository.calls.where((call) => !call.startsWith('get')), isEmpty);

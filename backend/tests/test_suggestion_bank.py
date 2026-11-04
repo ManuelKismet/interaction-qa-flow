@@ -225,6 +225,7 @@ async def test_duplicates_preserve_examples_and_dont_leak_other_departments(bank
         },
     )
     assert helpers.status_code == 200
+    assert helpers.json()["prompts"] == []  # Current-state guidance belongs to ANI.
     assert private["id"] not in [x["id"] for x in helpers.json()["related"]]
     assert first["id"] in [x["id"] for x in helpers.json()["related"]]
     denied = await c.get(

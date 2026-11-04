@@ -432,15 +432,6 @@ Future<void> _expectSeparateAccountError(
 }
 
 Future<void> _openGroupsFromPersonalOptions(WidgetTester tester) async {
-  await tester.tap(
-    find.byWidgetPredicate(
-      (widget) =>
-          widget is PopupMenuButton<String> &&
-          (widget.tooltip == 'Workspace options' ||
-              widget.tooltip == 'Guest workspace options'),
-    ),
-  );
-  await tester.pumpAndSettle();
   await tester.tap(find.text('Groups').last);
   await tester.pumpAndSettle();
 }
@@ -922,12 +913,12 @@ void main() {
     );
     expect(find.byTooltip('Switch Knowledge or Interact'), findsNothing);
     expect(find.byTooltip('Workspace storage information'), findsOneWidget);
-    expect(find.byTooltip('Search help'), findsNothing);
+    expect(find.byTooltip('Search help'), findsOneWidget);
     expect(find.byTooltip('Interact privacy information'), findsNothing);
 
     await _tapPersonalNavigation(tester, 'Interact');
     expect(find.text('Create private session'), findsOneWidget);
-    expect(find.byTooltip('Interact privacy information'), findsNothing);
+    expect(find.byTooltip('Interact privacy information'), findsOneWidget);
     expect(find.byTooltip('Search help'), findsNothing);
     expect(
       tester
@@ -975,7 +966,7 @@ void main() {
       expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
       expect(find.text('Import local work'), findsNothing);
       expect(
-        find.textContaining('private to your verified identity'),
+        find.textContaining('saved privately to your account'),
         findsNothing,
       );
       expect(find.textContaining('no organisation membership'), findsNothing);
@@ -985,11 +976,11 @@ void main() {
       await tester.tap(find.byTooltip('Workspace storage information'));
       await tester.pumpAndSettle();
       expect(
-        find.textContaining('private to your verified identity'),
+        find.textContaining('saved privately to your account'),
         findsOneWidget,
       );
       expect(find.textContaining('no organisation membership'), findsOneWidget);
-      expect(find.textContaining('Group access is associated'), findsOneWidget);
+      expect(find.textContaining('Group sharing is separate'), findsOneWidget);
       expect(
         find.textContaining('Local browser work remains separate'),
         findsOneWidget,
@@ -1030,13 +1021,17 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(
-      find.textContaining('People using this profile can see its local work.'),
+      find.textContaining(
+        'People using this browser profile can see its local work.',
+      ),
       findsNothing,
     );
     await tester.tap(find.byTooltip('Workspace storage information'));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining('People using this profile can see its local work.'),
+      find.textContaining(
+        'People using this browser profile can see its local work.',
+      ),
       findsOneWidget,
     );
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -1166,7 +1161,7 @@ void main() {
     await tester.tap(find.byTooltip('Workspace storage information'));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining('Guest workspace active in this browser profile.'),
+      find.textContaining('Guest workspace · Saved on this device'),
       findsOneWidget,
     );
     await tester.tap(find.text('Close'));

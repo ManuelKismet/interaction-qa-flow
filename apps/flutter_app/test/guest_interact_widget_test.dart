@@ -128,11 +128,7 @@ void main() {
     expect(label.style?.color, Theme.of(context).colorScheme.onSurfaceVariant);
     expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
     expect(find.byTooltip('Account'), findsOneWidget);
-    for (final tooltip in [
-      'Workspace storage information',
-      'Search help',
-      'Interact privacy information',
-    ]) {
+    for (final tooltip in ['Workspace storage information', 'Search help']) {
       expect(
         find.ancestor(
           of: find.byTooltip(tooltip),
@@ -340,7 +336,7 @@ void main() {
       }
       for (final tooltip in [
         'Workspace storage information',
-        'Search help',
+
         'Interact privacy information',
       ]) {
         final icon = tester.widget<Icon>(
@@ -472,7 +468,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          'Search Knowledge and Interact stored on this device, including session titles, questions, answers and follow-ups. This search stays local.',
+          'This search covers Knowledge and Interact stored on this device. It stays local. Related results can help you reuse an existing answer before adding another question.',
         ),
         findsOneWidget,
       );
@@ -952,7 +948,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.text(
-        'Answers and individual questions are shown for this participant.',
+        'Answers and individual questions belong to the selected participant. Changing the active participant changes the answers shown; it does not copy another participant’s responses.',
       ),
       findsOneWidget,
     );
@@ -1027,73 +1023,70 @@ void main() {
     },
   );
 
-  testWidgets(
-    'desktop guest Knowledge and Interact forms stay readable width',
-    (tester) async {
-      _registerGuestCleanup(tester);
-      tester.view.physicalSize = const Size(1280, 1000);
-      tester.view.devicePixelRatio = 1;
+  testWidgets('desktop guest Knowledge and Interact forms stay readable width', (
+    tester,
+  ) async {
+    _registerGuestCleanup(tester);
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
 
-      final store = GuestWorkspaceStore(_MemoryGuestStorage());
-      await store.save(
-        GuestWorkspaceData(
-          templates: const [
-            {'id': 'template-1', 'name': 'Interview template', 'questions': []},
-          ],
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      GuestWorkspaceData(
+        templates: const [
+          {'id': 'template-1', 'name': 'Interview template', 'questions': []},
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: false),
         ),
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
-          child: const MaterialApp(
-            home: GuestWorkspacePage(firebaseReady: false),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(_field('Search Knowledge & Interact'), findsOneWidget);
-      await tester.tap(find.text('Saved Q&A'));
-      await tester.pumpAndSettle();
-      expect(
-        tester.getSize(_field('Search Knowledge & Interact')).width,
-        lessThanOrEqualTo(840),
-      );
-      await tester.tap(find.text('Back to add a local question'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Interact').first);
-      await tester.pumpAndSettle();
-      expect(
-        find.text(
-          'New Interact sessions stay local. '
-          'Imported sessions stay in your personal account.',
-        ),
-        findsNothing,
-      );
-      await tester.tap(find.byTooltip('Interact privacy information'));
-      await tester.pumpAndSettle();
-      expect(
-        find.text(
-          'New sessions stay on this device unless you explicitly import them. '
-          'Imported sessions and their edits stay in your personal account; '
-          'group sharing is separate.',
-        ),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-      expect(
-        tester.getSize(_field('New Interact session')).width,
-        lessThan(1040),
-      );
-      final templatePicker = find.byWidgetPredicate(
-        (widget) =>
-            widget is DropdownButtonFormField<String?> &&
-            widget.decoration.labelText == 'Optional template',
-      );
-      expect(tester.getSize(templatePicker).width, lessThanOrEqualTo(1040));
-    },
-  );
+    expect(_field('Search Knowledge & Interact'), findsOneWidget);
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(_field('Search Knowledge & Interact')).width,
+      lessThanOrEqualTo(840),
+    );
+    await tester.tap(find.text('Back to add a local question'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Interact').first);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'New Interact sessions stay local. '
+        'Imported sessions stay in your personal account.',
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.byTooltip('Interact privacy information'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'New sessions stay on this device. Select the participant whose answers you are recording; save or export the flow when you need a copy elsewhere.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(_field('New Interact session')).width,
+      lessThan(1040),
+    );
+    final templatePicker = find.byWidgetPredicate(
+      (widget) =>
+          widget is DropdownButtonFormField<String?> &&
+          widget.decoration.labelText == 'Optional template',
+    );
+    expect(tester.getSize(templatePicker).width, lessThanOrEqualTo(1040));
+  });
 
   testWidgets(
     'switching active participants keeps answers and targeted branches after reload',
@@ -1145,9 +1138,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          'Shared questions get separate answers from each '
-          'participant. Participant questions are asked only of '
-          'the active participant. Templates are optional.',
+          'Shared questions have separate answers for each participant. Participant questions apply only to their selected participant. Add a follow-up from the relevant answer to preserve its branch.',
         ),
         findsOneWidget,
       );

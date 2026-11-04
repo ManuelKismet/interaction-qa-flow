@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+import 'package:int_qa_flow/core/nia/nia_guidance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -144,11 +146,14 @@ class _SuggestionBankPageState extends ConsumerState<SuggestionBankPage> {
                         final created = await showDialog<BankJson>(
                           context: context,
                           barrierDismissible: false,
-                          builder: (_) => BankSubmissionDialog(
-                            uid: uid,
-                            realm: widget.realm,
-                            scope: selected,
-                            onOpenSuggestion: (id) => _openSuggestion(id),
+                          builder: (_) => NiaHost.preserve(
+                            context,
+                            BankSubmissionDialog(
+                              uid: uid,
+                              realm: widget.realm,
+                              scope: selected,
+                              onOpenSuggestion: (id) => _openSuggestion(id),
+                            ),
                           ),
                         );
                         if (created != null && context.mounted) {
@@ -207,8 +212,6 @@ class _SuggestionBankPageState extends ConsumerState<SuggestionBankPage> {
                 ),
                 const SizedBox(height: 16),
                 _results(uid, selected),
-                const SizedBox(height: 20),
-                _nia(uid, selected, query),
               ] else ...[
                 Align(
                   alignment: Alignment.centerLeft,
@@ -246,6 +249,36 @@ class _SuggestionBankPageState extends ConsumerState<SuggestionBankPage> {
       error: (e, _) => Text('Unable to load suggestions. $e'),
       data: (data) => Column(
         children: [
+          NiaInlineGuidance(
+            topic: NiaTopic.suggestion,
+            facts: {
+              'workspace': widget.realm + ':' + selected['scope_id'].toString(),
+              'overdue': (data['items'] as List).any(
+                (item) => item['overdue'] == true,
+              ),
+              'unread': (data['items'] as List).any(
+                (item) => item['unread'] == true,
+              ),
+            },
+            actions: {
+              if (queue != 'overdue')
+                'overdue': (
+                  'Review overdue',
+                  () => setState(() {
+                    queue = 'overdue';
+                    offset = 0;
+                  }),
+                ),
+              if (queue != 'updates')
+                'updates': (
+                  'Read updates',
+                  () => setState(() {
+                    queue = 'updates';
+                    offset = 0;
+                  }),
+                ),
+            },
+          ),
           if ((data['items'] as List).isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -275,59 +308,6 @@ class _SuggestionBankPageState extends ConsumerState<SuggestionBankPage> {
         ],
       ),
     );
-  }
-
-  Widget _nia(String uid, BankJson selected, String text) {
-    final key = (
-      uid,
-      widget.realm,
-      '/nia',
-      params({
-        'scope_type': selected['scope_type'],
-        'scope_id': selected['scope_id'],
-        'query': text,
-      }),
-    );
-    return ref
-        .watch(bankReadProvider(key))
-        .when(
-          loading: () => const SizedBox.shrink(),
-          error: (e, _) => const Text(
-            'NIA helpers are unavailable. Your suggestion workflow remains available.',
-          ),
-          data: (data) => Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'NIA · Review helpers',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(data['method'] as String),
-                  for (final item in data['related'] as List)
-                    ListTile(
-                      title: Text(item['title'] as String),
-                      subtitle: const Text('Related accessible suggestion'),
-                      onTap: () => _openSuggestion((item['id']).toString()),
-                    ),
-                  for (final item in data['knowledge'] as List)
-                    ListTile(
-                      title: Text(item['title'] as String),
-                      subtitle: const Text('Approved Knowledge'),
-                      onTap: () => context.go('/questions/${item['id']}'),
-                    ),
-                  for (final prompt in data['prompts'] as List)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text('• $prompt'),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        );
   }
 
   Widget _detail(String uid) {
@@ -410,10 +390,137 @@ class _BankSubmissionDialogState extends ConsumerState<BankSubmissionDialog> {
   bool uncertain = false;
   String? error;
   BankJson? hints;
+  NiaReadGuard? relatedGuard;
+  CancelToken? relatedCancellation;
+  bool checkingRelated = false;
+  int relatedGeneration = 0;
+  @override
+  void initState() {
+    super.initState();
+    title.addListener(_relatedQueryChanged);
+  }
+
+  Object? niaBinding;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final current = NiaHost.bindingOf(context);
+    if (niaBinding != null && niaBinding != current) {
+      relatedGeneration++;
+      relatedCancellation?.cancel();
+      relatedGuard?.dispose();
+      relatedGuard = null;
+      hints = null;
+      checkingRelated = false;
+    }
+    niaBinding = current;
+  }
+
+  void _relatedQueryChanged() {
+    relatedGeneration++;
+    relatedCancellation?.cancel();
+    relatedGuard?.dispose();
+    relatedGuard = null;
+    if (mounted)
+      setState(() {
+        hints = null;
+        checkingRelated = false;
+      });
+  }
+
+  Future<void> checkRelated() async {
+    if (busy || uncertain || checkingRelated || title.text.trim().isEmpty)
+      return;
+    final query = title.text.trim();
+    final generation = ++relatedGeneration;
+    relatedGuard?.dispose();
+    relatedCancellation?.cancel();
+    final guard = NiaReadGuard.begin(
+      context,
+      subject: widget.uid,
+      workspace: widget.realm + ':' + widget.scope['scope_id'].toString(),
+      purpose: 'related-retrieval',
+      facts: {'query': query},
+    );
+    if (guard == null) return;
+    relatedGuard = guard;
+    final cancellation = CancelToken();
+    relatedCancellation = cancellation;
+    setState(() {
+      checkingRelated = true;
+      error = null;
+    });
+    try {
+      final result = await ref
+          .read(suggestionBankRepositoryProvider)
+          .request<BankJson>(
+            widget.uid,
+            widget.realm,
+            '/nia',
+            query: {
+              'scope_type': widget.scope['scope_type'],
+              'scope_id': widget.scope['scope_id'],
+              'query': query,
+            },
+            cancelToken: cancellation,
+          );
+      if (mounted &&
+          guard.current &&
+          generation == relatedGeneration &&
+          title.text.trim() == query) {
+        setState(() => hints = result);
+      }
+    } catch (e) {
+      if (mounted &&
+          guard.current &&
+          generation == relatedGeneration &&
+          !cancellation.isCancelled) {
+        setState(
+          () => error =
+              'Could not check related suggestions. Your draft is kept.',
+        );
+      }
+    } finally {
+      if (mounted && generation == relatedGeneration)
+        setState(() => checkingRelated = false);
+    }
+  }
+
+  Future<void> openKnowledge(BankJson knowledge) async {
+    if (busy || uncertain || widget.realm != 'organisation') return;
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Open approved Knowledge?'),
+        content: const Text(
+          'Opening this approved answer will close this unsubmitted draft.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Keep this draft'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Open Knowledge'),
+          ),
+        ],
+      ),
+    );
+    if (open == true && mounted) {
+      Navigator.pop(context);
+      context.go('/questions/' + knowledge['id'].toString());
+    }
+  }
+
   bool get dirty =>
       [title, problem, proposal, benefit].any((c) => c.text.isNotEmpty);
   @override
   void dispose() {
+    relatedGeneration++;
+    relatedCancellation?.cancel();
+    relatedGuard?.dispose();
+    title.removeListener(_relatedQueryChanged);
     for (final c in [title, problem, proposal, benefit]) {
       c.dispose();
     }
@@ -538,32 +645,9 @@ class _BankSubmissionDialogState extends ConsumerState<BankSubmissionDialog> {
                   lines: 2,
                 ),
                 TextButton(
-                  onPressed: busy
+                  onPressed: busy || uncertain || checkingRelated
                       ? null
-                      : () async {
-                          try {
-                            final result = await ref
-                                .read(suggestionBankRepositoryProvider)
-                                .request<BankJson>(
-                                  widget.uid,
-                                  widget.realm,
-                                  '/nia',
-                                  query: {
-                                    'scope_type': widget.scope['scope_type'],
-                                    'scope_id': widget.scope['scope_id'],
-                                    'query': title.text.trim(),
-                                  },
-                                );
-                            if (mounted) setState(() => hints = result);
-                          } catch (e) {
-                            if (mounted) {
-                              setState(
-                                () => error =
-                                    'Could not check related suggestions. $e',
-                              );
-                            }
-                          }
-                        },
+                      : checkRelated,
                   child: const Text(
                     'Check related suggestions before submitting',
                   ),
@@ -610,6 +694,18 @@ class _BankSubmissionDialogState extends ConsumerState<BankSubmissionDialog> {
                               }
                             },
                     ),
+                  if (widget.realm == 'organisation')
+                    for (final knowledge
+                        in (hints!['knowledge'] as List? ?? const []))
+                      ListTile(
+                        title: Text(knowledge['title'] as String),
+                        subtitle: const Text('Approved Knowledge'),
+                        onTap: busy || uncertain
+                            ? null
+                            : () => openKnowledge(
+                                Map<String, dynamic>.from(knowledge as Map),
+                              ),
+                      ),
                   const Text(
                     'You may still submit a separate proposal when the situation is different.',
                   ),

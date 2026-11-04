@@ -1220,7 +1220,10 @@ Future<GoRouter> _mount(WidgetTester tester, _Harness h) async {
       ),
       GoRoute(
         path: '/guided/import',
-        builder: (_, _) => const Scaffold(body: GuidedPage()),
+        builder: (_, _) => Scaffold(
+          appBar: AppBar(actions: const [GuidedInteractMenu()]),
+          body: const GuidedPage(),
+        ),
       ),
     ],
   );

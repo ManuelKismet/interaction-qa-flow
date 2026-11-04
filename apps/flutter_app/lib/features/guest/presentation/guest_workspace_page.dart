@@ -1,3 +1,4 @@
+import 'package:int_qa_flow/core/nia/nia_guidance.dart';
 import 'package:int_qa_flow/features/suggestions/group_suggestion_workspace.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -2069,9 +2070,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     final compactViewport = viewport.height < 300;
     final hasWorkspaceNavigation =
         widget.personalWorkspaceEnabled && widget.onWorkspaceTabChanged != null;
-    final workspaceHelp = widget.initialWorkspaceTab == 0
-        ? _knowledgeInfoButton(_verifiedPersonalUid != null)
-        : _interactInfoButton(_verifiedPersonalUid != null);
+    final workspaceHelp = _WorkspaceGuidance(
+      privateWorkspace: _verifiedPersonalUid != null,
+      initialTab: widget.initialWorkspaceTab,
+    );
     final narrowViewport = viewport.width < 420;
     final needsGuestRecovery =
         localData != null &&
@@ -2155,11 +2157,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
           child: canUseGroups
               ? const Align(
                   alignment: Alignment.centerLeft,
-                  child: _GuestInfoButton(
+                  child: NiaHelpButton(
+                    topic: NiaTopic.identity,
                     tooltip: 'Group identity information',
                     title: 'About Group identity',
-                    content:
-                        'Group access is associated with this signed-in verified identity. A separate account does not inherit its Group data.',
+                    facts: const {},
                   ),
                 )
               : const Text(
@@ -2233,9 +2235,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                             AccountMembershipStatus.noMembership,
                         saveStatus: _saveStatus,
                       ),
-                      if (hasWorkspaceNavigation &&
-                          _verifiedPersonalUid == null)
-                        workspaceHelp,
+                      if (!compactViewport) workspaceHelp,
                     ],
                   ),
             actions: [
@@ -2248,10 +2248,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       AccountMembershipStatus.noMembership,
                   saveStatus: _saveStatus,
                 ),
-              if (viewport.width < 320 &&
-                  hasWorkspaceNavigation &&
-                  _verifiedPersonalUid == null)
-                workspaceHelp,
+              if (viewport.width < 320 && !compactViewport) workspaceHelp,
               if (compactViewport && !hasWorkspaceNavigation)
                 Builder(
                   builder: (context) => PopupMenuButton<int>(
@@ -2269,6 +2266,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                     ],
                   ),
                 ),
+              if (compactViewport &&
+                  !hasWorkspaceNavigation &&
+                  widget.firebaseReady)
+                IconButton(
+                  tooltip: 'Groups',
+                  onPressed: _openSharedGroups,
+                  icon: const Icon(Icons.group_outlined),
+                ),
               _accountMenu(),
               PopupMenuButton<String>(
                 tooltip: _hasSignedInNonGuestUser
@@ -2279,7 +2284,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                   if (value == 'backup') _copyLocalBackup();
                   if (value == 'import') _importLocalBackup();
                   if (value == 'account-import') _openPersonalImport();
-                  if (value == 'groups') _openSharedGroups();
                 },
                 itemBuilder: (context) => [
                   if (_hasSignedInNonGuestUser)
@@ -2287,8 +2291,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       enabled: false,
                       child: Text('Personal workspace settings'),
                     ),
-                  if (widget.firebaseReady)
-                    const PopupMenuItem(value: 'groups', child: Text('Groups')),
                   if (!_hasSignedInNonGuestUser || needsGuestRecovery) ...[
                     const PopupMenuDivider(),
                     if (_hasSignedInNonGuestUser)
@@ -2334,42 +2336,26 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             ],
             bottom: compactViewport || hasWorkspaceNavigation
                 ? null
-                : TabBar(
-                    onTap: _handleWorkspaceTabChanged,
-                    tabs: [
-                      Tab(
-                        height: 48,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Flexible(
-                              child: Text(
-                                'Knowledge',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            _knowledgeInfoButton(_verifiedPersonalUid != null),
-                          ],
+                : PreferredSize(
+                    preferredSize: const Size.fromHeight(48),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TabBar(
+                            onTap: _handleWorkspaceTabChanged,
+                            tabs: const [
+                              Tab(text: 'Knowledge'),
+                              Tab(text: 'Interact'),
+                            ],
+                          ),
                         ),
-                      ),
-                      Tab(
-                        height: 48,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Flexible(
-                              child: Text(
-                                'Interact',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            _interactInfoButton(_verifiedPersonalUid != null),
-                          ],
-                        ),
-                      ),
-                    ],
+                        if (widget.firebaseReady)
+                          TextButton(
+                            onPressed: _openSharedGroups,
+                            child: const Text('Groups'),
+                          ),
+                      ],
+                    ),
                   ),
           ),
           body: data == null
@@ -2980,102 +2966,83 @@ class _GuestNotice extends StatelessWidget {
     this.isPrivateAccount = false,
     this.noOrganisationMembership = false,
   });
-
-  final bool isRegistered;
+  final bool isRegistered, isPrivateAccount, noOrganisationMembership;
   final String saveStatus;
-  final bool isPrivateAccount;
-  final bool noOrganisationMembership;
-
   @override
-  Widget build(BuildContext context) {
-    final status = isPrivateAccount
-        ? 'Personal workspace · Local browser copy: $saveStatus'
-        : isRegistered
-        ? 'Registered personal account · Local copy · $saveStatus'
-        : 'Guest workspace · $saveStatus';
-    final explanation = isPrivateAccount
-        ? 'This personal account is private to your verified identity. '
-              'New Knowledge and Interact sessions are saved privately to your '
-              'account. Local browser work remains separate until you choose '
-              'items to import. Use Workspace options to import local work '
-              'into your account.\n\n'
-              'Group access is associated with this signed-in verified identity. '
-              'A separate account does not inherit its Group data. '
-              'Group and organisation access are separate.'
-        : isRegistered
-        ? 'Registered workspace. Local drafts stay in this browser profile '
-              'and may be visible to people using it. This local copy is separate '
-              'from your personal account. Importing selected items to your account '
-              'is optional. Group and organisation access are separate.'
-        : 'Guest workspace active in this browser profile. People using this '
-              'profile can see its local work. Groups require a registered '
-              'account with a verified email. Clearing browser data or losing '
-              'this device can erase local work.';
-    final membership = isPrivateAccount && noOrganisationMembership
-        ? '\n\nThis signed-in account has no organisation membership. '
-              'Groups require a verified registered account, but do not require '
-              'organisation membership.'
-        : '';
-    return _GuestInfoButton(
-      tooltip: 'Workspace storage information',
-      title: 'About this workspace',
-      content:
-          '$status\n\n$explanation$membership'
-          '${isPrivateAccount ? "\n\nSearch covers Local, Private, Group and Organisation Knowledge and Interact within your access permissions. Interact search includes session titles, questions, answers and follow-ups. Only your query is sent; local content stays on this device.\n\nNew Interact sessions are private to your account. Imported sessions and their edits stay in your personal account; group sharing is separate." : ""}',
-    );
-  }
-}
-
-Widget _knowledgeInfoButton(bool privateWorkspace) => _GuestInfoButton(
-  tooltip: 'Search help',
-  title: 'About search',
-  content: privateWorkspace
-      ? 'Search Local, Private, Group and Organisation Knowledge and Interact within your access permissions. Interact includes session titles, questions, answers and follow-ups. Only your query is sent; local content stays on this device.'
-      : 'Search Knowledge and Interact stored on this device, including session titles, questions, answers and follow-ups. This search stays local.',
-);
-
-Widget _interactInfoButton(bool privateWorkspace) => _GuestInfoButton(
-  tooltip: 'Interact privacy information',
-  title: 'About Interact storage',
-  content: privateWorkspace
-      ? 'New sessions are private to your account. Imported '
-            'sessions and their edits stay in your personal '
-            'account; group sharing is separate.'
-      : 'New sessions stay on this device unless you explicitly '
-            'import them. Imported sessions and their edits stay '
-            'in your personal account; group sharing is separate.',
-);
-
-class _GuestInfoButton extends StatelessWidget {
-  const _GuestInfoButton({
-    required this.tooltip,
-    required this.title,
-    required this.content,
-  });
-
-  final String tooltip;
-  final String title;
-  final String content;
-
-  @override
-  Widget build(BuildContext context) => IconButton(
-    tooltip: tooltip,
-    onPressed: () => showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(child: Text(content)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    ),
-    icon: const Icon(Icons.info_outline, size: 16),
+  Widget build(BuildContext context) => NiaHelpButton(
+    topic: NiaTopic.storage,
+    tooltip: 'Workspace storage information',
+    title: 'About this workspace',
+    facts: {
+      'private': isPrivateAccount,
+      'registered': isRegistered,
+      'saveStatus': saveStatus,
+      'noOrganisation': noOrganisationMembership,
+      'workspace': isPrivateAccount ? 'personal' : 'local',
+    },
   );
 }
+
+Widget _knowledgeInfoButton(bool privateWorkspace) => NiaHelpButton(
+  topic: NiaTopic.knowledge,
+  tooltip: 'Search help',
+  title: 'About search',
+  facts: {
+    'private': privateWorkspace,
+    'workspace': privateWorkspace ? 'personal' : 'local',
+  },
+);
+
+class _WorkspaceGuidance extends StatefulWidget {
+  const _WorkspaceGuidance({
+    required this.privateWorkspace,
+    required this.initialTab,
+  });
+  final bool privateWorkspace;
+  final int initialTab;
+  @override
+  State<_WorkspaceGuidance> createState() => _WorkspaceGuidanceState();
+}
+
+class _WorkspaceGuidanceState extends State<_WorkspaceGuidance> {
+  TabController? controller;
+  void changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = DefaultTabController.maybeOf(context);
+    if (controller != next) {
+      controller?.removeListener(changed);
+      controller = next;
+      controller?.addListener(changed);
+    }
+  }
+
+  @override
+  void dispose() {
+    controller?.removeListener(changed);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      (controller?.index ?? widget.initialTab) == 0
+      ? _knowledgeInfoButton(widget.privateWorkspace)
+      : _interactInfoButton(widget.privateWorkspace);
+}
+
+Widget _interactInfoButton(bool privateWorkspace) => NiaHelpButton(
+  topic: NiaTopic.interact,
+  tooltip: 'Interact privacy information',
+  title: 'About Interact storage',
+  facts: {
+    'private': privateWorkspace,
+    'workspace': privateWorkspace ? 'personal' : 'local',
+  },
+);
 
 class _AccountMembershipNotice extends StatelessWidget {
   const _AccountMembershipNotice({required this.text});
@@ -4792,16 +4759,11 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 if (widget.groupName != null)
                   Text('Shared · Group: ${widget.groupName}'),
                 if (widget.groupName == null)
-                  const _GuestInfoButton(
+                  const NiaHelpButton(
+                    topic: NiaTopic.session,
                     tooltip: 'Session lifecycle information',
                     title: 'About session lifecycle',
-                    content:
-                        'Local and private account sessions stay editable. They '
-                        'have no draft, active, completed or archived status. '
-                        'Delete removes a session with Undo while the message is '
-                        'shown; private account changes are confirmed by the save '
-                        'status. Organisation sessions use their own server '
-                        'lifecycle.',
+                    facts: const {},
                   ),
               ],
             ),
@@ -4830,11 +4792,11 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Active participant',
-                  suffixIcon: _GuestInfoButton(
+                  suffixIcon: NiaHelpButton(
+                    topic: NiaTopic.participant,
                     tooltip: 'Active participant help',
                     title: 'About the active participant',
-                    content:
-                        'Answers and individual questions are shown for this participant.',
+                    facts: const {},
                   ),
                 ),
                 items: [
@@ -4888,13 +4850,11 @@ class _GuestSessionEditorState extends State<_GuestSessionEditor> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                const _GuestInfoButton(
+                const NiaHelpButton(
+                  topic: NiaTopic.questions,
                   tooltip: 'Question help',
                   title: 'About shared and participant questions',
-                  content:
-                      'Shared questions get separate answers from each '
-                      'participant. Participant questions are asked only of '
-                      'the active participant. Templates are optional.',
+                  facts: const {},
                 ),
                 FilledButton.tonal(
                   onPressed: hasParticipants
@@ -7402,7 +7362,11 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         ),
       );
     }
-    return _buildGroupsScaffold();
+    return NiaWorkspaceScope(
+      workspace: 'group:' + (_groupId ?? 'none'),
+      authorityRevision: (_group?['role'] as String? ?? 'none'),
+      child: _buildGroupsScaffold(),
+    );
   }
 
   Future<void> _openSuggestionBank() async {
@@ -7440,19 +7404,15 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
               ),
             ),
           ),
-          _GuestInfoButton(
+          NiaHelpButton(
+            topic: NiaTopic.groups,
             tooltip: 'Groups information',
             title: 'About groups',
-            content:
-                'Groups require a registered Firebase account with a verified '
-                'email, but do not require organisation membership. Group '
-                'membership does not grant organisation, department, or '
-                'private-session access. Group data remains associated with '
-                'its Firebase UID; another account does not inherit it.\n\n'
-                'Approved Group members can access shared content. '
-                'Only Group admins manage membership and invitations. '
-                'Search accessible Group Knowledge from Personal workspace Search.'
-                '${_group == null ? '' : '\n\nYour group role: ${_group!['role']}.'}',
+            facts: {
+              'verified': _canCreateOrJoin,
+              'role': _group?['role'] as String? ?? '',
+              'workspace': 'group:' + (_groupId ?? 'none'),
+            },
           ),
         ],
       ),
@@ -7691,14 +7651,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                         ? 'Interact'
                         : 'Knowledge',
                   ),
-                  trailing: _GuestInfoButton(
+                  trailing: NiaHelpButton(
+                    topic: NiaTopic.sharedItem,
                     tooltip: 'Shared item details',
                     title: 'About this shared item',
-                    content:
-                        '${entry['title'] ?? 'Shared content'}\n'
-                        'Revision ${entry['revision']} · updated by a group member.\n\n'
-                        'This copy is shared with approved Group members. '
-                        'Personal and local originals remain separate.',
+                    facts: {
+                      'revision': entry['revision'] as num? ?? 0,
+                      'workspace': 'group:' + (_groupId ?? 'none'),
+                    },
                   ),
                   onTap: () => _openEntry(entry),
                 ),

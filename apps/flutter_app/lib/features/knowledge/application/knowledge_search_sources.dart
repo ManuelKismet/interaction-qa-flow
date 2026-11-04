@@ -1,3 +1,4 @@
+import 'package:nopak_nia/nopak_nia.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 typedef OrganisationKnowledgeSearch =
@@ -106,20 +107,9 @@ Future<KnowledgeSearchSources> searchKnowledgeSources(
   );
 }
 
-double localKnowledgeRelevance(String query, Map<String, dynamic> item) {
-  final foldedQuery = query.toLowerCase().trim();
-  final title = (item['title'] as String? ?? '').toLowerCase();
-  if (title == foldedQuery) return 1.9;
-  if (title.startsWith(foldedQuery)) return 1.7;
-  if (title.contains(foldedQuery)) return 1.5;
-  final answerAndBody = [
-    item['answer'],
-    item['body'],
-  ].whereType<String>().join(' ').toLowerCase();
-  if (answerAndBody.contains(foldedQuery)) return 2.5;
-  final terms = foldedQuery
-      .split(RegExp(r'\s+'))
-      .where((term) => term.isNotEmpty);
-  if (terms.isNotEmpty && terms.every(answerAndBody.contains)) return 1.6;
-  return 0.9;
-}
+double localKnowledgeRelevance(String query, Map<String, dynamic> item) =>
+    NiaMatching.textRelevance(
+      query,
+      title: item['title'] as String? ?? '',
+      evidence: [item['answer'], item['body']].whereType<String>(),
+    );
