@@ -1,0 +1,42 @@
+{
+  "environment": "intqaflow-dev",
+  "status": "prepared; not provisioned",
+  "identities": [
+    {
+      "label": "tenant-a-owner",
+      "firebase_uid": null
+    },
+    {
+      "label": "tenant-a-unrelated-employee",
+      "firebase_uid": null
+    },
+    {
+      "label": "tenant-a-admin",
+      "firebase_uid": null
+    },
+    {
+      "label": "tenant-a-same-department",
+      "firebase_uid": null
+    },
+    {
+      "label": "tenant-a-other-department",
+      "firebase_uid": null
+    },
+    {
+      "label": "tenant-a-departmentless",
+      "firebase_uid": null
+    },
+    {
+      "label": "tenant-b-member",
+      "firebase_uid": null
+    },
+    {
+      "label": "inactive-member",
+      "firebase_uid": null
+    },
+    {
+      "label": "unmapped-user",
+      "firebase_uid": null
+    }
+  ]
+}

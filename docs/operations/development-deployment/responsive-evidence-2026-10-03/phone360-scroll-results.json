@@ -1,0 +1,102 @@
+[
+  {
+    "viewport": "phone360",
+    "width": 360,
+    "height": 800,
+    "views": [
+      {
+        "view": "knowledge",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "interact-empty",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "interact-editor",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "pdf-preview",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "pdf-preview-scrolled",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "template-dialog",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "account-menu",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "sign-in",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      },
+      {
+        "view": "sign-up",
+        "geometry": {
+          "width": 360,
+          "height": 800,
+          "scrollWidth": 360
+        }
+      }
+    ],
+    "errors": [],
+    "preview_buttons": [
+      "Print / Save PDF fallback",
+      "Share PDF",
+      "Download PDF"
+    ],
+    "outside_click_dismissed": true,
+    "escape_or_outside_returned": true,
+    "template_dialog_text": "Save local template\nCancel\nSave template",
+    "account_menu_text": "",
+    "signin_text": "Sign in\nCreate account or link guest recovery\nForgot password?",
+    "signin_buttons": [
+      "Sign in",
+      "Create account or link guest recovery",
+      "Forgot password?"
+    ],
+    "signup_text": "Create account\nBack to sign in",
+    "signup_buttons": [
+      "Create account",
+      "Back to sign in"
+    ]
+  }
+]

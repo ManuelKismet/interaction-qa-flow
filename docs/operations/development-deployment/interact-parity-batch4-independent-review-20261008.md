@@ -1,0 +1,135 @@
+# Interact parity batch 4 — independent review, 2026-10-08
+
+## Compact guest and personal UI tested and deployed — 2026-10-08
+
+The pending UI changes are now deployed to DEV from `bd713485d01eaa13a7bf3d5159d2215e22e13616` on `copilot/fixinteract-parity-batch4-edit-shared-copy`. This entry supersedes the earlier pending UI checks/deployment status; older entries below retain their historical receipts.
+
+Guest/personal session Destination and Download / Share PDF controls share a centered 40px height with 13px labels, growing together for larger accessibility text; wide-header title/actions center together and narrow headers wrap safely. Root/follow-up question fields are compact and keep Delete beside the field, preserving inline edits, blank-text protection, graph ownership and Undo. Personal workspace heading is subtle at 14px with a 48px toolbar; private/local storage, Group identity and no-membership information move behind its workspace info icon. Optional local-to-account import stays in Workspace options with busy-state protection; save/access errors, verification gates and retry actions remain visible. Routed personal pages remove redundant Knowledge/Interact tabs where AppShell navigation already exists, keep contextual help by the heading, and disable in-page tab swipes; standalone workspaces retain their navigation. Personal Knowledge sections are Search and Saved, with the duplicate Saved Q&A heading/button removed. Shared KnowledgeSectionTabs defaults remain unchanged for other workspaces.
+
+Validation on the exact final commit:
+
+- Offline locked dependency resolution PASS (1.5s); formatting of six relevant Dart files PASS (0.5s).
+- Full Flutter suite: **370 passed, zero skips, exit 0** (153.2s). The guest/personal/Group focused suite previously passed all 158 tests with unchanged implementation; the final search-to-personal result test also passed (6.7s). Coverage retains graph IDs/ownership, inline question editing, blank-text protection, Delete/Undo, delayed writes/account switches, import retry/navigation guards, nested Group copies and responsive layouts.
+- Analysis: **0 errors, 0 warnings, 12 baseline infos** (15.1s). The info messages match the preceding release exactly after normalizing line/column numbers. Exit 1 is solely those existing infos.
+- Configured DEV web release build PASS (48.7s), using the existing pinned environment and public DEV defines SHA256 `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`; release/no-pub/no-wasm-dry-run/PWA-none and AUTH_DIAGNOSTICS=true.
+- Repository tree `57ffc348265809167d9dd8e029f80ac9d4dfc204`; Flutter app tree `c4e83d11a6bd3abde8a171b95b86b593ca7561db`.
+- The initial checks exposed two outdated layout/navigation expectations, then an organisation-search test still using the removed personal Saved Q&A heading. They were updated for safe narrow-screen wrapping, the retained Search/Saved section tabs and the new Saved label. All final checks pass; no tests were skipped or disabled.
+
+DEV release `sites/intqaflow-dev/releases/1791496524947000`, version `sites/intqaflow-dev/versions/f8aeac736e8b0655`, Hosting exit 0. All **36 files** matched byte lengths and SHA256 on **both** `https://intqaflow-dev.web.app` and `https://intqaflow-dev.firebaseapp.com`; the live guest landing page also loaded after reload.
+
+Key build receipts:
+
+| File | Bytes | SHA256 |
+| --- | ---: | --- |
+| main.dart.js | 4680903 | `8b481947e5b37a1f498efa05409fca832dedb23bb96546e6a2c265d1fa6c99b6` |
+| index.html | 1531 | `a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858` |
+| flutter_bootstrap.js | 9805 | `0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67` |
+
+API revision `intqaflow-dev-api-review80f421d` remains at 100% traffic, unchanged; /health and /ready returned 200. The previous Hosting release was `sites/intqaflow-dev/releases/1791492119078000`; rollback target is `sites/intqaflow-dev/versions/44c9f7632273ee36`.
+
+Receipts: `/workspaces/guest-ui-compact-validation-20261008/release/` and `/workspaces/guest-ui-compact-dev-publication-20261008/`. Existing root worktree documents were hash-checked and preserved before/after validation, before publication and before shutdown; the isolated source remains clean. The editor tab was closed and GitHub explicitly confirmed **Codespace "bookish happiness" stopped**; shutdown proof: `/workspace/scratch/intqaflow-compact-ui-codespace-stopped-1791496657484.jpg`.
+
+No backend/schema/dependency, production, IAM/credential or merge changes. Earlier 198-test PostgreSQL/backend evidence remains unchanged-code evidence, not a fresh backend run. External authenticated/device/native acceptance remains **OPEN**; the cloud-browser authentication investigation remains paused. Guest reload returning to the session list remains accepted (IP-19 CLOSED).
+
+## Guest session controls tested and deployed — 2026-10-08
+
+Founder authorised “Test all changes made and deploy to dev”. This rollout includes all pending guest UI changes since the earlier compact-heading deployment. Exact source `1e124f8d1ac271eba0373a8fb73497da63468228` on `copilot/fixinteract-parity-batch4-edit-shared-copy`; repository tree `05ba347c4bbf40a9004a39066173a2c957d8a249`, Flutter subtree `e829373700e89b1b23766b9d35e60ca09ce6d82c`.
+
+- Shared guest information icons are 16px; tap areas remain unchanged.
+- Destination and Download / Share PDF share the session title row when space permits, ahead of the three-dot menu. Narrow layouts wrap them below. Medium-width actions use flexible constraints and destination text can ellipsize without changing the full label.
+- Removed the generic “Add a question” shortcut and inline “New question” composer. Shared/active-participant add controls follow all visible question cards and open required-text dialogs. Submission scrolls to the list end. Participant scope captures the active participant at dialog opening and revalidates session/participant availability before writing. Question guidance remains beside these controls.
+- Root and recursive follow-up question text use bordered inline editable fields. Removed their Edit buttons/dialog callback. Nonempty edits use the existing local/private/Group draft save flow and preserve graph IDs, targets, answers and branches. Temporarily blank input shows validation while retaining the last saved question.
+
+Independent Flutter 3.41.4/Dart 3.11.1 checks in isolated `/workspaces/intqaflow-guest-ui-20261008`: locked offline pubget PASS (1.6s), touched-file format PASS (0.4s), **full suite 368 PASS, zero skips, exit0** (160.3s), analysis zero errors/warnings and unchanged 12 baseline infos (6.7s, exit1 solely infos), configured DEV release PASS/exit0 (43.2s). Five added regressions cover dialog blank/cancel behavior, shared versus participant ownership, controls following newly added questions, 360/800/832/1200px layouts, 16px icons, inline edit persistence and graph preservation. Existing recursive edit, Group save/reload, sign-out/UID disposal, narrow keyboard, Undo, conflict and delayed-save tests remain enabled. A real overflow at the medium-width header breakpoint was found and fixed; the final exact-source full rerun passed. Three new style notes were cleaned up before final validation.
+
+Validation/build receipts: `/workspaces/guest-ui-controls-validation-20261008/release`; earlier diagnostic runs remain under the parent folder. DEV defines SHA-256 `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`. Main bundle: 4,678,332 bytes, SHA-256 `ae64db84528d51246c01b05e70ba454e6788d3e488a354db05de0fd19f157103`. Index (1,531 bytes) and bootstrap (9,805 bytes) retain the previously recorded hashes.
+
+DEV Hosting **release `1791492119078000`, version `44c9f7632273ee36`**, 36 files. Every served file on BOTH `https://intqaflow-dev.web.app/` and `https://intqaflow-dev.firebaseapp.com/` matched the tested build's byte lengths and SHA-256. API health/readiness HTTP200; `intqaflow-dev-api-review80f421d` retains 100% traffic. Rollback target is the prior compact-UI release `1791488795550000` / version `6dc9f6083d4bb7a4`. Publication receipts: `/workspaces/guest-ui-controls-dev-publication-20261008`. Live DEV guest Knowledge page loaded with compact heading and 16px inline help icons; session behavior was verified by the widget suite. No backend deployment, hosted data/schema, IAM, credentials, production change or merge.
+
+The root worktree's four dirty documentation files were hash-checked before/after validation and preserved; isolated release source is clean. GitHub confirmed **Codespace “bookish happiness” stopped** after publication and verification; the editor tab was closed. Source, receipts and prior worktree/stash material remain retained.
+
+Only the guest UI source and two Flutter test files changed relative to the prior DEV source. Backend/schema/dependencies unchanged; prior 198 PostgreSQL-enabled backend passes are retained unchanged-code evidence, not a fresh backend rerun. Founder external authenticated/device/native acceptance remains OPEN; no authenticated live acceptance is claimed. Cloud-browser authentication investigation remains paused. Guest reload-to-session-list remains accepted, IP19 CLOSED.
+
+
+## Guest workspace compact UI tested and deployed — 2026-10-08
+
+Founder requested the shorter subtle “Guest workspace” heading, inline module/workspace information, and clearer Interact creation fields, then explicitly authorised “Test and deploy”. Final exact source `4d42c812f4df8b6d1f22040901170ea85974eb05` on `copilot/fixinteract-parity-batch4-edit-shared-copy`; repository tree `0068dc1f5cd36ec2dd4546140d673ed808bc3295`, Flutter subtree `b4a65e03f5006a66dd0d6180a7c8e524a1076546`. This supersedes the previous Hosting status below, not the outstanding manual acceptance gates.
+
+Changes: guest heading is regular 14px/onSurfaceVariant in a 48px toolbar; personal/registered heading styles are unchanged. Knowledge/Interact help icons sit beside tab text. Routine workspace/save status and privacy explanation are behind the heading's info icon. Save-failure/retry, account/load/permission notices remain visible. “New Interact session” floats on the input's top edge with “Session title” hint; participant input uses “Participant” hint without “First participant” label. Required-field validation and account/local/Group persistence semantics retained. Very-short viewports retain accessible help controls when module tabs are hidden.
+
+Independent Flutter 3.41.4/Dart 3.11.1 validation in isolated `/workspaces/intqaflow-guest-ui-20261008`: locked offline pubget PASS (1.4s), four-file format PASS (0.6s; formatting committed/pushed), analysis zero errors/warnings and same 12 baseline infos (10.4s, exit1 solely infos), **full suite 363 PASS, zero skips, exit0** (181.7s), configured DEV release PASS/exit0 (67.3s). Regression assertions cover inline help placement, private/local explanations, saving/saved status in the dialog, failure/retry visibility, creation fields and the existing responsive/account/Group suites. Initial b427318 run was 352 PASS/11 FAIL: six stale text/status expectations, one unstable scroll anchor, four narrow-tab overflow scenarios. Fixed assertions/anchor without dropping behavior checks and fixed the real tab overflow; final full rerun passed. Initial and final logs retained under `/workspaces/guest-ui-validation-20261008`. Backend/schema/dependency files unchanged from accepted batch4; prior 198 PostgreSQL-enabled backend passes remain unchanged-code evidence, not a fresh rerun.
+
+DEV Hosting **release `1791488795550000`, version `6dc9f6083d4bb7a4`**, 36 files. All 36 served files on BOTH DEV origins matched exact built byte lengths/SHA-256. main.dart.js: 4,678,270 bytes / `ebb508ef0b7aebfe89adde07c21e23e2bf9d5af8819911e235de957eadebac4d`; index.html/bootstrap retain previously recorded hashes. DEV defines SHA `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`. Publication manifest/verification receipts: `/workspaces/guest-ui-dev-publication-20261008`.
+
+API health/readiness both HTTP200; revision `intqaflow-dev-api-review80f421d` and 100% traffic unchanged. Rollback retained prior batch4 release `1791483895509000` / version `408afbad8341c730`. No backend deployment, hosted data/schema, IAM, credentials, production change or merge. Live DEV guest Knowledge screen loaded and visually confirmed the compact heading, inline info icons and removal of routine status row. Interact fields/help/privacy behavior independently verified by widget tests; no authenticated live acceptance claimed and no sign-in retry.
+
+Existing root worktree's four dirty documentation files preserved; isolated final source clean. GitHub UI confirmed **Codespace “bookish happiness” stopped** after publishing/verifying; files, receipts and initial formatter stash retained. Founder external authenticated/device/native acceptance remains OPEN. Cloud-browser auth investigation paused. Guest reload-to-session-list remains accepted IP19 CLOSED.
+
+
+## Batch 4 DEV frontend published and verified — 2026-10-08
+
+Founder authorised the next deployment step after choosing external manual acceptance. Published the independently tested configured build from exact source `6c97993c0de10f5199a26f3dda09697560d7e707` (repository tree `57c8260b1e96b683689d477576b5c678b1b1285e`, Flutter subtree `9528f2b5760a27996b46d35cc0bd439fff066f5d`). This rollout supersedes the earlier “not yet deployed” status below; those sections retain historical review evidence.
+
+Firebase DEV Hosting release `1791483895509000`, version `408afbad8341c730`, published successfully with 36 files. All 36 served files on each of `https://intqaflow-dev.web.app/` and `https://intqaflow-dev.firebaseapp.com/` matched the local upload manifest byte lengths and SHA-256 hashes. Browser load of the DEV guest workspace also succeeded; this is load verification, not authenticated acceptance.
+
+The independently tested build hashes remain: index.html `a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858` (1531 bytes); flutter_bootstrap.js `0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67` (9805 bytes); main.dart.js `8a13ff7e5500360cd5b7b94b314c3ab7f50470576fa045d92a60653d7b36bf7d` (4677702 bytes). Verification receipt: `/workspaces/batch4-dev-publication-20261008/publication-verified.json`; publisher log and full manifest are retained alongside it.
+
+API health and readiness both returned HTTP 200. Existing API revision `intqaflow-dev-api-review80f421d` and 100% traffic allocation were unchanged. Previous batch 3 Hosting release `1791473511974000` / version `f2b2a3b33b4acd94` is retained for rollback. No backend, schema, IAM, credentials, production deployment or merge was performed.
+
+**External manual acceptance remains pending.** Founder will sign in externally and check Group shared-copy editing/save/reopen, recursive questions and answers, permission boundaries, concurrent-edit conflict handling, phone layout/keyboard and PDF/share/printing. Original local/private copies must remain intact. Cloud-browser sign-in diagnosis remains paused. Guest reload to the session list is accepted (IP-19 closed); users reopen their session manually. Refresh the external DEV page before testing; Hosting cache max-age is 300 seconds.
+
+Cleanup verified on GitHub: Codespace “bookish happiness” stopped; its row shows last-used time rather than Active. Existing files and deployment receipts retained.
+
+Review requested by founder through “Action”, resumed after interruption. Exact pushed-commit review replaces the oversized mailbox route by explicit founder authorisation. No deployment or merge is part of this review.
+
+## Exact provenance
+
+Complete accepted batch 3 base: `5a2dd26410a428b6a0b516efe53afc37d89362b7`.
+Initially reviewed batch 4 HEAD: `6ab3b38c803f2e1dc1f13640512416ac7c1727e8`; repository tree `7f5dab3c2fa7c013fb6edcb94e4f261d3c3c46db`, Flutter subtree `1ab43736a7409cb9240b121315cb940548aa3c12`.
+Corrected final HEAD: `6c97993c0de10f5199a26f3dda09697560d7e707`; repository tree `57c8260b1e96b683689d477576b5c678b1b1285e`, Flutter subtree `9528f2b5760a27996b46d35cc0bd439fff066f5d`.
+Correction implementation commit: `bdd0c76ada2363bebeb597334f4e2983fe89dedc`; later final receipt commit changes docs only. Same task `49641b6c-45e3-447f-9db4-2675b4a3fdde`, same `copilot/fixinteract-parity-batch4-edit-shared-copy` branch. Original history and batches 1–3 retained.
+
+## Independent finding and correction
+
+The original editor's `_readAuthorized` searched the empty-query entry list and treated absence as loss of access. Backend list defaults/maxes at 50 (Group capacity 200), ordered by latest update. An older copy found by targeted search, or an open copy pushed down by other activity, could therefore become falsely unavailable and lose its draft.
+
+One targeted correction request was sent to the same Copilot task. The corrected editor calls the existing exact Group/entry GET through `GuestGroupRepository.getEntry`, after Group capability read, checks returned ID and current UID/generation, and retains role/authorship, registration, denial, revision conflict and uncertain-save guards. Static diff confirms only this production correction; backend, schema, tests and dependency locks are unchanged from the independently tested prior head. Six new widgets and three actual Dio repository tests retain earlier coverage and cover older entry/cutoff reconciliation/export, exact 403/404 and delayed signout reads.
+
+The broader static review checked editor reuse, explicit save destination, private/local original independence, retained participant IDs and answer-owned branches, expected-revision checks, uncertain applied/unapplied reconciliation, nested dialogs and saved-only exports. Duplicate authorisation checks around asynchronous output are intentional safety boundaries; no unrelated refactor requested.
+
+## Initial independently executed Codespace checks
+
+Codespace `bookish-happiness-w974vpwgq7j3g95v`; detached checkout `/workspaces/intqaflow-batch4-independent-20261008` at exact 6ab3b38. Receipts `/workspaces/batch4-independent-receipts-20261008`; existing root checkout and four dirty documentation files preserved.
+
+Official Flutter 3.41.4 revision ff37bef603 / Dart 3.11.1, analytics suppressed. Locked offline pubget exit0; official five-file format exit0/zero changes; analyze exit1 only for 12 baseline infos, zero errors/warnings. Full `flutter test --no-pub --reporter expanded`: 353 passed, exit0, 223.7 seconds wall time.
+
+Fresh external virtual environment from unchanged `backend/requirements.lock`; Ruff two new test files exit0. Fresh disposable loopback PostgreSQL16.15, vector0.8.6, port55438/database batch4_independent; BOTH PostgreSQL test URLs set. Full `pytest -q -ra`: 198 passed, 10 existing warnings, zero skips, exit0 (70.16 seconds pytest / 80.0 wall). Actual PostgreSQL concurrency/permission tests executed, including lock-wait observation. Disposable database stopped exit0; no hosted migration/data change.
+
+Configured DEV release exit0, 54.1 seconds, using existing public DEV defines (SHA256 `3e2c32a1e918d5b9e1b635d9c6ca91799ec3184911509288395b3f5b0d613f76`), AUTH_DIAGNOSTICS=true, --no-wasm-dry-run --pwa-strategy=none. Initial main.dart.js 4,677,478 bytes/SHA256 `169ee1efcd7ad35fdb5ac89bcb516fa79ce486f2c7f353be1ea11741955f16df`. This initial build is historical validation, not the corrected release.
+
+## Historical environment and mailbox boundary
+
+Original 8db08bd accidentally tracked 3,974 environment/log paths; 9fa5caa removed them. Final tree contains no batch4-backend or virtual environment. Reviewed the ten first-party logs/results and pyvenv.cfg using read-only blob inspection; common private-key/token signatures absent in that limited scan. No historical binaries executed. This is not an exhaustive third-party binary secret audit. Copilot's durable full path/hash/size inventory records 155,360,113 blob bytes.
+
+Copilot's unfiltered complete mailbox is 207,578,423 UTF-8 bytes, exceeding GitHub's 100MiB file cap; no misleading filtered/squashed replacement published. Its git-am reproduction proof is Copilot evidence, not independently reproduced here. Founder explicitly authorised exact pushed-commit review; final head/tree pinning is the independent provenance gate.
+
+## Acceptance boundary
+
+Guest/nonmember reload to session list remains accepted IP19; users reopen their sessions. Edit shared copy is explicit, originals independent, no live link. Hosted authenticated personal/organisation/Group checks, physical phone, enlarged text/screen reader and native share/printing remain OPEN. Cloud-browser authentication investigation remains paused. DEV still batch 3 frontend5a2dd264/Hosting f2b2a3b33b4acd94; backend review80f421d unchanged. No deployment/merge/production/IAM/credential/firewall/access change.
+
+## Additional independent lifecycle probe
+
+Copilot disclosed a possible post-disposal dialog cleanup concern from its broader review. An isolated probe outside the source checkout reused the real Group page/editor harness: unmount Group page with its navigator retained at entry, editor and nested-rename-dialog stages, plus unmount the whole navigator with a nested editor dialog. All four passed, exit0, 15.1 seconds wall/7 seconds test time; no framework exception, surviving dialog or write. This resolves those reproduced scenarios, not all possible device lifecycle interleavings. Probe and log remain in Codespace receipts; application source was not modified.
+
+## Corrected final independent acceptance
+
+Detached corrected checkout `/workspaces/intqaflow-batch4-corrected-independent-20261008`, pinned exact6c97993, repository57c8260b and app9528f2b5 verified before and after. Receipts in `/workspaces/batch4-independent-receipts-20261008/corrected`. Locked offline pubget exit0 (1.7s); format six touched Dart files exit0/zero changes (0.4s); analyze exit1 only for 12 baseline infos/zero errors/warnings (11.9s). Coherent full Flutter suite **362 passed**, zero skips, exit0 (178.3s wall/166s tests). No test weakening or warning suppression. Existing five repository tests retained, nine new tests added overall.
+
+Configured DEV release **exit0**, 46.8s wall/46.4s compiler, same verified DEV defines and command as above. Final bytes/SHA256:
+- index.html: 1,531 / `a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858`.
+- flutter_bootstrap.js: 9,805 / `0cec5f2734f9e60c05d76b120829c68acbc55f9e62387c91223181b5851e7d67`.
+- main.dart.js: 4,677,702 / `8a13ff7e5500360cd5b7b94b314c3ab7f50470576fa045d92a60653d7b36bf7d`.
+
+Backend production/tests/schema and Flutter dependency files are byte-identical to independently validated6ab3b38 (`git diff --exit-code` exit0); the 198 actual PostgreSQL-enabled backend passes above are reused on that explicit unchanged-code basis, not claimed as a fresh corrected-head backend rerun. Both isolated source checkouts clean after checks; original four dirty documentation files preserved.
+
+Independent static review, full automated tests and configured DEV compile **PASS**. Found bounded-list issue fixed. Four additional lifecycle probes pass. Hosted/device/native/accessibility acceptance remains OPEN, and no rollout or merge performed. GitHub UI verified the alert: Codespace “bookish happiness” stopped. Shutdown proof captured; disposable PostgreSQL already stopped.
