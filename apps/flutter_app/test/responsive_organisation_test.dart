@@ -134,7 +134,7 @@ void main() {
         expect(find.byType(NavigationBar), findsOneWidget);
         expect(
           tester.widget<NavigationBar>(find.byType(NavigationBar)).destinations,
-          hasLength(5),
+          hasLength(6),
         );
         await tester.tap(find.byTooltip('Switch workspace'));
         await tester.pumpAndSettle();

@@ -1,3 +1,4 @@
+import 'package:int_qa_flow/features/suggestions/group_suggestion_workspace.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -6521,6 +6522,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                               value: 'transfer_admin',
                               child: Text('Request admin transfer'),
                             ),
+                            const PopupMenuItem(
+                              value: 'suggestions',
+                              child: Text('Suggestions & practices'),
+                            ),
                             const PopupMenuDivider(),
                             const PopupMenuItem(
                               value: 'remove',
@@ -7404,6 +7409,26 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     return _buildGroupsScaffold();
   }
 
+  Future<void> _openSuggestionBank() async {
+    final groupId = _groupId;
+    final uid = _activeUid;
+    if (groupId == null || uid == null || _busy) return;
+    final result = await _showScopedGroupDialog<Map<String, dynamic>>(
+      barrierDismissible: false,
+      builder: (_) =>
+          Dialog.fullscreen(child: GroupSuggestionWorkspace(groupId: groupId)),
+    );
+    if (result == null || !mounted || _activeUid != uid || _groupId != groupId)
+      return;
+    final targetGroup = result['groupId'] as String?;
+    final entryId = result['entryId'] as String?;
+    if (targetGroup == null || entryId == null) return;
+    await _loadGroup(targetGroup);
+    if (!mounted || _activeUid != uid || _groupId != targetGroup) return;
+    final entries = _entries.where((e) => e['id'] == entryId);
+    if (entries.isNotEmpty) await _openEntry(entries.first);
+  }
+
   Widget _buildGroupsScaffold() => Scaffold(
     appBar: AppBar(
       toolbarHeight: 48,
@@ -7449,6 +7474,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                   _createGroup();
                 case 'join':
                   _joinByInvitation();
+                case 'suggestions':
+                  _openSuggestionBank();
                 case 'members':
                   _showMembers();
                 case 'share':
