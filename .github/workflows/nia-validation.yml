@@ -22,6 +22,6 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: dart format --output=none --set-exit-if-changed ../../packages/nopak_nia/lib lib/core/nia test/nia_foundation_test.dart test/nia_guidance_widget_test.dart
+      - run: dart format --output=none --set-exit-if-changed ../../packages/nopak_nia/lib lib/core/nia test/nia_foundation_test.dart test/nia_guidance_widget_test.dart test/nia_teaching_test.dart lib/shared/widgets/workspace_tabs.dart
       - run: flutter analyze --no-fatal-infos
       - run: flutter test --no-pub --reporter expanded

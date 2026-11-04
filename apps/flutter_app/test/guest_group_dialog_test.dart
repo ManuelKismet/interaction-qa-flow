@@ -719,16 +719,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Knowledge'), findsOneWidget);
     expect(find.text('Interact'), findsOneWidget);
-    final groups = find.widgetWithText(TextButton, 'Groups');
+    final groups = find.widgetWithText(Tab, 'Groups');
     expect(groups, findsOneWidget);
     expect(
       tester.getCenter(groups).dx,
       greaterThan(tester.getCenter(find.text('Interact')).dx),
     );
+    await tester.tap(find.text('Interact'));
+    await tester.pumpAndSettle();
     await tester.tap(groups);
     await tester.pumpAndSettle();
     expect(find.byType(SharedGuestGroupsPage), findsOneWidget);
     expect(repository.listGroupsCalls, greaterThan(0));
+    final selected = tester.widget<TabBar>(find.byType(TabBar)).controller;
+    expect(selected?.index, 2);
+    await tester.tap(find.widgetWithText(Tab, 'Knowledge'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SharedGuestGroupsPage), findsNothing);
+    expect(
+      find.widgetWithText(TextField, 'Search Knowledge & Interact'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -1160,17 +1171,7 @@ void main() {
       ),
       findsNothing,
     );
-    await tester.tap(find.byTooltip('Groups information'));
-    await tester.pumpAndSettle();
-    expect(find.text('About groups'), findsOneWidget);
-    expect(
-      find.textContaining(
-        'Group access follows this verified identity and is separate from organisation membership.',
-      ),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
+    expect(find.byTooltip('Groups information'), findsNothing);
   });
 
   testWidgets('group creation validates required fields in place', (
@@ -1843,9 +1844,7 @@ void main() {
       find.textContaining('asked to accept group administration'),
       findsNothing,
     );
-    await tester.tap(find.byTooltip('Groups information'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Your Group role is admin.'), findsOneWidget);
+    expect(find.byTooltip('Groups information'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

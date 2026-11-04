@@ -128,22 +128,10 @@ void main() {
     expect(label.style?.color, Theme.of(context).colorScheme.onSurfaceVariant);
     expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
     expect(find.byTooltip('Account'), findsOneWidget);
-    for (final tooltip in ['Workspace storage information', 'Search help']) {
-      expect(
-        find.ancestor(
-          of: find.byTooltip(tooltip),
-          matching: find.byType(AppBar),
-        ),
-        findsOneWidget,
-      );
-    }
+    expect(find.byTooltip('Workspace storage information'), findsNothing);
+    expect(find.byTooltip('Search help'), findsNothing);
     expect(find.textContaining('Guest workspace ·'), findsNothing);
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Guest workspace ·'), findsOneWidget);
-    expect(find.textContaining('Clearing browser data'), findsOneWidget);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
+    expect(find.byTooltip('Workspace storage information'), findsNothing);
     await tester.tap(find.text('Interact'));
     await tester.pumpAndSettle();
     final sessionField = tester.widget<TextField>(_field('Session title'));
@@ -334,19 +322,7 @@ void main() {
           greaterThan(tester.getTopLeft(title).dy),
         );
       }
-      for (final tooltip in [
-        'Workspace storage information',
-
-        'Interact privacy information',
-      ]) {
-        final icon = tester.widget<Icon>(
-          find.descendant(
-            of: find.byTooltip(tooltip),
-            matching: find.byType(Icon),
-          ),
-        );
-        expect(icon.size, 16);
-      }
+      expect(find.byTooltip('Interact privacy information'), findsNothing);
       final field = find.byKey(
         const ValueKey('guest-question-text-shared-root'),
       );
@@ -457,23 +433,14 @@ void main() {
         tester.widget<TextField>(localSearch).decoration!.helperText,
         isNull,
       );
-      expect(find.byTooltip('Search help'), findsOneWidget);
+      expect(find.byTooltip('Search help'), findsNothing);
       expect(
         tester.getTopLeft(localSearch).dy,
         lessThan(tester.getTopLeft(find.text('Add a local question')).dy),
       );
       expect(find.text('Add a local question'), findsOneWidget);
       expect(find.text('Password rotation'), findsNothing);
-      await tester.tap(find.byTooltip('Search help'));
-      await tester.pumpAndSettle();
-      expect(
-        find.text(
-          'This search covers Knowledge and Interact stored on this device. It stays local. Related results can help you reuse an existing answer before adding another question.',
-        ),
-        findsOneWidget,
-      );
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
+      expect(find.byTooltip('Search help'), findsNothing);
       expect(find.byType(AlertDialog), findsNothing);
 
       await tester.enterText(localSearch, 'passw');
@@ -937,23 +904,7 @@ void main() {
     );
     expect(participantGuidance.decoration.helperText, isNull);
     expect(participantGuidance.decoration.helperMaxLines, isNull);
-    final participantHelp = find.byTooltip('Active participant help');
-    await _ensureVisibleInGuestList(
-      tester,
-      participantHelp,
-      anchor: editorAnchor,
-    );
-    expect(participantHelp, findsOneWidget);
-    await tester.tap(participantHelp);
-    await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'Answers and individual questions belong to the selected participant. Changing the active participant changes the answers shown; it does not copy another participant’s responses.',
-      ),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
+    expect(find.byTooltip('Active participant help'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -1023,70 +974,62 @@ void main() {
     },
   );
 
-  testWidgets('desktop guest Knowledge and Interact forms stay readable width', (
-    tester,
-  ) async {
-    _registerGuestCleanup(tester);
-    tester.view.physicalSize = const Size(1280, 1000);
-    tester.view.devicePixelRatio = 1;
+  testWidgets(
+    'desktop guest Knowledge and Interact forms stay readable width',
+    (tester) async {
+      _registerGuestCleanup(tester);
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
 
-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
-    await store.save(
-      GuestWorkspaceData(
-        templates: const [
-          {'id': 'template-1', 'name': 'Interview template', 'questions': []},
-        ],
-      ),
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
-        child: const MaterialApp(
-          home: GuestWorkspacePage(firebaseReady: false),
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        GuestWorkspaceData(
+          templates: const [
+            {'id': 'template-1', 'name': 'Interview template', 'questions': []},
+          ],
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [guestWorkspaceStoreProvider.overrideWithValue(store)],
+          child: const MaterialApp(
+            home: GuestWorkspacePage(firebaseReady: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(_field('Search Knowledge & Interact'), findsOneWidget);
-    await tester.tap(find.text('Saved Q&A'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.getSize(_field('Search Knowledge & Interact')).width,
-      lessThanOrEqualTo(840),
-    );
-    await tester.tap(find.text('Back to add a local question'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Interact').first);
-    await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'New Interact sessions stay local. '
-        'Imported sessions stay in your personal account.',
-      ),
-      findsNothing,
-    );
-    await tester.tap(find.byTooltip('Interact privacy information'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'New sessions stay on this device. Select the participant whose answers you are recording; save or export the flow when you need a copy elsewhere.',
-      ),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.getSize(_field('New Interact session')).width,
-      lessThan(1040),
-    );
-    final templatePicker = find.byWidgetPredicate(
-      (widget) =>
-          widget is DropdownButtonFormField<String?> &&
-          widget.decoration.labelText == 'Optional template',
-    );
-    expect(tester.getSize(templatePicker).width, lessThanOrEqualTo(1040));
-  });
+      expect(_field('Search Knowledge & Interact'), findsOneWidget);
+      await tester.tap(find.text('Saved Q&A'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(_field('Search Knowledge & Interact')).width,
+        lessThanOrEqualTo(840),
+      );
+      await tester.tap(find.text('Back to add a local question'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Interact').first);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'New Interact sessions stay local. '
+          'Imported sessions stay in your personal account.',
+        ),
+        findsNothing,
+      );
+      expect(find.byTooltip('Interact privacy information'), findsNothing);
+      expect(
+        tester.getSize(_field('New Interact session')).width,
+        lessThan(1040),
+      );
+      final templatePicker = find.byWidgetPredicate(
+        (widget) =>
+            widget is DropdownButtonFormField<String?> &&
+            widget.decoration.labelText == 'Optional template',
+      );
+      expect(tester.getSize(templatePicker).width, lessThanOrEqualTo(1040));
+    },
+  );
 
   testWidgets(
     'switching active participants keeps answers and targeted branches after reload',
@@ -1125,25 +1068,12 @@ void main() {
       }
 
       await showWorkspace();
-      expect(find.byTooltip('Active participant help'), findsOneWidget);
-      expect(find.byTooltip('Question help'), findsOneWidget);
+      expect(find.byTooltip('Active participant help'), findsNothing);
+      expect(find.byTooltip('Question help'), findsNothing);
       expect(find.text('Prepared question'), findsNothing);
       expect(find.byTooltip('Prepared question help'), findsNothing);
-      await _ensureVisibleInGuestList(
-        tester,
-        find.byTooltip('Question help'),
-        anchor: find.byTooltip('Back to sessions'),
-      );
-      await tester.tap(find.byTooltip('Question help').hitTestable());
-      await tester.pumpAndSettle();
-      expect(
-        find.text(
-          'Shared questions have separate answers for each participant. Participant questions apply only to their selected participant. Add a follow-up from the relevant answer to preserve its branch.',
-        ),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
+      expect(find.byTooltip('Question help'), findsNothing);
+
       expect(_answerField(tester).controller!.text, 'Alice answer');
       await _ensureVisibleInGuestList(
         tester,
@@ -1498,11 +1428,7 @@ void main() {
         find.text('Your changes are not saved. Keep this page open and retry.'),
         findsNothing,
       );
-      await tester.tap(find.byTooltip('Workspace storage information'));
-      await tester.pumpAndSettle();
       expect(find.textContaining('Saved on this device'), findsOneWidget);
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );
@@ -1817,11 +1743,7 @@ void main() {
     await tester.enterText(_field('Question'), 'Latest change');
     await tester.tap(saveButton);
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pump();
     expect(find.textContaining('Saving locally…'), findsOneWidget);
-    await tester.tap(find.text('Close'));
-    await tester.pump();
 
     store.releaseFirstWrite();
     await tester.pumpAndSettle();
@@ -1831,11 +1753,7 @@ void main() {
       'First change',
     ]);
     expect(store.writeSnapshots.last, ['Latest change', 'First change']);
-    await tester.tap(find.byTooltip('Workspace storage information'));
-    await tester.pumpAndSettle();
     expect(find.textContaining('Saved on this device'), findsOneWidget);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
   });
 
   testWidgets(

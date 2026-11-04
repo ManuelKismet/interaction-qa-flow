@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:nopak_nia/nopak_nia.dart';
 import 'intqaflow_capabilities.dart';
+import 'nia_teaching.dart';
+export 'nia_teaching.dart' show NiaTeaching;
 export 'intqaflow_capabilities.dart' show NiaTopic;
 
 /// One owner below the real application authentication boundary. No private
@@ -12,8 +15,10 @@ class NiaHost extends StatefulWidget {
     required this.subject,
     required this.authorityRevision,
     required this.child,
+    this.teaching,
     super.key,
   });
+  final NiaTeaching? teaching;
   final String subject, authorityRevision;
   final Widget child;
 
@@ -25,6 +30,9 @@ class NiaHost extends StatefulWidget {
         ? child
         : _NiaRouteScope(binding: binding, child: child);
   }
+
+  static NiaTeaching? teachingOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_NiaInherited>()?.teaching;
 
   static Object? bindingOf(BuildContext context) {
     final host = context.dependOnInheritedWidgetOfExactType<_NiaInherited>();
@@ -39,7 +47,23 @@ class NiaHost extends StatefulWidget {
   State<NiaHost> createState() => _NiaHostState();
 }
 
-class _NiaHostState extends State<NiaHost> {
+class _NiaHostState extends State<NiaHost> with WidgetsBindingObserver {
+  late final NiaTeaching teaching = (widget.teaching ?? NiaTeaching())
+    ..bind(widget.subject);
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      session.invalidate();
+      teaching.withdraw();
+    }
+  }
+
   late final NiaSession session = NiaSession(
     product: 'intqaflow',
     clock: () => DateTime.now().toUtc(),
@@ -47,6 +71,7 @@ class _NiaHostState extends State<NiaHost> {
   @override
   void didUpdateWidget(NiaHost old) {
     super.didUpdateWidget(old);
+    teaching.bind(widget.subject);
     if (old.subject != widget.subject)
       session.bind(widget.subject);
     else if (old.authorityRevision != widget.authorityRevision)
@@ -55,6 +80,8 @@ class _NiaHostState extends State<NiaHost> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    teaching.dispose();
     session.dispose();
     super.dispose();
   }
@@ -62,6 +89,7 @@ class _NiaHostState extends State<NiaHost> {
   @override
   Widget build(BuildContext context) => _NiaInherited(
     session: session,
+    teaching: teaching,
     revision: (widget.subject, widget.authorityRevision),
     child: widget.child,
   );
@@ -70,12 +98,14 @@ class _NiaHostState extends State<NiaHost> {
 class _NiaInherited extends InheritedWidget {
   const _NiaInherited({
     required this.session,
+    required this.teaching,
     required this.revision,
     this.workspace = 'local',
     this.available = true,
     required super.child,
   });
   final NiaSession session;
+  final NiaTeaching teaching;
   final (String, String) revision;
   final String workspace;
   final bool available;
@@ -122,6 +152,7 @@ class _NiaRouteScopeState extends State<_NiaRouteScope> {
   @override
   Widget build(BuildContext context) => _NiaInherited(
     session: widget.binding.session,
+    teaching: widget.binding.teaching,
     revision: widget.binding.revision,
     workspace: widget.binding.workspace,
     available: widget.binding.available && !invalid,
@@ -186,6 +217,7 @@ class _NiaWorkspaceScopeState extends State<NiaWorkspaceScope> {
         ? widget.child
         : _NiaInherited(
             session: value.session,
+            teaching: value.teaching,
             revision: (value.revision.$1, revision(value)),
             workspace: widget.workspace,
             available: value.available && widget.available,
@@ -201,6 +233,7 @@ NiaDecision? _evaluateGuidance(
   NiaTopic topic,
   Map<String, Object?> facts, {
   bool requested = false,
+  bool lesson = false,
   bool busy = false,
   bool complete = false,
 }) {
@@ -225,7 +258,7 @@ NiaDecision? _evaluateGuidance(
       kind: requested ? 'requested' : 'changed',
       occurredAt: snapshot.observedAt,
     ),
-    capability: IntQaFlowGuidance(topic, requested: requested),
+    capability: IntQaFlowGuidance(topic, requested: requested || lesson),
     requested: requested,
     visible: ModalRoute.of(context)?.isCurrent ?? true,
     busy: busy,
@@ -234,292 +267,285 @@ NiaDecision? _evaluateGuidance(
   return decision.outcome == NiaOutcome.suggested ? decision : null;
 }
 
-Future<void> showNiaGuidance(
-  BuildContext context, {
-  required NiaTopic topic,
-  required String title,
-  Map<String, Object?> facts = const {},
-}) async {
-  final inherited = NiaHost.sessionOf(context);
-  final owner =
-      inherited ??
-      (NiaSession(product: 'intqaflow', clock: () => DateTime.now().toUtc())
-        ..bind('local'));
-  try {
-    final decision = _evaluateGuidance(
-      context,
-      owner,
-      topic,
-      facts,
-      requested: true,
-    );
-    if (decision == null || !owner.isCurrent(decision) || !context.mounted)
-      return;
-    await showDialog<void>(
-      context: context,
-      builder: (context) =>
-          _GuidanceDialog(title: title, owner: owner, decision: decision),
-    );
-  } finally {
-    if (inherited == null) owner.dispose();
-  }
-}
-
-mixin _NiaEvaluation<T extends StatefulWidget> on State<T> {
-  NiaSession? _local;
-  NiaSession get session =>
-      NiaHost.sessionOf(context) ??
-      (_local ??= NiaSession(
-        product: 'intqaflow',
-        clock: () => DateTime.now().toUtc(),
-      )..bind('local'));
-  NiaDecision? decide(
-    NiaTopic topic,
-    Map<String, Object?> facts, {
-    bool requested = false,
-    bool busy = false,
-    bool complete = false,
-  }) => _evaluateGuidance(
-    context,
-    session,
-    topic,
-    facts,
-    requested: requested,
-    busy: busy,
-    complete: complete,
-  );
-  @override
-  void dispose() {
-    _local?.dispose();
-    super.dispose();
-  }
-}
-
-/// On-demand contextual explanation in the existing control's position. The
-/// previous static information blobs do not enter this interface.
-class NiaHelpButton extends StatelessWidget {
-  const NiaHelpButton({
-    required this.topic,
-    required this.tooltip,
-    required this.title,
-    this.facts = const {},
-    super.key,
-  });
-  final NiaTopic topic;
-  final String tooltip, title;
-  final Map<String, Object?> facts;
-  @override
-  Widget build(BuildContext context) => IconButton(
-    tooltip: tooltip,
-    icon: const Icon(Icons.lightbulb_outline, size: 16),
-    onPressed: () =>
-        showNiaGuidance(context, topic: topic, title: title, facts: facts),
-  );
-}
-
-class _GuidanceDialog extends StatefulWidget {
-  const _GuidanceDialog({
-    required this.title,
-    required this.owner,
-    required this.decision,
-  });
-  final String title;
-  final NiaSession owner;
-  final NiaDecision decision;
-  @override
-  State<_GuidanceDialog> createState() => _GuidanceDialogState();
-}
-
-class _GuidanceDialogState extends State<_GuidanceDialog> {
-  Timer? expiry;
-  void Function()? unsubscribe;
-  @override
-  void initState() {
-    super.initState();
-    unsubscribe = widget.owner.listen(() {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() {});
-      });
-    });
-    expiry = Timer(
-      widget.decision.context.expiresAt.difference(DateTime.now().toUtc()),
-      () {
-        if (mounted) setState(() {});
-      },
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.owner.markPresented(widget.decision);
-    });
-  }
-
-  @override
-  void dispose() {
-    expiry?.cancel();
-    unsubscribe?.call();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final current = widget.owner.isCurrent(widget.decision);
-    return AlertDialog(
-      title: Text(widget.title),
-      scrollable: true,
-      content: current
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final p in widget.decision.proposals)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(p.message),
-                  ),
-              ],
-            )
-          : const Text(
-              'The workspace context changed. Close this explanation and reopen it for the current state.',
-            ),
-      actions: [
-        if (current)
-          TextButton(
-            onPressed: () {
-              widget.owner.acceptFeedback(widget.decision, NiaFeedback.helpful);
-              Navigator.pop(context);
-            },
-            child: const Text('Helpful'),
-          ),
-        TextButton(
-          onPressed: () {
-            widget.owner.acceptFeedback(widget.decision, NiaFeedback.dismissed);
-            Navigator.pop(context);
-          },
-          child: const Text('Close'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Only meaningful current-state guidance is eligible. No generic review card,
-/// feed, repeated polling or automatic server call exists here.
 class NiaInlineGuidance extends StatefulWidget {
   const NiaInlineGuidance({
     required this.topic,
     this.facts = const {},
+    this.actions = const {},
     this.busy = false,
     this.complete = false,
-    this.actions = const {},
+    this.eligible = true,
+    this.lessonId,
+    this.inputs = const [],
     super.key,
   });
   final NiaTopic topic;
   final Map<String, Object?> facts;
-  final bool busy, complete;
   final Map<String, (String, VoidCallback)> actions;
+  final bool busy, complete, eligible;
+  final String? lessonId;
+  final List<TextEditingController> inputs;
   @override
   State<NiaInlineGuidance> createState() => _NiaInlineGuidanceState();
 }
 
 class _NiaInlineGuidanceState extends State<NiaInlineGuidance>
-    with _NiaEvaluation<NiaInlineGuidance> {
-  NiaDecision? decision;
-  Timer? expiry;
+    with WidgetsBindingObserver {
+  NiaTeaching? teaching;
   NiaSession? owner;
+  NiaDecision? decision;
   Object? binding;
-  bool dismissed = false;
-  void evaluate() {
-    expiry?.cancel();
-    owner = session;
-    decision = decide(
-      widget.topic,
-      widget.facts,
-      busy: widget.busy,
-      complete: widget.complete,
-    );
-    final current = decision;
-    if (current != null) {
-      expiry = Timer(
-        current.context.expiresAt.difference(DateTime.now().toUtc()),
-        () {
-          if (mounted) setState(() => decision = null);
-        },
-      );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && identical(decision, current))
-          owner?.markPresented(current);
-      });
+  Timer? expiry;
+  void Function()? stopListening;
+  bool queued = false, attempted = false, recorded = false;
+  bool foreground = true, active = true;
+  String get lesson =>
+      widget.lessonId ??
+      (widget.topic.name +
+          (widget.facts['overdue'] == true
+              ? '.overdue'
+              : widget.facts['unread'] == true
+              ? '.updates'
+              : '.state'));
+  bool get editing {
+    final focused = FocusManager.instance.primaryFocus?.context;
+    if (focused == null) return false;
+    if (!focused.mounted) return true;
+    try {
+      return focused.widget is EditableText ||
+          focused.findAncestorWidgetOfExactType<EditableText>() != null;
+    } on FlutterError {
+      // Focus can still reference a deactivated route for the current frame.
+      // Unknown focus is busy, so optional guidance stays quiet until rebinding.
+      return true;
     }
+  }
+
+  bool get idle =>
+      active &&
+      !widget.busy &&
+      !widget.complete &&
+      widget.eligible &&
+      !widget.inputs.any((input) => input.text.isNotEmpty) &&
+      !editing &&
+      foreground &&
+      NiaTabSurface.visibleOf(context) &&
+      (ModalRoute.of(context)?.isCurrent ?? false);
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    foreground =
+        WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    for (final input in widget.inputs) {
+      input.addListener(changed);
+    }
+    FocusManager.instance.addListener(changed);
+  }
+
+  bool refreshQueued = false;
+  void changed() {
+    if (!mounted || !active || refreshQueued) return;
+    refreshQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      refreshQueued = false;
+      if (mounted && active) setState(() {});
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    foreground = state == AppLifecycleState.resumed;
+    changed();
+  }
+
+  void clear() {
+    expiry?.cancel();
+    expiry = null;
+    decision = null;
+    teaching?.release(this);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final currentBinding = NiaHost.bindingOf(context);
-    if (owner != session || binding != currentBinding) {
-      binding = currentBinding;
-      dismissed = false;
-      evaluate();
+    final next = NiaHost.teachingOf(context);
+    final current = NiaHost.bindingOf(context);
+    if (teaching != next || binding != current) {
+      clear();
+      teaching?.removeListener(changed);
+      stopListening?.call();
+      attempted = false;
+      teaching = next;
+      binding = current;
+      owner = NiaHost.sessionOf(context);
+      teaching?.addListener(changed);
+      stopListening = owner?.listen(changed);
     }
   }
 
   @override
   void didUpdateWidget(NiaInlineGuidance old) {
     super.didUpdateWidget(old);
-    if (old.topic != widget.topic ||
-        old.busy != widget.busy ||
-        old.complete != widget.complete ||
-        !mapEquals(old.facts, widget.facts)) {
-      dismissed = false;
-      evaluate();
+    for (final input in old.inputs) {
+      input.removeListener(changed);
     }
+    for (final input in widget.inputs) {
+      input.addListener(changed);
+    }
+    if (old.topic != widget.topic ||
+        old.lessonId != widget.lessonId ||
+        !mapEquals(old.facts, widget.facts)) {
+      clear();
+      attempted = false;
+    }
+  }
+
+  void queue() {
+    if (queued) return;
+    queued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      queued = false;
+      if (!mounted || !active) return;
+      if (!idle || teaching?.enabled != true) {
+        if (decision != null) {
+          clear();
+          changed();
+        }
+        return;
+      }
+      if (decision != null && !(owner?.isCurrent(decision!) ?? false)) {
+        clear();
+        changed();
+      }
+      if (attempted ||
+          decision != null ||
+          teaching == null ||
+          owner == null ||
+          !teaching!.claim(this, lesson, remember: widget.lessonId != null))
+        return;
+      attempted = true;
+      final d = _evaluateGuidance(
+        context,
+        owner!,
+        widget.topic,
+        widget.facts,
+        lesson: widget.lessonId != null,
+      );
+      if (d == null) {
+        teaching!.release(this);
+        return;
+      }
+      setState(() {
+        decision = d;
+        recorded = false;
+      });
+      expiry = Timer(const Duration(seconds: 8), () {
+        if (mounted) {
+          clear();
+          changed();
+        }
+      });
+    });
+  }
+
+  @override
+  void deactivate() {
+    active = false;
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    active = true;
   }
 
   @override
   void dispose() {
-    expiry?.cancel();
+    for (final input in widget.inputs) {
+      input.removeListener(changed);
+    }
+    FocusManager.instance.removeListener(changed);
+    WidgetsBinding.instance.removeObserver(this);
+    stopListening?.call();
+    teaching?.removeListener(changed);
+    clear();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    queue();
     final d = decision;
-    if (dismissed ||
+    if (!idle ||
         d == null ||
-        !(owner?.isCurrent(d) ?? false) ||
-        widget.busy)
+        teaching?.enabled != true ||
+        teaching?.owns(this) != true ||
+        !(owner?.isCurrent(d) ?? false))
       return const SizedBox.shrink();
-    final p = d.proposals.first;
-    final action = widget.actions[p.action];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Semantics(
-        liveRegion: true,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                p.message,
-                style: Theme.of(context).textTheme.bodySmall,
+    final proposal = d.proposals.first;
+    final action = widget.actions[proposal.action];
+    return _NiaHintPaint(
+      onPaint: () {
+        if (recorded) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted &&
+              !recorded &&
+              idle &&
+              identical(decision, d) &&
+              owner!.isCurrent(d) &&
+              teaching!.owns(this)) {
+            if (owner!.markPresented(d)) {
+              recorded = true;
+              teaching!.shown(this, lesson);
+            }
+          }
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Semantics(
+          liveRegion: true,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 8, right: 8),
+                child: Icon(Icons.tips_and_updates_outlined, size: 18),
               ),
-            ),
-            if (action != null)
-              TextButton(
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    proposal.message,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ),
+              if (action != null)
+                TextButton(
+                  onPressed: () {
+                    if (idle && owner!.isCurrent(d)) {
+                      clear();
+                      action.$2();
+                    }
+                  },
+                  child: Text(action.$1),
+                ),
+              IconButton(
+                tooltip: 'Got it — hide this tip',
+                icon: const Icon(Icons.close, size: 18),
                 onPressed: () {
-                  if (owner?.isCurrent(d) ?? false) action.$2();
+                  owner?.acceptFeedback(d, NiaFeedback.dismissed);
+                  clear();
+                  changed();
                 },
-                child: Text(action.$1),
               ),
-            IconButton(
-              tooltip: 'Dismiss guidance',
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.close, size: 16),
-              onPressed: () {
-                owner?.acceptFeedback(d, NiaFeedback.dismissed);
-                setState(() => dismissed = true);
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -576,5 +602,130 @@ class NiaReadGuard {
       owner.dispose();
     else
       owner.revokeContext(snapshot);
+  }
+}
+
+/// Visibility follows the real body controller, including swipe navigation.
+class NiaTabSurface extends StatefulWidget {
+  const NiaTabSurface({required this.index, required this.child, super.key});
+  final int index;
+  final Widget child;
+  static bool visibleOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_NiaVisible>()?.visible ??
+      true;
+  @override
+  State<NiaTabSurface> createState() => _NiaTabSurfaceState();
+}
+
+class _NiaTabSurfaceState extends State<NiaTabSurface> {
+  TabController? controller;
+  void changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = DefaultTabController.maybeOf(context);
+    if (next != controller) {
+      controller?.removeListener(changed);
+      controller = next;
+      controller?.addListener(changed);
+    }
+  }
+
+  @override
+  void dispose() {
+    controller?.removeListener(changed);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => _NiaVisible(
+    visible: controller == null || controller!.index == widget.index,
+    child: widget.child,
+  );
+}
+
+class _NiaVisible extends InheritedWidget {
+  const _NiaVisible({required this.visible, required super.child});
+  final bool visible;
+  @override
+  bool updateShouldNotify(_NiaVisible old) => old.visible != visible;
+}
+
+class NiaWorkflowSurface extends StatelessWidget {
+  const NiaWorkflowSurface({
+    required this.topic,
+    required this.lessonId,
+    required this.child,
+    this.facts = const {},
+    this.busy = false,
+    super.key,
+  });
+  final NiaTopic topic;
+  final String lessonId;
+  final Widget child;
+  final Map<String, Object?> facts;
+  final bool busy;
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 840),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: NiaInlineGuidance(
+              topic: topic,
+              lessonId: lessonId,
+              facts: facts,
+              busy: busy,
+            ),
+          ),
+        ),
+      ),
+      Expanded(child: child),
+    ],
+  );
+}
+
+PopupMenuItem<String> niaGuidanceMenuItem(BuildContext context) {
+  final teaching = NiaHost.teachingOf(context);
+  return PopupMenuItem<String>(
+    value: 'nia-guidance',
+    enabled: teaching?.ready == true,
+    onTap: () => teaching?.setEnabled(!teaching.enabled),
+    child: Text(
+      teaching?.enabled == false
+          ? 'Turn NIA guidance on'
+          : 'Turn NIA guidance off',
+    ),
+  );
+}
+
+class _NiaHintPaint extends SingleChildRenderObjectWidget {
+  const _NiaHintPaint({required this.onPaint, required super.child});
+  final VoidCallback onPaint;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _NiaPaintObserver(onPaint);
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _NiaPaintObserver renderObject,
+  ) {
+    renderObject.onPaint = onPaint;
+  }
+}
+
+class _NiaPaintObserver extends RenderProxyBox {
+  _NiaPaintObserver(this.onPaint);
+  VoidCallback onPaint;
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    onPaint();
   }
 }

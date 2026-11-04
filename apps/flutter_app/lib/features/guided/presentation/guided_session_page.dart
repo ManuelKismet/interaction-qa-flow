@@ -245,6 +245,13 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         _activeName = activeParticipant?.name;
         final answered = _countAnswered(session.questions, _participantId);
         final topArea = <Widget>[
+          NiaInlineGuidance(
+            topic: NiaTopic.lifecycle,
+            lessonId: 'session.${session.status}',
+            facts: {'status': session.status, 'canManage': canManageSession},
+            busy: _saveState == GuidedSaveState.saving,
+          ),
+
           _SessionHeader(
             session: session,
             saveState:
@@ -262,7 +269,6 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
             }),
             onExport: (format) => _export(session, format),
             onHistory: _history,
-            onLifecycleInfo: () => _lifecycleInfo(session, canManageSession),
             onSessionAction: canManageSession
                 ? (action) => _sessionAction(session, action)
                 : null,
@@ -816,18 +822,6 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
     return result == true && _isCurrent(repository, sessionId);
   }
 
-  Future<void> _lifecycleInfo(GuidedSessionDetail session, bool canEdit) {
-    final repository = ref.read(guidedRepositoryProvider);
-    final sessionId = session.id;
-    if (!_isCurrent(repository, sessionId)) return Future<void>.value();
-    return showNiaGuidance(
-      context,
-      topic: NiaTopic.lifecycle,
-      title: 'Lifecycle and recovery',
-      facts: {'status': session.status, 'canManage': canEdit},
-    );
-  }
-
   Future<void> _sessionAction(GuidedSessionDetail session, String action) {
     return switch (action) {
       'details' => _editDetails(session),
@@ -1125,7 +1119,6 @@ class _SessionHeader extends StatelessWidget {
     required this.onHistory,
     required this.onPrint,
     required this.onTransition,
-    required this.onLifecycleInfo,
     required this.onSessionAction,
   });
 
@@ -1139,7 +1132,6 @@ class _SessionHeader extends StatelessWidget {
   final VoidCallback onHistory;
   final VoidCallback? onPrint;
   final VoidCallback? onTransition;
-  final VoidCallback onLifecycleInfo;
   final ValueChanged<String>? onSessionAction;
 
   @override
@@ -1189,11 +1181,7 @@ class _SessionHeader extends StatelessWidget {
             style: const TextStyle(color: Colors.black54),
           ),
         ),
-      IconButton(
-        tooltip: 'Lifecycle and recovery',
-        icon: const Icon(Icons.info_outline, size: 20),
-        onPressed: onLifecycleInfo,
-      ),
+      const SizedBox.shrink(),
       PopupMenuButton<String>(
         tooltip: 'Reports and export',
         icon: const Icon(Icons.download_outlined, size: 20),

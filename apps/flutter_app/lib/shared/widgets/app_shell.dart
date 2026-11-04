@@ -148,17 +148,9 @@ class AppShell extends ConsumerWidget {
           return;
         }
         ref.read(firebaseAuthProvider).signOut();
-      } else if (value == 'group-info') {
-        showNiaGuidance(
-          context,
-          topic: NiaTopic.groups,
-          title: 'About Group access',
-          facts: {
-            'verified': isVerifiedRegisteredFirebaseUser(
-              ref.read(firebaseAuthProvider).currentUser,
-            ),
-          },
-        );
+      } else if (value == 'nia-guidance') {
+        final teaching = NiaHost.teachingOf(context);
+        teaching?.setEnabled(!teaching.enabled);
       }
     },
     itemBuilder: (context) => [
@@ -180,12 +172,13 @@ class AppShell extends ConsumerWidget {
         ),
       ),
       const PopupMenuDivider(),
-      const PopupMenuItem(
-        value: 'group-info',
-        child: ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.info_outline),
-          title: Text('Group access information'),
+      PopupMenuItem(
+        value: 'nia-guidance',
+        enabled: NiaHost.teachingOf(context)?.ready == true,
+        child: Text(
+          NiaHost.teachingOf(context)?.enabled == false
+              ? 'Turn NIA guidance on'
+              : 'Turn NIA guidance off',
         ),
       ),
       const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
