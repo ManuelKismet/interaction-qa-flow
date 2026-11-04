@@ -31,3 +31,7 @@ Original head 6de32ac7e97148eb4022ddc080c1f64387586749 retained in merge history
 ## PR #9 — Improve search, protect Knowledge, and expand Interact workflows
 
 Original head d20a6bab7196d81e578f1b986e4dff239e108c31 retained in merge history. Current validated fixes win conflicting older implementations. Unique retained paths: apps/flutter_app/test/guided_template_draft_test.dart, apps/flutter_app/test/guided_ui_test.dart, backend/tests/test_guided.py.
+
+## PR #6 — Fix membership loading for empty JSON requests and expose safe dev auth errors
+
+Original head 9236eb5fcbd2f1212ebed8d2a345b72241d3d108 retained in merge history. Current validated fixes win conflicting older implementations. Unique retained paths: none; later source already incorporates the implementation.
