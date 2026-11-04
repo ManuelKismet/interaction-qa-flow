@@ -1,0 +1,1049 @@
+From 92213969c8f1d328e01494dc2812614bc98a47bb Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 11:59:13 +0000
+Subject: [PATCH] Add owner-only archived group deletion
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../guest/data/guest_group_repository.dart    |   4 +
+ .../presentation/guest_workspace_page.dart    | 180 ++++++++-
+ .../test/guest_group_dialog_test.dart         | 190 +++++++++-
+ backend/app/api/v1/routes/guest.py            |  15 +
+ backend/app/repositories/guest.py             |  34 +-
+ backend/app/services/guest.py                 |  31 ++
+ backend/tests/test_guest_groups.py            | 354 ++++++++++++++++++
+ docs/operations/guest-group-retention.md      |  29 +-
+ 8 files changed, 800 insertions(+), 37 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart b/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
+index fbe14ff..5eebb8d 100644
+--- a/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
++++ b/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
+@@ -180,6 +180,10 @@ class GuestGroupRepository {
+         return response.data!;
+       });
+ 
++  Future<void> permanentlyDeleteGroup(String groupId) => _request(() async {
++    await _client.delete<void>('/api/v1/guest/groups/$groupId/permanent');
++  });
++
+   Future<void> revokeInvitation({
+     required String groupId,
+     required String invitationId,
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 2b81c4d..2a5993a 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -2818,6 +2818,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+   String _joinDisplayNameDraft = '';
+   final Map<String, Map<String, String>> _createKnowledgeDrafts = {};
+   final Map<String, Map<String, String>> _entryEditDrafts = {};
++  final Set<String> _uncertainArchivedDeletionIds = {};
++  bool _archivedDeleteNeedsSafeRefresh = false;
+ 
+   GuestGroupRepository get _repository => ref.read(guestGroupRepositoryProvider);
+ 
+@@ -2862,6 +2864,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+       setState(() {
+         _groups = groups;
+         _archivedGroups = archivedGroups;
++        _uncertainArchivedDeletionIds.clear();
++        _archivedDeleteNeedsSafeRefresh = false;
+         _groupId = selected;
+       });
+       if (selected != null) {
+@@ -2969,6 +2973,110 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     });
+   }
+ 
++  Future<void> _deleteArchivedGroup(Map<String, dynamic> archived) async {
++    if (_busy || archived['can_delete'] != true) return;
++    final groupId = archived['id'] as String;
++    final groupName = archived['name'] as String? ?? 'Shared group';
++    final confirmed = await showDialog<bool>(
++      context: context,
++      builder: (context) => AlertDialog(
++        title: Text('Delete "$groupName" permanently?'),
++        content: const Text(
++          'This permanently deletes the shared group, its content, and its '
++          'memberships for everyone. It cannot be restored. Existing exports '
++          'and local copies are not affected.',
++        ),
++        actions: [
++          TextButton(
++            onPressed: () => Navigator.pop(context, false),
++            child: const Text('Cancel'),
++          ),
++          FilledButton(
++            onPressed: () => Navigator.pop(context, true),
++            child: const Text('Delete permanently'),
++          ),
++        ],
++      ),
++    );
++    if (confirmed != true || !mounted) return;
++    final deleted = await _run(() => _repository.permanentlyDeleteGroup(groupId));
++    if (deleted) {
++      await _loadGroups();
++    } else {
++      await _refreshArchivedAfterUncertainDelete(archived);
++    }
++  }
++
++  Future<void> _refreshArchivedAfterUncertainDelete(
++    Map<String, dynamic> archived,
++  ) async {
++    if (!mounted) return;
++    final groupId = archived['id'] as String;
++    final failure = _error ?? 'The request could not be verified.';
++    setState(() {
++      _busy = true;
++      _archivedDeleteNeedsSafeRefresh = true;
++    });
++    try {
++      final groups = await _repository.listArchivedGroups();
++      if (!mounted) return;
++      setState(() {
++        _archivedGroups = groups;
++        _uncertainArchivedDeletionIds.remove(groupId);
++        _error = '$failure Archived-group status was refreshed. '
++            'Review it before retrying.';
++      });
++    } on Object catch (error) {
++      if (!mounted) return;
++      setState(() {
++        _uncertainArchivedDeletionIds.add(groupId);
++        if (!_archivedGroups.any((group) => group['id'] == groupId)) {
++          _archivedGroups = [..._archivedGroups, archived];
++        }
++        _error = 'The deletion outcome is uncertain and archived-group status '
++            'could not be refreshed. ${_safeGuestError(error)} '
++            'The item is retained; refresh status before retrying.';
++      });
++    } finally {
++      if (mounted) setState(() => _busy = false);
++    }
++  }
++
++  Future<void> _refreshStatus() async {
++    if (_archivedDeleteNeedsSafeRefresh ||
++        _uncertainArchivedDeletionIds.isNotEmpty) {
++      await _refreshArchivedGroups();
++    } else {
++      await _loadGroups();
++    }
++  }
++
++  Future<void> _refreshArchivedGroups() async {
++    if (!mounted) return;
++    setState(() => _busy = true);
++    try {
++      final groups = await _repository.listArchivedGroups();
++      if (!mounted) return;
++      setState(() {
++        _archivedGroups = groups;
++        _uncertainArchivedDeletionIds.clear();
++        _archivedDeleteNeedsSafeRefresh = false;
++        _error = null;
++      });
++    } on Object catch (error) {
++      if (mounted) {
++        setState(
++          () => _error =
++              'Archived-group status could not be refreshed. '
++              '${_safeGuestError(error)} The item is retained; refresh status '
++              'before retrying.',
++        );
++      }
++    } finally {
++      if (mounted) setState(() => _busy = false);
++    }
++  }
++
+   Future<void> _respondToAdminTransfer({
+     required String groupId,
+     required String transferId,
+@@ -4053,7 +4161,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+             content: Text(_error!),
+             actions: [
+               TextButton(
+-                onPressed: _busy ? null : _loadGroups,
++                onPressed: _busy ? null : _refreshStatus,
+                 child: const Text('Refresh status'),
+               ),
+             ],
+@@ -4068,23 +4176,61 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+           ),
+           for (final archived in _archivedGroups)
+             Card(
+-              child: ListTile(
+-                title: Text(archived['name'] as String? ?? 'Shared group'),
+-                subtitle: Text(
+-                  archived['can_restore'] == true
+-                      ? 'Only this same Firebase account can restore by ${archived['restore_until']}. Invitations stay revoked; removed and pending memberships are not reactivated.'
+-                      : 'The 30-day restore window ended. Data is retained pending separately reviewed retention; this account cannot restore it.',
++              child: Padding(
++                padding: const EdgeInsets.all(12),
++                child: Column(
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: [
++                    Text(
++                      archived['name'] as String? ?? 'Shared group',
++                      style: Theme.of(context).textTheme.titleMedium,
++                    ),
++                    const SizedBox(height: 4),
++                    Text(
++                      _uncertainArchivedDeletionIds.contains(archived['id'])
++                          ? 'Deletion status is uncertain; refresh status before retrying.'
++                          : archived['can_restore'] == true
++                              ? 'Only this same Firebase account can restore by ${archived['restore_until']}. Invitations stay revoked; removed and pending memberships are not reactivated.'
++                              : 'The 30-day restore window ended. This account cannot restore the group.',
++                    ),
++                    if (!_uncertainArchivedDeletionIds.contains(
++                          archived['id'],
++                        ) &&
++                        (archived['can_restore'] == true ||
++                            archived['can_delete'] == true)) ...[
++                      const SizedBox(height: 8),
++                      Wrap(
++                        spacing: 8,
++                        runSpacing: 8,
++                        children: [
++                          if (!_uncertainArchivedDeletionIds.contains(
++                                archived['id'],
++                              ) &&
++                              archived['can_restore'] == true)
++                            OutlinedButton(
++                              onPressed: _busy
++                                  ? null
++                                  : () => _restoreArchivedGroup(
++                                      archived['id'] as String,
++                                    ),
++                              child: const Text('Restore'),
++                            ),
++                          if (!_uncertainArchivedDeletionIds.contains(
++                                archived['id'],
++                              ) &&
++                              archived['can_delete'] == true)
++                            TextButton.icon(
++                              onPressed: _busy
++                                  ? null
++                                  : () => _deleteArchivedGroup(archived),
++                              icon: const Icon(Icons.delete_forever_outlined),
++                              label: const Text('Delete permanently'),
++                            ),
++                        ],
++                      ),
++                    ],
++                  ],
+                 ),
+-                trailing: archived['can_restore'] == true
+-                    ? OutlinedButton(
+-                        onPressed: _busy
+-                            ? null
+-                            : () => _restoreArchivedGroup(
+-                                archived['id'] as String,
+-                              ),
+-                        child: const Text('Restore'),
+-                      )
+-                    : null,
+               ),
+             ),
+         ],
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index ad921f2..1235453 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -304,13 +304,19 @@ class _MemberManagementRepository extends GuestGroupRepository {
+   bool transferRequested;
+   bool transferAccepted = false;
+   bool archived = false;
++  bool deleted = false;
++  bool canRestore = true;
++  bool canDelete = true;
++  bool permanentDeleteFails = false;
++  bool archivedRefreshFails = false;
+   var transferRequests = 0;
+   var acceptTransferRequests = 0;
+   var archiveRequests = 0;
+   var restoreRequests = 0;
++  var permanentDeleteRequests = 0;
+ 
+   @override
+-  Future<List<Map<String, dynamic>>> listGroups() async => archived
++  Future<List<Map<String, dynamic>>> listGroups() async => archived || deleted
+       ? []
+       : [
+           {
+@@ -321,16 +327,20 @@ class _MemberManagementRepository extends GuestGroupRepository {
+         ];
+ 
+   @override
+-  Future<List<Map<String, dynamic>>> listArchivedGroups() async => archived
+-      ? [
+-          {
+-            'id': 'group-1',
+-            'name': 'Research group',
+-            'can_restore': true,
+-            'restore_until': '2030-01-31T00:00:00+00:00',
+-          },
+-        ]
+-      : const [];
++  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
++    if (archivedRefreshFails) throw StateError('private refresh detail');
++    return archived && !deleted
++        ? [
++            {
++              'id': 'group-1',
++              'name': 'Research group',
++              'can_restore': canRestore,
++              'can_delete': canDelete,
++              'restore_until': '2030-01-31T00:00:00+00:00',
++            },
++          ]
++        : const [];
++  }
+ 
+   @override
+   Future<Map<String, dynamic>> getGroup(String groupId) async => {
+@@ -409,6 +419,13 @@ class _MemberManagementRepository extends GuestGroupRepository {
+     archived = false;
+     return {'id': groupId};
+   }
++
++  @override
++  Future<void> permanentlyDeleteGroup(String groupId) async {
++    permanentDeleteRequests++;
++    if (permanentDeleteFails) throw StateError('private backend detail');
++    deleted = true;
++  }
+ }
+ 
+ class _AccountTransitionRepository extends GuestGroupRepository {
+@@ -1278,6 +1295,157 @@ void main() {
+     expect(tester.takeException(), isNull);
+   });
+ 
++  testWidgets('archived group deletion requires confirmation and refreshes', (
++    tester,
++  ) async {
++    final repository = _MemberManagementRepository()
++      ..archived = true
++      ..canRestore = false;
++    tester.view.physicalSize = const Size(320, 900);
++    tester.view.devicePixelRatio = 1;
++    addTearDown(tester.view.resetPhysicalSize);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: const MaterialApp(home: SharedGuestGroupsPage()),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.text('Restore'), findsNothing);
++    expect(find.text('Delete permanently'), findsOneWidget);
++    await tester.ensureVisible(find.text('Delete permanently'));
++    await tester.tap(find.text('Delete permanently'));
++    await tester.pumpAndSettle();
++    expect(find.text('Delete "Research group" permanently?'), findsOneWidget);
++    expect(
++      find.textContaining(
++        'permanently deletes the shared group, its content, and its memberships for everyone',
++      ),
++      findsOneWidget,
++    );
++    expect(find.textContaining('cannot be restored'), findsOneWidget);
++    expect(find.textContaining('local copies are not affected'), findsOneWidget);
++    await tester.tap(find.text('Cancel'));
++    await tester.pumpAndSettle();
++    expect(repository.permanentDeleteRequests, 0);
++    expect(find.text('Delete permanently'), findsOneWidget);
++    expect(tester.takeException(), isNull);
++
++    await tester.tap(find.text('Delete permanently'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
++    await tester.pumpAndSettle();
++    expect(repository.permanentDeleteRequests, 1);
++    expect(find.text('Archived groups'), findsNothing);
++    expect(find.textContaining('Research group'), findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('archived deletion action follows server can_delete permission', (
++    tester,
++  ) async {
++    final repository = _MemberManagementRepository()
++      ..archived = true
++      ..canDelete = false;
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: const MaterialApp(home: SharedGuestGroupsPage()),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.text('Restore'), findsOneWidget);
++    expect(find.text('Delete permanently'), findsNothing);
++    expect(repository.permanentDeleteRequests, 0);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('failed archived deletion refreshes without replaying request', (
++    tester,
++  ) async {
++    final repository = _MemberManagementRepository()
++      ..archived = true
++      ..canRestore = false
++      ..permanentDeleteFails = true;
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: const MaterialApp(home: SharedGuestGroupsPage()),
++      ),
++    );
++    await tester.pumpAndSettle();
++    await tester.ensureVisible(find.text('Delete permanently'));
++    await tester.tap(find.text('Delete permanently'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
++    await tester.pumpAndSettle();
++
++    expect(repository.permanentDeleteRequests, 1);
++    expect(find.text('Archived groups'), findsOneWidget);
++    expect(find.text('Delete permanently'), findsOneWidget);
++    expect(
++      find.textContaining('The shared-group request could not be verified.'),
++      findsWidgets,
++    );
++    expect(find.text('private backend detail'), findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('uncertain deletion keeps item and blocks retry until refresh', (
++    tester,
++  ) async {
++    final repository = _MemberManagementRepository()
++      ..archived = true
++      ..canRestore = false;
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: const MaterialApp(home: SharedGuestGroupsPage()),
++      ),
++    );
++    await tester.pumpAndSettle();
++    await tester.ensureVisible(find.text('Delete permanently'));
++    await tester.tap(find.text('Delete permanently'));
++    await tester.pumpAndSettle();
++    repository
++      ..permanentDeleteFails = true
++      ..archivedRefreshFails = true;
++    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
++    await tester.pumpAndSettle();
++
++    expect(repository.permanentDeleteRequests, 1);
++    expect(find.textContaining('Research group'), findsOneWidget);
++    expect(find.text('Delete permanently'), findsNothing);
++    expect(
++      find.textContaining('The item is retained; refresh status before retrying.'),
++      findsOneWidget,
++    );
++    expect(find.text('private refresh detail'), findsNothing);
++
++    repository
++      ..permanentDeleteFails = false
++      ..archivedRefreshFails = false;
++    await tester.tap(find.text('Refresh status'));
++    await tester.pumpAndSettle();
++    expect(find.text('Delete permanently'), findsOneWidget);
++    expect(repository.permanentDeleteRequests, 1);
++    expect(tester.takeException(), isNull);
++  });
++
+   for (final action in ['Download / Share PDF', 'History']) {
+     testWidgets(
+       'does not open $action result after the entry dialog is dismissed',
+diff --git a/backend/app/api/v1/routes/guest.py b/backend/app/api/v1/routes/guest.py
+index c4e70f4..87c0bd7 100644
+--- a/backend/app/api/v1/routes/guest.py
++++ b/backend/app/api/v1/routes/guest.py
+@@ -255,6 +255,21 @@ async def restore_group(
+     return await GuestService(session).restore_group(group_id, identity.firebase_uid)
+ 
+ 
++@router.delete(
++    "/groups/{group_id}/permanent",
++    status_code=status.HTTP_204_NO_CONTENT,
++)
++async def permanently_delete_archived_group(
++    group_id: UUID,
++    identity: GuestIdentity = Depends(get_guest_identity),
++    session: AsyncSession = Depends(get_session),
++) -> Response:
++    await GuestService(session).permanently_delete_archived_group(
++        group_id, identity.firebase_uid
++    )
++    return Response(status_code=status.HTTP_204_NO_CONTENT)
++
++
+ @router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+ async def revoke_group(
+     group_id: UUID,
+diff --git a/backend/app/repositories/guest.py b/backend/app/repositories/guest.py
+index 9395c94..9986708 100644
+--- a/backend/app/repositories/guest.py
++++ b/backend/app/repositories/guest.py
+@@ -3,7 +3,7 @@ import time
+ from datetime import datetime
+ from uuid import UUID
+ 
+-from sqlalchemy import case, func, or_, select
++from sqlalchemy import case, delete, func, or_, select
+ from sqlalchemy.dialects.postgresql import insert as postgres_insert
+ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+ from sqlalchemy.ext.asyncio import AsyncSession
+@@ -168,6 +168,35 @@ class GuestRepository:
+         )
+         return list(result.all())
+ 
++    async def permanently_delete_group(self, group_id: UUID) -> None:
++        entry_ids = select(GuestGroupEntry.id).where(
++            GuestGroupEntry.group_id == group_id
++        )
++        await self.session.execute(
++            delete(GuestGroupEntryRevision).where(
++                GuestGroupEntryRevision.entry_id.in_(entry_ids)
++            )
++        )
++        await self.session.execute(
++            delete(GuestGroupAdminTransfer).where(
++                GuestGroupAdminTransfer.group_id == group_id
++            )
++        )
++        await self.session.execute(
++            delete(GuestGroupInvitation).where(
++                GuestGroupInvitation.group_id == group_id
++            )
++        )
++        await self.session.execute(
++            delete(GuestGroupEntry).where(GuestGroupEntry.group_id == group_id)
++        )
++        await self.session.execute(
++            delete(GuestGroupMembership).where(
++                GuestGroupMembership.group_id == group_id
++            )
++        )
++        await self.session.execute(delete(GuestGroup).where(GuestGroup.id == group_id))
++
+     async def pending_admin_transfer(
+         self, group_id: UUID, *, lock: bool = False
+     ) -> GuestGroupAdminTransfer | None:
+@@ -310,6 +339,9 @@ class GuestRepository:
+     async def commit(self) -> None:
+         await self.session.commit()
+ 
++    async def rollback(self) -> None:
++        await self.session.rollback()
++
+     async def delete(self, entity) -> None:
+         await self.session.delete(entity)
+ 
+diff --git a/backend/app/services/guest.py b/backend/app/services/guest.py
+index 0adcf03..28f27a6 100644
+--- a/backend/app/services/guest.py
++++ b/backend/app/services/guest.py
+@@ -46,6 +46,7 @@ GUEST_RATE_LIMITS: dict[str, tuple[int, int]] = {
+     "export": (10, 60 * 60),
+     "write": (30, 60),
+     "member_action": (30, 60),
++    "permanent_delete": (5, 60 * 60),
+ }
+ 
+ _WRITE_ROLES = {"admin", "editor", "contributor"}
+@@ -205,6 +206,11 @@ class GuestService:
+                     group.archived_by_uid == firebase_uid
+                     and now <= _utc(group.archived_at) + GUEST_GROUP_ARCHIVE_RECOVERY
+                 ),
++                "can_delete": (
++                    group.archived_by_uid == firebase_uid
++                    and member.status == "active"
++                    and member.role == "admin"
++                ),
+             }
+             for group, member in rows
+         ]
+@@ -620,6 +626,31 @@ class GuestService:
+         await self.guest.commit()
+         return self._group_dict(group, member)
+ 
++    async def permanently_delete_archived_group(
++        self, group_id: UUID, firebase_uid: str
++    ) -> None:
++        await self._rate_limit(firebase_uid, "permanent_delete")
++        group = await self.guest.group(group_id, lock=True)
++        if group is None or group.archived_at is None:
++            raise HTTPException(status_code=404, detail="Archived group not found")
++        member = await self.guest.member(
++            group_id, firebase_uid, status="active", lock=True
++        )
++        if (
++            firebase_uid != group.archived_by_uid
++            or member is None
++            or member.role != "admin"
++        ):
++            raise HTTPException(
++                status_code=403, detail="Recorded archiving administrator required"
++            )
++        try:
++            await self.guest.permanently_delete_group(group_id)
++            await self.guest.commit()
++        except Exception:
++            await self.guest.rollback()
++            raise
++
+     async def search_entries(
+         self,
+         group_id: UUID,
+diff --git a/backend/tests/test_guest_groups.py b/backend/tests/test_guest_groups.py
+index bdb57a1..4b34557 100644
+--- a/backend/tests/test_guest_groups.py
++++ b/backend/tests/test_guest_groups.py
+@@ -9,12 +9,15 @@ from app.api.dependencies import enforce_tenant_scope, get_development_identity
+ from app.main import app
+ from app.maintenance import guest_retention
+ from app.models.guest import (
++    GuestGroupAdminTransfer,
+     GuestGroup,
+     GuestGroupEntry,
++    GuestGroupEntryRevision,
+     GuestGroupInvitation,
+     GuestGroupMembership,
+ )
+ from app.models import FirebaseUidMapping, Organisation, User, UserRole
++from app.repositories.guest import GuestRepository
+ from app.services import guest as guest_service
+ 
+ PROJECT_ID = "intqaflow-dev"
+@@ -795,6 +798,7 @@ async def test_archive_retains_group_data_and_restores_only_same_admin_uid(
+     )
+     assert archived_groups.status_code == 200
+     assert archived_groups.json()[0]["can_restore"] is True
++    assert archived_groups.json()[0]["can_delete"] is True
+     assert archived_groups.json()[0]["id"] == group_id
+     preview = await client.post(
+         "/api/v1/guest/invitations/preview",
+@@ -911,6 +915,356 @@ async def test_archive_recovery_expiry_and_cleanup_exclusion(
+         assert retained_group.archived_at is not None
+ 
+ 
++@pytest.mark.asyncio
++async def test_permanent_delete_requires_archiving_admin_and_removes_group_dependents(
++    app_client, monkeypatch
++) -> None:
++    client, session_factory = app_client
++    install_test_tokens(monkeypatch)
++    group = await make_group(client, "original-owner", "Shared group")
++    group_id = UUID(group["id"])
++    transfer_invitation = await client.post(
++        f"/api/v1/guest/groups/{group_id}/invitations",
++        headers=bearer("original-owner"),
++        json={"role": "viewer"},
++    )
++    archived_admin_join = await client.post(
++        "/api/v1/guest/invitations/join",
++        headers=bearer("archived-admin"),
++        json={
++            "token": transfer_invitation.json()["token"],
++            "display_name": "Current admin",
++        },
++    )
++    assert archived_admin_join.status_code == 200
++    admin_approval = await client.post(
++        f"/api/v1/guest/groups/{group_id}/members/"
++        f"{archived_admin_join.json()['id']}/approve",
++        headers=bearer("original-owner"),
++    )
++    assert admin_approval.status_code == 200
++    transfer = await client.post(
++        f"/api/v1/guest/groups/{group_id}/transfer-administration",
++        headers=bearer("original-owner"),
++        params={"member_id": archived_admin_join.json()["id"]},
++    )
++    assert transfer.status_code == 200
++    accepted_transfer = await client.post(
++        f"/api/v1/guest/groups/{group_id}/admin-transfers/"
++        f"{transfer.json()['id']}/accept",
++        headers=bearer("archived-admin"),
++    )
++    assert accepted_transfer.status_code == 200
++
++    removed_invitation = await client.post(
++        f"/api/v1/guest/groups/{group_id}/invitations",
++        headers=bearer("archived-admin"),
++        json={"role": "viewer"},
++    )
++    removed_join = await client.post(
++        "/api/v1/guest/invitations/join",
++        headers=bearer("removed-member"),
++        json={
++            "token": removed_invitation.json()["token"],
++            "display_name": "Removed member",
++        },
++    )
++    assert removed_join.status_code == 200
++    removed_approval = await client.post(
++        f"/api/v1/guest/groups/{group_id}/members/{removed_join.json()['id']}/approve",
++        headers=bearer("archived-admin"),
++    )
++    assert removed_approval.status_code == 200
++    removed = await client.delete(
++        f"/api/v1/guest/groups/{group_id}/members/{removed_join.json()['id']}",
++        headers=bearer("archived-admin"),
++    )
++    assert removed.status_code == 204
++    pending_invitation = await client.post(
++        f"/api/v1/guest/groups/{group_id}/invitations",
++        headers=bearer("archived-admin"),
++        json={"role": "viewer"},
++    )
++    pending_join = await client.post(
++        "/api/v1/guest/invitations/join",
++        headers=bearer("pending-member"),
++        json={
++            "token": pending_invitation.json()["token"],
++            "display_name": "Pending member",
++        },
++    )
++    assert pending_join.status_code == 200
++    outstanding_invitation = await client.post(
++        f"/api/v1/guest/groups/{group_id}/invitations",
++        headers=bearer("archived-admin"),
++        json={"role": "viewer"},
++    )
++    assert outstanding_invitation.status_code == 200
++
++    async with session_factory() as session:
++        stored_group = await session.get(GuestGroup, group_id)
++        creator_membership = await session.scalar(
++            select(GuestGroupMembership).where(
++                GuestGroupMembership.group_id == group_id,
++                GuestGroupMembership.firebase_uid == "original-owner",
++            )
++        )
++        archived_admin = await session.scalar(
++            select(GuestGroupMembership).where(
++                GuestGroupMembership.group_id == group_id,
++                GuestGroupMembership.firebase_uid == "archived-admin",
++            )
++        )
++        pending_member = await session.scalar(
++            select(GuestGroupMembership).where(
++                GuestGroupMembership.group_id == group_id,
++                GuestGroupMembership.firebase_uid == "pending-member",
++            )
++        )
++        removed_member = await session.scalar(
++            select(GuestGroupMembership).where(
++                GuestGroupMembership.group_id == group_id,
++                GuestGroupMembership.firebase_uid == "removed-member",
++            )
++        )
++        assert creator_membership.role == "contributor"
++        assert archived_admin.role == "admin"
++        assert pending_member.status == "pending"
++        assert removed_member.status == "removed"
++        entry = GuestGroupEntry(
++            group_id=group_id,
++            kind="knowledge",
++            title="Retained content",
++            data={"answer": "shared"},
++            created_by_uid="original-owner",
++            updated_by_uid="original-owner",
++            revision=2,
++        )
++        session.add(entry)
++        await session.flush()
++        revision = GuestGroupEntryRevision(
++            entry_id=entry.id,
++            edited_by_uid="original-owner",
++            title="Previous content",
++            data={"answer": "old"},
++            revision=1,
++        )
++        session.add(revision)
++        await session.flush()
++        revision_id = revision.id
++        await session.commit()
++    archived = await client.post(
++        f"/api/v1/guest/groups/{group_id}/archive",
++        headers=bearer("archived-admin"),
++    )
++    assert archived.status_code == 200
++    async with session_factory() as session:
++        stored_group = await session.get(GuestGroup, group_id)
++        stored_group.archived_at = datetime.now(timezone.utc) - timedelta(days=31)
++        await session.commit()
++
++    path = f"/api/v1/guest/groups/{group_id}/permanent"
++    archived_listing = await client.get(
++        "/api/v1/guest/groups/archived", headers=bearer("archived-admin")
++    )
++    assert archived_listing.status_code == 200
++    assert archived_listing.json()[0]["can_restore"] is False
++    assert archived_listing.json()[0]["can_delete"] is True
++    assert (await client.delete(path)).status_code == 401
++    assert (
++        await client.delete(path, headers=bearer("original-owner"))
++    ).status_code == 403
++    assert (await client.delete(path, headers=bearer("outsider"))).status_code == 403
++
++    async with session_factory() as session:
++        current_admin = await session.get(GuestGroupMembership, archived_admin.id)
++        current_admin.role = "contributor"
++        replacement_admin = GuestGroupMembership(
++            group_id=group_id,
++            firebase_uid="replacement-admin",
++            display_name="Replacement admin",
++            role="admin",
++            status="active",
++            approved_by_uid="original-owner",
++        )
++        session.add(replacement_admin)
++        await session.commit()
++    assert (
++        await client.delete(path, headers=bearer("archived-admin"))
++    ).status_code == 403
++    assert (
++        await client.delete(path, headers=bearer("replacement-admin"))
++    ).status_code == 403
++    assert (
++        await client.delete(path, headers=bearer("pending-member"))
++    ).status_code == 403
++    assert (
++        await client.delete(path, headers=bearer("removed-member"))
++    ).status_code == 403
++    async with session_factory() as session:
++        former_admin = await session.get(GuestGroupMembership, archived_admin.id)
++        former_admin.role = "admin"
++        await session.commit()
++
++    active_group = await make_group(client, "active-owner", "Still active")
++    active_delete = await client.delete(
++        f"/api/v1/guest/groups/{active_group['id']}/permanent",
++        headers=bearer("active-owner"),
++    )
++    assert active_delete.status_code == 404
++    async with session_factory() as session:
++        assert await session.get(GuestGroup, UUID(active_group["id"])) is not None
++
++    deleted = await client.delete(path, headers=bearer("archived-admin"))
++    assert deleted.status_code == 204
++    assert (
++        await client.delete(path, headers=bearer("archived-admin"))
++    ).status_code == 404
++    async with session_factory() as session:
++        assert await session.get(GuestGroup, group_id) is None
++        for model in (
++            GuestGroupMembership,
++            GuestGroupInvitation,
++            GuestGroupAdminTransfer,
++            GuestGroupEntry,
++        ):
++            assert await session.scalar(
++                select(func.count()).select_from(model).where(
++                    model.group_id == group_id
++                )
++            ) == 0
++        assert await session.get(GuestGroupEntryRevision, revision_id) is None
++
++
++@pytest.mark.asyncio
++async def test_permanent_delete_rolls_back_all_dependents_on_commit_failure(
++    app_client, monkeypatch
++) -> None:
++    client, session_factory = app_client
++    install_test_tokens(monkeypatch)
++    group = await make_group(client, "rollback-owner", "Rollback group")
++    group_id = UUID(group["id"])
++    async with session_factory() as session:
++        stored_group = await session.get(GuestGroup, group_id)
++        stored_group.archived_at = datetime.now(timezone.utc)
++        stored_group.archived_by_uid = "rollback-owner"
++        entry = GuestGroupEntry(
++            group_id=group_id,
++            kind="knowledge",
++            title="Must survive rollback",
++            data={"answer": "still here"},
++            created_by_uid="rollback-owner",
++            updated_by_uid="rollback-owner",
++            revision=1,
++        )
++        session.add(entry)
++        await session.flush()
++        member = GuestGroupMembership(
++            group_id=group_id,
++            firebase_uid="rollback-member",
++            display_name="Rollback member",
++            role="viewer",
++            status="active",
++            approved_by_uid="rollback-owner",
++        )
++        session.add(member)
++        await session.flush()
++        invitation = GuestGroupInvitation(
++            group_id=group_id,
++            token_hash=group_id.hex * 2,
++            role="viewer",
++            created_by_uid="rollback-owner",
++            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
++        )
++        transfer = GuestGroupAdminTransfer(
++            group_id=group_id,
++            requested_by_uid="rollback-owner",
++            target_membership_id=member.id,
++            status="declined",
++            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
++        )
++        session.add_all([invitation, transfer])
++        session.add(
++            GuestGroupEntryRevision(
++                entry_id=entry.id,
++                edited_by_uid="rollback-owner",
++                title=entry.title,
++                data=entry.data,
++                revision=1,
++            )
++        )
++        await session.commit()
++
++    async def fail_commit(_repository) -> None:
++        raise RuntimeError("synthetic commit failure")
++
++    monkeypatch.setattr(GuestRepository, "commit", fail_commit)
++    async with session_factory() as session:
++        with pytest.raises(RuntimeError, match="synthetic commit failure"):
++            await guest_service.GuestService(session).permanently_delete_archived_group(
++                group_id, "rollback-owner"
++            )
++
++    async with session_factory() as session:
++        assert await session.get(GuestGroup, group_id) is not None
++        assert await session.scalar(
++            select(func.count(GuestGroupEntry.id)).where(
++                GuestGroupEntry.group_id == group_id
++            )
++        ) == 1
++        assert await session.scalar(
++            select(func.count(GuestGroupEntryRevision.id))
++            .join(
++                GuestGroupEntry,
++                GuestGroupEntry.id == GuestGroupEntryRevision.entry_id,
++            )
++            .where(GuestGroupEntry.group_id == group_id)
++        ) == 1
++        assert await session.scalar(
++            select(func.count(GuestGroupMembership.id)).where(
++                GuestGroupMembership.group_id == group_id
++            )
++        ) == 2
++        assert await session.scalar(
++            select(func.count(GuestGroupInvitation.id)).where(
++                GuestGroupInvitation.group_id == group_id
++            )
++        ) == 1
++        assert await session.scalar(
++            select(func.count(GuestGroupAdminTransfer.id)).where(
++                GuestGroupAdminTransfer.group_id == group_id
++            )
++        ) == 1
++
++
++@pytest.mark.asyncio
++async def test_permanent_delete_is_rate_limited(app_client, monkeypatch) -> None:
++    client, session_factory = app_client
++    install_test_tokens(monkeypatch)
++    first = await make_group(client, "limited-owner", "First archived group")
++    second = await make_group(client, "limited-owner", "Second archived group")
++    for group in (first, second):
++        archived = await client.post(
++            f"/api/v1/guest/groups/{group['id']}/archive",
++            headers=bearer("limited-owner"),
++        )
++        assert archived.status_code == 200
++    monkeypatch.setitem(guest_service.GUEST_RATE_LIMITS, "permanent_delete", (1, 3600))
++
++    first_delete = await client.delete(
++        f"/api/v1/guest/groups/{first['id']}/permanent",
++        headers=bearer("limited-owner"),
++    )
++    second_delete = await client.delete(
++        f"/api/v1/guest/groups/{second['id']}/permanent",
++        headers=bearer("limited-owner"),
++    )
++    assert first_delete.status_code == 204
++    assert second_delete.status_code == 429
++    async with session_factory() as session:
++        assert await session.get(GuestGroup, UUID(second["id"])) is not None
++
++
+ @pytest.mark.asyncio
+ async def test_expired_admin_transfer_does_not_change_roles(
+     app_client, monkeypatch
+diff --git a/docs/operations/guest-group-retention.md b/docs/operations/guest-group-retention.md
+index 3a5b214..a40e71a 100644
+--- a/docs/operations/guest-group-retention.md
++++ b/docs/operations/guest-group-retention.md
+@@ -92,14 +92,27 @@ created after archiving, does not inherit recovery rights. Restore reopens the
+ group for 90 days of access and does not revive invitations or change membership
+ statuses: pending and removed members do not regain access automatically.
+ 
+-After 30 days the archived data remains stored; it is not silently purged.
+-Archived groups are excluded from the existing expiry cleanup, including when
+-their 90-day group expiry passes. Deletion after archive recovery expires is a
+-separate retention decision and must not be implemented by the current cleanup.
+-The Shared groups UI explains the member impact and same-UID recovery limit
+-before archive and account departure. A sole-admin identity may leave only after
+-another active member accepts a transfer or the group is archived. No group data
+-is automatically migrated, imported, or deleted by account creation or sign-in.
++After 30 days, the archived data remains stored unless its recorded archiving
++administrator still has an active administrator membership and explicitly
++deletes the group. This permanent deletion is available before and after the
++restore window; the 30-day window limits restoration, not deletion. The operation
++removes group memberships, invitations, transfers, entries, and revisions in one
++transaction. It does not delete account identities, rate-limit records,
++organisation data, private Interact sessions, or copies already exported or
++saved locally by members. A failed transaction rolls back all group cleanup.
++Archived groups remain excluded from the existing expiry cleanup, including when
++their 90-day group expiry passes; no scheduled deletion is configured.
++The API locks the archived group row before rechecking the recorded archiver's
++active administrator membership, serializing permanent deletion against restore.
++Archived listings expose server-derived `can_delete` separately from the
++30-day-window `can_restore` value.
++
++The Shared groups UI explains the member impact, irreversibility, and retained
++local/exported copies before permanent deletion. It also explains the member
++impact and same-UID recovery limit before archive and account departure. A
++sole-admin identity may leave only after another active member accepts a transfer
++or the group is archived. No group data is automatically migrated, imported, or
++deleted by account creation or sign-in.
+ 
+ ## Scheduler review
+ 
+-- 
+2.55.0
+

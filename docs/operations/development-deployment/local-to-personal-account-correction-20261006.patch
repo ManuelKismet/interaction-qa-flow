@@ -1,0 +1,1231 @@
+From adc453f04e0b56046f89960953690f00bd906d23 Mon Sep 17 00:00:00 2001
+From: Copilot <copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 16:15:10 +0000
+Subject: [PATCH] Consolidate personal workspace review corrections
+
+---
+ .../data/personal_workspace_repository.dart   |   2 +
+ .../presentation/guest_workspace_page.dart    | 297 +++++++++++++++++-
+ .../lib/shared/widgets/app_shell.dart         |   4 +-
+ .../test/account_state_widget_test.dart       | 186 +++++++++++
+ .../app/api/v1/routes/personal_workspace.py   |   7 +-
+ backend/app/schemas/personal_workspace.py     | 145 ++++++++-
+ backend/app/services/personal_workspace.py    |  44 ++-
+ backend/tests/test_personal_workspace.py      | 108 ++++++-
+ .../test_personal_workspace_postgresql.py     |  86 +++++
+ 9 files changed, 838 insertions(+), 41 deletions(-)
+ create mode 100644 backend/tests/test_personal_workspace_postgresql.py
+
+diff --git a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+index 292d8c0..f359dd7 100644
+--- a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
++++ b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+@@ -70,9 +70,11 @@ class PersonalWorkspaceRepository {
+   Future<void> deleteItem(
+     String id, {
+     required String expectedUid,
++    required int expectedRevision,
+   }) async {
+     await _client.delete<void>(
+       '/api/v1/personal/items/$id',
++      queryParameters: {'expected_revision': expectedRevision},
+       options: Options(
+         extra: {'expectedFirebaseUid': expectedUid},
+       ),
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 8a3510e..6228299 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -40,8 +40,6 @@ class _PersonalWorkspaceWrite {
+     required this.kind,
+     required this.sourceKey,
+     required this.sourceId,
+-    this.itemId,
+-    this.revision,
+     this.title,
+     this.data,
+   });
+@@ -50,7 +48,6 @@ class _PersonalWorkspaceWrite {
+   final String kind;
+   final String sourceKey;
+   final String sourceId;
+-  final String? itemId;
+   final String? title;
+   final Map<String, dynamic>? data;
+ }
+@@ -101,6 +98,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   final Map<String, _PersonalWorkspaceWrite> _pendingPersonalWrites = {};
+   String? _personalError;
+   List<Map<String, dynamic>> _pendingPersonalImport = [];
++  bool _personalImportNeedsReselection = false;
++  String? _personalConflictSourceKey;
++  bool _personalConflictReloadFailed = false;
+   int _personalGeneration = 0;
+   String? _personalOwnerUid;
+   bool _personalLoading = false;
+@@ -129,6 +129,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     _pendingPersonalItems = [];
+     _pendingPersonalWrites.clear();
+     _pendingPersonalImport = [];
++    _personalImportNeedsReselection = false;
++    _personalConflictSourceKey = null;
++    _personalConflictReloadFailed = false;
+     _personalError = null;
+     _personalLoading = false;
+     if (uid != null) {
+@@ -364,7 +367,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         continue;
+       }
+       final key = '$kind:${data['id']}';
+-      final replacement = submittedByKey[key]?.data;
++      final replacement = submittedByKey[key];
+       if (replacement == null) {
+         _enqueuePersonalWrite(
+           _PersonalWorkspaceWrite(
+@@ -372,7 +375,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             kind: kind,
+             sourceKey: record['source_key'] as String,
+             sourceId: data['id'] as String,
+-            itemId: record['id'] as String,
+           ),
+         );
+       } else if (jsonEncode(replacement) != jsonEncode(data) ||
+@@ -383,7 +385,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             kind: kind,
+             sourceKey: record['source_key'] as String,
+             sourceId: data['id'] as String,
+-            itemId: record['id'] as String,
+             title: _personalTitle(kind, replacement),
+             data: replacement,
+           ),
+@@ -414,8 +415,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   Future<void> _processPersonalWrites(
+     String uid,
+     int generation,
+-    PersonalWorkspaceRepository repository,
+-  ) async {
++    PersonalWorkspaceRepository repository, {
++    String? prioritySourceKey,
++  }) async {
+     if (_personalSaving || !mounted) return;
+     _personalSaving = true;
+     try {
+@@ -423,14 +425,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           generation == _personalGeneration &&
+           uid == _verifiedPersonalUid &&
+           _pendingPersonalWrites.isNotEmpty) {
+-        final entry = _pendingPersonalWrites.entries.first;
++        final priorityEntry = prioritySourceKey == null
++            ? null
++            : _pendingPersonalWrites.entries
++                  .where((entry) => entry.value.sourceKey == prioritySourceKey)
++                  .firstOrNull;
++        final entry = priorityEntry ?? _pendingPersonalWrites.entries.first;
+         final write = entry.value;
+         try {
+           Map<String, dynamic>? saved;
+-          if (write.action == 'update') {
+-            final current = _personalItems.firstWhere(
+-              (item) => item['source_key'] == write.sourceKey,
+-            );
++          final current = _personalItems
++              .where((item) => item['source_key'] == write.sourceKey)
++              .firstOrNull;
++          if (current == null && write.action == 'delete') {
++            saved = null;
++          } else if (current == null) {
++            throw StateError('The personal item is not loaded.');
++          } else if (write.action == 'update') {
+             saved = await repository.updateItem(
+               id: current['id'] as String,
+               expectedUid: uid,
+@@ -440,8 +451,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             );
+           } else {
+             await repository.deleteItem(
+-              write.itemId!,
++              current['id'] as String,
+               expectedUid: uid,
++              expectedRevision: current['revision'] as int,
+             );
+           }
+           if (!mounted ||
+@@ -468,6 +480,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               );
+             }
+           });
++        } on DioException catch (error) {
++          if (error.response?.statusCode == 409) {
++            await _reloadPersonalConflict(uid, generation, write);
++          } else if (mounted && generation == _personalGeneration) {
++            setState(() {
++              _personalError =
++                  'A personal account change was not confirmed. Your local copy is unchanged; retry the account save.';
++            });
++          }
++          return;
+         } on Object {
+           if (mounted && generation == _personalGeneration) {
+             setState(() {
+@@ -486,13 +508,218 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     }
+   }
+ 
+-  Future<void> _retryPersonalWrites() async {
++  Future<void> _reloadPersonalConflict(
++    String uid,
++    int generation,
++    _PersonalWorkspaceWrite write,
++  ) async {
++    if (mounted && generation == _personalGeneration) {
++      setState(() {
++        _personalConflictSourceKey = write.sourceKey;
++        _personalConflictReloadFailed = true;
++        _personalError =
++            'This account item changed elsewhere. Your pending edit is preserved while the latest version is reloaded.';
++      });
++    }
++    try {
++      final items = await ref
++          .read(personalWorkspaceRepositoryProvider)
++          .listItems(expectedUid: uid);
++      if (!mounted ||
++          generation != _personalGeneration ||
++          uid != _verifiedPersonalUid) {
++        return;
++      }
++      setState(() {
++        _personalItems = items;
++        _personalConflictReloadFailed = false;
++        _personalError =
++            'The latest account version is loaded. Review it before choosing whether to keep your pending edit.';
++      });
++    } on Object {
++      if (mounted &&
++          generation == _personalGeneration &&
++          uid == _verifiedPersonalUid) {
++        setState(() {
++          _personalConflictReloadFailed = true;
++          _personalError =
++              'The latest account version could not be loaded. Your pending edit is preserved; retry the reload before reconciling.';
++        });
++      }
++    }
++  }
++
++  Future<void> _reloadPendingPersonalConflict() async {
++    final sourceKey = _personalConflictSourceKey;
++    final uid = _verifiedPersonalUid;
++    if (sourceKey == null || uid == null) return;
++    final write = _pendingPersonalWrites.values
++        .where((item) => item.sourceKey == sourceKey)
++        .firstOrNull;
++    if (write == null) return;
++    await _reloadPersonalConflict(uid, _personalGeneration, write);
++  }
++
++  Future<void> _reviewPersonalConflict() async {
++    final sourceKey = _personalConflictSourceKey;
++    if (sourceKey == null) return;
++    final write = _pendingPersonalWrites.values
++        .where((item) => item.sourceKey == sourceKey)
++        .firstOrNull;
++    if (write == null) return;
++    final current = _personalItems
++        .where((item) => item['source_key'] == sourceKey)
++        .firstOrNull;
++    final uid = _verifiedPersonalUid;
++    if (uid == null) return;
++
++    final choice = await showDialog<String>(
++      context: context,
++      builder: (context) => AlertDialog(
++        title: const Text('Review account version'),
++        content: Column(
++          mainAxisSize: MainAxisSize.min,
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            Text(
++              write.action == 'delete'
++                  ? 'Your pending change: remove this account item.'
++                  : 'Your pending edit: ${write.title ?? 'Updated item'}',
++            ),
++            const SizedBox(height: 12),
++            if (current == null)
++              const Text('The saved account copy no longer exists.')
++            else
++              Text(
++                'Latest saved version (revision ${current['revision']}): '
++                '${current['title']}',
++              ),
++            const SizedBox(height: 12),
++            const Text(
++              'Your pending edit remains available until you choose an option.',
++            ),
++          ],
++        ),
++        actions: [
++          TextButton(
++            onPressed: () => Navigator.pop(context),
++            child: const Text('Cancel'),
++          ),
++          TextButton(
++            onPressed: () => Navigator.pop(context, 'account'),
++            child: const Text('Use latest account version'),
++          ),
++          FilledButton(
++            onPressed: () => Navigator.pop(context, 'pending'),
++            child: Text(
++              write.action == 'delete'
++                  ? 'Remove latest account version'
++                  : current == null
++                  ? 'Restore my pending edit'
++                  : 'Save my pending edit',
++            ),
++          ),
++        ],
++      ),
++    );
++    if (choice == null || !mounted || uid != _verifiedPersonalUid) return;
++
++    if (choice == 'account') {
++      setState(() {
++        _pendingPersonalWrites.remove(
++          '${write.kind}:${write.sourceId}',
++        );
++        _pendingPersonalItems.removeWhere(
++          (item) =>
++              item['kind'] == write.kind &&
++              (item['data'] as Map?)?['id'] == write.sourceId,
++        );
++        _personalConflictSourceKey = null;
++        _personalConflictReloadFailed = false;
++        _personalError = _pendingPersonalWrites.isEmpty
++            ? null
++            : 'Other account edits are still pending.';
++      });
++      return;
++    }
++
++    if (current == null && write.action == 'delete') {
++      setState(() {
++        _pendingPersonalWrites.remove('${write.kind}:${write.sourceId}');
++        _pendingPersonalItems.removeWhere(
++          (item) =>
++              item['kind'] == write.kind &&
++              (item['data'] as Map?)?['id'] == write.sourceId,
++        );
++        _personalConflictSourceKey = null;
++        _personalConflictReloadFailed = false;
++        _personalError = _pendingPersonalWrites.isEmpty
++            ? null
++            : 'Other account edits are still pending.';
++      });
++      return;
++    }
++
++    if (current == null) {
++      try {
++        final restored = await ref
++            .read(personalWorkspaceRepositoryProvider)
++            .importItems(
++              [
++                {
++                  'kind': write.kind,
++                  'source_key': write.sourceKey,
++                  'title': write.title,
++                  'data': write.data,
++                },
++              ],
++              expectedUid: uid,
++            );
++        if (!mounted || uid != _verifiedPersonalUid) return;
++        setState(() {
++          _personalItems.removeWhere(
++            (item) => item['source_key'] == write.sourceKey,
++          );
++          _personalItems.add(restored.single);
++          _pendingPersonalWrites.remove('${write.kind}:${write.sourceId}');
++          _pendingPersonalItems.removeWhere(
++            (item) =>
++                item['kind'] == write.kind &&
++                (item['data'] as Map?)?['id'] == write.sourceId,
++          );
++          _personalConflictSourceKey = null;
++          _personalConflictReloadFailed = false;
++          _personalError = _pendingPersonalWrites.isEmpty
++              ? null
++              : 'Other account edits are still pending.';
++        });
++      } on Object {
++        if (mounted) {
++          setState(() {
++            _personalError =
++                'The pending edit could not be restored. It remains available; refresh account status before trying again.';
++          });
++        }
++      }
++      return;
++    }
++
++    setState(() {
++      _personalConflictSourceKey = null;
++      _personalConflictReloadFailed = false;
++      _personalError = null;
++    });
++    await _retryPersonalWrites(sourceKey: sourceKey);
++  }
++
++  Future<void> _retryPersonalWrites({String? sourceKey}) async {
+     final uid = _verifiedPersonalUid;
+     if (uid == null) return;
+     await _processPersonalWrites(
+       uid,
+       _personalGeneration,
+       ref.read(personalWorkspaceRepositoryProvider),
++      prioritySourceKey: sourceKey,
+     );
+   }
+ 
+@@ -685,6 +912,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             _pendingPersonalItems = [];
+             _pendingPersonalWrites.clear();
+             _pendingPersonalImport = [];
++            _personalImportNeedsReselection = false;
++            _personalConflictSourceKey = null;
++            _personalConflictReloadFailed = false;
+             _personalError = null;
+             _personalOwnerUid = null;
+           });
+@@ -885,6 +1115,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     }
+     if (selected.isEmpty) return;
+     _pendingPersonalImport = selected;
++    _personalImportNeedsReselection = false;
+     await _submitPersonalImport(uid, _personalGeneration);
+   }
+ 
+@@ -913,6 +1144,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           _personalItems.add(item);
+         }
+         _pendingPersonalImport = [];
++        _personalImportNeedsReselection = false;
+         _personalError = null;
+       });
+       ScaffoldMessenger.of(context).showSnackBar(
+@@ -922,6 +1154,25 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           ),
+         ),
+       );
++    } on DioException catch (error) {
++      if (!mounted ||
++          uid != _verifiedPersonalUid ||
++          generation != _personalGeneration) {
++        return;
++      }
++      if ({413, 422}.contains(error.response?.statusCode)) {
++        setState(() {
++          _pendingPersonalImport = [];
++          _personalImportNeedsReselection = true;
++          _personalError =
++              'This selection exceeds account import limits or contains invalid content. Select fewer items or smaller items and try again. Your local originals are unchanged.';
++        });
++        return;
++      }
++      setState(() {
++        _personalError =
++            'The account import was not confirmed. Local copies remain on this device; retry safely.';
++      });
+     } on Object {
+       if (!mounted ||
+           uid != _verifiedPersonalUid ||
+@@ -1195,13 +1446,25 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                       content: Text(_personalError!),
+                       actions: [
+                         TextButton(
+-                          onPressed: _pendingPersonalImport.isNotEmpty
++                          onPressed: _personalImportNeedsReselection
++                              ? _openPersonalImport
++                              : _personalConflictSourceKey != null
++                              ? _personalConflictReloadFailed
++                                  ? _reloadPendingPersonalConflict
++                                  : _reviewPersonalConflict
++                              : _pendingPersonalImport.isNotEmpty
+                               ? _retryPersonalImport
+                               : _pendingPersonalWrites.isNotEmpty
+                               ? _retryPersonalWrites
+                               : _refreshPersonalWorkspace,
+                           child: Text(
+-                            _pendingPersonalImport.isNotEmpty
++                            _personalImportNeedsReselection
++                                ? 'Change selection'
++                                : _personalConflictSourceKey != null
++                                ? _personalConflictReloadFailed
++                                    ? 'Reload account version'
++                                    : 'Review account change'
++                                : _pendingPersonalImport.isNotEmpty
+                                 ? 'Retry import'
+                                 : _pendingPersonalWrites.isNotEmpty
+                                 ? 'Retry account save'
+diff --git a/apps/flutter_app/lib/shared/widgets/app_shell.dart b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+index 711f126..95042db 100644
+--- a/apps/flutter_app/lib/shared/widgets/app_shell.dart
++++ b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+@@ -79,6 +79,7 @@ class AppShell extends ConsumerWidget {
+   }
+ 
+   Widget _accountMenu(
++    BuildContext context,
+     WidgetRef ref,
+     ActiveMembership membership, {
+     bool showLabel = true,
+@@ -160,7 +161,7 @@ class AppShell extends ConsumerWidget {
+               title: const Text('IntQAFlow'),
+               actions: [
+                 if (membership != null)
+-                  _accountMenu(ref, membership, showLabel: true),
++                  _accountMenu(context, ref, membership, showLabel: true),
+               ],
+             ),
+       body: Row(
+@@ -181,6 +182,7 @@ class AppShell extends ConsumerWidget {
+               trailing: membership == null
+                   ? null
+                   : _accountMenu(
++                      context,
+                       ref,
+                       membership,
+                       showLabel: MediaQuery.sizeOf(context).width >= 1100,
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 26e007c..b884995 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -190,7 +190,11 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+   List<Map<String, dynamic>> items;
+   var listCalls = 0;
+   var failedImports = 0;
++  int? importFailureStatus;
+   final imports = <List<Map<String, dynamic>>>[];
++  int updateConflicts = 0;
++  List<Map<String, dynamic>>? conflictItems;
++  final updateRevisions = <int>[];
+   var deleteCalls = 0;
+ 
+   @override
+@@ -209,6 +213,16 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     imports.add(payload);
+     if (failedImports > 0) {
+       failedImports--;
++      if (importFailureStatus != null) {
++        final request = RequestOptions(path: '/api/v1/personal/items/import');
++        throw DioException(
++          requestOptions: request,
++          response: Response(
++            requestOptions: request,
++            statusCode: importFailureStatus,
++          ),
++        );
++      }
+       throw StateError('Simulated uncertain response.');
+     }
+     return [
+@@ -223,10 +237,46 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     ];
+   }
+ 
++  @override
++  Future<Map<String, dynamic>> updateItem({
++    required String id,
++    required String expectedUid,
++    required int expectedRevision,
++    required String title,
++    required Map<String, dynamic> data,
++  }) async {
++    updateRevisions.add(expectedRevision);
++    if (updateConflicts > 0) {
++      updateConflicts--;
++      items = conflictItems ?? items;
++      final request = RequestOptions(path: '/api/v1/personal/items/$id');
++      throw DioException(
++        requestOptions: request,
++        response: Response(
++          requestOptions: request,
++          statusCode: 409,
++        ),
++      );
++    }
++    final current = items.firstWhere((item) => item['id'] == id);
++    final saved = {
++      ...current,
++      'title': title,
++      'data': data,
++      'revision': expectedRevision + 1,
++    };
++    items = [
++      for (final item in items)
++        if (item['id'] == id) saved else item,
++    ];
++    return saved;
++  }
++
+   @override
+   Future<void> deleteItem(
+     String id, {
+     required String expectedUid,
++    required int expectedRevision,
+   }) async {
+     deleteCalls++;
+   }
+@@ -709,6 +759,142 @@ void main() {
+     expect(find.text('Keep this item local'), findsOneWidget);
+   });
+ 
++  testWidgets('permanent import limit errors ask for a smaller selection', (
++    tester,
++  ) async {
++    final store = GuestWorkspaceStore(_MemoryGuestStorage());
++    await store.save(
++      const GuestWorkspaceData(
++        knowledge: [
++          {'id': 'large', 'title': 'Large item', 'body': 'Keep the local copy'},
++          {'id': 'small', 'title': 'Small item', 'body': 'Keep this too'},
++        ],
++      ),
++    );
++    final repository = _TestPersonalWorkspaceRepository([])
++      ..failedImports = 1
++      ..importFailureStatus = 422;
++    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          guestWorkspaceStoreProvider.overrideWithValue(store),
++          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: MaterialApp(
++          home: GuestWorkspacePage(
++            firebaseReady: true,
++            personalWorkspaceEnabled: true,
++            accountUser: user,
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Import local work'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Import selected work'));
++    await tester.pumpAndSettle();
++
++    expect(repository.imports, hasLength(1));
++    expect(find.textContaining('Select fewer items or smaller items'), findsOneWidget);
++    expect(find.text('Change selection'), findsOneWidget);
++    expect(find.text('Retry import'), findsNothing);
++    expect((await store.load()).knowledge, hasLength(2));
++
++    await tester.tap(find.text('Change selection'));
++    await tester.pumpAndSettle();
++    expect(find.text('Import selected work'), findsOneWidget);
++    await tester.tap(find.text('Cancel'));
++    await tester.pumpAndSettle();
++    expect(repository.imports, hasLength(1));
++  });
++
++  testWidgets('revision conflicts reload before an explicit pending-edit save', (
++    tester,
++  ) async {
++    Map<String, dynamic> item({
++      required String title,
++      required int revision,
++    }) => {
++      'id': 'remote-record',
++      'kind': 'knowledge',
++      'source_key': 'knowledge:remote-id',
++      'title': title,
++      'data': {
++        'id': 'remote-id',
++        'title': title,
++        'body': 'Remote details',
++        'answer': 'Remote answer',
++      },
++      'revision': revision,
++      'created_at': '2026-10-06T00:00:00+00:00',
++      'updated_at': '2026-10-06T00:00:00+00:00',
++    };
++
++    final latestAccountItem = item(title: 'Latest account title', revision: 2);
++    final repository = _TestPersonalWorkspaceRepository([
++      item(title: 'Original account title', revision: 1),
++    ])
++      ..updateConflicts = 1
++      ..conflictItems = [latestAccountItem];
++    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
++    final store = GuestWorkspaceStore(_MemoryGuestStorage());
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          guestWorkspaceStoreProvider.overrideWithValue(store),
++          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: MaterialApp(
++          home: GuestWorkspacePage(
++            firebaseReady: true,
++            personalWorkspaceEnabled: true,
++            accountUser: user,
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++    await tester.tap(find.byTooltip('Edit local Knowledge'));
++    await tester.pumpAndSettle();
++    await tester.enterText(
++      find.descendant(
++        of: find.byType(AlertDialog),
++        matching: find.byType(TextFormField),
++      ).first,
++      'My pending edit',
++    );
++    await tester.tap(
++      find.descendant(
++        of: find.byType(AlertDialog),
++        matching: find.text('Save locally'),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(repository.updateRevisions, [1]);
++    expect(find.text('My pending edit'), findsOneWidget);
++    await tester.tap(find.text('Review account change'));
++    await tester.pumpAndSettle();
++    expect(find.textContaining('Latest saved version (revision 2)'), findsOneWidget);
++    expect(find.text('Your pending edit: My pending edit'), findsOneWidget);
++    await tester.tap(find.text('Cancel'));
++    await tester.pumpAndSettle();
++    expect(find.text('My pending edit'), findsOneWidget);
++
++    await tester.tap(find.text('Review account change'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Save my pending edit'));
++    await tester.pumpAndSettle();
++
++    expect(repository.updateRevisions, [1, 2]);
++    expect(find.text('My pending edit'), findsOneWidget);
++    expect(find.text('Latest account title'), findsNothing);
++  });
++
+   testWidgets('new local work is not uploaded before explicit import', (
+     tester,
+   ) async {
+diff --git a/backend/app/api/v1/routes/personal_workspace.py b/backend/app/api/v1/routes/personal_workspace.py
+index 99a6349..27362d0 100644
+--- a/backend/app/api/v1/routes/personal_workspace.py
++++ b/backend/app/api/v1/routes/personal_workspace.py
+@@ -1,6 +1,6 @@
+ from uuid import UUID
+ 
+-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
++from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from app.api.dependencies import GuestIdentity, get_guest_identity, require_app_check
+@@ -93,10 +93,13 @@ async def update_item(
+ @router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+ async def delete_item(
+     item_id: UUID,
++    expected_revision: int = Query(ge=1),
+     identity: GuestIdentity = Depends(get_guest_identity),
+     session: AsyncSession = Depends(get_session),
+ ) -> Response:
+     await PersonalWorkspaceService(session).delete_item(
+-        identity.firebase_uid, item_id
++        identity.firebase_uid,
++        item_id,
++        expected_revision=expected_revision,
+     )
+     return Response(status_code=status.HTTP_204_NO_CONTENT)
+diff --git a/backend/app/schemas/personal_workspace.py b/backend/app/schemas/personal_workspace.py
+index 396220a..95fae89 100644
+--- a/backend/app/schemas/personal_workspace.py
++++ b/backend/app/schemas/personal_workspace.py
+@@ -15,6 +15,134 @@ def _validate_content(value: dict[str, Any]) -> dict[str, Any]:
+     return value
+ 
+ 
++def _require_nonempty_string(value: Any, field: str) -> str:
++    if not isinstance(value, str) or not value.strip() or value != value.strip():
++        raise ValueError(f"{field} must be non-empty text.")
++    return value
++
++
++def _object_list(value: Any, field: str, *, optional: bool = False) -> list[dict]:
++    if value is None and optional:
++        return []
++    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
++        raise ValueError(f"{field} must be a list of objects.")
++    return value
++
++
++def validate_personal_workspace_data(
++    kind: str,
++    data: dict[str, Any],
++    *,
++    source_key: str | None = None,
++) -> None:
++    item_id = _require_nonempty_string(data.get("id"), "Item ID")
++    if source_key is not None:
++        prefix, separator, source_id = source_key.partition(":")
++        expected_prefixes = {
++            "knowledge": {"knowledge"},
++            "interact_session": {"session", "interact_session"},
++            "template": {"template"},
++        }
++        if (
++            not separator
++            or prefix not in expected_prefixes.get(kind, set())
++            or source_id != item_id
++        ):
++            raise ValueError("The source key must match the item's stable ID.")
++
++    if kind == "knowledge":
++        return
++
++    participants: set[str] = set()
++    slots: set[str] = set()
++    if kind == "interact_session":
++        for participant in _object_list(data.get("participants"), "Participants"):
++            participant_id = _require_nonempty_string(
++                participant.get("id"), "Participant ID"
++            )
++            if participant_id in participants:
++                raise ValueError("Participant IDs must be unique.")
++            participants.add(participant_id)
++            if participant.get("name") is not None and not isinstance(
++                participant["name"], str
++            ):
++                raise ValueError("Participant names must be text.")
++    elif kind == "template":
++        _require_nonempty_string(data.get("name"), "Template name")
++        for slot in _object_list(
++            data.get("participant_slots"), "Participant slots", optional=True
++        ):
++            slot_id = _require_nonempty_string(slot.get("id"), "Participant slot ID")
++            _require_nonempty_string(slot.get("label"), "Participant slot label")
++            if slot_id in slots:
++                raise ValueError("Participant slot IDs must be unique.")
++            slots.add(slot_id)
++    else:
++        raise ValueError("Unsupported personal workspace item kind.")
++
++    question_ids: set[str] = set()
++
++    def validate_questions(value: Any, field: str) -> None:
++        for question in _object_list(value, field, optional=field != "Questions"):
++            question_id = _require_nonempty_string(question.get("id"), "Question ID")
++            _require_nonempty_string(question.get("text"), "Question text")
++            if question_id in question_ids:
++                raise ValueError("Question IDs must be unique within an item.")
++            question_ids.add(question_id)
++
++            scope = question.get("scope")
++            if scope is not None and (
++                not isinstance(scope, str) or scope not in {"shared", "participant"}
++            ):
++                raise ValueError("Question scope must be shared or participant.")
++            target_field = (
++                "target_participant_slot"
++                if kind == "template"
++                else "target_participant_id"
++            )
++            target = question.get(target_field)
++            if target is not None:
++                target = _require_nonempty_string(target, target_field)
++                allowed_targets = slots if kind == "template" else participants
++                if (
++                    kind == "interact_session" or allowed_targets
++                ) and target not in allowed_targets:
++                    raise ValueError(
++                        f"{target_field} must reference an item participant."
++                    )
++
++            validate_questions(question.get("follow_ups"), "Question follow-ups")
++            answers = _object_list(
++                question.get("answers"), "Question answers", optional=True
++            )
++            for answer in answers:
++                owner_field = (
++                    "participant_slot" if kind == "template" else "participant_id"
++                )
++                owner = _require_nonempty_string(answer.get(owner_field), owner_field)
++                allowed_owners = slots if kind == "template" else participants
++                if (
++                    kind == "interact_session" or allowed_owners
++                ) and owner not in allowed_owners:
++                    raise ValueError(
++                        f"{owner_field} must reference an item participant."
++                    )
++                if answer.get("body") is not None and not isinstance(
++                    answer["body"], str
++                ):
++                    raise ValueError("Answer bodies must be text.")
++                if answer.get("branches_collapsed") is not None and not isinstance(
++                    answer["branches_collapsed"], bool
++                ):
++                    raise ValueError("branches_collapsed must be a boolean.")
++                validate_questions(
++                    answer.get("follow_ups"),
++                    "Answer follow-ups",
++                )
++
++    validate_questions(data.get("questions"), "Questions")
++
++
+ class PersonalWorkspaceSchema(BaseModel):
+     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+ 
+@@ -36,18 +164,11 @@ class PersonalWorkspaceItemInput(PersonalWorkspaceSchema):
+ 
+     @model_validator(mode="after")
+     def validate_kind_content(self) -> "PersonalWorkspaceItemInput":
+-        if self.kind == "knowledge":
+-            if not isinstance(self.data.get("id"), str):
+-                raise ValueError("Knowledge items require a stable local item ID.")
+-        elif self.kind == "interact_session":
+-            if not isinstance(self.data.get("participants"), list) or not isinstance(
+-                self.data.get("questions"), list
+-            ):
+-                raise ValueError("Interact sessions require participants and questions.")
+-        elif self.kind == "template" and not isinstance(
+-            self.data.get("questions"), list
+-        ):
+-            raise ValueError("Interact templates require a questions list.")
++        validate_personal_workspace_data(
++            self.kind,
++            self.data,
++            source_key=self.source_key,
++        )
+         return self
+ 
+ 
+diff --git a/backend/app/services/personal_workspace.py b/backend/app/services/personal_workspace.py
+index 32ad55a..579fe81 100644
+--- a/backend/app/services/personal_workspace.py
++++ b/backend/app/services/personal_workspace.py
+@@ -10,7 +10,10 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from app.models.personal_workspace import PersonalWorkspaceItem
+-from app.schemas.personal_workspace import PersonalWorkspaceItemInput
++from app.schemas.personal_workspace import (
++    PersonalWorkspaceItemInput,
++    validate_personal_workspace_data,
++)
+ 
+ 
+ def _item_result(item: PersonalWorkspaceItem) -> dict[str, Any]:
+@@ -54,9 +57,9 @@ class PersonalWorkspaceService:
+                 detail="Personal workspace storage is unavailable.",
+             )
+ 
+-        stored: list[dict[str, Any]] = []
+-        created: list[bool] = []
+-        for payload in items:
++        stored_by_key: dict[str, dict[str, Any]] = {}
++        created_by_key: dict[str, bool] = {}
++        for payload in sorted(items, key=lambda item: item.source_key):
+             statement = (
+                 insert(PersonalWorkspaceItem)
+                 .values(
+@@ -89,10 +92,13 @@ class PersonalWorkspaceService:
+                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                     detail="The personal import could not be confirmed. Retry safely.",
+                 )
+-            stored.append(_item_result(item))
+-            created.append(was_created)
++            stored_by_key[payload.source_key] = _item_result(item)
++            created_by_key[payload.source_key] = was_created
+         await self.session.commit()
+-        return {"items": stored, "created": created}
++        return {
++            "items": [stored_by_key[item.source_key] for item in items],
++            "created": [created_by_key[item.source_key] for item in items],
++        }
+ 
+     async def update_item(
+         self,
+@@ -124,6 +130,17 @@ class PersonalWorkspaceService:
+                 status_code=status.HTTP_409_CONFLICT,
+                 detail="This personal item changed elsewhere. Reload it and retry.",
+             )
++        try:
++            validate_personal_workspace_data(
++                item.kind,
++                data,
++                source_key=item.source_key,
++            )
++        except ValueError as error:
++            raise HTTPException(
++                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
++                detail=str(error),
++            ) from None
+         item.title = title
+         item.data = data
+         item.revision += 1
+@@ -131,7 +148,13 @@ class PersonalWorkspaceService:
+         await self.session.refresh(item)
+         return _item_result(item)
+ 
+-    async def delete_item(self, firebase_uid: str, item_id: UUID) -> None:
++    async def delete_item(
++        self,
++        firebase_uid: str,
++        item_id: UUID,
++        *,
++        expected_revision: int,
++    ) -> None:
+         item = await self.session.scalar(
+             select(PersonalWorkspaceItem)
+             .where(
+@@ -142,5 +165,10 @@ class PersonalWorkspaceService:
+         )
+         if item is None:
+             return
++        if item.revision != expected_revision:
++            raise HTTPException(
++                status_code=status.HTTP_409_CONFLICT,
++                detail="This personal item changed elsewhere. Reload it and retry.",
++            )
+         await self.session.delete(item)
+         await self.session.commit()
+diff --git a/backend/tests/test_personal_workspace.py b/backend/tests/test_personal_workspace.py
+index 515b1c4..0acd43f 100644
+--- a/backend/tests/test_personal_workspace.py
++++ b/backend/tests/test_personal_workspace.py
+@@ -147,6 +147,7 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
+     hidden_delete = await client.delete(
+         f"/api/v1/personal/items/{item_id}",
+         headers=bearer("other"),
++        params={"expected_revision": 1},
+     )
+     assert hidden_delete.status_code == 204
+     assert len(
+@@ -195,10 +196,21 @@ async def test_personal_workspace_is_verified_uid_private_and_idempotent(
+     deleted = await client.delete(
+         f"/api/v1/personal/items/{item_id}",
+         headers=headers,
++        params={"expected_revision": 1},
++    )
++    assert deleted.status_code == 409
++    deleted = await client.delete(
++        f"/api/v1/personal/items/{item_id}",
++        headers=headers,
++        params={"expected_revision": 2},
+     )
+     assert deleted.status_code == 204
+     assert (
+-        await client.delete(f"/api/v1/personal/items/{item_id}", headers=headers)
++        await client.delete(
++            f"/api/v1/personal/items/{item_id}",
++            headers=headers,
++            params={"expected_revision": 2},
++        )
+     ).status_code == 204
+     remaining = await client.get("/api/v1/personal/items", headers=headers)
+     assert {item["kind"] for item in remaining.json()} == {
+@@ -267,6 +279,100 @@ async def test_personal_workspace_denies_anonymous_unverified_and_overrides(
+     assert body_override.status_code == 422
+ 
+ 
++@pytest.mark.asyncio
++async def test_personal_workspace_validates_stable_ids_and_nested_content(
++    app_client, monkeypatch
++) -> None:
++    client, _ = app_client
++    install_test_tokens(monkeypatch)
++    headers = bearer("content-validation")
++    session = {
++        "kind": "interact_session",
++        "source_key": "interact_session:session-id",
++        "title": "Session",
++        "data": {
++            "id": "session-id",
++            "participants": [{"id": "participant-id", "name": "Alice"}],
++            "questions": [
++                {
++                    "id": "question-id",
++                    "text": "Question",
++                    "answers": [{"participant_id": "participant-id", "body": "Answer"}],
++                }
++            ],
++        },
++    }
++    template = {
++        "kind": "template",
++        "source_key": "template:template-id",
++        "title": "Template",
++        "data": {
++            "id": "template-id",
++            "name": "Template",
++            "participant_slots": [{"id": "slot-id", "label": "Participant 1"}],
++            "questions": [{"id": "question-id", "text": "Question"}],
++        },
++    }
++    for item in [
++        {**knowledge(), "data": {**knowledge()["data"], "id": "different-id"}},
++        {**session, "data": {**session["data"], "participants": [{"name": "Alice"}]}},
++        {
++            **template,
++            "data": {
++                **template["data"],
++                "questions": [
++                    {
++                        "id": "question-id",
++                        "text": "Question",
++                        "answers": [
++                            {
++                                "participant_slot": "slot-id",
++                                "follow_ups": [{"text": "Missing ID"}],
++                            }
++                        ],
++                    }
++                ],
++            },
++        },
++    ]:
++        response = await client.post(
++            "/api/v1/personal/items/import",
++            headers=headers,
++            json={"items": [item]},
++        )
++        assert response.status_code == 422
++
++    valid_items = [knowledge(), session, template]
++    imported = await client.post(
++        "/api/v1/personal/items/import",
++        headers=headers,
++        json={"items": valid_items},
++    )
++    assert imported.status_code == 201, imported.text
++    assert [item["source_key"] for item in imported.json()["items"]] == [
++        item["source_key"] for item in valid_items
++    ]
++
++    for record in imported.json()["items"]:
++        updated_data = record["data"]
++        if record["kind"] == "knowledge":
++            updated_data["id"] = "changed-id"
++        elif record["kind"] == "interact_session":
++            updated_data["questions"] = [{"text": "Missing question ID"}]
++        else:
++            updated_data["questions"] = [{"id": "question-id"}]
++        response = await client.put(
++            f"/api/v1/personal/items/{record['id']}",
++            headers=headers,
++            json={
++                "expected_revision": 1,
++                "title": record["title"],
++                "data": updated_data,
++            },
++        )
++        assert response.status_code == 422
++
++
+ @pytest.mark.asyncio
+ async def test_personal_import_concurrent_replay_and_invalid_batch_are_atomic(
+     app_client, monkeypatch
+diff --git a/backend/tests/test_personal_workspace_postgresql.py b/backend/tests/test_personal_workspace_postgresql.py
+new file mode 100644
+index 0000000..e59b993
+--- /dev/null
++++ b/backend/tests/test_personal_workspace_postgresql.py
+@@ -0,0 +1,86 @@
++import asyncio
++import os
++from uuid import uuid4
++
++import pytest
++from sqlalchemy import event, text
++from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
++
++from app.models.personal_workspace import PersonalWorkspaceItem
++from app.schemas.personal_workspace import PersonalWorkspaceItemInput
++from app.services.personal_workspace import PersonalWorkspaceService
++
++
++@pytest.mark.asyncio
++async def test_overlapping_reverse_order_personal_imports_do_not_deadlock() -> None:
++    database_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
++    if not database_url:
++        pytest.skip("POSTGRES_TEST_DATABASE_URL is not configured")
++
++    engine = create_async_engine(database_url)
++    schema_name = f"personal_workspace_test_{uuid4().hex}"
++
++    def set_test_schema(dbapi_connection, _connection_record) -> None:
++        cursor = dbapi_connection.cursor()
++        cursor.execute(f'SET search_path TO "{schema_name}", public')
++        cursor.close()
++
++    event.listen(engine.sync_engine, "connect", set_test_schema)
++    try:
++        async with engine.begin() as connection:
++            await connection.execute(text(f'CREATE SCHEMA "{schema_name}"'))
++            await connection.execute(
++                text(f'SET search_path TO "{schema_name}", public')
++            )
++            await connection.run_sync(PersonalWorkspaceItem.__table__.create)
++
++        session_factory = async_sessionmaker(engine, expire_on_commit=False)
++        firebase_uid = f"overlap-{uuid4().hex}"
++        entries = [
++            PersonalWorkspaceItemInput(
++                kind="knowledge",
++                source_key=f"knowledge:{item_id}",
++                title=f"Item {item_id}",
++                data={"id": item_id, "answer": item_id},
++            )
++            for item_id in ("a", "b")
++        ]
++        ready = 0
++        both_ready = asyncio.Event()
++        start = asyncio.Event()
++
++        async def import_batch(batch: list[PersonalWorkspaceItemInput]) -> dict:
++            nonlocal ready
++            async with session_factory() as session:
++                await session.execute(text("SET LOCAL lock_timeout = '5s'"))
++                ready += 1
++                if ready == 2:
++                    both_ready.set()
++                await start.wait()
++                return await PersonalWorkspaceService(session).import_items(
++                    firebase_uid, batch
++                )
++
++        first_task = asyncio.create_task(import_batch(entries))
++        second_task = asyncio.create_task(import_batch(list(reversed(entries))))
++        await asyncio.wait_for(both_ready.wait(), timeout=3)
++        start.set()
++        first, second = await asyncio.wait_for(
++            asyncio.gather(first_task, second_task),
++            timeout=10,
++        )
++
++        assert [item["source_key"] for item in first["items"]] == [
++            item.source_key for item in entries
++        ]
++        assert [item["source_key"] for item in second["items"]] == [
++            item.source_key for item in reversed(entries)
++        ]
++        assert sum(first["created"] + second["created"]) == 2
++    finally:
++        event.remove(engine.sync_engine, "connect", set_test_schema)
++        async with engine.begin() as connection:
++            await connection.execute(
++                text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE')
++            )
++        await engine.dispose()
+
+base-commit: 1649dad869a405f054f9b9f4efbb01ba8adba05a

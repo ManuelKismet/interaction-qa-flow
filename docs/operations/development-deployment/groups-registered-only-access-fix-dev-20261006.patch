@@ -1,0 +1,341 @@
+From df59f1291e38bc74bab54e5f34d9c86abb4cd63b Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 13:59:25 +0000
+Subject: [PATCH] Clarify verified-only Groups access
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index e910f0c..9504cd0 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -225,6 +225,30 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   Future<void> _openSharedGroups() async {
+     if (!await _saveBeforeLeaving() || !mounted) return;
+     final user = ref.read(firebaseAuthProvider).currentUser;
++    if (user != null && !user.isAnonymous && !user.emailVerified) {
++      final signIn = await showDialog<bool>(
++        context: context,
++        builder: (context) => AlertDialog(
++          title: const Text('Verify your email to use Groups'),
++          content: const Text(
++            'Check your email for the verification link. After verifying, '
++            'sign in again to access Groups. No new account is needed.',
++          ),
++          actions: [
++            TextButton(
++              onPressed: () => Navigator.pop(context, false),
++              child: const Text('Cancel'),
++            ),
++            FilledButton(
++              onPressed: () => Navigator.pop(context, true),
++              child: const Text('Already have an account? Sign in'),
++            ),
++          ],
++        ),
++      );
++      if (signIn == true && mounted) await _openSignIn();
++      return;
++    }
+     if (!isVerifiedRegisteredFirebaseUser(user)) {
+       final action = await showDialog<String>(
+         context: context,
+@@ -4100,8 +4124,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     final user = ref.watch(firebaseAuthProvider).currentUser;
+     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+       final eligible = isVerifiedRegisteredFirebaseUser(user);
++      final needsEmailVerification =
++          user != null && !user.isAnonymous && !user.emailVerified;
+       return Scaffold(
+-        appBar: AppBar(title: const Text('Groups')),
++        appBar: AppBar(
++          title: Text(
++            needsEmailVerification
++                ? 'Verify your email to use Groups'
++                : 'Groups',
++          ),
++        ),
+         body: Center(
+           child: Padding(
+             padding: const EdgeInsets.all(24),
+@@ -4109,9 +4141,13 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+               mainAxisSize: MainAxisSize.min,
+               children: [
+                 Text(
+-                  eligible
+-                      ? 'Checking account access…'
+-                      : 'Groups require a registered account with a verified email.',
++                  needsEmailVerification
++                      ? 'Check your email for the verification link. After '
++                            'verifying, sign in again to access Groups. No new '
++                            'account is needed.'
++                      : eligible
++                          ? 'Checking account access…'
++                          : 'Groups require a registered account with a verified email.',
+                   textAlign: TextAlign.center,
+                 ),
+                 if (!eligible) ...[
+@@ -4124,17 +4160,18 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+                     ),
+                     child: const Text('Sign in'),
+                   ),
+-                  FilledButton(
+-                    onPressed: () => Navigator.of(context).push<void>(
+-                      MaterialPageRoute<void>(
+-                        builder: (_) => SignInPage(
+-                          createAccount: true,
+-                          linkGuestIdentity: user?.isAnonymous == true,
++                  if (!needsEmailVerification)
++                    FilledButton(
++                      onPressed: () => Navigator.of(context).push<void>(
++                        MaterialPageRoute<void>(
++                          builder: (_) => SignInPage(
++                            createAccount: true,
++                            linkGuestIdentity: user?.isAnonymous == true,
++                          ),
+                         ),
+                       ),
++                      child: const Text('Create account'),
+                     ),
+-                    child: const Text('Create account'),
+-                  ),
+                 ],
+               ],
+             ),
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 5520804..f900cee 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -636,6 +636,17 @@ void main() {
+       find.textContaining('Verify this account’s email before using Groups'),
+       findsOneWidget,
+     );
++    await tester.tap(find.byTooltip('Groups'));
++    await tester.pumpAndSettle();
++    expect(find.text('Verify your email to use Groups'), findsOneWidget);
++    expect(
++      find.textContaining(
++        'Check your email for the verification link. After verifying,',
++      ),
++      findsOneWidget,
++    );
++    expect(find.text('Create an account'), findsNothing);
++    expect(find.text('Create account'), findsNothing);
+   });
+ 
+   testWidgets('verified account without an organisation can open groups', (
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index 2062530..6231817 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -300,6 +300,26 @@ class _IdentityTransitionGroupsRepository extends GuestGroupRepository {
+   }) async => const [];
+ }
+ 
++class _PendingGroupsRepository extends GuestGroupRepository {
++  _PendingGroupsRepository() : super(Dio());
++
++  final groups = Completer<List<Map<String, dynamic>>>();
++  var listGroupsCalls = 0;
++  var listArchivedGroupsCalls = 0;
++
++  @override
++  Future<List<Map<String, dynamic>>> listGroups() {
++    listGroupsCalls++;
++    return groups.future;
++  }
++
++  @override
++  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
++    listArchivedGroupsCalls++;
++    return const [];
++  }
++}
++
+ class _ShareRepository extends GuestGroupRepository {
+   _ShareRepository() : super(Dio());
+ 
+@@ -575,7 +595,9 @@ void main() {
+         );
+         await tester.pumpAndSettle();
+ 
+-        expect(find.text('Groups'), findsOneWidget);
++        if (eligible || user.isAnonymous) {
++          expect(find.text('Groups'), findsOneWidget);
++        }
+         if (eligible) {
+           final createButton = tester.widget<FilledButton>(
+             find.widgetWithText(FilledButton, 'Create group'),
+@@ -587,13 +609,27 @@ void main() {
+           expect(joinButton.onPressed, isNotNull);
+           expect(repository.listGroupsCalls, 1);
+         } else {
+-          expect(
+-            find.textContaining('Groups require a registered account'),
+-            findsOneWidget,
+-          );
+           expect(find.text('Create group'), findsNothing);
+           expect(repository.listGroupsCalls, 0);
+           expect(repository.listArchivedGroupsCalls, 0);
++          if (user.isAnonymous) {
++            expect(
++              find.textContaining('Groups require a registered account'),
++              findsOneWidget,
++            );
++            expect(find.text('Create account'), findsOneWidget);
++          } else {
++            expect(
++              find.text('Verify your email to use Groups'),
++              findsOneWidget,
++            );
++            expect(
++              find.textContaining('Check your email for the verification link'),
++              findsOneWidget,
++            );
++            expect(find.text('Sign in'), findsOneWidget);
++            expect(find.text('Create account'), findsNothing);
++          }
+         }
+         expect(identical(user, auth.currentUser), isTrue);
+         await tester.pumpWidget(const SizedBox.shrink());
+@@ -643,6 +679,33 @@ void main() {
+     router.dispose();
+   });
+ 
++  testWidgets('pending Groups response is ignored after page disposal', (
++    tester,
++  ) async {
++    final repository = _PendingGroupsRepository();
++    final user = _TestUser(anonymous: false, verified: true);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: const MaterialApp(home: SharedGuestGroupsPage()),
++      ),
++    );
++    await tester.pump();
++    expect(repository.listGroupsCalls, 1);
++
++    await tester.pumpWidget(const SizedBox.shrink());
++    repository.groups.complete([
++      {'id': 'late-group', 'name': 'Late group', 'role': 'viewer'},
++    ]);
++    await tester.pumpAndSettle();
++
++    expect(repository.listArchivedGroupsCalls, 0);
++    expect(tester.takeException(), isNull);
++  });
++
+   testWidgets('UID change clears Groups state and ignores stale loads', (
+     tester,
+   ) async {
+diff --git a/backend/tests/test_guest_groups.py b/backend/tests/test_guest_groups.py
+index e61564d..0abb8ea 100644
+--- a/backend/tests/test_guest_groups.py
++++ b/backend/tests/test_guest_groups.py
+@@ -245,6 +245,99 @@ async def test_all_group_routes_require_verified_registered_identity(
+     assert account_state.json() == {"status": "shared_guest"}
+ 
+ 
++@pytest.mark.asyncio
++async def test_anonymous_same_uid_cannot_reuse_registered_group_access(
++    app_client, monkeypatch
++) -> None:
++    client, _ = app_client
++    install_test_tokens(monkeypatch)
++    owner_uid = "registered-group-owner"
++    member_uid = "registered-group-member"
++    group = await make_group(client, owner_uid, "Registered group")
++    group_id = group["id"]
++
++    invitation = await client.post(
++        f"/api/v1/guest/groups/{group_id}/invitations",
++        headers=bearer(owner_uid),
++        json={"role": "contributor", "expires_in_hours": 24},
++    )
++    assert invitation.status_code == 200, invitation.text
++    join = await client.post(
++        "/api/v1/guest/invitations/join",
++        headers=bearer(member_uid),
++        json={
++            "token": invitation.json()["token"],
++            "display_name": "Registered member",
++        },
++    )
++    assert join.status_code == 200, join.text
++    approved = await client.post(
++        f"/api/v1/guest/groups/{group_id}/members/{join.json()['id']}/approve",
++        headers=bearer(owner_uid),
++    )
++    assert approved.status_code == 200, approved.text
++
++    anonymous_owner = bearer(owner_uid, "anonymous")
++    anonymous_member = bearer(member_uid, "anonymous")
++    assert (
++        await client.get(
++            f"/api/v1/guest/groups/{group_id}",
++            headers=anonymous_owner,
++        )
++    ).status_code == 403
++    assert (
++        await client.get(
++            f"/api/v1/guest/groups/{group_id}",
++            headers=anonymous_member,
++        )
++    ).status_code == 403
++    denied_write = await client.post(
++        f"/api/v1/guest/groups/{group_id}/entries",
++        headers=anonymous_member,
++        json={
++            "kind": "knowledge",
++            "title": "Anonymous write",
++            "data": {"body": "Must be denied"},
++        },
++    )
++    assert denied_write.status_code == 403
++    denied_invitation = await client.post(
++        f"/api/v1/guest/groups/{group_id}/invitations",
++        headers=anonymous_owner,
++        json={"role": "viewer", "expires_in_hours": 24},
++    )
++    assert denied_invitation.status_code == 403
++
++    assert (
++        await client.get(
++            f"/api/v1/guest/groups/{group_id}",
++            headers=bearer(owner_uid),
++        )
++    ).status_code == 200
++    assert (
++        await client.get(
++            f"/api/v1/guest/groups/{group_id}",
++            headers=bearer(member_uid),
++        )
++    ).status_code == 200
++    allowed_invitation = await client.post(
++        f"/api/v1/guest/groups/{group_id}/invitations",
++        headers=bearer(owner_uid),
++        json={"role": "viewer", "expires_in_hours": 24},
++    )
++    assert allowed_invitation.status_code == 200, allowed_invitation.text
++    allowed_write = await client.post(
++        f"/api/v1/guest/groups/{group_id}/entries",
++        headers=bearer(member_uid),
++        json={
++            "kind": "knowledge",
++            "title": "Registered write",
++            "data": {"body": "Allowed for the registered member"},
++        },
++    )
++    assert allowed_write.status_code == 201, allowed_write.text
++
++
+ @pytest.mark.asyncio
+ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkeypatch) -> None:
+     client, session_factory = app_client
+-- 
+2.55.0
+

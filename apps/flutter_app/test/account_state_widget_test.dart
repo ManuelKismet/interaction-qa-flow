@@ -98,8 +98,8 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
   @override
   Stream<User?> authStateChanges() => Stream.value(currentUser);
 
-  final FirebaseAuthException? createError;
-  final FirebaseAuthException? signInError;
+  final Object? createError;
+  final Object? signInError;
   int createAttempts = 0;
   int signInAttempts = 0;
   int signOutAttempts = 0;

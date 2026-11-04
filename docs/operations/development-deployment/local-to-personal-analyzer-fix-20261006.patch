@@ -1,0 +1,72 @@
+From c70436d0d8428c71da10d49ca45b13a9fbfa229f Mon Sep 17 00:00:00 2001
+From: Copilot <copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 17:15:03 +0000
+Subject: [PATCH] Remove analyzer warnings from personal import changes
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../guest/presentation/guest_workspace_page.dart         | 2 +-
+ apps/flutter_app/test/account_state_widget_test.dart     | 9 ---------
+ 2 files changed, 1 insertion(+), 10 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index bb28d60..06db340 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -493,7 +493,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               _personalItems.removeWhere(
+                 (item) => item['source_key'] == write.sourceKey,
+               );
+-              _personalItems.add(saved!);
++              _personalItems.add(saved);
+             } else {
+               _personalItems.removeWhere(
+                 (item) => item['source_key'] == write.sourceKey,
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index cafbc37..c940ce4 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -20,9 +20,6 @@ class _TestUser extends Fake implements User {
+     required this.isAnonymous,
+     this.isEmailVerified = false,
+     this.testUid = 'account-uid',
+-    this.linkError,
+-    this.verificationEmailError,
+-    this.reloadError,
+   });
+ 
+   @override
+@@ -40,9 +37,6 @@ class _TestUser extends Fake implements User {
+   String get uid => testUid;
+ 
+   final String testUid;
+-  final FirebaseAuthException? linkError;
+-  final FirebaseAuthException? verificationEmailError;
+-  final FirebaseAuthException? reloadError;
+   int verificationEmailAttempts = 0;
+   int linkAttempts = 0;
+   int reloadAttempts = 0;
+@@ -52,19 +46,16 @@ class _TestUser extends Fake implements User {
+     ActionCodeSettings? actionCodeSettings,
+   ]) async {
+     verificationEmailAttempts++;
+-    if (verificationEmailError != null) throw verificationEmailError!;
+   }
+ 
+   @override
+   Future<void> reload() async {
+     reloadAttempts++;
+-    if (reloadError != null) throw reloadError!;
+   }
+ 
+   @override
+   Future<UserCredential> linkWithCredential(AuthCredential credential) async {
+     linkAttempts++;
+-    if (linkError != null) throw linkError!;
+     isAnonymous = false;
+     return _TestUserCredential(this);
+   }
+base-commit: 0e2702de0922a0699a3a8dec0a9f3f9348f57a78
+-- 
+2.55.0
+

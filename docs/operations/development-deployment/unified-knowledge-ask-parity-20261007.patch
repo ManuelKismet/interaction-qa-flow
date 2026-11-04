@@ -1,0 +1,1540 @@
+From 607bcce3ea61e0fb9c9392c2cd9c0b2bbbc847c3 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 22:40:04 +0000
+Subject: [PATCH] Unify Ask Knowledge search sources
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../lib/core/routing/app_router.dart          |   5 +-
+ .../ask_suggestions_controller.dart           | 318 ++++++++++++++++-
+ .../features/ask/presentation/ask_page.dart   | 171 ++++++---
+ .../presentation/guest_workspace_page.dart    | 110 ++----
+ .../application/knowledge_search_sources.dart |  96 +++++
+ apps/flutter_app/test/ask_page_test.dart      | 221 ++++++++++++
+ .../test/ask_suggestions_controller_test.dart | 328 ++++++++++++++++--
+ 7 files changed, 1081 insertions(+), 168 deletions(-)
+ create mode 100644 apps/flutter_app/lib/features/knowledge/application/knowledge_search_sources.dart
+ create mode 100644 apps/flutter_app/test/ask_page_test.dart
+
+diff --git a/apps/flutter_app/lib/core/routing/app_router.dart b/apps/flutter_app/lib/core/routing/app_router.dart
+index e8a3161..cae9f82 100644
+--- a/apps/flutter_app/lib/core/routing/app_router.dart
++++ b/apps/flutter_app/lib/core/routing/app_router.dart
+@@ -68,10 +68,13 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+           ),
+           GoRoute(
+             path: '/personal',
+-            builder: (context, state) => const GuestWorkspacePage(
++            builder: (context, state) => GuestWorkspacePage(
+               firebaseReady: true,
+               personalWorkspaceEnabled: true,
+               membershipStatus: AccountMembershipStatus.active,
++              initialKnowledgeItemId: state.extra is Map
++                  ? (state.extra as Map)['knowledgeItemId'] as String?
++                  : null,
+             ),
+           ),
+         ],
+diff --git a/apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart b/apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart
+index 0336a3b..a505114 100644
+--- a/apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart
++++ b/apps/flutter_app/lib/features/ask/application/ask_suggestions_controller.dart
+@@ -1,35 +1,107 @@
+ import 'dart:async';
+ 
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:int_qa_flow/core/auth/auth_providers.dart';
++import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
++import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
++import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
++import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
++import 'package:int_qa_flow/features/knowledge/application/knowledge_search_sources.dart';
+ import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
+ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+ 
+-final askSuggestionsProvider = AsyncNotifierProvider.autoDispose<
+-    AskSuggestionsController, List<SemanticSearchResult>>(
+-  AskSuggestionsController.new,
+-);
++final askSuggestionsProvider =
++    AsyncNotifierProvider.autoDispose<AskSuggestionsController, AskSuggestions>(
++      AskSuggestionsController.new,
++    );
++
++class AskKnowledgeHit {
++  const AskKnowledgeHit({
++    required this.id,
++    required this.title,
++    required this.source,
++    required this.attribution,
++    required this.matchMethod,
++    required this.relevance,
++    required this.snippet,
++    required this.status,
++    required this.destination,
++    this.groupId,
++  });
++
++  final String id;
++  final String title;
++  final String source;
++  final List<String> attribution;
++  final String matchMethod;
++  final double relevance;
++  final String? snippet;
++  final String status;
++  final String destination;
++  final String? groupId;
++}
++
++class AskSuggestions {
++  const AskSuggestions({
++    this.hits = const [],
++    this.failedSources = const {},
++    this.partialSources = const {},
++    this.hasSearched = false,
++    this.notice,
++  });
++
++  final List<AskKnowledgeHit> hits;
++  final Set<String> failedSources;
++  final Set<String> partialSources;
++  final bool hasSearched;
++  final String? notice;
++}
++
++class AskSearchIdentity {
++  const AskSearchIdentity({this.verifiedUid});
++
++  final String? verifiedUid;
++}
+ 
+-class AskSuggestionsController
+-  extends AsyncNotifier<List<SemanticSearchResult>> {
++final askSearchIdentityProvider = Provider<AskSearchIdentity>((ref) {
++  try {
++    final user =
++        ref.watch(authStateProvider).value ??
++        ref.watch(firebaseAuthProvider).currentUser;
++    return AskSearchIdentity(
++      verifiedUid: isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null,
++    );
++  } on Object {
++    return const AskSearchIdentity();
++  }
++});
++
++class AskSuggestionsController extends AsyncNotifier<AskSuggestions> {
+   Timer? _debounce;
+   String _latestQuery = '';
+   int _queryGeneration = 0;
+ 
+   @override
+-  Future<List<SemanticSearchResult>> build() async {
++  Future<AskSuggestions> build() async {
++    ref.listen(askSearchIdentityProvider, (previous, next) {
++      if (previous?.verifiedUid != next.verifiedUid &&
++          _latestQuery.isNotEmpty) {
++        queryChanged(_latestQuery);
++      }
++    });
+     ref.onDispose(() {
+       _debounce?.cancel();
+       _queryGeneration++;
+     });
+-    return const [];
++    return const AskSuggestions();
+   }
+ 
+   void queryChanged(String query) {
+     _debounce?.cancel();
+     final generation = ++_queryGeneration;
+     _latestQuery = query.trim();
+-    if (_latestQuery.length < 3) {
+-      state = const AsyncData([]);
++    if (_latestQuery.length < 2) {
++      state = const AsyncData(AskSuggestions());
+       return;
+     }
+ 
+@@ -42,11 +114,227 @@ class AskSuggestionsController
+   }
+ 
+   Future<void> _search(String query, int generation) async {
+-    final result = await AsyncValue.guard(
+-      () => ref.read(questionsRepositoryProvider).searchQuestions(query),
++    final identity = ref.read(askSearchIdentityProvider);
++    GuestWorkspaceData local;
++    var localFailed = false;
++    try {
++      local = await ref.read(guestWorkspaceStoreProvider).load();
++    } on Object {
++      local = const GuestWorkspaceData();
++      localFailed = true;
++    }
++
++    if (_queryGeneration != generation ||
++        _latestQuery != query ||
++        ref.read(askSearchIdentityProvider).verifiedUid !=
++            identity.verifiedUid) {
++      return;
++    }
++    final sources = query.length > 100
++        ? const KnowledgeSearchSources()
++        : await searchKnowledgeSources(
++            query,
++            searchOrganisation: identity.verifiedUid == null
++                ? null
++                : (value) => ref
++                      .read(questionsRepositoryProvider)
++                      .searchQuestions(value, limit: 10),
++            searchPrivateAccount: identity.verifiedUid == null
++                ? null
++                : (value) => ref
++                      .read(personalWorkspaceRepositoryProvider)
++                      .searchKnowledge(
++                        value,
++                        expectedUid: identity.verifiedUid!,
++                      ),
++            searchGroups: identity.verifiedUid == null
++                ? null
++                : (value) => ref
++                      .read(guestGroupRepositoryProvider)
++                      .searchKnowledge(value),
++          );
++    if (_queryGeneration != generation ||
++        _latestQuery != query ||
++        ref.read(askSearchIdentityProvider).verifiedUid !=
++            identity.verifiedUid) {
++      return;
++    }
++
++    final hits = <AskKnowledgeHit>[];
++    final privateById = {
++      for (final item in sources.privateAccount)
++        if (item['source_id'] is String)
++          item['source_id'] as String: item,
++    };
++    final localIds = <String>{};
++    for (final item in local.knowledge) {
++      if (!matchesGuestKeywordOrPrefix(query, item)) continue;
++      final id = item['id'] as String? ?? '';
++      if (id.isEmpty) continue;
++      localIds.add(id);
++      final account = privateById[id];
++      final privateData = account?['data'] is Map
++          ? Map<String, dynamic>.from(account!['data'] as Map)
++          : const <String, dynamic>{};
++      final isPrivate = account != null;
++      hits.add(
++        AskKnowledgeHit(
++          id: id,
++          title: item['title'] as String? ?? '',
++          source: isPrivate ? 'Private' : 'Local',
++          attribution: const [],
++          matchMethod: isPrivate
++              ? _matchMethod(account['match_method'] as String?)
++              : 'Keyword or prefix match',
++          relevance: [
++            localKnowledgeRelevance(query, item),
++            (account?['relevance_score'] as num?)?.toDouble() ?? 0,
++          ].reduce((left, right) => left > right ? left : right),
++          snippet: _snippet(
++            query,
++            [
++              _string(account?['snippet']),
++              _string(item['answer']),
++              _string(item['body']),
++              _string(privateData['answer']),
++              _string(privateData['body']),
++            ],
++          ),
++          status: 'Knowledge',
++          destination: 'personal',
++        ),
++      );
++    }
++    for (final result in sources.privateAccount) {
++      final id = result['source_id'] as String? ?? '';
++      if (id.isEmpty || localIds.contains(id)) continue;
++      final data = result['data'] is Map
++          ? Map<String, dynamic>.from(result['data'] as Map)
++          : const <String, dynamic>{};
++      hits.add(
++        AskKnowledgeHit(
++          id: id,
++          title: result['title'] as String? ?? '',
++          source: 'Private',
++          attribution: const [],
++          matchMethod: _matchMethod(result['match_method'] as String?),
++          relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
++          snippet: _snippet(query, [
++            _string(result['snippet']),
++            _string(data['answer']),
++            _string(data['body']),
++          ]),
++          status: 'Knowledge',
++          destination: 'personal',
++        ),
++      );
++    }
++    for (final result in sources.groups) {
++      final id = result['id'] as String? ?? '';
++      final groupId = result['group_id'] as String?;
++      if (id.isEmpty || groupId == null) continue;
++      final data = result['data'] is Map
++          ? Map<String, dynamic>.from(result['data'] as Map)
++          : const <String, dynamic>{};
++      hits.add(
++        AskKnowledgeHit(
++          id: id,
++          title: result['title'] as String? ?? '',
++          source: 'Group: ${result['group_name'] as String? ?? 'Group'}',
++          attribution: const [],
++          matchMethod: _matchMethod(result['match_method'] as String?),
++          relevance: (result['relevance_score'] as num?)?.toDouble() ?? 0,
++          snippet: _snippet(query, [
++            _string(result['snippet']),
++            _string(data['answer']),
++            _string(data['body']),
++          ]),
++          status: 'Knowledge',
++          destination: 'group',
++          groupId: groupId,
++        ),
++      );
++    }
++    for (final result in sources.organisation) {
++      hits.add(
++        AskKnowledgeHit(
++          id: result.questionId,
++          title: result.title,
++          source: 'Organisation: ${result.organisationName}',
++          attribution: [
++            if (result.department != null)
++              'Department: ${result.department!.name}',
++            if (result.team != null) 'Team: ${result.team!.name}',
++          ],
++          matchMethod: _matchMethod(result.matchMethod),
++          relevance: result.relevanceScore,
++          snippet: _snippet(query, [
++            result.canonicalBody,
++            result.acceptedAnswerBody,
++            result.matchedText,
++          ]),
++          status: result.answerStatus == 'verified'
++              ? 'Verified answer'
++              : result.acceptedAnswerBody != null
++              ? 'Existing answer'
++              : 'Open question',
++          destination: 'organisation',
++        ),
++      );
++    }
++    hits.sort((left, right) {
++      final byScore = right.relevance.compareTo(left.relevance);
++      if (byScore != 0) return byScore;
++      final byTitle = left.title.toLowerCase().compareTo(
++        right.title.toLowerCase(),
++      );
++      if (byTitle != 0) return byTitle;
++      final byId = left.id.compareTo(right.id);
++      return byId != 0 ? byId : left.source.compareTo(right.source);
++    });
++    final errors = {...sources.failedSources};
++    if (localFailed) errors.add('Local');
++    state = AsyncData(
++      AskSuggestions(
++        hits: hits.take(10).toList(),
++        failedSources: errors,
++        partialSources: sources.partialSources,
++        hasSearched: true,
++        notice: query.length > 100
++            ? 'Shorten the query to 100 characters to search other accessible '
++                'Knowledge sources. Local Knowledge was searched.'
++            : null,
++      ),
+     );
+-    if (_queryGeneration == generation && _latestQuery == query) {
+-      state = result;
++  }
++
++  static String _matchMethod(String? method) => switch (method) {
++    'semantic' => 'Meaning-based match',
++    'hybrid' => 'Keyword and meaning match',
++    _ => 'Keyword or prefix match',
++  };
++
++  static String? _string(Object? value) => value is String ? value : null;
++
++  static String? _snippet(String query, List<String?> candidates) {
++    final terms = query.toLowerCase().split(RegExp(r'\s+'));
++    for (final candidate in candidates.whereType<String>()) {
++      final folded = candidate.toLowerCase();
++      final positions = terms
++          .where((term) => term.isNotEmpty)
++          .map(folded.indexOf)
++          .where((index) => index >= 0)
++          .toList();
++      if (positions.isEmpty) continue;
++      final start = (positions.reduce((a, b) => a < b ? a : b) - 50)
++          .clamp(0, candidate.length)
++          .toInt();
++      final end = (start + 220).clamp(0, candidate.length).toInt();
++      return '${start > 0 ? '…' : ''}${candidate.substring(start, end)}'
++          '${end < candidate.length ? '…' : ''}';
+     }
++    final fallback = candidates.whereType<String>().firstOrNull;
++    if (fallback == null) return null;
++    return fallback.length <= 220 ? fallback : '${fallback.substring(0, 220)}…';
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/apps/flutter_app/lib/features/ask/presentation/ask_page.dart b/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
+index 1e1b785..875302f 100644
+--- a/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
++++ b/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
+@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:go_router/go_router.dart';
+ import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
+ import 'package:int_qa_flow/features/ask/application/ask_suggestions_controller.dart';
+-import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+ import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
+ 
+ class AskPage extends ConsumerStatefulWidget {
+@@ -60,7 +59,10 @@ class _AskPageState extends ConsumerState<AskPage> {
+                   decoration: const InputDecoration(hintText: 'Ask a question'),
+                   onChanged: (_) => _questionChanged(),
+                 ),
+-                _SuggestionList(suggestions: suggestions),
++                _SuggestionList(
++                  suggestions: suggestions,
++                  onRetry: _questionChanged,
++                ),
+                 const SizedBox(height: 12),
+                 TextField(
+                   controller: _detailController,
+@@ -148,7 +150,7 @@ class _AskPageState extends ConsumerState<AskPage> {
+                           )
+                         : const Icon(Icons.arrow_forward),
+                     label: Text(
+-                      suggestions.value?.isNotEmpty == true
++                      suggestions.value?.hits.isNotEmpty == true
+                           ? 'Ask as new question'
+                           : 'Ask',
+                     ),
+@@ -191,39 +193,95 @@ class _AskPageState extends ConsumerState<AskPage> {
+ }
+ 
+ class _SuggestionList extends StatelessWidget {
+-  const _SuggestionList({required this.suggestions});
++  const _SuggestionList({
++    required this.suggestions,
++    required this.onRetry,
++  });
+ 
+-  final AsyncValue<List<SemanticSearchResult>> suggestions;
++  final AsyncValue<AskSuggestions> suggestions;
++  final VoidCallback onRetry;
+ 
+   @override
+   Widget build(BuildContext context) {
+     return suggestions.when(
+       data: (items) {
+-        if (items.isEmpty) return const SizedBox.shrink();
++        if (items.hits.isEmpty &&
++            items.failedSources.isEmpty &&
++            items.partialSources.isEmpty &&
++            !items.hasSearched &&
++            items.notice == null) {
++          return const SizedBox.shrink();
++        }
+         return Padding(
+           padding: const EdgeInsets.only(top: 20),
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.stretch,
+             children: [
+               Text(
+-                'Related questions',
++                'Related questions and Knowledge',
+                 style: Theme.of(context).textTheme.titleMedium,
+               ),
++              if (items.notice != null)
++                Padding(
++                  padding: const EdgeInsets.only(top: 8),
++                  child: Text(
++                    items.notice!,
++                    style: Theme.of(context).textTheme.bodySmall,
++                  ),
++                ),
+               const SizedBox(height: 8),
+-              DecoratedBox(
+-                decoration: BoxDecoration(
+-                  border: Border.all(color: const Color(0xFFD5DAD8)),
+-                  borderRadius: BorderRadius.circular(6),
++              if (items.hits.isNotEmpty)
++                DecoratedBox(
++                  decoration: BoxDecoration(
++                    border: Border.all(color: const Color(0xFFD5DAD8)),
++                    borderRadius: BorderRadius.circular(6),
++                  ),
++                  child: Column(
++                    children: [
++                      for (
++                        var index = 0;
++                        index < items.hits.length;
++                        index++
++                      ) ...[
++                        _SuggestionRow(result: items.hits[index]),
++                        if (index < items.hits.length - 1)
++                          const Divider(height: 1),
++                      ],
++                    ],
++                  ),
+                 ),
+-                child: Column(
+-                  children: [
+-                    for (var index = 0; index < items.length; index++) ...[
+-                      _SuggestionRow(result: items[index]),
+-                      if (index < items.length - 1) const Divider(height: 1),
++              if (items.failedSources.isNotEmpty ||
++                  items.partialSources.isNotEmpty)
++                Padding(
++                  padding: const EdgeInsets.only(top: 8),
++                  child: Column(
++                    crossAxisAlignment: CrossAxisAlignment.start,
++                    children: [
++                      if (items.failedSources.isNotEmpty)
++                        Text(
++                          'Some accessible Knowledge sources could not be '
++                          'searched: ${items.failedSources.join(', ')}.',
++                          style: Theme.of(context).textTheme.bodySmall,
++                        ),
++                      if (items.partialSources.isNotEmpty)
++                        Text(
++                          'Some sources reached their result limit: '
++                          '${items.partialSources.join(', ')}.',
++                          style: Theme.of(context).textTheme.bodySmall,
++                        ),
++                      TextButton(
++                        onPressed: onRetry,
++                        child: const Text('Retry search'),
++                      ),
+                     ],
+-                  ],
++                  ),
+                 ),
+-              ),
++              if (items.hits.isEmpty &&
++                  items.failedSources.isEmpty &&
++                  items.partialSources.isEmpty &&
++                  items.hasSearched &&
++                  items.notice == null)
++                const Text('No matching Knowledge found.'),
+             ],
+           ),
+         );
+@@ -243,18 +301,30 @@ class _SuggestionList extends StatelessWidget {
+ class _SuggestionRow extends StatelessWidget {
+   const _SuggestionRow({required this.result});
+ 
+-  final SemanticSearchResult result;
++  final AskKnowledgeHit result;
+ 
+   @override
+   Widget build(BuildContext context) {
+-    final highConfidence = result.confidence == 'high_confidence';
+-    final matchLabel = result.matchMethod == 'keyword'
+-        ? 'Keyword match'
+-        : highConfidence
+-            ? 'Likely match'
+-            : 'Related';
++    final highRelevance = result.relevance >= 1.2;
+     return InkWell(
+-      onTap: () => context.go('/questions/${result.questionId}'),
++      onTap: () {
++        switch (result.destination) {
++          case 'organisation':
++            context.go('/questions/${result.id}');
++            break;
++          case 'group':
++            context.go(
++              '/guest/groups',
++              extra: {'groupId': result.groupId, 'entryId': result.id},
++            );
++            break;
++          default:
++            context.go(
++              '/personal',
++              extra: {'knowledgeItemId': result.id},
++            );
++        }
++      },
+       child: Padding(
+         padding: const EdgeInsets.all(16),
+         child: Row(
+@@ -272,36 +342,45 @@ class _SuggestionRow extends StatelessWidget {
+                           style: Theme.of(context).textTheme.titleMedium,
+                         ),
+                       ),
+-                      const SizedBox(width: 8),
++                    ],
++                  ),
++                  const SizedBox(height: 6),
++                  Wrap(
++                    spacing: 6,
++                    runSpacing: 4,
++                    children: [
++                      Chip(
++                        visualDensity: VisualDensity.compact,
++                        label: Text(result.source),
++                      ),
++                      for (final label in result.attribution)
++                        Chip(
++                          visualDensity: VisualDensity.compact,
++                          label: Text(label),
++                        ),
+                       Text(
+-                        matchLabel,
++                        result.matchMethod,
+                         style: TextStyle(
+-                          color: highConfidence
++                          color: highRelevance
+                               ? const Color(0xFF255C57)
+                               : const Color(0xFF8A5A00),
+-                          fontWeight: FontWeight.w700,
++                          fontWeight: FontWeight.w600,
+                         ),
+                       ),
+                     ],
+                   ),
++                  if (result.snippet != null && result.snippet!.isNotEmpty)
++                    Padding(
++                      padding: const EdgeInsets.only(top: 6),
++                      child: Text(
++                        result.snippet!,
++                        maxLines: 3,
++                        overflow: TextOverflow.ellipsis,
++                      ),
++                    ),
+                   const SizedBox(height: 6),
+                   Text(
+-                    result.acceptedAnswerBody ?? 'No answer yet.',
+-                    maxLines: 3,
+-                    overflow: TextOverflow.ellipsis,
+-                  ),
+-                  const SizedBox(height: 6),
+-                  Text(
+-                    [
+-                      if (result.department != null) result.department!.name,
+-                      if (result.team != null) result.team!.name,
+-                      if (result.answerStatus == 'verified')
+-                        'Verified answer'
+-                      else if (result.acceptedAnswerBody != null)
+-                        'Existing answer'
+-                      else
+-                        'Open question',
+-                    ].join(' · '),
++                    result.status,
+                     style: Theme.of(context).textTheme.bodySmall,
+                   ),
+                 ],
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index f0c2866..cd4b619 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -21,6 +21,7 @@ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
++import 'package:int_qa_flow/features/knowledge/application/knowledge_search_sources.dart';
+ import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
+ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+ import 'package:share_plus/share_plus.dart';
+@@ -62,6 +63,7 @@ String _pdfFontPreviewMessage() => kIsWeb
+ class GuestWorkspacePage extends ConsumerStatefulWidget {
+   const GuestWorkspacePage({
+     required this.firebaseReady,
++    this.initialKnowledgeItemId,
+     this.personalWorkspaceEnabled = false,
+     this.sharedIdentityActive = false,
+     this.accountUser,
+@@ -72,6 +74,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
+   });
+ 
+   final bool firebaseReady;
++  final String? initialKnowledgeItemId;
+   final bool personalWorkspaceEnabled;
+   final bool sharedIdentityActive;
+   final User? accountUser;
+@@ -1563,6 +1566,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                       children: [
+                         _GuestKnowledgeTab(
+                           items: data.knowledge,
++                          initialKnowledgeItemId:
++                              widget.initialKnowledgeItemId,
+                           searchIdentityKey: _verifiedPersonalUid == null
+                               ? null
+                               : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
+@@ -2182,6 +2187,7 @@ class _UnifiedKnowledgeSearchHit {
+ class _GuestKnowledgeTab extends StatefulWidget {
+   const _GuestKnowledgeTab({
+     required this.items,
++    this.initialKnowledgeItemId,
+     required this.searchIdentityKey,
+     required this.searchOrganization,
+     required this.searchPersonal,
+@@ -2195,6 +2201,7 @@ class _GuestKnowledgeTab extends StatefulWidget {
+   });
+ 
+   final List<Map<String, dynamic>> items;
++  final String? initialKnowledgeItemId;
+   final String? searchIdentityKey;
+   final Future<List<SemanticSearchResult>> Function(String)?
+   searchOrganization;
+@@ -2231,6 +2238,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+   bool _groupSearchPartial = false;
+   bool _remoteSearchLoading = false;
+   bool _showSavedQuestions = false;
++
++  @override
++  void initState() {
++    super.initState();
++    _selectedKnowledgeItemId = widget.initialKnowledgeItemId;
++    _showSavedQuestions = widget.initialKnowledgeItemId != null;
++  }
+   String? _selectedKnowledgeItemId;
+ 
+   @override
+@@ -2303,69 +2317,31 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+ 
+   Future<void> _searchRemote(String query, int generation) async {
+     final identityKey = widget.searchIdentityKey;
+-    final searchOrganization = widget.searchOrganization;
+-    final searchPersonal = widget.searchPersonal;
+-    final searchGroups = widget.searchGroups;
+-    var organizationFailed = false;
+-    var organizationPartial = false;
+-    var personalFailed = false;
+-    var groupsFailed = false;
+-    List<SemanticSearchResult> organizationResults = [];
+-    List<Map<String, dynamic>> personalResults = [];
+-    List<Map<String, dynamic>> groupResults = [];
+-    var personalSearchPartial = false;
+-    var groupSearchPartial = false;
+-    await Future.wait<void>([
+-      if (searchOrganization != null)
+-        (() async {
+-          try {
+-            organizationResults = await searchOrganization(query);
+-            organizationPartial = organizationResults.length >= 10;
+-          } on Object {
+-            organizationFailed = true;
+-          }
+-        })(),
+-      if (searchPersonal != null)
+-        (() async {
+-          try {
+-            final response = await searchPersonal(query);
+-            personalResults =
+-                (response['results'] as List<dynamic>? ?? const [])
+-                    .whereType<Map<String, dynamic>>()
+-                    .toList();
+-            personalSearchPartial = response['partial'] == true;
+-          } on Object {
+-            personalFailed = true;
+-          }
+-        })(),
+-      if (searchGroups != null)
+-        (() async {
+-          try {
+-            final response = await searchGroups(query);
+-            groupResults = (response['results'] as List<dynamic>? ?? const [])
+-                .whereType<Map<String, dynamic>>()
+-                .toList();
+-            groupSearchPartial = response['partial'] == true;
+-          } on Object {
+-            groupsFailed = true;
+-          }
+-        })(),
+-    ]);
++    final sources = await searchKnowledgeSources(
++      query,
++      searchOrganisation: widget.searchOrganization,
++      searchPrivateAccount: widget.searchPersonal,
++      searchGroups: widget.searchGroups,
++    );
+     if (!mounted ||
+         generation != _searchGeneration ||
+         identityKey != widget.searchIdentityKey) {
+       return;
+     }
+     setState(() {
+-      _organizationResults = organizationResults;
+-      _personalResults = personalResults;
+-      _groupResults = groupResults;
+-      _organizationSearchFailed = organizationFailed;
+-      _organizationSearchPartial = organizationPartial;
+-      _personalSearchFailed = personalFailed;
+-      _groupSearchFailed = groupsFailed;
+-      _personalSearchPartial = personalSearchPartial;
+-      _groupSearchPartial = groupSearchPartial;
++      _organizationResults = sources.organisation;
++      _personalResults = sources.privateAccount;
++      _groupResults = sources.groups;
++      _organizationSearchFailed = sources.failedSources.contains(
++        'Organisation',
++      );
++      _organizationSearchPartial = sources.partialSources.contains(
++        'Organisation',
++      );
++      _personalSearchFailed = sources.failedSources.contains('Private');
++      _groupSearchFailed = sources.failedSources.contains('Groups');
++      _personalSearchPartial = sources.partialSources.contains('Private');
++      _groupSearchPartial = sources.partialSources.contains('Groups');
+       _remoteSearchLoading = false;
+     });
+   }
+@@ -2428,24 +2404,6 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+     return nonempty.isEmpty ? null : nonempty.first;
+   }
+ 
+-  double _localRelevance(String query, Map<String, dynamic> item) {
+-    final foldedQuery = query.toLowerCase().trim();
+-    final title = (item['title'] as String? ?? '').toLowerCase();
+-    if (title == foldedQuery) return 1.9;
+-    if (title.startsWith(foldedQuery)) return 1.7;
+-    if (title.contains(foldedQuery)) return 1.5;
+-    final answerAndBody = [
+-      _stringValue(item['answer']),
+-      _stringValue(item['body']),
+-    ].whereType<String>().join(' ').toLowerCase();
+-    if (answerAndBody.contains(foldedQuery)) return 1.3;
+-    final terms = foldedQuery
+-        .split(RegExp(r'\s+'))
+-        .where((term) => term.isNotEmpty);
+-    if (terms.isNotEmpty && terms.every(answerAndBody.contains)) return 1.2;
+-    return 0.9;
+-  }
+-
+   Widget _remoteSearchResults(
+     BuildContext context,
+     String query,
+@@ -2515,7 +2473,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+             _stringValue(accountData['body']),
+             _stringValue(accountData['answer']),
+           ]);
+-      final localRelevance = _localRelevance(query, item);
++      final localRelevance = localKnowledgeRelevance(query, item);
+       final accountRelevance =
+           (accountResult?['relevance_score'] as num?)?.toDouble() ?? 0;
+       final personalMethod = accountResult?['match_method'] as String?;
+diff --git a/apps/flutter_app/lib/features/knowledge/application/knowledge_search_sources.dart b/apps/flutter_app/lib/features/knowledge/application/knowledge_search_sources.dart
+new file mode 100644
+index 0000000..4f7d5ec
+--- /dev/null
++++ b/apps/flutter_app/lib/features/knowledge/application/knowledge_search_sources.dart
+@@ -0,0 +1,96 @@
++import 'package:int_qa_flow/features/questions/domain/question_models.dart';
++
++typedef OrganisationKnowledgeSearch =
++    Future<List<SemanticSearchResult>> Function(String query);
++typedef PrivateKnowledgeSearch =
++    Future<Map<String, dynamic>> Function(String query);
++typedef GroupKnowledgeSearch = Future<Map<String, dynamic>> Function(String query);
++
++class KnowledgeSearchSources {
++  const KnowledgeSearchSources({
++    this.organisation = const [],
++    this.privateAccount = const [],
++    this.groups = const [],
++    this.failedSources = const {},
++    this.partialSources = const {},
++  });
++
++  final List<SemanticSearchResult> organisation;
++  final List<Map<String, dynamic>> privateAccount;
++  final List<Map<String, dynamic>> groups;
++  final Set<String> failedSources;
++  final Set<String> partialSources;
++}
++
++Future<KnowledgeSearchSources> searchKnowledgeSources(
++  String query, {
++  OrganisationKnowledgeSearch? searchOrganisation,
++  PrivateKnowledgeSearch? searchPrivateAccount,
++  GroupKnowledgeSearch? searchGroups,
++}) async {
++  List<SemanticSearchResult> organisation = [];
++  List<Map<String, dynamic>> privateAccount = [];
++  List<Map<String, dynamic>> groups = [];
++  final failed = <String>{};
++  final partial = <String>{};
++
++  await Future.wait<void>([
++    if (searchOrganisation != null)
++      (() async {
++        try {
++          organisation = await searchOrganisation(query);
++          if (organisation.length >= 10) partial.add('Organisation');
++        } on Object {
++          failed.add('Organisation');
++        }
++      })(),
++    if (searchPrivateAccount != null)
++      (() async {
++        try {
++          final response = await searchPrivateAccount(query);
++          privateAccount = (response['results'] as List<dynamic>? ?? const [])
++              .whereType<Map<String, dynamic>>()
++              .toList();
++          if (response['partial'] == true) partial.add('Private');
++        } on Object {
++          failed.add('Private');
++        }
++      })(),
++    if (searchGroups != null)
++      (() async {
++        try {
++          final response = await searchGroups(query);
++          groups = (response['results'] as List<dynamic>? ?? const [])
++              .whereType<Map<String, dynamic>>()
++              .toList();
++          if (response['partial'] == true) partial.add('Groups');
++        } on Object {
++          failed.add('Groups');
++        }
++      })(),
++  ]);
++
++  return KnowledgeSearchSources(
++    organisation: organisation,
++    privateAccount: privateAccount,
++    groups: groups,
++    failedSources: failed,
++    partialSources: partial,
++  );
++}
++
++double localKnowledgeRelevance(String query, Map<String, dynamic> item) {
++  final foldedQuery = query.toLowerCase().trim();
++  final title = (item['title'] as String? ?? '').toLowerCase();
++  if (title == foldedQuery) return 1.9;
++  if (title.startsWith(foldedQuery)) return 1.7;
++  if (title.contains(foldedQuery)) return 1.5;
++  final answerAndBody = [
++    item['answer'],
++    item['body'],
++  ].whereType<String>().join(' ').toLowerCase();
++  if (answerAndBody.contains(foldedQuery)) return 1.3;
++  final terms = foldedQuery.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
++  if (terms.isNotEmpty && terms.every(answerAndBody.contains)) return 1.2;
++  return 0.9;
++}
+diff --git a/apps/flutter_app/test/ask_page_test.dart b/apps/flutter_app/test/ask_page_test.dart
+new file mode 100644
+index 0000000..fa8a399
+--- /dev/null
++++ b/apps/flutter_app/test/ask_page_test.dart
+@@ -0,0 +1,221 @@
++import 'package:dio/dio.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:go_router/go_router.dart';
++import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
++import 'package:int_qa_flow/features/ask/application/ask_suggestions_controller.dart';
++import 'package:int_qa_flow/features/ask/presentation/ask_page.dart';
++import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
++import 'package:int_qa_flow/features/guest/data/guest_storage.dart';
++import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
++import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
++import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
++import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
++import 'package:int_qa_flow/features/questions/domain/question_models.dart';
++
++class _MemoryGuestStorage implements GuestStorage {
++  String? value;
++
++  @override
++  String? read() => value;
++
++  @override
++  void write(String value) => this.value = value;
++
++  @override
++  void remove() => value = null;
++}
++
++class _QuestionsRepository extends QuestionsRepository {
++  _QuestionsRepository() : super(Dio());
++
++  @override
++  Future<List<SemanticSearchResult>> searchQuestions(
++    String query, {
++    int limit = 5,
++  }) async => [
++    SemanticSearchResult(
++      questionId: 'org-question',
++      title: 'Organisation password recovery',
++      acceptedAnswerBody: 'Contact support to recover access.',
++      similarity: 0.9,
++      confidence: 'high_confidence',
++      answerStatus: 'verified',
++      answerId: 'org-answer',
++      challengeCount: 0,
++      hasOpenChallenge: false,
++      canonicalQuestionId: 'org-question',
++      canonicalTitle: 'Organisation password recovery',
++      matchedQuestionId: 'org-question',
++      matchedQuestionIds: const ['org-question'],
++      matchedText: 'Contact support to recover access.',
++      matchSource: 'canonical',
++      matchMethod: 'hybrid',
++      department: const DepartmentSummary(id: 'dept', name: 'Security'),
++      team: const TeamSummary(id: 'team', name: 'Identity'),
++      organisationName: 'Northwind',
++      relevanceScore: 1.4,
++    ),
++  ];
++}
++
++class _PersonalRepository extends PersonalWorkspaceRepository {
++  _PersonalRepository() : super(Dio());
++
++  @override
++  Future<Map<String, dynamic>> searchKnowledge(
++    String query, {
++    required String expectedUid,
++  }) async => {
++    'partial': false,
++    'results': [
++      {
++        'source_id': 'private-id',
++        'title': 'Private account policy',
++        'data': {'answer': 'Keep account passwords unique.'},
++        'snippet': 'Keep account passwords unique.',
++        'relevance_score': 1.5,
++        'match_method': 'keyword',
++      },
++    ],
++  };
++}
++
++class _GroupRepository extends GuestGroupRepository {
++  _GroupRepository() : super(Dio());
++
++  @override
++  Future<Map<String, dynamic>> searchKnowledge(String query) async => {
++    'partial': false,
++    'results': [
++      {
++        'id': 'group-entry',
++        'group_id': 'group-id',
++        'group_name': 'Platform team',
++        'title': 'Group password notes',
++        'data': {'answer': 'Use the team vault.'},
++        'snippet': 'Use the team vault.',
++        'relevance_score': 1.3,
++        'match_method': 'keyword',
++      },
++    ],
++  };
++}
++
++void main() {
++  testWidgets('Ask suggestions show unified source badges and open source', (
++    tester,
++  ) async {
++    final storage = _MemoryGuestStorage();
++    await GuestWorkspaceStore(storage).save(
++      const GuestWorkspaceData(
++        knowledge: [
++          {
++            'id': 'local-id',
++            'title': 'Password local guide',
++            'answer': 'Rotate test credentials regularly.',
++          },
++        ],
++      ),
++    );
++    final router = GoRouter(
++      initialLocation: '/',
++      routes: [
++        GoRoute(path: '/', builder: (_, _) => const AskPage()),
++        GoRoute(
++          path: '/personal',
++          builder: (_, state) => Scaffold(
++            body: Text(
++              'Opened personal: '
++              '${(state.extra as Map?)?['knowledgeItemId']}',
++            ),
++          ),
++        ),
++        GoRoute(
++          path: '/questions/:id',
++          builder: (_, state) => Text('Opened organisation: ${state.pathParameters['id']}'),
++        ),
++        GoRoute(
++          path: '/guest/groups',
++          builder: (_, state) => Text(
++            'Opened group: ${(state.extra as Map)['entryId']}',
++          ),
++        ),
++      ],
++    );
++    addTearDown(router.dispose);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          questionsRepositoryProvider.overrideWithValue(_QuestionsRepository()),
++          departmentsProvider.overrideWith((ref) async => const []),
++          teamsProvider.overrideWith((ref) async => const []),
++          personalWorkspaceRepositoryProvider.overrideWithValue(
++            _PersonalRepository(),
++          ),
++          guestGroupRepositoryProvider.overrideWithValue(_GroupRepository()),
++          guestWorkspaceStoreProvider.overrideWithValue(
++            GuestWorkspaceStore(storage),
++          ),
++          askSearchIdentityProvider.overrideWithValue(
++            const AskSearchIdentity(verifiedUid: 'verified-uid'),
++          ),
++        ],
++        child: MaterialApp.router(routerConfig: router),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    final questionField = find.byWidgetPredicate(
++      (widget) =>
++          widget is TextField &&
++          widget.decoration?.hintText == 'Ask a question',
++    );
++    await tester.enterText(questionField, 'password');
++    await tester.pump(const Duration(milliseconds: 360));
++    await tester.pumpAndSettle();
++
++    expect(find.widgetWithText(Chip, 'Local'), findsOneWidget);
++    expect(find.widgetWithText(Chip, 'Private'), findsOneWidget);
++    expect(find.widgetWithText(Chip, 'Group: Platform team'), findsOneWidget);
++    expect(
++      find.widgetWithText(Chip, 'Organisation: Northwind'),
++      findsOneWidget,
++    );
++    expect(find.widgetWithText(Chip, 'Department: Security'), findsOneWidget);
++    expect(find.widgetWithText(Chip, 'Team: Identity'), findsOneWidget);
++    expect(find.text('Keep account passwords unique.'), findsOneWidget);
++    expect(find.text('Ask as new question'), findsOneWidget);
++    expect(find.text('Department (optional)'), findsOneWidget);
++    expect(find.text('Team (optional)'), findsOneWidget);
++
++    await tester.ensureVisible(find.text('Group password notes'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Group password notes'));
++    await tester.pumpAndSettle();
++    expect(find.text('Opened group: group-entry'), findsOneWidget);
++
++    Future<void> searchAgain() async {
++      router.go('/');
++      await tester.pumpAndSettle();
++      await tester.enterText(questionField, 'password');
++      await tester.pump(const Duration(milliseconds: 360));
++      await tester.pumpAndSettle();
++    }
++
++    await searchAgain();
++    await tester.ensureVisible(find.text('Organisation password recovery'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Organisation password recovery'));
++    await tester.pumpAndSettle();
++    expect(find.text('Opened organisation: org-question'), findsOneWidget);
++
++    await searchAgain();
++    await tester.ensureVisible(find.text('Private account policy'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Private account policy'));
++    await tester.pumpAndSettle();
++    expect(find.text('Opened personal: private-id'), findsOneWidget);
++  });
++}
+diff --git a/apps/flutter_app/test/ask_suggestions_controller_test.dart b/apps/flutter_app/test/ask_suggestions_controller_test.dart
+index e50d803..b800814 100644
+--- a/apps/flutter_app/test/ask_suggestions_controller_test.dart
++++ b/apps/flutter_app/test/ask_suggestions_controller_test.dart
+@@ -4,50 +4,318 @@ import 'package:dio/dio.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:int_qa_flow/features/ask/application/ask_suggestions_controller.dart';
++import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
++import 'package:int_qa_flow/features/guest/data/guest_storage.dart';
++import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
++import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
++import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
+ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+ 
+-class _PendingQuestionsRepository extends QuestionsRepository {
+-  _PendingQuestionsRepository() : super(Dio());
++class _MemoryGuestStorage implements GuestStorage {
++  String? value;
+ 
+-  final requests = <Completer<List<SemanticSearchResult>>>[];
++  @override
++  String? read() => value;
++
++  @override
++  void write(String value) => this.value = value;
++
++  @override
++  void remove() => value = null;
++}
++
++class _QuestionsRepository extends QuestionsRepository {
++  _QuestionsRepository(this.results) : super(Dio());
++
++  final List<SemanticSearchResult> results;
++  final requests = <String>[];
++  final pending = <Completer<List<SemanticSearchResult>>>[];
+ 
+   @override
+   Future<List<SemanticSearchResult>> searchQuestions(
+     String query, {
+     int limit = 5,
+   }) {
+-    final request = Completer<List<SemanticSearchResult>>();
+-    requests.add(request);
+-    return request.future;
++    requests.add(query);
++    if (pending.isNotEmpty) return pending.removeAt(0).future;
++    return Future.value(results);
+   }
+ }
+ 
+-SemanticSearchResult _result(String id) => SemanticSearchResult(
+-      questionId: id,
+-      title: id,
+-      acceptedAnswerBody: null,
+-      similarity: 0,
+-      confidence: 'low_confidence',
+-      answerStatus: null,
+-      answerId: null,
+-      challengeCount: 0,
+-      hasOpenChallenge: false,
+-      canonicalQuestionId: id,
+-      canonicalTitle: id,
+-      matchedQuestionId: id,
+-      matchedQuestionIds: [id],
+-      matchedText: id,
+-      matchSource: 'canonical',
+-      matchMethod: 'keyword',
+-    );
++class _PersonalRepository extends PersonalWorkspaceRepository {
++  _PersonalRepository(this.results) : super(Dio());
++
++  final List<Map<String, dynamic>> results;
++  final requests = <String>[];
++  String? expectedUid;
++
++  @override
++  Future<Map<String, dynamic>> searchKnowledge(
++    String query, {
++    required String expectedUid,
++  }) async {
++    requests.add(query);
++    this.expectedUid = expectedUid;
++    return {'results': results, 'partial': false};
++  }
++}
++
++class _GroupRepository extends GuestGroupRepository {
++  _GroupRepository(this.results) : super(Dio());
++
++  final List<Map<String, dynamic>> results;
++  final requests = <String>[];
++
++  @override
++  Future<Map<String, dynamic>> searchKnowledge(String query) async {
++    requests.add(query);
++    return {'results': results, 'partial': false};
++  }
++}
++
++SemanticSearchResult _organisationResult({
++  required String id,
++  required double relevance,
++}) => SemanticSearchResult(
++  questionId: id,
++  title: 'Password rotation guidance',
++  acceptedAnswerBody: 'Rotate credentials every 90 days.',
++  similarity: relevance,
++  confidence: 'high_confidence',
++  answerStatus: 'verified',
++  answerId: 'answer-$id',
++  challengeCount: 0,
++  hasOpenChallenge: false,
++  canonicalQuestionId: id,
++  canonicalTitle: 'Password rotation guidance',
++  matchedQuestionId: id,
++  matchedQuestionIds: [id],
++  matchedText: 'Rotate credentials every 90 days.',
++  matchSource: 'canonical',
++  matchMethod: 'hybrid',
++  canonicalBody: 'Password credentials are rotated on schedule.',
++  department: const DepartmentSummary(id: 'dept', name: 'Security'),
++  team: const TeamSummary(id: 'team', name: 'Identity'),
++  organisationName: 'Northwind',
++  relevanceScore: relevance,
++);
+ 
+ void main() {
++  test('searches and ranks local, private, group, and organisation Knowledge', () async {
++    final questions = _QuestionsRepository([
++      _organisationResult(id: 'org-question', relevance: 1.4),
++    ]);
++    final personal = _PersonalRepository([
++      {
++        'source_id': 'private-item',
++        'title': 'Private password checklist',
++        'data': {'id': 'private-item', 'answer': 'Change default passwords.'},
++        'snippet': 'Change default passwords.',
++        'match_method': 'keyword',
++        'relevance_score': 1.7,
++      },
++    ]);
++    final groups = _GroupRepository([
++      {
++        'id': 'group-entry',
++        'group_id': 'group-id',
++        'group_name': 'Platform operations',
++        'title': 'Group password notes',
++        'data': {'answer': 'Use the team vault.'},
++        'snippet': 'Use the team vault.',
++        'match_method': 'keyword',
++        'relevance_score': 1.6,
++      },
++    ]);
++    final storage = _MemoryGuestStorage();
++    await GuestWorkspaceStore(storage).save(
++      const GuestWorkspaceData(
++        knowledge: [
++          {
++            'id': 'local-item',
++            'title': 'Password rotation guidance',
++            'answer': 'Rotate local test credentials.',
++          },
++        ],
++      ),
++    );
++    final container = ProviderContainer(
++      overrides: [
++        questionsRepositoryProvider.overrideWith((ref) => questions),
++        personalWorkspaceRepositoryProvider.overrideWithValue(personal),
++        guestGroupRepositoryProvider.overrideWithValue(groups),
++        guestWorkspaceStoreProvider.overrideWithValue(
++          GuestWorkspaceStore(storage),
++        ),
++        askSearchIdentityProvider.overrideWithValue(
++          const AskSearchIdentity(verifiedUid: 'verified-uid'),
++        ),
++      ],
++    );
++    addTearDown(container.dispose);
++    container.listen(askSuggestionsProvider, (_, _) {});
++    final controller = container.read(askSuggestionsProvider.notifier);
++
++    controller.queryChanged('password');
++    await Future<void>.delayed(const Duration(milliseconds: 380));
++    await Future<void>.delayed(Duration.zero);
++
++    final suggestions = container.read(askSuggestionsProvider).value!;
++    expect(suggestions.hits.map((hit) => hit.source), [
++      'Local',
++      'Private',
++      'Group: Platform operations',
++      'Organisation: Northwind',
++    ]);
++    expect(suggestions.hits.first.destination, 'personal');
++    expect(suggestions.hits[1].destination, 'personal');
++    expect(suggestions.hits[2].groupId, 'group-id');
++    expect(suggestions.hits[2].destination, 'group');
++    expect(suggestions.hits.last.destination, 'organisation');
++    expect(suggestions.hits.last.attribution, [
++      'Department: Security',
++      'Team: Identity',
++    ]);
++    expect(suggestions.hits.last.matchMethod, 'Keyword and meaning match');
++    expect(suggestions.hits.last.status, 'Verified answer');
++    expect(suggestions.hits.last.snippet, contains('Password credentials'));
++    expect(personal.expectedUid, 'verified-uid');
++    expect(questions.requests, ['password']);
++    expect(personal.requests, ['password']);
++    expect(groups.requests, ['password']);
++  });
++
++  test('does not call remote sources for an empty or too-short query', () async {
++    final questions = _QuestionsRepository([]);
++    final personal = _PersonalRepository([]);
++    final groups = _GroupRepository([]);
++    final container = ProviderContainer(
++      overrides: [
++        questionsRepositoryProvider.overrideWith((ref) => questions),
++        personalWorkspaceRepositoryProvider.overrideWithValue(personal),
++        guestGroupRepositoryProvider.overrideWithValue(groups),
++        askSearchIdentityProvider.overrideWithValue(
++          const AskSearchIdentity(verifiedUid: 'verified-uid'),
++        ),
++      ],
++    );
++    addTearDown(container.dispose);
++    container.listen(askSuggestionsProvider, (_, _) {});
++    final controller = container.read(askSuggestionsProvider.notifier);
++
++    controller.queryChanged('');
++    controller.queryChanged('p');
++    await Future<void>.delayed(const Duration(milliseconds: 380));
++
++    expect(questions.requests, isEmpty);
++    expect(personal.requests, isEmpty);
++    expect(groups.requests, isEmpty);
++    expect(container.read(askSuggestionsProvider).value!.hits, isEmpty);
++  });
++
++  test('unverified users search local Knowledge only', () async {
++    final questions = _QuestionsRepository([]);
++    final personal = _PersonalRepository([]);
++    final groups = _GroupRepository([]);
++    final storage = _MemoryGuestStorage();
++    await GuestWorkspaceStore(storage).save(
++      const GuestWorkspaceData(
++        knowledge: [
++          {
++            'id': 'local-item',
++            'title': 'Password rotation notes',
++            'answer': 'Use a strong password.',
++          },
++        ],
++      ),
++    );
++    final container = ProviderContainer(
++      overrides: [
++        questionsRepositoryProvider.overrideWith((ref) => questions),
++        personalWorkspaceRepositoryProvider.overrideWithValue(personal),
++        guestGroupRepositoryProvider.overrideWithValue(groups),
++        guestWorkspaceStoreProvider.overrideWithValue(
++          GuestWorkspaceStore(storage),
++        ),
++        askSearchIdentityProvider.overrideWithValue(
++          const AskSearchIdentity(),
++        ),
++      ],
++    );
++    addTearDown(container.dispose);
++    container.listen(askSuggestionsProvider, (_, _) {});
++    container.read(askSuggestionsProvider.notifier).queryChanged('password');
++    await Future<void>.delayed(const Duration(milliseconds: 380));
++
++    final suggestions = container.read(askSuggestionsProvider).value!;
++    expect(suggestions.hits.single.source, 'Local');
++    expect(questions.requests, isEmpty);
++    expect(personal.requests, isEmpty);
++    expect(groups.requests, isEmpty);
++  });
++
++  test('long queries retain local results without remote requests', () async {
++    final questions = _QuestionsRepository([]);
++    final personal = _PersonalRepository([]);
++    final groups = _GroupRepository([]);
++    final storage = _MemoryGuestStorage();
++    await GuestWorkspaceStore(storage).save(
++      const GuestWorkspaceData(
++        knowledge: [
++          {
++            'id': 'local-item',
++            'title': 'Password rotation notes',
++            'answer': 'Use a strong password.',
++          },
++        ],
++      ),
++    );
++    final container = ProviderContainer(
++      overrides: [
++        questionsRepositoryProvider.overrideWith((ref) => questions),
++        personalWorkspaceRepositoryProvider.overrideWithValue(personal),
++        guestGroupRepositoryProvider.overrideWithValue(groups),
++        guestWorkspaceStoreProvider.overrideWithValue(
++          GuestWorkspaceStore(storage),
++        ),
++        askSearchIdentityProvider.overrideWithValue(
++          const AskSearchIdentity(verifiedUid: 'verified-uid'),
++        ),
++      ],
++    );
++    addTearDown(container.dispose);
++    container.listen(askSuggestionsProvider, (_, _) {});
++    final query = List.filled(51, 'password').join(' ');
++    container.read(askSuggestionsProvider.notifier).queryChanged(query);
++    await Future<void>.delayed(const Duration(milliseconds: 380));
++
++    final suggestions = container.read(askSuggestionsProvider).value!;
++    expect(suggestions.hits.single.source, 'Local');
++    expect(suggestions.notice, contains('100 characters'));
++    expect(questions.requests, isEmpty);
++    expect(personal.requests, isEmpty);
++    expect(groups.requests, isEmpty);
++  });
++
+   test('ignores an older response for a repeated query', () async {
+-    final repository = _PendingQuestionsRepository();
++    final repository = _QuestionsRepository([]);
++    final first = Completer<List<SemanticSearchResult>>();
++    final second = Completer<List<SemanticSearchResult>>();
++    repository.pending.addAll([first, second]);
+     final container = ProviderContainer(
+       overrides: [
+         questionsRepositoryProvider.overrideWith((ref) => repository),
++        personalWorkspaceRepositoryProvider.overrideWithValue(
++          _PersonalRepository([]),
++        ),
++        guestGroupRepositoryProvider.overrideWithValue(_GroupRepository([])),
++        guestWorkspaceStoreProvider.overrideWithValue(
++          GuestWorkspaceStore(_MemoryGuestStorage()),
++        ),
++        askSearchIdentityProvider.overrideWithValue(
++          const AskSearchIdentity(verifiedUid: 'verified-uid'),
++        ),
+       ],
+     );
+     addTearDown(container.dispose);
+@@ -55,20 +323,20 @@ void main() {
+     final controller = container.read(askSuggestionsProvider.notifier);
+ 
+     controller.queryChanged('password');
+-    await Future<void>.delayed(const Duration(milliseconds: 360));
++    await Future<void>.delayed(const Duration(milliseconds: 380));
+     expect(repository.requests, hasLength(1));
+ 
+     controller.queryChanged('password');
+-    await Future<void>.delayed(const Duration(milliseconds: 360));
++    await Future<void>.delayed(const Duration(milliseconds: 380));
+     expect(repository.requests, hasLength(2));
+ 
+-    repository.requests[1].complete([_result('new')]);
++    second.complete([_organisationResult(id: 'new', relevance: 1)]);
+     await Future<void>.delayed(Duration.zero);
+-    repository.requests[0].complete([_result('old')]);
++    first.complete([_organisationResult(id: 'old', relevance: 1)]);
+     await Future<void>.delayed(Duration.zero);
+ 
+     expect(
+-      container.read(askSuggestionsProvider).value!.single.questionId,
++      container.read(askSuggestionsProvider).value!.hits.single.id,
+       'new',
+     );
+   });
+
+base-commit: 105a528f19b2383545b5cfae17197439ce065279
+-- 
+2.55.0
+
