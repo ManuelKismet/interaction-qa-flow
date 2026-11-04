@@ -1,0 +1,62 @@
+name: Completed Interact validation
+on:
+  pull_request:
+    paths:
+      - 'backend/app/services/guided.py'
+      - 'backend/app/api/v1/routes/guided.py'
+      - 'backend/app/models/audit_event.py'
+      - 'backend/tests/test_guided_completion.py'
+      - 'backend/tests/test_guided_postgresql.py'
+      - 'apps/flutter_app/lib/features/guided/presentation/guided_session_page.dart'
+      - 'apps/flutter_app/test/guided_batch3_test.dart'
+      - '.github/workflows/completed-interact-validation.yml'
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib/features/guided/presentation/guided_session_page.dart test/guided_batch3_test.dart
+      - run: flutter analyze lib/features/guided/presentation/guided_session_page.dart test/guided_batch3_test.dart
+      - run: flutter test test/guided_batch3_test.dart test/guided_safety_test.dart test/guided_page_test.dart test/guided_session_page_test.dart
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: completion_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ORGANISATION_TEST_POSTGRES_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/completion_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.lock
+      - run: python -m pip install -r requirements.lock
+      - run: python -m pytest tests/test_guided_postgresql.py::test_postgres_completion_blocks_waiting_content_write -q

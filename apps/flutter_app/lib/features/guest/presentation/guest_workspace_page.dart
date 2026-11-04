@@ -1,3 +1,4 @@
+import 'package:int_qa_flow/features/suggestions/group_suggestion_workspace.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -110,6 +111,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
     this.onKnowledgeSectionChanged,
     this.initialWorkspaceTab = 0,
     this.onWorkspaceTabChanged,
+    this.onGuestLocationChanged,
     this.personalWorkspaceEnabled = false,
     this.sharedIdentityActive = false,
     this.accountUser,
@@ -129,6 +131,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
   final ValueChanged<KnowledgeSection>? onKnowledgeSectionChanged;
   final int initialWorkspaceTab;
   final ValueChanged<int>? onWorkspaceTabChanged;
+  final void Function(int, String?)? onGuestLocationChanged;
   final bool personalWorkspaceEnabled;
   final bool sharedIdentityActive;
   final User? accountUser;
@@ -591,6 +594,36 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ref.read(personalWorkspaceRepositoryProvider),
       ),
     );
+  }
+
+  void _restorePersonalSession(
+    String expectedUid,
+    Map<String, dynamic> session,
+    GuestWorkspaceData updated,
+  ) {
+    if (expectedUid != _verifiedPersonalUid) return;
+    final sourceId = session['id'] as String;
+    final key = 'interact_session:$sourceId';
+    final exists = _personalItems.any(
+      (record) =>
+          record['kind'] == 'interact_session' &&
+          (record['data'] as Map?)?['id'] == sourceId,
+    );
+    if (!exists && !_pendingPersonalWrites.containsKey(key)) {
+      _enqueuePersonalWrite(
+        _PersonalWorkspaceWrite(
+          action: 'reconcile',
+          kind: 'interact_session',
+          sourceKey: _personalSourceKey('interact_session', sourceId),
+          sourceId: sourceId,
+          title: _personalTitle('interact_session', session),
+          data: session,
+        ),
+      );
+    }
+    // Existing pending deletes keep their uncertainty/conflict reconciliation.
+    // A completed deletion reconciles first, then recreates if still absent.
+    _save(updated, accountPrivateKeys: {key});
   }
 
   Future<void> _syncPersonalWorkspace(
@@ -1349,12 +1382,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (!mounted) return;
     setState(() => _openSessionId = id);
     widget.onSessionRouteChanged?.call(id);
+    widget.onGuestLocationChanged?.call(1, id);
   }
 
   void _closeSession() {
     if (!mounted || _openSessionId == null) return;
     setState(() => _openSessionId = null);
     widget.onSessionRouteChanged?.call(null);
+    widget.onGuestLocationChanged?.call(1, null);
   }
 
   void _closeAccountScopedDialogs() {
@@ -1469,6 +1504,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }
 
   void _handleWorkspaceTabChanged(int index) {
+    widget.onGuestLocationChanged?.call(index, _openSessionId);
     final onChanged = widget.onWorkspaceTabChanged;
     if (onChanged == null) return;
     unawaited(() async {
@@ -1615,13 +1651,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
   }
 
   Future<void> _clearLocalCopy() async {
+    if (_personalImportSaving) return;
+    final accountUid = _verifiedPersonalUid;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear this device’s local work?'),
-        content: const Text(
+        content: Text(
           'This permanently removes this browser’s local copy. '
-          'Group content is not changed.',
+          'Personal account and Group content are not changed.'
+          '${_pendingPersonalImport.isNotEmpty || _personalImportNeedsReselection ? ' Any unfinished guest import will also be cancelled. An import previously received by the account is retained there.' : ''}',
         ),
         actions: [
           TextButton(
@@ -1635,12 +1674,18 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true ||
+        !mounted ||
+        accountUid != _verifiedPersonalUid ||
+        _personalImportSaving) {
+      return;
+    }
     final hadUnpersistedWork = _savedRevision < _dataRevision;
     _autosaveTimer?.cancel();
     _autosaveTimer = null;
     final pendingSave = _saveOperation;
     if (pendingSave != null) await pendingSave;
+    if (!mounted || accountUid != _verifiedPersonalUid) return;
     try {
       await _store.clear();
     } on Object {
@@ -1664,9 +1709,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
     if (!mounted) return;
     setState(() {
       _data = const GuestWorkspaceData();
+      if (_pendingPersonalImport.isNotEmpty ||
+          _personalImportNeedsReselection) {
+        _pendingPersonalImport = [];
+        _personalImportNeedsReselection = false;
+        _personalError = null;
+      }
       _dataRevision++;
       _saveStatus = 'Saving locally…';
     });
+    _publishWorkspaceSaveStatus();
     _autosaveTimer?.cancel();
     _autosaveTimer = Timer(
       const Duration(milliseconds: 250),
@@ -1732,9 +1784,30 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
       data.sessions.isNotEmpty ||
       data.templates.isNotEmpty;
 
+  GuestWorkspaceData _remainingGuestWork(GuestWorkspaceData local) {
+    if (_verifiedPersonalUid == null) return local;
+    final importedKeys = {
+      for (final record in _personalItems)
+        if (record['kind'] is String && record['source_key'] is String)
+          '${record['kind']}:${record['source_key']}',
+    };
+    List<Map<String, dynamic>> remaining(
+      String kind,
+      List<Map<String, dynamic>> items,
+    ) => [
+      for (final item in items)
+        if (!importedKeys.contains('$kind:$kind:${item['id']}')) item,
+    ];
+    return GuestWorkspaceData(
+      knowledge: remaining('knowledge', local.knowledge),
+      sessions: remaining('interact_session', local.sessions),
+      templates: remaining('template', local.templates),
+    );
+  }
+
   Future<void> _openPersonalImport() async {
     final uid = _verifiedPersonalUid;
-    final local = _data;
+    final local = _data == null ? null : _remainingGuestWork(_data!);
     if (uid == null || local == null) return;
     if (!_hasMeaningfulWork(local)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2000,6 +2073,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
         ? _knowledgeInfoButton(_verifiedPersonalUid != null)
         : _interactInfoButton(_verifiedPersonalUid != null);
     final narrowViewport = viewport.width < 420;
+    final needsGuestRecovery =
+        localData != null &&
+        (_hasMeaningfulWork(_remainingGuestWork(localData)) ||
+            _pendingPersonalImport.isNotEmpty ||
+            _personalImportNeedsReselection);
     final workspaceNotices = <Widget>[
       if (_unsavedChanges)
         MaterialBanner(
@@ -2204,32 +2282,53 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                   if (value == 'groups') _openSharedGroups();
                 },
                 itemBuilder: (context) => [
+                  if (_hasSignedInNonGuestUser)
+                    const PopupMenuItem(
+                      enabled: false,
+                      child: Text('Personal workspace settings'),
+                    ),
                   if (widget.firebaseReady)
                     const PopupMenuItem(value: 'groups', child: Text('Groups')),
-                  PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: 'backup',
-                    child: Text('Copy local JSON backup'),
-                  ),
-                  PopupMenuItem(
-                    value: 'import',
-                    child: Text('Import local JSON backup'),
-                  ),
-                  if (_verifiedPersonalUid != null)
+                  if (!_hasSignedInNonGuestUser || needsGuestRecovery) ...[
+                    const PopupMenuDivider(),
+                    if (_hasSignedInNonGuestUser)
+                      const PopupMenuItem(
+                        enabled: false,
+                        child: Text('Finish importing your guest data'),
+                      ),
                     PopupMenuItem(
-                      value: 'account-import',
-                      enabled: !_personalSaving && !_personalLoading,
-                      child: const Text('Import local work into my account'),
+                      value: 'backup',
+                      child: Text(
+                        _hasSignedInNonGuestUser
+                            ? 'Back up guest data'
+                            : 'Copy local JSON backup',
+                      ),
                     ),
-                  PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: 'clear',
-                    child: Text(
-                      _hasSignedInNonGuestUser
-                          ? 'Clear local copy on this device'
-                          : 'Clear local guest copy',
+                    if (!_hasSignedInNonGuestUser)
+                      const PopupMenuItem(
+                        value: 'import',
+                        child: Text('Import local JSON backup'),
+                      ),
+                    if (_verifiedPersonalUid != null)
+                      PopupMenuItem(
+                        value: 'account-import',
+                        enabled:
+                            !_personalSaving &&
+                            !_personalLoading &&
+                            !_personalImportSaving,
+                        child: const Text('Import local work into my account'),
+                      ),
+                    PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'clear',
+                      enabled: !_personalImportSaving,
+                      child: Text(
+                        _hasSignedInNonGuestUser
+                            ? 'Discard guest data on this device'
+                            : 'Clear local guest copy',
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ],
@@ -2362,6 +2461,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                               _GuestInteractTab(
                                 data: data,
                                 privateWorkspace: _verifiedPersonalUid != null,
+                                accountUid: _verifiedPersonalUid,
+                                onRestorePersonalSession:
+                                    _restorePersonalSession,
                                 storageStatus: _storageStatus,
                                 onChange: _save,
                                 onCreateItem: (kind, item, updated) =>
@@ -3555,6 +3657,8 @@ class _GuestInteractTab extends StatefulWidget {
   const _GuestInteractTab({
     required this.data,
     required this.privateWorkspace,
+    required this.accountUid,
+    required this.onRestorePersonalSession,
     required this.storageStatus,
     required this.localSaveStatus,
     required this.onChange,
@@ -3571,6 +3675,9 @@ class _GuestInteractTab extends StatefulWidget {
 
   final GuestWorkspaceData data;
   final bool privateWorkspace;
+  final String? accountUid;
+  final void Function(String, Map<String, dynamic>, GuestWorkspaceData)
+  onRestorePersonalSession;
   final String Function(String, Map<String, dynamic>) storageStatus;
   final String localSaveStatus;
   final ValueChanged<GuestWorkspaceData> onChange;
@@ -3669,6 +3776,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
 
   void _deleteSession(Map<String, dynamic> session) {
     final isPersonalAccount = _isPersonal(session);
+    final accountUid = widget.accountUid;
     if (widget.openSessionId == session['id']) widget.onCloseSession();
     widget.onChange(
       widget.data.copyWith(
@@ -3690,21 +3798,36 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
           label: 'Undo',
           onPressed: () {
             if (!mounted) return;
-            widget.onChange(
-              widget.data.copyWith(
-                sessions: [session, ...widget.data.sessions],
-              ),
+            if (isPersonalAccount &&
+                (accountUid == null || accountUid != widget.accountUid)) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'The account changed. This session was not restored.',
+                  ),
+                ),
+              );
+              return;
+            }
+            final restored = widget.data.copyWith(
+              sessions: [
+                session,
+                ...widget.data.sessions.where(
+                  (item) => item['id'] != session['id'],
+                ),
+              ],
             );
-            final restoredToAccount = _isPersonal(session);
+            if (isPersonalAccount) {
+              widget.onRestorePersonalSession(accountUid!, session, restored);
+            } else {
+              widget.onChange(restored);
+            }
             messenger.showSnackBar(
               SnackBar(
                 content: Text(
-                  restoredToAccount
+                  isPersonalAccount
                       ? 'Session restore queued for your private account. '
                             'Check the save status.'
-                      : isPersonalAccount
-                      ? 'Session restored as a local copy on this device. '
-                            'The private account removal is not undone.'
                       : 'Local session restored.',
                 ),
               ),
@@ -5710,15 +5833,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
       if (!_isCurrentLoad(uid, generation)) return false;
       final archivedGroups = await _repository.listArchivedGroups();
       if (!_isCurrentLoad(uid, generation)) return false;
-      final preferred = preferredGroupId ?? _groupId;
-      final selected = groups.any((group) => group['id'] == preferred)
-          ? _groupId
+      final preferred = preferredGroupId ?? _groupId ?? widget.initialGroupId;
+      final unavailable =
+          preferred != null && !groups.any((group) => group['id'] == preferred);
+      final selectedGroupId = preferred != null
+          ? unavailable
+                ? null
+                : preferred
           : groups.isEmpty
           ? null
           : groups.first['id'] as String;
-      final selectedGroupId = groups.any((group) => group['id'] == preferred)
-          ? preferred
-          : selected;
       if (!_isCurrentLoad(uid, generation)) return false;
       setState(() {
         _groups = groups;
@@ -5726,6 +5850,11 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         _uncertainArchivedDeletionIds.clear();
         _archivedDeleteNeedsSafeRefresh = false;
         _groupId = selectedGroupId;
+        if (unavailable) {
+          _error =
+              'The requested Group is unavailable or you do not have access. '
+              'Choose one of your approved Groups to continue.';
+        }
       });
       if (selectedGroupId != null) {
         final loaded = await _loadGroup(
@@ -5733,7 +5862,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
           uid: uid,
           generation: generation,
         );
-        if (loaded && widget.initialEntryId != null && !_initialEntryOpened) {
+        if (loaded &&
+            selectedGroupId == widget.initialGroupId &&
+            widget.initialEntryId != null &&
+            !_initialEntryOpened) {
           for (final entry in _entries) {
             if (entry['id'] == widget.initialEntryId) {
               _initialEntryOpened = true;
@@ -6389,6 +6521,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                             const PopupMenuItem(
                               value: 'transfer_admin',
                               child: Text('Request admin transfer'),
+                            ),
+                            const PopupMenuItem(
+                              value: 'suggestions',
+                              child: Text('Suggestions & practices'),
                             ),
                             const PopupMenuDivider(),
                             const PopupMenuItem(
@@ -7273,6 +7409,26 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
     return _buildGroupsScaffold();
   }
 
+  Future<void> _openSuggestionBank() async {
+    final groupId = _groupId;
+    final uid = _activeUid;
+    if (groupId == null || uid == null || _busy) return;
+    final result = await _showScopedGroupDialog<Map<String, dynamic>>(
+      barrierDismissible: false,
+      builder: (_) =>
+          Dialog.fullscreen(child: GroupSuggestionWorkspace(groupId: groupId)),
+    );
+    if (result == null || !mounted || _activeUid != uid || _groupId != groupId)
+      return;
+    final targetGroup = result['groupId'] as String?;
+    final entryId = result['entryId'] as String?;
+    if (targetGroup == null || entryId == null) return;
+    await _loadGroup(targetGroup);
+    if (!mounted || _activeUid != uid || _groupId != targetGroup) return;
+    final entries = _entries.where((e) => e['id'] == entryId);
+    if (entries.isNotEmpty) await _openEntry(entries.first);
+  }
+
   Widget _buildGroupsScaffold() => Scaffold(
     appBar: AppBar(
       toolbarHeight: 48,
@@ -7318,6 +7474,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                   _createGroup();
                 case 'join':
                   _joinByInvitation();
+                case 'suggestions':
+                  _openSuggestionBank();
                 case 'members':
                   _showMembers();
                 case 'share':
@@ -7481,6 +7639,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
         if (_groups.isNotEmpty) ...[
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
+            key: const ValueKey('approved-group-selection'),
             initialValue: _groupId,
             isExpanded: true,
             decoration: const InputDecoration(

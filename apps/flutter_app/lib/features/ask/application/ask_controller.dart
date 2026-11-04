@@ -2,8 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
-final askControllerProvider =
-    AsyncNotifierProvider<AskController, void>(AskController.new);
+final askControllerProvider = AsyncNotifierProvider<AskController, void>(
+  AskController.new,
+);
 
 class AskController extends AsyncNotifier<void> {
   @override
@@ -14,19 +15,21 @@ class AskController extends AsyncNotifier<void> {
     String? body,
     String? departmentId,
     String? teamId,
+    String visibility = 'organisation',
   }) async {
     String? questionId;
     state = const AsyncLoading();
-    state = await AsyncValue.guard(
-      () async {
-        questionId = await ref.read(questionsRepositoryProvider).createQuestion(
-              title: title,
-              body: body,
-              departmentId: departmentId,
-              teamId: teamId,
-            );
-      },
-    );
+    state = await AsyncValue.guard(() async {
+      questionId = await ref
+          .read(questionsRepositoryProvider)
+          .createQuestion(
+            title: title,
+            body: body,
+            departmentId: departmentId,
+            teamId: teamId,
+            visibility: visibility,
+          );
+    });
     return state.hasError ? null : questionId;
   }
 }
