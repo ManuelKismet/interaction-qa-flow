@@ -965,6 +965,7 @@ void main() {
       expect(tester.widget<Text>(heading).style?.fontWeight, FontWeight.w400);
       expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
       expect(find.text('Import local work'), findsNothing);
+      expect(find.text('Saved on this device'), findsNothing);
       expect(
         find.textContaining('saved privately to your account'),
         findsNothing,

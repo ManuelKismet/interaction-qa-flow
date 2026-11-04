@@ -186,26 +186,15 @@ final class IntQaFlowGuidance implements NiaCapability {
     };
   }
 
-  String _storage(Map<String, Object?> f) {
-    final status = f['saveStatus'] as String? ?? 'Storage status unavailable';
-    final private = f['private'] == true;
-    final registered = f['registered'] == true;
-    final heading = private
-        ? 'Personal workspace · Local browser copy: ' + status
-        : registered
-        ? 'Registered personal account · Local copy · ' + status
-        : 'Guest workspace · ' + status;
-    final detail = private
-        ? 'New Knowledge and Interact sessions are saved privately to your account. Local browser work remains separate until you explicitly import it. Group sharing is separate.'
-        : registered
-        ? 'Local drafts stay in this browser profile and may be visible to people using it. Importing selected local work into your account is optional. Group and organisation access are separate.'
-        : 'People using this browser profile can see its local work. Clearing browser data can erase it; keep a JSON backup when you need a reusable copy.';
-    return heading +
-        '. ' +
-        detail +
-        (f['noOrganisation'] == true
-            ? ' This signed-in account has no organisation membership.'
-            : '');
+  String _storage(Map<String, Object?> facts) {
+    if (facts['private'] == true) {
+      return 'New Knowledge and Interact work saves privately to your account. '
+          'Existing guest work stays in this browser unless you explicitly import it. '
+          'Group sharing is separate.';
+    }
+    return 'Guest work stays in this browser on this device. '
+        'Clearing browser storage can remove it; export a JSON backup when needed. '
+        'Signing in does not automatically upload existing guest work.';
   }
 
   String _lifecycle(Map<String, Object?> f) {

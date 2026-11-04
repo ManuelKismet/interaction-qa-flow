@@ -83,3 +83,9 @@ Users can turn optional NIA guidance off/on from the existing Account menu.
 Happnn and TempConnect were inspected read-only for presentation/lifecycle
 patterns. Their code, settings and deployments were not changed or copied into
 this public repository. IntQAFlow keeps its own product state and authority.
+
+Personal workspace omits the local-browser save caption. One account-scoped NIA
+storage lesson explains private account saves, guest work remaining on the device
+until explicitly imported, and separate Group sharing. It uses the existing
+single-slot teaching, dismissal and per-account memory. Guest device-save status
+and actual save-failure/recovery messages remain visible.

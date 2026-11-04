@@ -76,6 +76,46 @@ void main() {
     },
   );
   testWidgets(
+    'personal storage explanation is optional NIA teaching without a false save receipt',
+    (tester) async {
+      final teaching = freshTeaching();
+      const hint = NiaInlineGuidance(
+        topic: NiaTopic.storage,
+        lessonId: 'workspace.storage.personal.v1',
+        facts: {'private': true},
+      );
+      await tester.pumpWidget(app(hint, teaching));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining(
+          'New Knowledge and Interact work saves privately to your account.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'Existing guest work stays in this browser unless you explicitly import it.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Saved on this device'), findsNothing);
+      expect(find.textContaining('Storage status unavailable'), findsNothing);
+      await tester.tap(find.byTooltip('Got it — hide this tip'));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(app(const SizedBox.shrink(), teaching));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(app(hint, teaching));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('New Knowledge and Interact work saves privately'),
+        findsNothing,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
     'useful guidance appears inline, dismisses and stays quiet when revisited',
     (tester) async {
       final teaching = freshTeaching();
