@@ -6522,10 +6522,6 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                               value: 'transfer_admin',
                               child: Text('Request admin transfer'),
                             ),
-                            const PopupMenuItem(
-                              value: 'suggestions',
-                              child: Text('Suggestions & practices'),
-                            ),
                             const PopupMenuDivider(),
                             const PopupMenuItem(
                               value: 'remove',
@@ -7499,6 +7495,10 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
                 child: Text('Join with invitation'),
               ),
               const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'suggestions',
+                child: Text('Suggestions & practices'),
+              ),
               PopupMenuItem(
                 value: 'members',
                 child: Text(

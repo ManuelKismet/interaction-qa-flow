@@ -1,3 +1,5 @@
+import 'package:int_qa_flow/features/suggestions/group_suggestion_workspace.dart';
+import 'package:int_qa_flow/features/suggestions/suggestion_bank_repository.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -623,7 +625,161 @@ class _MemoryGuestStorage implements GuestStorage {
   void write(String value) => this.value = value;
 }
 
+class _BankShortcutGroupsRepository extends _FailingDraftRepository {
+  _BankShortcutGroupsRepository(this.role);
+  final String role;
+  @override
+  Future<List<Map<String, dynamic>>> listInvitations(String groupId) async =>
+      [];
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => [
+    {'id': 'group-1', 'name': 'Facilities', 'role': role},
+  ];
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async => {
+    'id': groupId,
+    'name': 'Facilities',
+    'role': role,
+    'members': [
+      {
+        'id': 'member-1',
+        'display_name': 'Alice',
+        'role': 'editor',
+        'status': 'active',
+      },
+    ],
+  };
+}
+
+class _BankShortcutRepository extends SuggestionBankRepository {
+  _BankShortcutRepository() : super(Dio());
+  final requests = <String>[];
+  @override
+  Future<T> request<T>(
+    String uid,
+    String realm,
+    String path, {
+    BankJson query = const {},
+    BankJson? data,
+    CancelToken? cancelToken,
+  }) async {
+    requests.add('$realm:$path');
+    if (path == '/scopes')
+      return [
+            {
+              'scope_type': 'group',
+              'scope_id': 'group-1',
+              'label': 'Facilities',
+            },
+          ]
+          as T;
+    if (path == '') return {'items': <dynamic>[], 'has_more': false} as T;
+    if (path == '/nia')
+      return {
+            'method': 'Scoped matching',
+            'related': <dynamic>[],
+            'knowledge': <dynamic>[],
+            'prompts': <dynamic>[],
+          }
+          as T;
+    throw StateError('Unexpected suggestion request: $path');
+  }
+}
+
 void main() {
+  for (final role in ['admin', 'editor', 'contributor', 'viewer']) {
+    testWidgets('Group options opens the scoped Suggestion Bank for $role', (
+      tester,
+    ) async {
+      final bank = _BankShortcutRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+            guestGroupRepositoryProvider.overrideWithValue(
+              _BankShortcutGroupsRepository(role),
+            ),
+            suggestionBankRepositoryProvider.overrideWithValue(bank),
+          ],
+          child: const MaterialApp(home: SharedGuestGroupsPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _openGroupAction(tester, 'Suggestions & practices');
+      expect(find.byType(GroupSuggestionWorkspace), findsOneWidget);
+      expect(find.text('Group Suggestion Bank'), findsOneWidget);
+      expect(bank.requests, contains('group:/scopes'));
+      expect(
+        bank.requests.every((request) => request.startsWith('group:')),
+        isTrue,
+      );
+      expect(
+        find.text('Join an active Group to use its Suggestion Bank.'),
+        findsNothing,
+      );
+      await tester.tap(find.byTooltip('Back to Group'));
+      await tester.pumpAndSettle();
+      expect(find.byType(GroupSuggestionWorkspace), findsNothing);
+      expect(find.byTooltip('Group options'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('member role actions do not contain the Group bank shortcut', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(
+            _BankShortcutGroupsRepository('admin'),
+          ),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openGroupAction(tester, 'Manage members and invitations');
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Request admin transfer'), findsOneWidget);
+    expect(find.text('Suggestions & practices'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  for (final anonymous in [true, false]) {
+    testWidgets(
+      'ineligible identity cannot open Group suggestions (anonymous=$anonymous)',
+      (tester) async {
+        final bank = _BankShortcutRepository();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              firebaseAuthProvider.overrideWithValue(
+                _TestFirebaseAuth(
+                  _TestUser(anonymous: anonymous, verified: false),
+                ),
+              ),
+              guestGroupRepositoryProvider.overrideWithValue(
+                _BankShortcutGroupsRepository('admin'),
+              ),
+              suggestionBankRepositoryProvider.overrideWithValue(bank),
+            ],
+            child: const MaterialApp(home: SharedGuestGroupsPage()),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Group options'), findsNothing);
+        expect(find.text('Suggestions & practices'), findsNothing);
+        expect(bank.requests, isEmpty);
+      },
+    );
+  }
+
   for (final hasGroups in [true, false]) {
     testWidgets(
       'inaccessible Group link stays unavailable (${hasGroups ? 'other approved Group' : 'no Groups'})',
