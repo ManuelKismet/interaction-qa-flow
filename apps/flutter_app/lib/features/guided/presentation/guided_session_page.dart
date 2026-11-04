@@ -1,3 +1,4 @@
+import 'package:int_qa_flow/core/nia/nia_guidance.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -817,54 +818,13 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
 
   Future<void> _lifecycleInfo(GuidedSessionDetail session, bool canEdit) {
     final repository = ref.read(guidedRepositoryProvider);
-    final sessionId = widget.sessionId;
-    final next = switch (session.status) {
-      'draft' => 'Start makes it active. Archive is also available.',
-      'active' => 'Complete marks it completed. Archive is also available.',
-      'completed' =>
-        'Completed sessions are read-only. Reopen session returns it to Active before editing. Archive is also available.',
-      _ =>
-        'Archived sessions are read-only and cannot be reopened or restored.',
-    };
-    return showGuidedScopedDialog<void>(
-      context: context,
-      repository: repository,
-      isCurrent: () => _isCurrent(repository, sessionId),
-      builder: (context) => AlertDialog(
-        title: const Text('Lifecycle and recovery'),
-        scrollable: true,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Status: ${guidedStatusLabel(session.status)}',
-              key: const ValueKey('guided-lifecycle-status'),
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(next),
-            const SizedBox(height: 8),
-            const Text(
-              'Archive is final: there is no reopen or restore action. Reports and JSON/CSV exports stay available.',
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Save history lists audit entries only; it cannot restore earlier versions. A deleted question can be restored with Undo straight after deleting it.',
-            ),
-            if (!canEdit) ...[
-              const SizedBox(height: 8),
-              const Text('You can view this session but cannot change it.'),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+    final sessionId = session.id;
+    if (!_isCurrent(repository, sessionId)) return Future<void>.value();
+    return showNiaGuidance(
+      context,
+      topic: NiaTopic.lifecycle,
+      title: 'Lifecycle and recovery',
+      facts: {'status': session.status, 'canManage': canEdit},
     );
   }
 

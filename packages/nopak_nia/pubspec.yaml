@@ -1,0 +1,6 @@
+name: nopak_nia
+description: Product-neutral native intelligence contracts and bounded assistance lifecycle.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: '>=3.8.0 <4.0.0'

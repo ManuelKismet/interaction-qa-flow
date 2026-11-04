@@ -228,6 +228,10 @@ events. If a question supplies both department and team, the team's parent
 department must match. Department owners retain authority for their department
 and its teams; cross-functional team questions remain admin-governed.
 
+## NIA assistance
+
+IntQAFlow uses the shared bounded NIA/NIC foundation and contextual ANI guidance. See [architecture and validation](docs/nia-foundation.md).
+
 ## IntQAFlow Interact
 
 IntQAFlow Interact is the platform's structured interaction module. Sessions

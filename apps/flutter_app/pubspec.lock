@@ -480,6 +480,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.2"
+  nopak_nia:
+    dependency: "direct main"
+    description:
+      path: "../../packages/nopak_nia"
+      relative: true
+    source: path
+    version: "0.1.0"
   objective_c:
     dependency: transitive
     description:

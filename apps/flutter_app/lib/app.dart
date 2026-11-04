@@ -1,3 +1,4 @@
+import 'package:int_qa_flow/core/nia/nia_guidance.dart';
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,46 +18,57 @@ class IntQaFlowApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(initialAppLocationProvider);
-    if (!firebaseReady) return _guestApp(firebaseReady: false);
-    return ref
-        .watch(authStateProvider)
-        .when(
-          loading: () => _accountStatusApp(
-            'Checking account',
-            'Checking whether this device has a signed-in identity.',
-          ),
-          error: (_, _) {
-            final user = ref.read(firebaseAuthProvider).currentUser;
-            final guestApp = _guestApp(
-              firebaseReady: true,
-              accountUser: user,
-              membershipStatus: AccountMembershipStatus.unavailable,
-              authUnavailable: true,
-              onRetryAccount: () => ref.invalidate(authStateProvider),
-            );
-            return user == null
-                ? guestApp
-                : ProviderScope(key: ValueKey(user.uid), child: guestApp);
-          },
-          data: (user) {
-            if (user == null) {
-              return _guestApp(firebaseReady: true);
-            }
-            if (user.isAnonymous) {
-              return ProviderScope(
-                key: ValueKey(user.uid),
-                child: _AnonymousSessionToLocalWorkspace(user: user),
-              );
-            }
-            return ProviderScope(
-              key: ValueKey(user.uid),
-              child: _RegisteredAccountApp(
-                firebaseReady: firebaseReady,
-                user: user,
-              ),
-            );
-          },
+    if (!firebaseReady)
+      return NiaHost(
+        subject: 'local',
+        authorityRevision: 'local',
+        child: _guestApp(firebaseReady: false),
+      );
+    final auth = ref.watch(authStateProvider);
+    final app = auth.when(
+      loading: () => _accountStatusApp(
+        'Checking account',
+        'Checking whether this device has a signed-in identity.',
+      ),
+      error: (_, _) {
+        final user = ref.read(firebaseAuthProvider).currentUser;
+        final guestApp = _guestApp(
+          firebaseReady: true,
+          accountUser: user,
+          membershipStatus: AccountMembershipStatus.unavailable,
+          authUnavailable: true,
+          onRetryAccount: () => ref.invalidate(authStateProvider),
         );
+        return user == null
+            ? guestApp
+            : ProviderScope(key: ValueKey(user.uid), child: guestApp);
+      },
+      data: (user) {
+        if (user == null) {
+          return _guestApp(firebaseReady: true);
+        }
+        if (user.isAnonymous) {
+          return ProviderScope(
+            key: ValueKey(user.uid),
+            child: _AnonymousSessionToLocalWorkspace(user: user),
+          );
+        }
+        return ProviderScope(
+          key: ValueKey(user.uid),
+          child: _RegisteredAccountApp(
+            firebaseReady: firebaseReady,
+            user: user,
+          ),
+        );
+      },
+    );
+    final current = auth.value;
+    return NiaHost(
+      subject: current?.uid ?? 'local',
+      authorityRevision:
+          '${auth.isLoading}:${auth.hasError}:${current?.isAnonymous}:${current?.emailVerified}',
+      child: app,
+    );
   }
 }
 

@@ -686,7 +686,52 @@ class _BankShortcutRepository extends SuggestionBankRepository {
   }
 }
 
+class _ShortcutMemoryStorage implements GuestStorage {
+  String? data;
+  @override
+  String? read() => data;
+  @override
+  void write(String value) => data = value;
+  @override
+  void remove() => data = null;
+}
+
 void main() {
+  testWidgets('personal account opens Groups beside Knowledge and Interact', (
+    tester,
+  ) async {
+    final user = _TestUser(anonymous: false, verified: true);
+    final repository = _EmptyGroupsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestWorkspaceStoreProvider.overrideWithValue(
+            GuestWorkspaceStore(_ShortcutMemoryStorage()),
+          ),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: GuestWorkspacePage(firebaseReady: true, accountUser: user),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Knowledge'), findsOneWidget);
+    expect(find.text('Interact'), findsOneWidget);
+    final groups = find.widgetWithText(TextButton, 'Groups');
+    expect(groups, findsOneWidget);
+    expect(
+      tester.getCenter(groups).dx,
+      greaterThan(tester.getCenter(find.text('Interact')).dx),
+    );
+    await tester.tap(groups);
+    await tester.pumpAndSettle();
+    expect(find.byType(SharedGuestGroupsPage), findsOneWidget);
+    expect(repository.listGroupsCalls, greaterThan(0));
+    expect(tester.takeException(), isNull);
+  });
+
   for (final role in ['admin', 'editor', 'contributor', 'viewer']) {
     testWidgets('Group options opens the scoped Suggestion Bank for $role', (
       tester,
@@ -1091,7 +1136,7 @@ void main() {
     await authEvents.close();
   });
 
-  testWidgets('Groups page explains access behind its info button', (
+  testWidgets('Groups guidance explains current identity and separate access', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -1120,7 +1165,7 @@ void main() {
     expect(find.text('About groups'), findsOneWidget);
     expect(
       find.textContaining(
-        'Group data remains associated with its Firebase UID;',
+        'Group access follows this verified identity and is separate from organisation membership.',
       ),
       findsOneWidget,
     );
@@ -1800,7 +1845,7 @@ void main() {
     );
     await tester.tap(find.byTooltip('Groups information'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Your group role: admin.'), findsOneWidget);
+    expect(find.textContaining('Your Group role is admin.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

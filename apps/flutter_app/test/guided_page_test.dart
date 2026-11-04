@@ -1,3 +1,5 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:int_qa_flow/shared/widgets/app_shell.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,50 +63,85 @@ ActiveMembership _membership(String userId, String role) => ActiveMembership(
   role: role,
 );
 
+class _InteractMenuUser implements User {
+  @override
+  String get uid => 'uid-a';
+  @override
+  bool get isAnonymous => false;
+  @override
+  bool get emailVerified => true;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _InteractMenuAuth implements FirebaseAuth {
+  @override
+  User get currentUser => _InteractMenuUser();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
-  testWidgets('Interact navigation toolbar fits a phone viewport', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(360, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  for (final width in [360.0, 1200.0]) {
+    testWidgets('Interact import menu is in the app bar at width $width', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    const template = GuidedTemplate(
-      id: 'template-1',
-      name: 'Template',
-      status: 'active',
-      currentVersion: 1,
-      questions: [],
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authStateProvider.overrideWith(
-            (ref) => Stream.value(GuidedTestUser('uid-a')),
+      const template = GuidedTemplate(
+        id: 'template-1',
+        name: 'Template',
+        status: 'active',
+        currentVersion: 1,
+        questions: [],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(_InteractMenuAuth()),
+            authStateProvider.overrideWith(
+              (ref) => Stream.value(_InteractMenuUser()),
+            ),
+            organisationProfileProvider.overrideWith(
+              (ref) async => guidedProfile(userId: 'template-owner'),
+            ),
+            currentMembershipProvider.overrideWith(
+              (ref) async => _membership('template-owner', 'employee'),
+            ),
+            guidedRepositoryProvider.overrideWithValue(
+              _TemplateTestRepository()..addTemplate(template),
+            ),
+          ],
+          child: const MaterialApp(
+            home: AppShell(currentPath: '/guided', child: GuidedPage()),
           ),
-          organisationProfileProvider.overrideWith(
-            (ref) async => guidedProfile(userId: 'template-owner'),
-          ),
-          currentMembershipProvider.overrideWith(
-            (ref) async => _membership('template-owner', 'employee'),
-          ),
-          guidedRepositoryProvider.overrideWithValue(
-            _TemplateTestRepository()..addTemplate(template),
-          ),
-        ],
-        child: const MaterialApp(home: Scaffold(body: GuidedPage())),
-      ),
-    );
-    await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Interact'), findsNothing);
-    expect(find.text('Active'), findsOneWidget);
-    expect(find.byTooltip('Interact options'), findsOneWidget);
-    expect(find.text('New session'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
+      expect(find.text('Interact'), findsOneWidget);
+      expect(find.text('Active'), findsOneWidget);
+      expect(find.byTooltip('Interact options'), findsOneWidget);
+      expect(find.text('New session'), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.byTooltip('Interact options'),
+          matching: find.byType(AppBar),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byTooltip('Interact options'));
+      await tester.pumpAndSettle();
+      expect(find.text('Import session'), findsOneWidget);
+      await tester.tap(find.text('Import session'));
+      await tester.pumpAndSettle();
+      expect(find.text('Session JSON'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets(
     'new template version uses edited draft and preserves snapshots',
     (tester) async {
