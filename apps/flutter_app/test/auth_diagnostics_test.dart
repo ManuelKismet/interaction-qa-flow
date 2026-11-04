@@ -310,13 +310,15 @@ void main() {
           accountMembershipStatusProvider,
           (_, _) {},
         );
-        final membershipSubscription = container.listen(
-          currentMembershipProvider,
-          (_, _) {},
-        );
+
         expect(
           await container.read(accountMembershipStatusProvider.future),
           AccountMembershipStatus.active,
+        );
+        // The account gate resolves before the UI requests organisation membership.
+        final membershipSubscription = container.listen(
+          currentMembershipProvider,
+          (_, _) {},
         );
         expect(
           (await container.read(currentMembershipProvider.future)).userId,
