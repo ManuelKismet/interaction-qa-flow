@@ -78,21 +78,24 @@ class _PendingEntryRepository extends GuestGroupRepository {
   final historyResult = Completer<List<Map<String, dynamic>>>();
   var exportRequested = false;
   var historyRequested = false;
+  bool noGroups = false;
+  final groupReads = <String>[];
 
   @override
-  Future<List<Map<String, dynamic>>> listGroups() async => [
-    {'id': 'group-1', 'name': 'Group', 'role': 'viewer'},
-  ];
+  Future<List<Map<String, dynamic>>> listGroups() async => noGroups
+      ? []
+      : [
+          {'id': 'group-1', 'name': 'Group', 'role': 'viewer'},
+        ];
 
   @override
   Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
 
   @override
-  Future<Map<String, dynamic>> getGroup(String groupId) async => {
-    'id': groupId,
-    'role': 'viewer',
-    'members': [],
-  };
+  Future<Map<String, dynamic>> getGroup(String groupId) async {
+    groupReads.add(groupId);
+    return {'id': groupId, 'role': 'viewer', 'members': []};
+  }
 
   @override
   Future<List<Map<String, dynamic>>> searchEntries({
@@ -149,6 +152,7 @@ class _FailingDraftRepository extends GuestGroupRepository {
   var failGroupReads = false;
   var failRefreshAfterCreateGroup = false;
   var twoGroups = false;
+  var usedInvitation = false;
 
   @override
   Future<List<Map<String, dynamic>>> listGroups() async {
@@ -198,7 +202,8 @@ class _FailingDraftRepository extends GuestGroupRepository {
   }
 
   @override
-  Future<bool> previewInvitation(String token) async => true;
+  Future<({bool valid, bool used})> previewInvitation(String token) async =>
+      (valid: !usedInvitation, used: usedInvitation);
 
   @override
   Future<Map<String, dynamic>> joinInvitation({
@@ -619,6 +624,102 @@ class _MemoryGuestStorage implements GuestStorage {
 }
 
 void main() {
+  for (final hasGroups in [true, false]) {
+    testWidgets(
+      'inaccessible Group link stays unavailable (${hasGroups ? 'other approved Group' : 'no Groups'})',
+      (tester) async {
+        final repository = _PendingEntryRepository()..noGroups = !hasGroups;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+              guestGroupRepositoryProvider.overrideWithValue(repository),
+            ],
+            child: const MaterialApp(
+              home: SharedGuestGroupsPage(
+                initialGroupId: 'inaccessible',
+                initialEntryId: 'entry-1',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('The requested Group is unavailable'),
+          findsOneWidget,
+        );
+        expect(repository.groupReads, isEmpty);
+        expect(find.text('Shared entry'), findsNothing);
+        await tester.tap(find.byTooltip('Refresh'));
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('The requested Group is unavailable'),
+          findsOneWidget,
+        );
+        expect(repository.groupReads, isEmpty);
+        if (hasGroups) {
+          await tester.tap(
+            find.byKey(const ValueKey('approved-group-selection')),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Group · viewer').last);
+          await tester.pumpAndSettle();
+          expect(repository.groupReads, ['group-1']);
+          expect(
+            find.textContaining('The requested Group is unavailable'),
+            findsNothing,
+          );
+          expect(find.text('Shared entry'), findsOneWidget);
+          expect(find.byType(AlertDialog), findsNothing);
+        }
+      },
+    );
+  }
+
+  testWidgets(
+    'used invitation preview explains rejection without offering join',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _FailingDraftRepository()..usedInvitation = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+            guestGroupRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: const MaterialApp(home: SharedGuestGroupsPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _openGroupAction(tester, 'Join with invitation');
+      await tester.pumpAndSettle();
+      Finder field(String label) => find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == label,
+      );
+      await tester.enterText(field('Invitation token'), 'used-token');
+      await tester.enterText(field('Display name'), 'Alice');
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog).last,
+          matching: find.text('Preview invitation'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('This invitation has already been used.'),
+        findsWidgets,
+      );
+      expect(find.text('Request to join?'), findsNothing);
+      expect(find.text('Request access'), findsNothing);
+      expect(find.textContaining('used-token'), findsNothing);
+      expect(repository.joinAttempts, 0);
+    },
+  );
+
   testWidgets(
     'only verified registered identities can create and join groups',
     (tester) async {
@@ -1523,7 +1624,7 @@ void main() {
     await tester.tap(find.text('Remove member'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Remove this guest member?'), findsOneWidget);
+    expect(find.text('Remove this Group member?'), findsOneWidget);
     expect(find.text('Groups'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, 'Remove member').last);
     await tester.pumpAndSettle();
