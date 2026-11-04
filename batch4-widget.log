@@ -1,0 +1,37 @@
+00:00 +0: loading /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart
+00:00 +0: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:02 +1: admin can edit its own shared Interact copy
+00:03 +2: editor can edit its own shared Interact copy
+00:04 +3: contributor can edit its own shared Interact copy
+00:05 +4: viewer cannot edit another member shared Interact copy
+00:05 +5: contributor cannot edit another member shared Interact copy
+00:05 +6: admin can edit another member shared Interact copy
+00:06 +7: editor can edit another member shared Interact copy
+00:07 +8: 409 competing edit keeps draft and review never retries
+00:08 +9: revision changed before save prevents even the first write
+00:08 +10: uncertain save applied=true reconciles before safe retry
+00:09 +11: uncertain save applied=false reconciles before safe retry
+00:10 +12: actual 403 write response removes editable draft
+00:10 +13: actual 404 write response removes editable draft
+00:11 +14: re-read catches deletion before write
+00:12 +15: re-read catches revocation before write
+00:12 +16: delayed capability read after signout cannot write
+00:13 +17: delayed capability read after UID switch cannot write
+00:13 +18: delayed export capability read after signout cannot disclose JSON
+00:14 +19: delayed export capability read after UID switch cannot disclose JSON
+00:14 +20: auth event signout disposes open draft without writing
+00:15 +21: actual export menu confirms saved JSON and excludes unsaved draft
+00:15 +22: editor revision history reads persisted saves not draft
+00:16 +23: saved Group PDF selected participant preview excludes unsaved draft
+00:17 +24: saved Group PDF all participant preview excludes unsaved draft
+00:18 +25: PDF confirmation actual 403 recheck prevents export
+00:19 +26: PDF confirmation actual 404 recheck prevents export
+00:19 +27: export confirmation switch prevents clipboard disclosure
+00:19 +28: export confirmation signout prevents clipboard disclosure
+00:20 +29: export confirmation revoke prevents clipboard disclosure
+00:20 +30: export confirmation delete prevents clipboard disclosure
+00:20 +31: close editor Cancel has explicit draft and persistence semantics
+00:21 +32: close editor Discard draft has explicit draft and persistence semantics
+00:21 +33: close editor Save and close has explicit draft and persistence semantics
+00:22 +34: narrow phone keyboard long deep branches keep editing controls reachable
+00:22 +35: All tests passed!

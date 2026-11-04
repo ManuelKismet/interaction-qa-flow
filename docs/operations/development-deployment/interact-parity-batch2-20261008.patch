@@ -1,0 +1,2166 @@
+From 511da2869d3bec136de9db14bf0b16e6f316056a Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 07:58:24 +0000
+Subject: [PATCH 1/4] Add batch two publication gate checkpoint
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ ...eract-parity-batch2-publication-gate-2026-10-08.md | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+ create mode 100644 docs/operations/development-deployment/interact-parity-batch2-publication-gate-2026-10-08.md
+
+diff --git a/docs/operations/development-deployment/interact-parity-batch2-publication-gate-2026-10-08.md b/docs/operations/development-deployment/interact-parity-batch2-publication-gate-2026-10-08.md
+new file mode 100644
+index 0000000..b364838
+--- /dev/null
++++ b/docs/operations/development-deployment/interact-parity-batch2-publication-gate-2026-10-08.md
+@@ -0,0 +1,11 @@
++# Interact parity batch 2 publication gate — 2026-10-08
++
++This checkpoint is on the platform-assigned branch `copilot/fixinteract-parity-batch2`.
++
++- Accepted batch 1 base: `445088cad1d8173a0cdc6c99e5b2046a5334b9d7`
++- Accepted base tree: `479beded6ae5afef44b8f0aa72a593b9e34d449d`
++- Delivery plan: publish each checkpoint and the eventual application/artifact commits on this same assigned branch using supported Copilot progress tooling. The final delivery must include an exact-base mailbox artifact and independently verifiable source/tree and patch-application evidence.
++- Gate: do not restore or rebuild batch 2 application changes until this checkpoint is durably published to the assigned remote branch. If publication fails, stop and report the exact tool error; do not create another branch, retry through another credential/path, or expand permissions.
++- Scope after the gate: batch 2 only (IP10, IP13–IP18). No batch 3/4 work, old PR13 reuse, merge, deployment, or production changes.
++
++Previous fallback commits and incomplete mailbox chunks are not considered recovered or accepted by this checkpoint.
+
+From 30d990391099525ae753a3181f202f8626b082cf Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 08:14:46 +0000
+Subject: [PATCH 2/4] Implement private workspace navigation and creation
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../lib/core/routing/app_router.dart          |  76 ++-
+ .../features/ask/presentation/ask_page.dart   |   7 +-
+ .../personal_workspace_status.dart            |  26 +
+ .../data/personal_workspace_repository.dart   |  21 +
+ .../presentation/guest_workspace_page.dart    | 456 +++++++++++++++---
+ .../lib/shared/widgets/app_shell.dart         | 249 ++++++++--
+ .../widgets/knowledge_section_tabs.dart       |  17 +-
+ .../test/account_state_widget_test.dart       | 145 +++++-
+ 8 files changed, 832 insertions(+), 165 deletions(-)
+ create mode 100644 apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+
+diff --git a/apps/flutter_app/lib/core/routing/app_router.dart b/apps/flutter_app/lib/core/routing/app_router.dart
+index b1ef59b..f880b25 100644
+--- a/apps/flutter_app/lib/core/routing/app_router.dart
++++ b/apps/flutter_app/lib/core/routing/app_router.dart
+@@ -12,6 +12,7 @@ import 'package:int_qa_flow/features/questions/presentation/question_detail_page
+ import 'package:int_qa_flow/features/questions/presentation/questions_page.dart';
+ import 'package:int_qa_flow/features/organisation/presentation/organisation_page.dart';
+ import 'package:int_qa_flow/shared/widgets/app_shell.dart';
++import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
+ 
+ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+   ref,
+@@ -64,8 +65,12 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+               final extra = state.extra;
+               final entry = extra is Map ? extra : const {};
+               return SharedGuestGroupsPage(
+-                initialGroupId: entry['groupId'] as String?,
+-                initialEntryId: entry['entryId'] as String?,
++                initialGroupId:
++                    state.uri.queryParameters['groupId'] ??
++                    entry['groupId'] as String?,
++                initialEntryId:
++                    state.uri.queryParameters['entryId'] ??
++                    entry['entryId'] as String?,
+               );
+             },
+           ),
+@@ -75,9 +80,70 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+               firebaseReady: true,
+               personalWorkspaceEnabled: true,
+               membershipStatus: AccountMembershipStatus.active,
+-              initialKnowledgeItemId: state.extra is Map
+-                  ? (state.extra as Map)['knowledgeItemId'] as String?
+-                  : null,
++              initialKnowledgeItemId:
++                  state.uri.queryParameters['knowledgeItemId'] ??
++                  (state.extra is Map
++                      ? (state.extra as Map)['knowledgeItemId'] as String?
++                      : null),
++              initialKnowledgeSection: KnowledgeSection.ask,
++              onKnowledgeSectionChanged: (section) => context.go(
++                section == KnowledgeSection.ask
++                    ? '/personal/ask'
++                    : '/personal/questions',
++              ),
++              onWorkspaceTabChanged: (index) => context.go(
++                index == 0 ? '/personal' : '/personal/interact',
++              ),
++            ),
++          ),
++          GoRoute(
++            path: '/personal/ask',
++            builder: (context, state) => GuestWorkspacePage(
++              firebaseReady: true,
++              personalWorkspaceEnabled: true,
++              membershipStatus: AccountMembershipStatus.active,
++              initialKnowledgeItemId:
++                  state.uri.queryParameters['knowledgeItemId'],
++              initialKnowledgeSection: KnowledgeSection.ask,
++              onKnowledgeSectionChanged: (section) => context.go(
++                section == KnowledgeSection.ask
++                    ? '/personal/ask'
++                    : '/personal/questions',
++              ),
++              onWorkspaceTabChanged: (index) => context.go(
++                index == 0 ? '/personal/ask' : '/personal/interact',
++              ),
++            ),
++          ),
++          GoRoute(
++            path: '/personal/questions',
++            builder: (context, state) => GuestWorkspacePage(
++              firebaseReady: true,
++              personalWorkspaceEnabled: true,
++              membershipStatus: AccountMembershipStatus.active,
++              initialKnowledgeItemId:
++                  state.uri.queryParameters['knowledgeItemId'],
++              initialKnowledgeSection: KnowledgeSection.questions,
++              onKnowledgeSectionChanged: (section) => context.go(
++                section == KnowledgeSection.ask
++                    ? '/personal/ask'
++                    : '/personal/questions',
++              ),
++              onWorkspaceTabChanged: (index) => context.go(
++                index == 0 ? '/personal/questions' : '/personal/interact',
++              ),
++            ),
++          ),
++          GoRoute(
++            path: '/personal/interact',
++            builder: (context, state) => GuestWorkspacePage(
++              firebaseReady: true,
++              personalWorkspaceEnabled: true,
++              membershipStatus: AccountMembershipStatus.active,
++              initialWorkspaceTab: 1,
++              onWorkspaceTabChanged: (index) => context.go(
++                index == 0 ? '/personal' : '/personal/interact',
++              ),
+             ),
+           ),
+         ],
+diff --git a/apps/flutter_app/lib/features/ask/presentation/ask_page.dart b/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
+index 491a133..1ca3957 100644
+--- a/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
++++ b/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
+@@ -320,14 +320,13 @@ class _SuggestionRow extends StatelessWidget {
+             break;
+           case 'group':
+             context.go(
+-              '/guest/groups',
+-              extra: {'groupId': result.groupId, 'entryId': result.id},
++              '/guest/groups?groupId=${Uri.encodeQueryComponent(result.groupId ?? '')}'
++              '&entryId=${Uri.encodeQueryComponent(result.id)}',
+             );
+             break;
+           default:
+             context.go(
+-              '/personal',
+-              extra: {'knowledgeItemId': result.id},
++              '/personal/questions?knowledgeItemId=${Uri.encodeQueryComponent(result.id)}',
+             );
+         }
+       },
+diff --git a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+new file mode 100644
+index 0000000..760d8a7
+--- /dev/null
++++ b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+@@ -0,0 +1,26 @@
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++
++final personalWorkspaceStatusProvider =
++    NotifierProvider<PersonalWorkspaceStatusController, PersonalWorkspaceStatus>(
++      PersonalWorkspaceStatusController.new,
++    );
++
++class PersonalWorkspaceStatus {
++  const PersonalWorkspaceStatus({this.uid, this.hasPendingChanges = false});
++
++  final String? uid;
++  final bool hasPendingChanges;
++}
++
++class PersonalWorkspaceStatusController
++    extends Notifier<PersonalWorkspaceStatus> {
++  @override
++  PersonalWorkspaceStatus build() => const PersonalWorkspaceStatus();
++
++  void update({required String? uid, required bool hasPendingChanges}) {
++    state = PersonalWorkspaceStatus(
++      uid: uid,
++      hasPendingChanges: hasPendingChanges,
++    );
++  }
++}
+diff --git a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+index 267501d..14d9266 100644
+--- a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
++++ b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+@@ -64,6 +64,27 @@ class PersonalWorkspaceRepository {
+     return [for (final item in result) item as Map<String, dynamic>];
+   }
+ 
++  Future<Map<String, dynamic>> createItem({
++    required String kind,
++    required String sourceKey,
++    required String title,
++    required Map<String, dynamic> data,
++    required String expectedUid,
++  }) async {
++    final items = await importItems(
++      [
++        {
++          'kind': kind,
++          'source_key': sourceKey,
++          'title': title,
++          'data': data,
++        },
++      ],
++      expectedUid: expectedUid,
++    );
++    return items.single;
++  }
++
+   Future<Map<String, dynamic>> updateItem({
+     required String id,
+     required String expectedUid,
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 436fdc4..d6cf826 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -15,6 +15,7 @@ import 'package:int_qa_flow/core/auth/auth_providers.dart';
+ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
+ import 'package:int_qa_flow/core/platform/pdf_download.dart';
+ import 'package:int_qa_flow/core/platform/print_page.dart';
++import 'package:int_qa_flow/features/guest/application/personal_workspace_status.dart';
+ import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
+ import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
+ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+@@ -22,8 +23,8 @@ import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ import 'package:int_qa_flow/features/guest/presentation/guest_report_document.dart';
+ import 'package:int_qa_flow/features/knowledge/application/knowledge_search_sources.dart';
+-import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
+ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
++import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
+ import 'package:share_plus/share_plus.dart';
+ 
+ void _showPdfFontFallbackNotice(BuildContext context) {
+@@ -47,6 +48,7 @@ class _PersonalWorkspaceWrite {
+     this.title,
+     this.data,
+   });
++  _publishWorkspaceSaveStatus();
+ 
+   final String action;
+   final String kind;
+@@ -64,6 +66,10 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
+   const GuestWorkspacePage({
+     required this.firebaseReady,
+     this.initialKnowledgeItemId,
++    this.initialKnowledgeSection = KnowledgeSection.ask,
++    this.onKnowledgeSectionChanged,
++    this.initialWorkspaceTab = 0,
++    this.onWorkspaceTabChanged,
+     this.personalWorkspaceEnabled = false,
+     this.sharedIdentityActive = false,
+     this.accountUser,
+@@ -72,9 +78,14 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
+     this.onRetryAccount,
+     super.key,
+   });
++  _publishWorkspaceSaveStatus();
+ 
+   final bool firebaseReady;
+   final String? initialKnowledgeItemId;
++  final KnowledgeSection initialKnowledgeSection;
++  final ValueChanged<KnowledgeSection>? onKnowledgeSectionChanged;
++  final int initialWorkspaceTab;
++  final ValueChanged<int>? onWorkspaceTabChanged;
+   final bool personalWorkspaceEnabled;
+   final bool sharedIdentityActive;
+   final User? accountUser;
+@@ -111,6 +122,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   String? _personalOwnerUid;
+   bool _personalLoading = false;
+   bool _personalSaving = false;
++  int _personalWriteGeneration = 0;
+ 
+   @override
+   void initState() {
+@@ -122,6 +134,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+       unawaited(_refreshPersonalWorkspace());
+     });
++    _publishWorkspaceSaveStatus();
+   }
+ 
+   @override
+@@ -140,6 +153,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     _personalConflictReloadFailed = false;
+     _personalError = null;
+     _personalLoading = false;
++    _publishWorkspaceSaveStatus();
+     if (uid != null) {
+       WidgetsBinding.instance.addPostFrameCallback((_) {
+         unawaited(_refreshPersonalWorkspace());
+@@ -163,9 +177,31 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     if (_savedRevision < _dataRevision) {
+       unawaited(_flushPendingSave());
+     }
++    if (!_hasPendingWorkspaceChanges) {
++      ref
++          .read(personalWorkspaceStatusProvider.notifier)
++          .update(uid: null, hasPendingChanges: false);
++    }
+     super.dispose();
+   }
+ 
++  bool get _hasPendingWorkspaceChanges =>
++      _savedRevision < _dataRevision ||
++      _unsavedChanges ||
++      _pendingPersonalWrites.isNotEmpty ||
++      _pendingPersonalImport.isNotEmpty ||
++      _personalSaving ||
++      _personalConflictSourceKey != null;
++
++  void _publishWorkspaceSaveStatus() {
++    ref
++        .read(personalWorkspaceStatusProvider.notifier)
++        .update(
++          uid: _verifiedPersonalUid,
++          hasPendingChanges: _hasPendingWorkspaceChanges,
++        );
++  }
++
+   Future<void> _load() async {
+     if (_isLoading) return;
+     final revisionAtStart = _dataRevision;
+@@ -203,10 +239,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     final uid = _verifiedPersonalUid;
+     if (uid == null || !mounted) return;
+     final generation = ++_personalGeneration;
++    final writeGeneration = _personalWriteGeneration;
+     setState(() {
+       _personalLoading = true;
+       _personalError = null;
+     });
++    _publishWorkspaceSaveStatus();
+     try {
+       final items = await ref
+           .read(personalWorkspaceRepositoryProvider)
+@@ -216,6 +254,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           uid != _verifiedPersonalUid) {
+         return;
+       }
++      if (writeGeneration != _personalWriteGeneration) {
++        setState(() => _personalLoading = false);
++        WidgetsBinding.instance.addPostFrameCallback((_) {
++          if (mounted && uid == _verifiedPersonalUid) {
++            unawaited(_refreshPersonalWorkspace());
++          }
++        });
++        _publishWorkspaceSaveStatus();
++        return;
++      }
+       setState(() {
+         _personalItems = items;
+         _personalLoading = false;
+@@ -362,6 +410,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       _dataRevision++;
+       _saveStatus = 'Saving locally…';
+     });
++    _publishWorkspaceSaveStatus();
+     _autosaveTimer?.cancel();
+     _autosaveTimer = Timer(
+       const Duration(milliseconds: 250),
+@@ -372,6 +421,69 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     }
+   }
+ 
++  void _createWorkspaceItem({
++    required String kind,
++    required Map<String, dynamic> item,
++    required GuestWorkspaceData updated,
++  }) {
++    final uid = _verifiedPersonalUid;
++    final accountItem = uid == null
++        ? item
++        : {
++            ...item,
++            if (kind == 'knowledge' || kind == 'interact_session')
++              'visibility': 'private_account',
++          };
++    final submitted = uid == null
++        ? updated
++        : switch (kind) {
++            'knowledge' => updated.copyWith(
++              knowledge: [
++                accountItem,
++                ...updated.knowledge.where(
++                  (value) => value['id'] != item['id'],
++                ),
++              ],
++            ),
++            'interact_session' => updated.copyWith(
++              sessions: [
++                accountItem,
++                ...updated.sessions.where(
++                  (value) => value['id'] != item['id'],
++                ),
++              ],
++            ),
++            'template' => updated.copyWith(
++              templates: [
++                accountItem,
++                ...updated.templates.where(
++                  (value) => value['id'] != item['id'],
++                ),
++              ],
++            ),
++            _ => updated,
++          };
++    _save(submitted);
++    if (uid == null) return;
++    final sourceId = item['id'] as String;
++    final write = _PersonalWorkspaceWrite(
++      action: 'create',
++      kind: kind,
++      sourceKey: _personalSourceKey(kind, sourceId),
++      sourceId: sourceId,
++      title: _personalTitle(kind, accountItem),
++      data: accountItem,
++    );
++    _enqueuePersonalWrite(write);
++    unawaited(
++      _processPersonalWrites(
++        uid,
++        _personalGeneration,
++        ref.read(personalWorkspaceRepositoryProvider),
++      ),
++    );
++  }
++
+   Future<void> _syncPersonalWorkspace(
+     String uid,
+     GuestWorkspaceData submitted,
+@@ -419,6 +531,33 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       }
+     }
+ 
++    for (final entry in _pendingPersonalWrites.entries.toList()) {
++      final write = entry.value;
++      if (write.action == 'delete') continue;
++      final replacement = submittedByKey['${write.kind}:${write.sourceId}'];
++      if (replacement == null) {
++        _enqueuePersonalWrite(
++          _PersonalWorkspaceWrite(
++            action: 'delete',
++            kind: write.kind,
++            sourceKey: write.sourceKey,
++            sourceId: write.sourceId,
++          ),
++        );
++      } else if (jsonEncode(replacement) != jsonEncode(write.data)) {
++        _enqueuePersonalWrite(
++          _PersonalWorkspaceWrite(
++            action: write.action,
++            kind: write.kind,
++            sourceKey: write.sourceKey,
++            sourceId: write.sourceId,
++            title: _personalTitle(write.kind, replacement),
++            data: replacement,
++          ),
++        );
++      }
++    }
++
+     await _processPersonalWrites(uid, generation, repository);
+   }
+ 
+@@ -445,6 +584,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   }) async {
+     if (_personalSaving || !mounted) return;
+     _personalSaving = true;
++    _publishWorkspaceSaveStatus();
+     try {
+       while (mounted &&
+           generation == _personalGeneration &&
+@@ -464,9 +604,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               .firstOrNull;
+           if (current == null && write.action == 'delete') {
+             saved = null;
++          } else if (current == null && write.action == 'create') {
++            saved = await repository.createItem(
++              kind: write.kind,
++              sourceKey: write.sourceKey,
++              title: write.title!,
++              data: write.data!,
++              expectedUid: uid,
++            );
+           } else if (current == null) {
+             throw StateError('The personal item is not loaded.');
+-          } else if (write.action == 'update') {
++          } else if (write.action != 'delete') {
+             saved = await repository.updateItem(
+               id: current['id'] as String,
+               expectedUid: uid,
+@@ -487,6 +635,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             return;
+           }
+           setState(() {
++            _personalWriteGeneration++;
+             if (saved != null) {
+               _personalItems.removeWhere(
+                 (item) => item['source_key'] == write.sourceKey,
+@@ -531,6 +680,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       }
+     } finally {
+       _personalSaving = false;
++      if (mounted) _publishWorkspaceSaveStatus();
+     }
+   }
+ 
+@@ -664,6 +814,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             ? null
+             : 'Other account edits are still pending.';
+       });
++      _publishWorkspaceSaveStatus();
+       return;
+     }
+ 
+@@ -681,6 +832,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             ? null
+             : 'Other account edits are still pending.';
+       });
++      _publishWorkspaceSaveStatus();
+       return;
+     }
+ 
+@@ -698,6 +850,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             ], expectedUid: uid);
+         if (!mounted || uid != _verifiedPersonalUid) return;
+         setState(() {
++          _personalWriteGeneration++;
+           _personalItems.removeWhere(
+             (item) => item['source_key'] == write.sourceKey,
+           );
+@@ -714,12 +867,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               ? null
+               : 'Other account edits are still pending.';
+         });
++        _publishWorkspaceSaveStatus();
+       } on Object {
+         if (mounted) {
+           setState(() {
+             _personalError =
+                 'The pending edit could not be restored. It remains available; refresh account status before trying again.';
+           });
++          _publishWorkspaceSaveStatus();
+         }
+       }
+       return;
+@@ -730,6 +885,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       _personalConflictReloadFailed = false;
+       _personalError = null;
+     });
++    _publishWorkspaceSaveStatus();
+     await _retryPersonalWrites(sourceKey: sourceKey);
+   }
+ 
+@@ -791,6 +947,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           _unsavedChanges = false;
+         });
+       }
++      if (mounted) _publishWorkspaceSaveStatus();
+       return _savedRevision == _dataRevision;
+     } on Object {
+       if (mounted) {
+@@ -798,24 +955,92 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           _saveStatus = 'Unable to save locally';
+           _unsavedChanges = true;
+         });
++        _publishWorkspaceSaveStatus();
+       }
+       return false;
+     }
+   }
+ 
+   Future<bool> _saveBeforeLeaving() async {
+-    if (_data == null || await _flushPendingSave()) return true;
+-    if (mounted) {
+-      ScaffoldMessenger.of(context).showSnackBar(
+-        const SnackBar(
+-          content: Text(
+-            'Unable to save local changes. Retry saving before leaving '
+-            'this workspace.',
++    if (_data != null && !await _flushPendingSave()) {
++      if (mounted) {
++        ScaffoldMessenger.of(context).showSnackBar(
++          const SnackBar(
++            content: Text(
++              'Unable to save local changes. Retry saving before leaving '
++              'this workspace.',
++            ),
+           ),
++        );
++      }
++      return false;
++    }
++    if (_personalConflictSourceKey != null) {
++      _showPendingWorkspaceChanges();
++      return false;
++    }
++    if (_pendingPersonalImport.isNotEmpty) {
++      await _retryPersonalImport();
++    }
++    if (_pendingPersonalWrites.isNotEmpty) {
++      await _retryPersonalWrites();
++    }
++    final deadline = DateTime.now().add(const Duration(seconds: 12));
++    while (mounted &&
++        _personalSaving &&
++        DateTime.now().isBefore(deadline)) {
++      await Future<void>.delayed(const Duration(milliseconds: 20));
++    }
++    if (!_hasPendingWorkspaceChanges) return true;
++    _showPendingWorkspaceChanges();
++    return false;
++  }
++
++  void _showPendingWorkspaceChanges() {
++    if (!mounted) return;
++    ScaffoldMessenger.of(context).showSnackBar(
++      const SnackBar(
++        content: Text(
++          'Finish or retry pending private account changes before leaving '
++          'this workspace.',
+         ),
++      ),
++    );
++  }
++
++  Future<void> _openGroupKnowledge(String groupId, String entryId) async {
++    if (!await _saveBeforeLeaving() || !mounted) return;
++    if (widget.onWorkspaceTabChanged != null) {
++      context.push(
++        '/guest/groups?groupId=${Uri.encodeQueryComponent(groupId)}'
++        '&entryId=${Uri.encodeQueryComponent(entryId)}',
+       );
++      return;
+     }
+-    return false;
++    await Navigator.of(context).push<void>(
++      MaterialPageRoute<void>(
++        builder: (_) => SharedGuestGroupsPage(
++          initialGroupId: groupId,
++          initialEntryId: entryId,
++        ),
++      ),
++    );
++  }
++
++  void _handleWorkspaceTabChanged(int index) {
++    final onChanged = widget.onWorkspaceTabChanged;
++    if (onChanged == null) return;
++    unawaited(() async {
++      if (await _saveBeforeLeaving() && mounted) onChanged(index);
++    }());
++  }
++
++  void _handleKnowledgeSectionChanged(KnowledgeSection section) {
++    final onChanged = widget.onKnowledgeSectionChanged;
++    if (onChanged == null) return;
++    unawaited(() async {
++      if (await _saveBeforeLeaving() && mounted) onChanged(section);
++    }());
+   }
+ 
+   Future<void> _openSignIn({bool createAccount = false}) async {
+@@ -930,6 +1155,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             _personalError = null;
+             _personalOwnerUid = null;
+           });
++          _publishWorkspaceSaveStatus();
+         }
+       } on Object {
+         if (mounted) {
+@@ -1128,6 +1354,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     if (selected.isEmpty) return;
+     _pendingPersonalImport = selected;
+     _personalImportNeedsReselection = false;
++    _publishWorkspaceSaveStatus();
+     await _submitPersonalImport(uid, _personalGeneration);
+   }
+ 
+@@ -1307,24 +1534,28 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     final guestGroupsState = canUseGroups
+         ? ref.watch(currentGuestGroupsProvider)
+         : null;
+-    return DefaultTabController(
+-      length: 2,
+-      child: Scaffold(
++    return PopScope(
++      canPop: !_hasPendingWorkspaceChanges,
++      onPopInvokedWithResult: (didPop, result) {
++        if (!didPop && _hasPendingWorkspaceChanges) {
++          _showPendingWorkspaceChanges();
++        }
++      },
++      child: DefaultTabController(
++        length: 2,
++        initialIndex: widget.initialWorkspaceTab,
++        child: Scaffold(
+         appBar: AppBar(
+           title: Text(
+-            _hasSignedInNonGuestUser
+-                ? 'IntQAFlow workspace'
++            _verifiedPersonalUid != null
++                ? 'Personal workspace'
++                : _hasSignedInNonGuestUser
++                ? 'Registered local workspace'
+                 : 'IntQAFlow guest workspace',
+             maxLines: 1,
+             overflow: TextOverflow.ellipsis,
+           ),
+           actions: [
+-            if (widget.firebaseReady)
+-              IconButton(
+-                tooltip: 'Groups',
+-                onPressed: _openSharedGroups,
+-                icon: const Icon(Icons.group_outlined),
+-              ),
+             _accountMenu(),
+             PopupMenuButton<String>(
+               tooltip: _hasSignedInNonGuestUser
+@@ -1335,8 +1566,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                 if (value == 'backup') _copyLocalBackup();
+                 if (value == 'import') _importLocalBackup();
+                 if (value == 'account-import') _openPersonalImport();
++                if (value == 'groups') _openSharedGroups();
+               },
+               itemBuilder: (context) => [
++                if (widget.firebaseReady)
++                  const PopupMenuItem(value: 'groups', child: Text('Groups')),
++                PopupMenuDivider(),
+                 PopupMenuItem(
+                   value: 'backup',
+                   child: Text('Copy local JSON backup'),
+@@ -1362,7 +1597,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               ],
+             ),
+           ],
+-          bottom: const TabBar(
++          bottom: TabBar(
++            onTap: _handleWorkspaceTabChanged,
+             tabs: [
+               Tab(text: 'Knowledge', icon: Icon(Icons.search)),
+               Tab(text: 'Interact', icon: Icon(Icons.account_tree_outlined)),
+@@ -1527,17 +1763,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                         _GuestKnowledgeTab(
+                           items: data.knowledge,
+                           initialKnowledgeItemId: widget.initialKnowledgeItemId,
++                          initialKnowledgeSection:
++                              widget.initialKnowledgeSection,
++                          onKnowledgeSectionChanged:
++                              _handleKnowledgeSectionChanged,
++                          onOpenGroup: _openGroupKnowledge,
++                          privateWorkspace: _verifiedPersonalUid != null,
+                           searchIdentityKey: _verifiedPersonalUid == null
+                               ? null
+                               : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
+-                          searchOrganization:
+-                              _verifiedPersonalUid != null &&
+-                                  widget.membershipStatus ==
+-                                      AccountMembershipStatus.active
+-                              ? (query) => ref
+-                                    .read(questionsRepositoryProvider)
+-                                    .searchQuestions(query, limit: 10)
+-                              : null,
++                          searchOrganization: null,
+                           searchPersonal: _verifiedPersonalUid == null
+                               ? null
+                               : (query) => ref
+@@ -1558,8 +1793,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                             'knowledge',
+                             item,
+                           ).startsWith('Personal account'),
+-                          onCreate: (item) => _save(
+-                            data.copyWith(knowledge: [item, ...data.knowledge]),
++                          onCreate: (item) => _createWorkspaceItem(
++                            kind: 'knowledge',
++                            item: item,
++                            updated: data.copyWith(
++                              knowledge: [item, ...data.knowledge],
++                            ),
+                           ),
+                           onUpdate: (item) => _save(
+                             data.copyWith(
+@@ -1573,13 +1812,15 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                         ),
+                         _GuestInteractTab(
+                           data: data,
++                          privateWorkspace: _verifiedPersonalUid != null,
+                           storageStatus: _storageStatus,
+                           onChange: _save,
+-                          onSaveTemplate: (template) => _save(
+-                            data.copyWith(
+-                              templates: [template, ...data.templates],
+-                            ),
+-                          ),
++                          onCreateItem: (kind, item, updated) =>
++                              _createWorkspaceItem(
++                                kind: kind,
++                                item: item,
++                                updated: updated,
++                              ),
+                           onPrint: _printReport,
+                         ),
+                       ],
+@@ -1587,6 +1828,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                   ),
+                 ],
+               ),
++        ),
+       ),
+     );
+   }
+@@ -2170,6 +2412,10 @@ class _UnifiedKnowledgeSearchHit {
+ class _GuestKnowledgeTab extends StatefulWidget {
+   const _GuestKnowledgeTab({
+     required this.items,
++    required this.privateWorkspace,
++    required this.initialKnowledgeSection,
++    required this.onKnowledgeSectionChanged,
++    required this.onOpenGroup,
+     this.initialKnowledgeItemId,
+     required this.searchIdentityKey,
+     required this.searchOrganization,
+@@ -2184,6 +2430,10 @@ class _GuestKnowledgeTab extends StatefulWidget {
+   });
+ 
+   final List<Map<String, dynamic>> items;
++  final bool privateWorkspace;
++  final KnowledgeSection initialKnowledgeSection;
++  final ValueChanged<KnowledgeSection>? onKnowledgeSectionChanged;
++  final Future<void> Function(String, String) onOpenGroup;
+   final String? initialKnowledgeItemId;
+   final String? searchIdentityKey;
+   final Future<List<SemanticSearchResult>> Function(String)? searchOrganization;
+@@ -2225,11 +2475,21 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+   void initState() {
+     super.initState();
+     _selectedKnowledgeItemId = widget.initialKnowledgeItemId;
+-    _showSavedQuestions = widget.initialKnowledgeItemId != null;
++    _showSavedQuestions =
++        widget.initialKnowledgeSection == KnowledgeSection.questions ||
++        widget.initialKnowledgeItemId != null;
+   }
+ 
+   String? _selectedKnowledgeItemId;
+ 
++  void _selectKnowledgeSection(KnowledgeSection section) {
++    setState(() {
++      _showSavedQuestions = section == KnowledgeSection.questions;
++      _selectedKnowledgeItemId = null;
++    });
++    widget.onKnowledgeSectionChanged?.call(section);
++  }
++
+   @override
+   void dispose() {
+     _searchTimer?.cancel();
+@@ -2523,6 +2783,11 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+       );
+     }
+     for (final result in _groupResults) {
++      final id = result['id'] as String?;
++      final groupId = result['group_id'] as String?;
++      if (id == null || id.isEmpty || groupId == null || groupId.isEmpty) {
++        continue;
++      }
+       final data = result['data'] is Map
+           ? Map<String, dynamic>.from(result['data'] as Map)
+           : const <String, dynamic>{};
+@@ -2530,7 +2795,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+       final groupName = result['group_name'] as String? ?? 'Group';
+       hits.add(
+         _UnifiedKnowledgeSearchHit(
+-          id: result['id'] as String? ?? '',
++          id: id,
+           title: title,
+           source: 'Group: $groupName',
+           method: _matchMethodLabel(
+@@ -2544,10 +2809,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+                 _stringValue(data['answer']),
+               ]),
+           icon: Icons.groups_outlined,
+-          onTap: () => context.push(
+-            '/guest/groups',
+-            extra: {'groupId': result['group_id'], 'entryId': result['id']},
+-          ),
++          onTap: () => widget.onOpenGroup(groupId, id),
+         ),
+       );
+     }
+@@ -2679,7 +2941,7 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+       'title': title,
+       'body': _body.text.trim(),
+       'answer': _answer.text.trim(),
+-      'visibility': 'local_guest',
++      'visibility': widget.privateWorkspace ? 'private_account' : 'local_guest',
+     });
+     _title.clear();
+     _body.clear();
+@@ -2735,6 +2997,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+           child: ListView(
+             padding: const EdgeInsets.all(16),
+             children: [
++              if (widget.privateWorkspace) ...[
++                KnowledgeSectionTabs(
++                  selected: KnowledgeSection.questions,
++                  onChanged: _selectKnowledgeSection,
++                ),
++                const SizedBox(height: 12),
++              ],
+               searchField,
+               _remoteSearchResults(context, query, const []),
+               const SizedBox(height: 16),
+@@ -2769,7 +3038,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+                   padding: const EdgeInsets.all(24),
+                   child: Text(
+                     widget.items.isEmpty
+-                        ? 'No saved Q&A yet. Add a local question to get started.'
++                        ? widget.privateWorkspace
++                              ? 'No saved Q&A yet. Add private Knowledge to get started.'
++                              : 'No saved Q&A yet. Add a local question to get started.'
+                         : 'No local matches.',
+                   ),
+                 ),
+@@ -2821,6 +3092,13 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+         child: ListView(
+           padding: const EdgeInsets.all(16),
+           children: [
++            if (widget.privateWorkspace) ...[
++              KnowledgeSectionTabs(
++                selected: KnowledgeSection.ask,
++                onChanged: _selectKnowledgeSection,
++              ),
++              const SizedBox(height: 12),
++            ],
+             searchField,
+             _remoteSearchResults(context, query, matches),
+             const SizedBox(height: 16),
+@@ -2828,7 +3106,9 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+               children: [
+                 Expanded(
+                   child: Text(
+-                    'Add a local question',
++                    widget.privateWorkspace
++                        ? 'Add private Knowledge'
++                        : 'Add a local question',
+                     style: Theme.of(context).textTheme.titleMedium,
+                   ),
+                 ),
+@@ -2875,7 +3155,11 @@ class _GuestKnowledgeTabState extends State<_GuestKnowledgeTab> {
+               child: FilledButton.icon(
+                 onPressed: _create,
+                 icon: const Icon(Icons.add),
+-                label: const Text('Save locally'),
++                label: Text(
++                  widget.privateWorkspace
++                      ? 'Save to private account'
++                      : 'Save locally',
++                ),
+               ),
+             ),
+           ],
+@@ -3059,16 +3343,23 @@ class _EditGuestKnowledgeDialogState extends State<_EditGuestKnowledgeDialog> {
+ class _GuestInteractTab extends StatefulWidget {
+   const _GuestInteractTab({
+     required this.data,
++    required this.privateWorkspace,
+     required this.storageStatus,
+     required this.onChange,
+-    required this.onSaveTemplate,
++    required this.onCreateItem,
+     required this.onPrint,
+   });
+ 
+   final GuestWorkspaceData data;
++  final bool privateWorkspace;
+   final String Function(String, Map<String, dynamic>) storageStatus;
+   final ValueChanged<GuestWorkspaceData> onChange;
+-  final ValueChanged<Map<String, dynamic>> onSaveTemplate;
++  final void Function(
++    String kind,
++    Map<String, dynamic> item,
++    GuestWorkspaceData updated,
++  )
++  onCreateItem;
+   final void Function(Map<String, dynamic>, String?) onPrint;
+ 
+   @override
+@@ -3122,7 +3413,9 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+             title: title,
+             firstParticipantName: participant,
+           );
+-    widget.onChange(
++    widget.onCreateItem(
++      'interact_session',
++      session,
+       widget.data.copyWith(sessions: [session, ...widget.data.sessions]),
+     );
+     _newSessionTitle.clear();
+@@ -3188,8 +3481,12 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+     final values = await showDialog<List<String>>(
+       context: context,
+       builder: (context) => _GuestRequiredTextDialog(
+-        title: 'Save local template',
+-        submitLabel: 'Save template',
++        title: widget.privateWorkspace
++            ? 'Save private Interact template'
++            : 'Save local template',
++        submitLabel: widget.privateWorkspace
++            ? 'Save to private account'
++            : 'Save template',
+         fields: [
+           _GuestRequiredTextField(
+             label: 'Template name',
+@@ -3199,12 +3496,15 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+       ),
+     );
+     if (values == null || !mounted) return;
+-    widget.onSaveTemplate(
+-      createGuestTemplateFromSession(
+-        session: session,
+-        id: newGuestItemId(),
+-        name: values.single,
+-      ),
++    final template = createGuestTemplateFromSession(
++      session: session,
++      id: newGuestItemId(),
++      name: values.single,
++    );
++    widget.onCreateItem(
++      'template',
++      template,
++      widget.data.copyWith(templates: [template, ...widget.data.templates]),
+     );
+   }
+ 
+@@ -3308,7 +3608,11 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+             child: FilledButton.icon(
+               onPressed: _createSession,
+               icon: const Icon(Icons.add),
+-              label: const Text('Create session locally'),
++              label: Text(
++                widget.privateWorkspace
++                    ? 'Create private session'
++                    : 'Create session locally',
++              ),
+             ),
+           ),
+           const Divider(height: 28),
+@@ -4211,7 +4515,6 @@ class SharedGuestGroupsPage extends ConsumerStatefulWidget {
+ 
+ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     with WidgetsBindingObserver {
+-  final _search = TextEditingController();
+   List<Map<String, dynamic>> _groups = const [];
+   List<Map<String, dynamic>> _archivedGroups = const [];
+   List<Map<String, dynamic>> _entries = const [];
+@@ -4276,7 +4579,6 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+   @override
+   void dispose() {
+     WidgetsBinding.instance.removeObserver(this);
+-    _search.dispose();
+     super.dispose();
+   }
+ 
+@@ -4398,7 +4700,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+       if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
+       final entries = await _repository.searchEntries(
+         groupId: groupId,
+-        query: _search.text,
++        query: '',
+       );
+       if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
+       final invitations = detail['role'] == 'admin'
+@@ -5892,30 +6194,26 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+         ],
+         if (_group != null) ...[
+           const SizedBox(height: 12),
+-          Text(
+-            'Approved members can access this group. Role: ${_group!['role']}. '
+-            'Only admins manage membership and invitations.',
+-            style: Theme.of(context).textTheme.bodySmall,
+-          ),
+-          _adminTransferCard(),
+           Row(
+             children: [
+               Expanded(
+-                child: TextField(
+-                  controller: _search,
+-                  decoration: const InputDecoration(
+-                    labelText: 'Search group content',
+-                  ),
+-                  onSubmitted: (_) => _loadGroup(_groupId!),
++                child: Text(
++                  'Your group role: ${_group!['role']}.',
++                  style: Theme.of(context).textTheme.bodySmall,
+                 ),
+               ),
+-              IconButton(
+-                tooltip: 'Search',
+-                onPressed: () => _loadGroup(_groupId!),
+-                icon: const Icon(Icons.search),
++              const _GuestInfoButton(
++                tooltip: 'Group access information',
++                title: 'About Group access',
++                content:
++                    'Approved Group members can access this content. '
++                    'Only Group admins manage membership and invitations. '
++                    'Search accessible Group Knowledge from Personal '
++                    'workspace Ask & search.',
+               ),
+             ],
+           ),
++          _adminTransferCard(),
+           Wrap(
+             spacing: 8,
+             children: [
+@@ -5947,7 +6245,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+           ),
+           const SizedBox(height: 8),
+           if (_entries.isEmpty)
+-            const Text('No group content matches this search.')
++            const Text('No shared Knowledge or Interact items are available.'),
+           else
+             for (final entry in _entries)
+               Card(
+diff --git a/apps/flutter_app/lib/shared/widgets/app_shell.dart b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+index 407e125..e35c309 100644
+--- a/apps/flutter_app/lib/shared/widgets/app_shell.dart
++++ b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:go_router/go_router.dart';
+ import 'package:int_qa_flow/core/auth/auth_providers.dart';
++import 'package:int_qa_flow/features/guest/application/personal_workspace_status.dart';
+ import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
+ import 'package:int_qa_flow/shared/models/app_destination.dart';
+ import 'package:int_qa_flow/shared/utils/responsive.dart';
+@@ -14,57 +15,80 @@ class AppShell extends ConsumerWidget {
+ 
+   List<AppDestination> _destinations(
+     String role, {
++    required bool personalWorkspace,
+     required bool showGroups,
+     required bool showOrganisation,
+     required bool showAdmin,
+     required bool showReview,
+-  }) => [
+-    AppDestination(
+-      label: 'Knowledge',
+-      path: '/',
+-      icon: Icons.search_outlined,
+-      selectedIcon: Icons.search,
+-    ),
+-    AppDestination(
+-      label: 'Interact',
+-      path: '/guided',
+-      icon: Icons.account_tree_outlined,
+-      selectedIcon: Icons.account_tree,
+-    ),
+-    if (showOrganisation)
+-      AppDestination(
+-        label: 'My organisation',
+-        path: '/organisation',
+-        icon: Icons.business_outlined,
+-        selectedIcon: Icons.business,
+-      ),
+-    if (showGroups)
+-      AppDestination(
+-        label: 'Groups',
+-        path: '/guest/groups',
+-        icon: Icons.group_outlined,
+-        selectedIcon: Icons.groups,
+-      ),
+-    if (showReview)
++  }) {
++    if (personalWorkspace) {
++      return [
++        AppDestination(
++          label: 'Knowledge',
++          path: '/personal/ask',
++          icon: Icons.search_outlined,
++          selectedIcon: Icons.search,
++        ),
++        AppDestination(
++          label: 'Interact',
++          path: '/personal/interact',
++          icon: Icons.account_tree_outlined,
++          selectedIcon: Icons.account_tree,
++        ),
++        if (showGroups)
++          AppDestination(
++            label: 'Groups',
++            path: '/guest/groups',
++            icon: Icons.group_outlined,
++            selectedIcon: Icons.groups,
++          ),
++      ];
++    }
++    return [
+       AppDestination(
+-        label: 'Review',
+-        path: '/review-queue',
+-        icon: Icons.fact_check_outlined,
+-        selectedIcon: Icons.fact_check,
++        label: 'Knowledge',
++        path: '/',
++        icon: Icons.search_outlined,
++        selectedIcon: Icons.search,
+       ),
+-    if (showAdmin)
+       AppDestination(
+-        label: 'Admin',
+-        path: '/admin',
+-        icon: Icons.admin_panel_settings_outlined,
+-        selectedIcon: Icons.admin_panel_settings,
++        label: 'Interact',
++        path: '/guided',
++        icon: Icons.account_tree_outlined,
++        selectedIcon: Icons.account_tree,
+       ),
+-  ];
++      if (showOrganisation)
++        AppDestination(
++          label: 'My organisation',
++          path: '/organisation',
++          icon: Icons.business_outlined,
++          selectedIcon: Icons.business,
++        ),
++      if (showReview)
++        AppDestination(
++          label: 'Review',
++          path: '/review-queue',
++          icon: Icons.fact_check_outlined,
++          selectedIcon: Icons.fact_check,
++        ),
++      if (showAdmin)
++        AppDestination(
++          label: 'Admin',
++          path: '/admin',
++          icon: Icons.admin_panel_settings_outlined,
++          selectedIcon: Icons.admin_panel_settings,
++        ),
++    ];
++  }
+ 
+   int _selectedIndex(List<AppDestination> destinations) {
+     final selectedPath = switch (currentPath) {
+       final path when path.startsWith('/questions') => '/',
++      final path when path.startsWith('/personal/questions') ||
++          path.startsWith('/personal/ask') => '/personal/ask',
+       final path when path.startsWith('/guided') => '/guided',
++      final path when path.startsWith('/personal/interact') =>
++        '/personal/interact',
+       final path when path.startsWith('/guest') => '/guest/groups',
+       final path when path.startsWith('/organisation') => '/organisation',
+       _ => currentPath,
+@@ -77,12 +101,28 @@ class AppShell extends ConsumerWidget {
+ 
+   void _navigate(
+     BuildContext context,
++    WidgetRef ref,
+     int index,
+     List<AppDestination> destinations,
+   ) {
++    if (ref.read(personalWorkspaceStatusProvider).hasPendingChanges) {
++      _showPendingSaveMessage(context);
++      return;
++    }
+     context.go(destinations[index].path);
+   }
+ 
++  void _showPendingSaveMessage(BuildContext context) {
++    ScaffoldMessenger.of(context).showSnackBar(
++      const SnackBar(
++        content: Text(
++          'Finish or retry pending private account changes before leaving '
++          'this workspace.',
++        ),
++      ),
++    );
++  }
++
+   Widget _accountMenu(
+     BuildContext context,
+     WidgetRef ref,
+@@ -92,9 +132,28 @@ class AppShell extends ConsumerWidget {
+     tooltip: 'Account',
+     onSelected: (value) {
+       if (value == 'sign-out') {
++        if (ref.read(personalWorkspaceStatusProvider).hasPendingChanges) {
++          _showPendingSaveMessage(context);
++          return;
++        }
+         ref.read(firebaseAuthProvider).signOut();
+-      } else if (value == 'personal') {
+-        context.go('/personal');
++      } else if (value == 'group-info') {
++        showDialog<void>(
++          context: context,
++          builder: (context) => AlertDialog(
++            title: const Text('About Group access'),
++            content: const Text(
++              'Group roles are separate from organisation roles. '
++              'Group access is tied to this registered identity.',
++            ),
++            actions: [
++              TextButton(
++                onPressed: () => Navigator.pop(context),
++                child: const Text('Close'),
++              ),
++            ],
++          ),
++        );
+       }
+     },
+     itemBuilder: (context) => [
+@@ -111,13 +170,19 @@ class AppShell extends ConsumerWidget {
+               ),
+               Text(membership.email),
+               Text('Organisation workspace · ${membership.role}'),
+-              const Text('Group roles are separate from organisation roles.'),
+             ],
+           ),
+         ),
+       ),
+       const PopupMenuDivider(),
+-      const PopupMenuItem(value: 'personal', child: Text('Personal workspace')),
++      const PopupMenuItem(
++        value: 'group-info',
++        child: ListTile(
++          contentPadding: EdgeInsets.zero,
++          leading: Icon(Icons.info_outline),
++          title: Text('Group access information'),
++        ),
++      ),
+       const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
+     ],
+     child: Padding(
+@@ -135,17 +200,72 @@ class AppShell extends ConsumerWidget {
+     ),
+   );
+ 
++  Widget _workspaceSwitcher(
++    BuildContext context, {
++    required WidgetRef ref,
++    required bool personalWorkspace,
++    required bool showLabel,
++  }) => PopupMenuButton<String>(
++    tooltip: 'Switch workspace',
++    onSelected: (value) {
++      if (ref.read(personalWorkspaceStatusProvider).hasPendingChanges) {
++        _showPendingSaveMessage(context);
++        return;
++      }
++      context.go(value);
++    },
++    itemBuilder: (context) => [
++      PopupMenuItem(
++        value: '/personal/ask',
++        enabled: !personalWorkspace,
++        child: const Text('Personal workspace'),
++      ),
++      PopupMenuItem(
++        value: '/',
++        enabled: personalWorkspace,
++        child: const Text('Organisation workspace'),
++      ),
++    ],
++    child: Padding(
++      padding: const EdgeInsets.symmetric(horizontal: 8),
++      child: showLabel
++          ? Row(
++              mainAxisSize: MainAxisSize.min,
++              children: [
++                const Icon(Icons.workspaces_outlined),
++                const SizedBox(width: 4),
++                Text(
++                  personalWorkspace
++                      ? 'Personal workspace'
++                      : 'Organisation workspace',
++                ),
++                const Icon(Icons.arrow_drop_down),
++              ],
++            )
++          : const Icon(Icons.workspaces_outlined),
++    ),
++  );
++
+   @override
+   Widget build(BuildContext context, WidgetRef ref) {
++    final pendingWorkspaceChanges = ref.watch(
++      personalWorkspaceStatusProvider.select(
++        (status) => status.hasPendingChanges,
++      ),
++    );
+     final membership = ref.watch(currentMembershipProvider).value;
+     final role = membership?.role ?? '';
+     final organisation = ref.watch(organisationProfileProvider).value;
+     final user =
+         ref.watch(authStateProvider).value ??
+         ref.watch(firebaseAuthProvider).currentUser;
++    final personalWorkspace =
++        currentPath.startsWith('/personal') ||
++        currentPath.startsWith('/guest/groups');
+     final destinations =
+         _destinations(
+           role,
++          personalWorkspace: personalWorkspace,
+           showGroups: isVerifiedRegisteredFirebaseUser(user),
+           showOrganisation: membership != null,
+           showAdmin:
+@@ -166,13 +286,27 @@ class AppShell extends ConsumerWidget {
+     final isWide =
+         MediaQuery.sizeOf(context).width >= Responsive.navigationRailBreakpoint;
+ 
+-    return Scaffold(
++    return PopScope(
++      canPop: !pendingWorkspaceChanges,
++      onPopInvokedWithResult: (didPop, result) {
++        if (!didPop && pendingWorkspaceChanges) {
++          _showPendingSaveMessage(context);
++        }
++      },
++      child: Scaffold(
+       appBar: isWide
+           ? null
+           : AppBar(
+               backgroundColor: const Color(0xFFFFFBF4),
+               title: const Text('IntQAFlow'),
+               actions: [
++                if (membership != null)
++                  _workspaceSwitcher(
++                    context,
++                    ref: ref,
++                    personalWorkspace: personalWorkspace,
++                    showLabel: true,
++                  ),
+                 if (membership != null)
+                   _accountMenu(context, ref, membership, showLabel: true),
+               ],
+@@ -183,13 +317,27 @@ class AppShell extends ConsumerWidget {
+             NavigationRail(
+               selectedIndex: _selectedIndex(destinations),
+               onDestinationSelected: (index) =>
+-                  _navigate(context, index, destinations),
++                  _navigate(context, ref, index, destinations),
+               extended: MediaQuery.sizeOf(context).width >= 1100,
+-              leading: const Padding(
+-                padding: EdgeInsets.fromLTRB(16, 24, 16, 32),
+-                child: Text(
+-                  'IntQAFlow',
+-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
++              leading: Padding(
++                padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
++                child: Column(
++                  children: [
++                    const Text(
++                      'IntQAFlow',
++                      style: TextStyle(
++                        fontSize: 20,
++                        fontWeight: FontWeight.w700,
++                      ),
++                    ),
++                    if (membership != null)
++                      _workspaceSwitcher(
++                        context,
++                        ref: ref,
++                        personalWorkspace: personalWorkspace,
++                        showLabel: false,
++                      ),
++                  ],
+                 ),
+               ),
+               trailing: membership == null
+@@ -217,7 +365,7 @@ class AppShell extends ConsumerWidget {
+           : NavigationBar(
+               selectedIndex: _selectedIndex(destinations),
+               onDestinationSelected: (index) =>
+-                  _navigate(context, index, destinations),
++                  _navigate(context, ref, index, destinations),
+               destinations: [
+                 for (final destination in destinations)
+                   NavigationDestination(
+@@ -227,6 +375,7 @@ class AppShell extends ConsumerWidget {
+                   ),
+               ],
+             ),
++      ),
+     );
+   }
+ }
+diff --git a/apps/flutter_app/lib/shared/widgets/knowledge_section_tabs.dart b/apps/flutter_app/lib/shared/widgets/knowledge_section_tabs.dart
+index e5b30b5..552211a 100644
+--- a/apps/flutter_app/lib/shared/widgets/knowledge_section_tabs.dart
++++ b/apps/flutter_app/lib/shared/widgets/knowledge_section_tabs.dart
+@@ -4,9 +4,14 @@ import 'package:go_router/go_router.dart';
+ enum KnowledgeSection { ask, questions }
+ 
+ class KnowledgeSectionTabs extends StatelessWidget {
+-  const KnowledgeSectionTabs({required this.selected, super.key});
++  const KnowledgeSectionTabs({
++    required this.selected,
++    this.onChanged,
++    super.key,
++  });
+ 
+   final KnowledgeSection selected;
++  final ValueChanged<KnowledgeSection>? onChanged;
+ 
+   @override
+   Widget build(BuildContext context) {
+@@ -21,7 +26,15 @@ class KnowledgeSectionTabs extends StatelessWidget {
+           child: TabBar(
+             onTap: (index) {
+               if (index == selectedIndex) return;
+-              context.go(index == KnowledgeSection.ask.index ? '/' : '/questions');
++              final section = KnowledgeSection.values[index];
++              final callback = onChanged;
++              if (callback != null) {
++                callback(section);
++              } else {
++                context.go(
++                  index == KnowledgeSection.ask.index ? '/' : '/questions',
++                );
++              }
+             },
+             tabs: const [
+               Tab(text: 'Ask & search'),
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 97281db..02ecd57 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -223,7 +223,8 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+     required String expectedUid,
+   }) async {
+     imports.add(payload);
+-    if (failedImports > 0) {
++    final uncertainOutcome = failedImports > 0;
++    if (uncertainOutcome) {
+       failedImports--;
+       if (importFailureStatus != null) {
+         final request = RequestOptions(path: '/api/v1/personal/items/import');
+@@ -235,18 +236,28 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+           ),
+         );
+       }
+-      throw StateError('Simulated uncertain response.');
+     }
+-    return [
+-      for (final item in payload)
+-        {
++    final imported = <Map<String, dynamic>>[];
++    for (final item in payload) {
++      final existing = items
++          .where((record) => record['source_key'] == item['source_key'])
++          .firstOrNull;
++      if (existing != null) {
++        imported.add(existing);
++        continue;
++      }
++      final record = {
+           ...item,
+           'id': 'record-${item['source_key']}',
+           'revision': 1,
+           'created_at': '2026-10-06T00:00:00+00:00',
+           'updated_at': '2026-10-06T00:00:00+00:00',
+-        },
+-    ];
++        };
++      items = [...items, record];
++      imported.add(record);
++    }
++    if (uncertainOutcome) throw StateError('Simulated uncertain response.');
++    return imported;
+   }
+ 
+   @override
+@@ -355,14 +366,30 @@ Future<void> _expectSeparateAccountError(
+   expect(auth.createAttempts, 1);
+ }
+ 
++Future<void> _openGroupsFromPersonalOptions(WidgetTester tester) async {
++  await tester.tap(
++    find.byWidgetPredicate(
++      (widget) =>
++          widget is PopupMenuButton<String> &&
++          (widget.tooltip == 'Workspace options' ||
++              widget.tooltip == 'Guest workspace options'),
++    ),
++  );
++  await tester.pumpAndSettle();
++  await tester.tap(find.text('Groups').last);
++  await tester.pumpAndSettle();
++}
++
+ void main() {
+   Future<void> pumpGuestWorkspace(
+     WidgetTester tester, {
+     User? user,
+     AccountMembershipStatus? membershipStatus,
++    bool personalWorkspaceEnabled = false,
+     bool sharedIdentityActive = false,
+     bool authUnavailable = false,
+     GuestWorkspaceStore? store,
++    PersonalWorkspaceRepository? personalRepository,
+     List<Map<String, dynamic>> existingGuestGroups =
+         const <Map<String, dynamic>>[],
+   }) async {
+@@ -376,10 +403,15 @@ void main() {
+             (ref) async => existingGuestGroups,
+           ),
+           firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          if (personalRepository != null)
++            personalWorkspaceRepositoryProvider.overrideWithValue(
++              personalRepository,
++            ),
+         ],
+         child: MaterialApp(
+           home: GuestWorkspacePage(
+             firebaseReady: true,
++            personalWorkspaceEnabled: personalWorkspaceEnabled,
+             accountUser: user,
+             membershipStatus: membershipStatus,
+             sharedIdentityActive: sharedIdentityActive,
+@@ -397,13 +429,12 @@ void main() {
+       await pumpGuestWorkspace(tester);
+ 
+       expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+-      final groupsButton = tester.widget<IconButton>(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is IconButton && widget.tooltip == 'Groups',
+-        ),
+-      );
+-      expect((groupsButton.icon as Icon).icon, Icons.group_outlined);
++      expect(find.byTooltip('Groups'), findsNothing);
++      await tester.tap(find.byTooltip('Guest workspace options'));
++      await tester.pumpAndSettle();
++      expect(find.text('Groups'), findsOneWidget);
++      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
++      await tester.pumpAndSettle();
+       expect(
+         find.textContaining('People using this profile can see its local work.'),
+         findsNothing,
+@@ -1395,6 +1426,75 @@ void main() {
+     );
+   });
+ 
++  testWidgets(
++    'new verified-user Knowledge saves privately and reconciles an uncertain create',
++    (tester) async {
++      final user = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'private-user',
++      );
++      final repository = _TestPersonalWorkspaceRepository([])
++        ..failedImports = 1;
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await pumpGuestWorkspace(
++        tester,
++        user: user,
++        personalWorkspaceEnabled: true,
++        personalRepository: repository,
++        store: store,
++      );
++
++      expect(find.text('Save to private account'), findsOneWidget);
++      await tester.enterText(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is TextFormField &&
++              widget.decoration.labelText == 'Question',
++        ),
++        'Private default question',
++      );
++      await tester.enterText(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is TextField &&
++              widget.decoration?.labelText == 'Details',
++        ),
++        'Account-only detail',
++      );
++      await tester.enterText(
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is TextField &&
++              widget.decoration?.labelText == 'Answer',
++        ),
++        'Account-only answer',
++      );
++      await tester.tap(find.text('Save to private account'));
++      await tester.pumpAndSettle();
++
++      expect(find.text('Retry account save'), findsOneWidget);
++      expect(repository.items, hasLength(1));
++      expect(repository.items.single['kind'], 'knowledge');
++      expect(
++        (repository.items.single['data'] as Map)['visibility'],
++        'private_account',
++      );
++      expect((await store.load()).knowledge, isEmpty);
++
++      await tester.tap(find.text('Retry account save'));
++      await tester.pumpAndSettle();
++
++      expect(repository.imports, hasLength(2));
++      expect(
++        repository.imports.first.single['source_key'],
++        repository.imports.last.single['source_key'],
++      );
++      expect(repository.items, hasLength(1));
++      expect(find.text('Personal account · saved'), findsOneWidget);
++    },
++  );
++
+   testWidgets('existing-account sign-in errors do not reveal Firebase details', (
+     tester,
+   ) async {
+@@ -1513,13 +1613,12 @@ void main() {
+       ],
+     );
+ 
+-    expect(find.byTooltip('Groups'), findsOneWidget);
++    expect(find.byTooltip('Groups'), findsNothing);
+     expect(
+       find.textContaining('Verify this account’s email before using Groups'),
+       findsOneWidget,
+     );
+-    await tester.tap(find.byTooltip('Groups'));
+-    await tester.pumpAndSettle();
++    await _openGroupsFromPersonalOptions(tester);
+     expect(find.text('Verify your email to use Groups'), findsOneWidget);
+     expect(
+       find.textContaining(
+@@ -1541,7 +1640,7 @@ void main() {
+     );
+ 
+     expect(find.textContaining('no organisation membership'), findsOneWidget);
+-    expect(find.byTooltip('Groups'), findsOneWidget);
++    expect(find.byTooltip('Groups'), findsNothing);
+     expect(find.byTooltip('Enable groups'), findsNothing);
+   });
+ 
+@@ -1580,8 +1679,7 @@ void main() {
+         ),
+       );
+       await tester.pumpAndSettle();
+-      await tester.tap(find.byTooltip('Groups'));
+-      await tester.pumpAndSettle();
++      await _openGroupsFromPersonalOptions(tester);
+       expect(find.text('Create an account to use Groups'), findsOneWidget);
+       expect(repository.listGroupsCalls, 0);
+       expect(repository.listArchivedGroupsCalls, 0);
+@@ -1659,11 +1757,8 @@ void main() {
+     expect(find.text('Member One'), findsOneWidget);
+     expect(find.text('member@example.test'), findsOneWidget);
+     expect(find.text('Organisation workspace · answer_owner'), findsOneWidget);
+-    expect(
+-      find.text('Group roles are separate from organisation roles.'),
+-      findsOneWidget,
+-    );
+-    expect(find.text('Groups'), findsOneWidget);
++    expect(find.text('Group access information'), findsOneWidget);
++    expect(find.text('Groups'), findsNothing);
+     expect(find.text('Sign out'), findsOneWidget);
+   });
+ 
+
+From ed19dbb25c6f03fda4a007fbe0a5d758ab085637 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 08:17:05 +0000
+Subject: [PATCH 3/4] Keep private pending items out of local storage
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../presentation/guest_workspace_page.dart    | 42 ++++++++++++-------
+ 1 file changed, 28 insertions(+), 14 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index d6cf826..e97f4a4 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -48,7 +48,6 @@ class _PersonalWorkspaceWrite {
+     this.title,
+     this.data,
+   });
+-  _publishWorkspaceSaveStatus();
+ 
+   final String action;
+   final String kind;
+@@ -78,7 +77,6 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
+     this.onRetryAccount,
+     super.key,
+   });
+-  _publishWorkspaceSaveStatus();
+ 
+   final bool firebaseReady;
+   final String? initialKnowledgeItemId;
+@@ -337,7 +335,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           record['kind'] == kind && (record['data'] as Map?)?['id'] == id,
+     );
+     if (!isPersonal) return 'Local on this device';
+-    if (write?.action == 'update') {
++    if (write != null) {
+       return _personalError == null
+           ? 'Personal account · saving changes'
+           : 'Personal account · save not confirmed';
+@@ -345,7 +343,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     return 'Personal account · saved';
+   }
+ 
+-  void _save(GuestWorkspaceData submitted) {
++  void _save(
++    GuestWorkspaceData submitted, {
++    Set<String> accountPrivateKeys = const {},
++  }) {
+     final previousLocal = _data ?? const GuestWorkspaceData();
+     final uid = _verifiedPersonalUid;
+     final remoteKeys = {
+@@ -354,6 +355,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             record['data'] is Map &&
+             (record['data'] as Map)['id'] is String)
+           '${record['kind']}:${(record['data'] as Map)['id']}',
++      for (final write in _pendingPersonalWrites.values)
++        if (write.action != 'delete') '${write.kind}:${write.sourceId}',
+     };
+ 
+     List<Map<String, dynamic>> keepLocal(
+@@ -379,7 +382,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       }
+       for (final entry in nextById.entries) {
+         if (!previousById.containsKey(entry.key) &&
+-            !remoteKeys.contains('$kind:${entry.key}')) {
++            !remoteKeys.contains('$kind:${entry.key}') &&
++            !accountPrivateKeys.contains('$kind:${entry.key}')) {
+           local.add(entry.value);
+         }
+       }
+@@ -463,7 +467,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             ),
+             _ => updated,
+           };
+-    _save(submitted);
++    _save(
++      submitted,
++      accountPrivateKeys: uid == null
++          ? const {}
++          : {'$kind:${item['id']}'},
++    );
+     if (uid == null) return;
+     final sourceId = item['id'] as String;
+     final write = _PersonalWorkspaceWrite(
+@@ -3520,18 +3529,23 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+             children: [
+               Expanded(
+                 child: Text(
+-                  'New Interact sessions stay local. '
+-                  'Imported sessions stay in your personal account.',
++                  widget.privateWorkspace
++                      ? 'New Interact sessions are private to your account.'
++                      : 'New Interact sessions stay local. '
++                            'Imported sessions stay in your personal account.',
+                   style: Theme.of(context).textTheme.bodyMedium,
+                 ),
+               ),
+-              const _GuestInfoButton(
++              _GuestInfoButton(
+                 tooltip: 'Interact privacy information',
+                 title: 'About Interact storage',
+-                content:
+-                    'New sessions stay on this device unless you explicitly '
+-                    'import them. Imported sessions and their edits stay in '
+-                    'your personal account; group sharing is separate.',
++                content: widget.privateWorkspace
++                    ? 'New sessions are private to your account. Imported '
++                          'sessions and their edits stay in your personal '
++                          'account; group sharing is separate.'
++                    : 'New sessions stay on this device unless you explicitly '
++                          'import them. Imported sessions and their edits stay '
++                          'in your personal account; group sharing is separate.',
+               ),
+             ],
+           ),
+@@ -3619,7 +3633,7 @@ class _GuestInteractTabState extends State<_GuestInteractTab> {
+           if (widget.data.sessions.isEmpty)
+             const Padding(
+               padding: EdgeInsets.all(24),
+-              child: Text('Create a local session to start capturing answers.'),
++              child: Text('Create a session to start capturing answers.'),
+             ),
+           for (final session in widget.data.sessions)
+             _GuestSessionEditor(
+
+From eb610aac894075f8cc2e35ec650c4af83616c4dc Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 08:21:08 +0000
+Subject: [PATCH 4/4] Cover private Interact and workspace navigation
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../presentation/guest_workspace_page.dart    |  27 +++--
+ .../lib/shared/widgets/app_shell.dart         |   4 +-
+ .../test/account_state_widget_test.dart       | 110 +++++++++++++++++-
+ apps/flutter_app/test/ask_page_test.dart      |   8 +-
+ 4 files changed, 127 insertions(+), 22 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index e97f4a4..6c4014c 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -1732,16 +1732,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                       !widget.sharedIdentityActive)
+                     Padding(
+                       padding: const EdgeInsets.all(12),
+-                      child: Text(
+-                        canUseGroups
+-                            ? 'Groups use this signed-in Firebase identity. '
+-                                  'Group access is associated with this account; '
+-                                  'a separate account does not inherit its group '
+-                                  'data.'
+-                            : 'Verify this account’s email before using Groups. '
+-                                  'Local work remains available, and organisation '
+-                                  'membership is not required for Groups.',
+-                      ),
++                      child: canUseGroups
++                          ? const Align(
++                              alignment: Alignment.centerLeft,
++                              child: _GuestInfoButton(
++                                tooltip: 'Group identity information',
++                                title: 'About Group identity',
++                                content:
++                                    'Group access is associated with this '
++                                    'signed-in verified identity. A separate '
++                                    'account does not inherit its Group data.',
++                              ),
++                            )
++                          : const Text(
++                              'Verify this account’s email before using Groups. '
++                              'Local work remains available, and organisation '
++                              'membership is not required for Groups.',
++                            ),
+                     ),
+                   if (guestGroupsState?.hasError == true)
+                     MaterialBanner(
+diff --git a/apps/flutter_app/lib/shared/widgets/app_shell.dart b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+index e35c309..6db2852 100644
+--- a/apps/flutter_app/lib/shared/widgets/app_shell.dart
++++ b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+@@ -13,8 +13,7 @@ class AppShell extends ConsumerWidget {
+   final String currentPath;
+   final Widget child;
+ 
+-  List<AppDestination> _destinations(
+-    String role, {
++  List<AppDestination> _destinations({
+     required bool personalWorkspace,
+     required bool showGroups,
+     required bool showOrganisation,
+@@ -264,7 +263,6 @@ class AppShell extends ConsumerWidget {
+         currentPath.startsWith('/guest/groups');
+     final destinations =
+         _destinations(
+-          role,
+           personalWorkspace: personalWorkspace,
+           showGroups: isVerifiedRegisteredFirebaseUser(user),
+           showOrganisation: membership != null,
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 02ecd57..1567b6f 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -247,12 +247,12 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+         continue;
+       }
+       final record = {
+-          ...item,
+-          'id': 'record-${item['source_key']}',
+-          'revision': 1,
+-          'created_at': '2026-10-06T00:00:00+00:00',
+-          'updated_at': '2026-10-06T00:00:00+00:00',
+-        };
++        ...item,
++        'id': 'record-${item['source_key']}',
++        'revision': 1,
++        'created_at': '2026-10-06T00:00:00+00:00',
++        'updated_at': '2026-10-06T00:00:00+00:00',
++      };
+       items = [...items, record];
+       imported.add(record);
+     }
+@@ -1495,6 +1495,64 @@ void main() {
+     },
+   );
+ 
++  testWidgets('new verified-user Interact sessions save privately by default', (
++    tester,
++  ) async {
++    final user = _TestUser(
++      isAnonymous: false,
++      isEmailVerified: true,
++      testUid: 'private-interact-user',
++    );
++    final repository = _TestPersonalWorkspaceRepository([]);
++    final store = GuestWorkspaceStore(_MemoryGuestStorage());
++    await pumpGuestWorkspace(
++      tester,
++      user: user,
++      personalWorkspaceEnabled: true,
++      personalRepository: repository,
++      store: store,
++    );
++
++    await tester.tap(find.text('Interact').first);
++    await tester.pumpAndSettle();
++    await tester.tap(find.byTooltip('Interact privacy information'));
++    await tester.pumpAndSettle();
++    expect(
++      find.textContaining('New sessions are private to your account.'),
++      findsOneWidget,
++    );
++    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
++    await tester.pumpAndSettle();
++    expect(find.text('Create private session'), findsOneWidget);
++    await tester.enterText(
++      find.byWidgetPredicate(
++        (widget) =>
++            widget is TextFormField &&
++            widget.decoration.labelText == 'New Interact session',
++      ),
++      'Private session',
++    );
++    await tester.enterText(
++      find.byWidgetPredicate(
++        (widget) =>
++            widget is TextFormField &&
++            widget.decoration.labelText == 'First participant',
++      ),
++      'Participant One',
++    );
++    await tester.tap(find.text('Create private session'));
++    await tester.pumpAndSettle();
++
++    expect(repository.items, hasLength(1));
++    expect(repository.items.single['kind'], 'interact_session');
++    expect(
++      (repository.items.single['data'] as Map)['visibility'],
++      'private_account',
++    );
++    expect((await store.load()).sessions, isEmpty);
++    expect(find.text('Private session'), findsOneWidget);
++  });
++
+   testWidgets('existing-account sign-in errors do not reveal Firebase details', (
+     tester,
+   ) async {
+@@ -1802,6 +1860,46 @@ void main() {
+     }
+   });
+ 
++  testWidgets('Personal workspace navigation omits organisation destinations', (
++    tester,
++  ) async {
++    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          currentMembershipProvider.overrideWith(
++            (ref) async => const ActiveMembership(
++              userId: 'app-user',
++              organisationId: 'org',
++              email: 'member@example.test',
++              displayName: 'Member',
++              role: 'owner',
++            ),
++          ),
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++        ],
++        child: const MaterialApp(
++          home: Scaffold(
++            body: AppShell(
++              currentPath: '/personal/ask',
++              child: Center(child: Text('Personal content')),
++            ),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.text('Personal content'), findsOneWidget);
++    expect(find.byTooltip('Switch workspace'), findsOneWidget);
++    expect(find.text('Knowledge'), findsOneWidget);
++    expect(find.text('Interact'), findsOneWidget);
++    expect(find.text('Groups'), findsOneWidget);
++    expect(find.text('My organisation'), findsNothing);
++    expect(find.text('Review'), findsNothing);
++    expect(find.text('Admin'), findsNothing);
++  });
++
+   testWidgets('registered account with no membership stays in local workspace', (
+     tester,
+   ) async {
+diff --git a/apps/flutter_app/test/ask_page_test.dart b/apps/flutter_app/test/ask_page_test.dart
+index 00f271d..962464a 100644
+--- a/apps/flutter_app/test/ask_page_test.dart
++++ b/apps/flutter_app/test/ask_page_test.dart
+@@ -16,6 +16,7 @@ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
+ import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
+ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
++import 'package:int_qa_flow/shared/widgets/knowledge_section_tabs.dart';
+ 
+ class _MemoryGuestStorage implements GuestStorage {
+   String? value;
+@@ -270,14 +271,15 @@ void main() {
+           builder: (_, _) => const Scaffold(body: AskPage()),
+         ),
+         GoRoute(
+-          path: '/personal',
++          path: '/personal/questions',
+           builder: (_, state) => GuestWorkspacePage(
+             firebaseReady: true,
+             personalWorkspaceEnabled: true,
+             accountUser: user,
+             membershipStatus: AccountMembershipStatus.active,
+             initialKnowledgeItemId:
+-                (state.extra as Map?)?['knowledgeItemId'] as String?,
++                state.uri.queryParameters['knowledgeItemId'],
++            initialKnowledgeSection: KnowledgeSection.questions,
+           ),
+         ),
+         GoRoute(
+@@ -287,7 +289,7 @@ void main() {
+         GoRoute(
+           path: '/guest/groups',
+           builder: (_, state) => Text(
+-            'Opened group: ${(state.extra as Map)['entryId']}',
++            'Opened group: ${state.uri.queryParameters['entryId']}',
+           ),
+         ),
+       ],

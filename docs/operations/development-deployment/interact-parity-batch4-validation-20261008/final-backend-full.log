@@ -1,0 +1,25 @@
+........................................................................ [ 36%]
+........................................................................ [ 72%]
+......................................................                   [100%]
+=============================== warnings summary ===============================
+tests/test_organisation_members.py::test_unverified_account_is_not_added
+  /tmp/batch4-completion/venv/lib/python3.12/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+tests/test_personal_workspace.py::test_personal_workspace_validates_stable_ids_and_nested_content
+  /home/runner/work/interaction-qa-flow/interaction-qa-flow/backend/app/api/v1/routes/personal_workspace.py:96: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await PersonalWorkspaceService(session).update_item(
+
+tests/test_unified_search_migration.py::test_unified_search_migration_follows_personal_workspace_revision
+  /tmp/batch4-completion/venv/lib/python3.12/site-packages/alembic/config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+198 passed, 10 warnings in 41.92s

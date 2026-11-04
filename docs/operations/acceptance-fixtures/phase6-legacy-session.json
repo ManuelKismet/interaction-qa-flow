@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "caseTitle": "Synthetic Phase 6 acceptance",
+    "interviewer": "Synthetic owner",
+    "interviewee": "SYNTHETIC-ONLY"
+  },
+  "participants": [
+    {
+      "id": "alice",
+      "name": "Alice"
+    },
+    {
+      "id": "bob",
+      "name": "Bob"
+    }
+  ],
+  "activeParticipantId": "alice",
+  "viewMode": "mixed",
+  "flow": [
+    {
+      "question": "What happened?",
+      "scope": "shared",
+      "answers": {
+        "alice": {
+          "answer": "Email",
+          "branches": [
+            {
+              "question": "Who sent it?",
+              "scope": "participant",
+              "participantId": "alice",
+              "answers": {
+                "alice": {
+                  "answer": "Finance",
+                  "branches": [
+                    {
+                      "question": "Next synthetic step?",
+                      "scope": "participant",
+                      "participantId": "alice",
+                      "answers": {
+                        "alice": {
+                          "answer": "Synthetic nested answer",
+                          "branches": []
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "bob": {
+          "answer": "Phone",
+          "branches": []
+        }
+      }
+    }
+  ]
+}

@@ -247,6 +247,7 @@ async def test_canonical_merge_preserves_team_and_search_returns_team(app_client
     assert merged.status_code == 200
     detail = await client.get(
         f"/api/v1/questions/{duplicate.json()['id']}",
+        headers=headers(ids),
         params={"organisation_id": str(ids["organisation"])},
     )
     assert detail.json()["team"]["id"] == team_id
@@ -278,6 +279,7 @@ async def test_canonical_merge_preserves_team_and_search_returns_team(app_client
         clock=lambda: now,
     )
     service.permissions.actor = AsyncMock(return_value=actor)
+    service.search_repository.lexical_candidates = AsyncMock(return_value=[])
     service.search_repository.semantic_candidates = AsyncMock(
         return_value=[
             (

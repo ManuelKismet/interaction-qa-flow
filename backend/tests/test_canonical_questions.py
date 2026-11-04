@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.models.answer import Answer, AnswerStatus
 from app.models.audit_event import AuditAction, AuditEvent
+from app.models.duplicate_suggestion import DuplicateSuggestion
 from app.models.question import Question, QuestionStatus, QuestionVisibility
 from app.services import canonical as canonical_module
 from tests.test_answer_governance import headers, seed_governance
@@ -105,12 +106,53 @@ async def test_owner_merges_multiple_questions_and_preserves_history(app_client)
 
     detail = await client.get(
         f"/api/v1/questions/{ids['finance_question']}",
+        headers=headers(ids, "finance_owner"),
         params={"organisation_id": str(ids["organisation"])},
     )
     assert {alias["title"] for alias in detail.json()["aliases"]} == {
         "Where do I book holiday?",
         "How do I submit leave?",
     }
+
+
+@pytest.mark.asyncio
+async def test_merge_and_unmerge_refresh_canonical_search_embeddings(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    alias_id, _ = await add_question(
+        session_factory, ids, "Where do I find the travel policy?"
+    )
+    synced_questions = []
+
+    async def record_sync(_service, question):
+        synced_questions.append(question.id)
+        return True
+
+    monkeypatch.setattr(
+        canonical_module.EmbeddingService, "sync_question", record_sync
+    )
+    merged = await client.post(
+        f"/api/v1/questions/{ids['finance_question']}/merge",
+        headers=headers(ids, "finance_owner"),
+        json={
+            "duplicate_question_ids": [str(alias_id)],
+            "reason": "Same travel process",
+        },
+    )
+    assert merged.status_code == 200, merged.text
+    unmerged = await client.post(
+        f"/api/v1/questions/{alias_id}/unmerge",
+        headers=headers(ids, "finance_owner"),
+        json={"reason": "Search content should stand alone"},
+    )
+    assert unmerged.status_code == 200, unmerged.text
+    assert synced_questions == [
+        ids["finance_question"],
+        alias_id,
+        ids["finance_question"],
+    ]
 
 
 @pytest.mark.asyncio
@@ -230,9 +272,20 @@ async def test_unmerge_restores_independent_question(app_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(app_client) -> None:
+async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(
+    app_client, monkeypatch
+) -> None:
     client, session_factory = app_client
     ids = await seed_governance(session_factory)
+    synced_questions = []
+
+    async def record_sync(_service, question):
+        synced_questions.append(question.id)
+        return True
+
+    monkeypatch.setattr(
+        canonical_module.EmbeddingService, "sync_question", record_sync
+    )
     duplicate_id, _ = await add_question(session_factory, ids, "Possible duplicate")
     suggestion = await client.post(
         f"/api/v1/questions/{duplicate_id}/duplicate-suggestions",
@@ -275,6 +328,7 @@ async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(app_clie
     )
     assert accepted.status_code == 200
     assert accepted.json()["status"] == "accepted"
+    assert synced_questions == [ids["finance_question"]]
 
     async with session_factory() as session:
         duplicate = await session.get(Question, duplicate_id)
@@ -283,6 +337,111 @@ async def test_employee_suggestion_appears_in_queue_and_can_be_rejected(app_clie
         assert AuditAction.DUPLICATE_SUGGESTED.value in actions
         assert AuditAction.DUPLICATE_SUGGESTION_REJECTED.value in actions
         assert AuditAction.DUPLICATE_SUGGESTION_ACCEPTED.value in actions
+
+
+@pytest.mark.asyncio
+async def test_duplicate_suggestion_cannot_resolve_visible_alias_to_private_root(
+    app_client,
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    async with session_factory() as session:
+        private_root = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Private canonical root",
+            visibility=QuestionVisibility.PRIVATE,
+        )
+        session.add(private_root)
+        await session.flush()
+        visible_alias = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Visible alias of private root",
+            visibility=QuestionVisibility.ORGANISATION,
+            canonical_question_id=private_root.id,
+        )
+        visible_middle = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Visible intermediate alias",
+            visibility=QuestionVisibility.ORGANISATION,
+            canonical_question_id=private_root.id,
+        )
+        session.add_all([visible_alias, visible_middle])
+        await session.flush()
+        chained_alias = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Visible alias through intermediate",
+            visibility=QuestionVisibility.ORGANISATION,
+            canonical_question_id=visible_middle.id,
+        )
+        session.add(chained_alias)
+        await session.commit()
+        private_root_id = private_root.id
+        visible_alias_id = visible_alias.id
+        chained_alias_id = chained_alias.id
+
+    source_id = ids["finance_question"]
+    outsider = headers(ids, "people_owner")
+    for alias_id in (visible_alias_id, chained_alias_id):
+        denied = await client.post(
+            f"/api/v1/questions/{source_id}/duplicate-suggestions",
+            headers=outsider,
+            json={"suggested_canonical_question_id": str(alias_id)},
+        )
+        assert denied.status_code == 403, denied.text
+
+    async with session_factory() as session:
+        suggestions = await session.scalars(select(DuplicateSuggestion.id))
+        assert list(suggestions) == []
+
+    hidden_metadata = await client.get(
+        f"/api/v1/questions/{chained_alias_id}", headers=outsider
+    )
+    assert hidden_metadata.status_code == 200, hidden_metadata.text
+    assert hidden_metadata.json()["canonical_question"] is None
+
+    owner_suggestion = await client.post(
+        f"/api/v1/questions/{source_id}/duplicate-suggestions",
+        headers=headers(ids, "employee"),
+        json={"suggested_canonical_question_id": str(visible_alias_id)},
+    )
+    assert owner_suggestion.status_code == 201, owner_suggestion.text
+    assert owner_suggestion.json()["suggested_canonical_question_id"] == str(
+        private_root_id
+    )
+    assert owner_suggestion.json()["suggested_canonical_title"] == (
+        "Private canonical root"
+    )
+
+    visible_root, _ = await add_question(
+        session_factory,
+        ids,
+        "Visible canonical root",
+        author_key="employee",
+    )
+    async with session_factory() as session:
+        visible_target_alias = Question(
+            organisation_id=ids["organisation"],
+            author_id=ids["employee"],
+            title="Visible canonical alias",
+            visibility=QuestionVisibility.ORGANISATION,
+            canonical_question_id=visible_root,
+        )
+        session.add(visible_target_alias)
+        await session.commit()
+        visible_target_alias_id = visible_target_alias.id
+    visible_suggestion = await client.post(
+        f"/api/v1/questions/{source_id}/duplicate-suggestions",
+        headers=outsider,
+        json={"suggested_canonical_question_id": str(visible_target_alias_id)},
+    )
+    assert visible_suggestion.status_code == 201, visible_suggestion.text
+    assert visible_suggestion.json()["suggested_canonical_question_id"] == str(
+        visible_root
+    )
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
-import 'package:int_qa_flow/core/config/app_config.dart';
 import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 final questionsRepositoryProvider = Provider<QuestionsRepository>((ref) {
@@ -14,27 +13,9 @@ class QuestionsRepository {
 
   final Dio _client;
 
-  Map<String, String> get _identity => {
-    'organisation_id': AppConfig.developmentOrganisationId,
-    'user_id': AppConfig.developmentUserId,
-  };
-
-  void _requireIdentity() {
-    if (AppConfig.developmentOrganisationId.isEmpty ||
-        AppConfig.developmentUserId.isEmpty) {
-      throw const ApiException('Development identity is not configured.');
-    }
-  }
-
   Future<List<DepartmentSummary>> listDepartments() async {
-    _requireIdentity();
     try {
-      final response = await _client.get<List<dynamic>>(
-        '/api/v1/departments',
-        queryParameters: {
-          'organisation_id': AppConfig.developmentOrganisationId,
-        },
-      );
+      final response = await _client.get<List<dynamic>>('/api/v1/departments');
       return (response.data ?? const [])
           .map(
             (item) => DepartmentSummary.fromJson(item as Map<String, dynamic>),
@@ -45,18 +26,21 @@ class QuestionsRepository {
     }
   }
 
-  Future<List<TeamSummary>> listTeams() async {
-    _requireIdentity();
+  Future<DepartmentSummary> createDepartment(String name) async {
     try {
-      final response = await _client.get<List<dynamic>>(
-        '/api/v1/teams',
-        options: Options(
-          headers: {
-            'X-Organisation-ID': AppConfig.developmentOrganisationId,
-            'X-User-ID': AppConfig.developmentUserId,
-          },
-        ),
+      final response = await _client.post<Map<String, dynamic>>(
+        '/api/v1/departments',
+        data: {'name': name},
       );
+      return DepartmentSummary.fromJson(response.data!);
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
+  Future<List<TeamSummary>> listTeams() async {
+    try {
+      final response = await _client.get<List<dynamic>>('/api/v1/teams');
       return (response.data ?? const [])
           .map((item) => TeamSummary.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -70,12 +54,10 @@ class QuestionsRepository {
     String? departmentId,
     String? teamId,
   }) async {
-    _requireIdentity();
     try {
       final response = await _client.get<List<dynamic>>(
         '/api/v1/questions',
         queryParameters: {
-          'organisation_id': AppConfig.developmentOrganisationId,
           'status': ?status,
           'department_id': ?departmentId,
           'team_id': ?teamId,
@@ -89,21 +71,26 @@ class QuestionsRepository {
     }
   }
 
+  Future<Map<String, dynamic>> searchInteract(String query) async {
+    try {
+      final response = await _client.get<Map<String, dynamic>>(
+        '/api/v1/guided/sessions/search',
+        queryParameters: {'query': query, 'limit': 25},
+      );
+      return response.data ?? const {'results': [], 'partial': false};
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
   Future<List<SemanticSearchResult>> searchQuestions(
     String query, {
     int limit = 5,
   }) async {
-    _requireIdentity();
     try {
       final response = await _client.post<List<dynamic>>(
         '/api/v1/questions/search',
         data: {'query': query, 'limit': limit, 'include_unanswered': true},
-        options: Options(
-          headers: {
-            'X-Organisation-ID': AppConfig.developmentOrganisationId,
-            'X-User-ID': AppConfig.developmentUserId,
-          },
-        ),
       );
       return (response.data ?? const [])
           .map(
@@ -117,13 +104,9 @@ class QuestionsRepository {
   }
 
   Future<QuestionDetail> getQuestion(String questionId) async {
-    _requireIdentity();
     try {
       final response = await _client.get<Map<String, dynamic>>(
         '/api/v1/questions/$questionId',
-        queryParameters: {
-          'organisation_id': AppConfig.developmentOrganisationId,
-        },
       );
       return QuestionDetail.fromJson(response.data!);
     } on DioException catch (error) {
@@ -136,15 +119,14 @@ class QuestionsRepository {
     String? body,
     String? departmentId,
     String? teamId,
+    String visibility = 'organisation',
   }) async {
-    _requireIdentity();
     try {
       final response = await _client.post<Map<String, dynamic>>(
         '/api/v1/questions',
         data: {
-          'organisation_id': AppConfig.developmentOrganisationId,
-          'author_id': AppConfig.developmentUserId,
           'title': title,
+          'visibility': visibility,
           if (body != null && body.isNotEmpty) 'body': body,
           'department_id': ?departmentId,
           'team_id': ?teamId,
@@ -157,15 +139,10 @@ class QuestionsRepository {
   }
 
   Future<void> createAnswer(String questionId, String body) async {
-    _requireIdentity();
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/answers',
-        data: {
-          'organisation_id': AppConfig.developmentOrganisationId,
-          'author_id': AppConfig.developmentUserId,
-          'body': body,
-        },
+        data: {'body': body},
       ),
     );
   }
@@ -176,70 +153,144 @@ class QuestionsRepository {
     String? body,
     String? departmentId,
     String? teamId,
+    String? visibility,
+    String? reason,
   }) async {
-    _requireIdentity();
     await _request(
       () => _client.patch<void>(
         '/api/v1/questions/$questionId',
         data: {
-          ..._identity,
           'title': title,
           'body': body,
           'department_id': departmentId,
           'team_id': teamId,
+          'visibility': ?visibility,
+          'reason': ?reason,
         },
       ),
     );
   }
 
-  Future<void> archiveQuestion(String questionId) async {
-    _requireIdentity();
+  Future<void> archiveQuestion(String questionId, String reason) async {
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/archive',
-        data: _identity,
+        data: {'reason': reason},
+      ),
+    );
+  }
+
+  Future<void> restoreQuestion(String questionId, String reason) async {
+    await _request(
+      () => _client.post<void>(
+        '/api/v1/questions/$questionId/restore',
+        data: {'reason': reason},
+      ),
+    );
+  }
+
+  Future<void> requestChangeReview(
+    String questionId, {
+    String? title,
+    String? body,
+    required bool archive,
+    required String reason,
+  }) async {
+    await _request(
+      () => _client.post<void>(
+        '/api/v1/questions/$questionId/change-requests',
+        data: {
+          'title': ?title,
+          'body': ?body,
+          'archive': archive,
+          'reason': reason,
+        },
+      ),
+    );
+  }
+
+  Future<List<QuestionChangeRequest>> listChangeRequests() async {
+    try {
+      final response = await _client.get<List<dynamic>>(
+        '/api/v1/questions/change-requests',
+      );
+      return (response.data ?? const [])
+          .map(
+            (item) =>
+                QuestionChangeRequest.fromJson(item as Map<String, dynamic>),
+          )
+          .toList();
+    } on DioException catch (error) {
+      throw ApiException.fromDio(error);
+    }
+  }
+
+  Future<void> reviewChangeRequest(
+    String requestId, {
+    required String decision,
+    String? note,
+  }) async {
+    await _request(
+      () => _client.post<void>(
+        '/api/v1/questions/change-requests/$requestId/review',
+        data: {'decision': decision, 'review_note': ?note},
+      ),
+    );
+  }
+
+  Future<void> updateAnswer(
+    String answerId, {
+    required String body,
+    String? reason,
+  }) async {
+    await _request(
+      () => _client.patch<void>(
+        '/api/v1/answers/$answerId',
+        data: {'body': body, 'reason': ?reason},
+      ),
+    );
+  }
+
+  Future<void> deleteAnswer(String answerId, {String? reason}) async {
+    await _request(
+      () => _client.delete<void>(
+        '/api/v1/answers/$answerId',
+        queryParameters: {'reason': ?reason},
       ),
     );
   }
 
   Future<void> resolve(String questionId, String answerId) async {
-    _requireIdentity();
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/resolve',
-        data: {..._identity, 'answer_id': answerId},
+        data: {'answer_id': answerId},
       ),
     );
   }
 
   Future<void> reopen(String questionId) async {
-    _requireIdentity();
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/reopen',
-        data: _identity,
+        data: const {},
       ),
     );
   }
 
   Future<void> react(String answerId, String reaction) async {
-    _requireIdentity();
     await _request(
       () => _client.post<void>(
         '/api/v1/answers/$answerId/reaction',
-        data: {..._identity, 'reaction': reaction},
+        data: {'reaction': reaction},
       ),
     );
   }
 
   Future<List<CommentDetail>> listComments(String questionId) async {
-    _requireIdentity();
     try {
       final response = await _client.get<List<dynamic>>(
         '/api/v1/questions/$questionId/comments',
-        queryParameters: {
-          'organisation_id': AppConfig.developmentOrganisationId,
-        },
       );
       return (response.data ?? const [])
           .map((item) => CommentDetail.fromJson(item as Map<String, dynamic>))
@@ -250,15 +301,10 @@ class QuestionsRepository {
   }
 
   Future<void> createComment(String questionId, String body) async {
-    _requireIdentity();
     await _request(
       () => _client.post<void>(
         '/api/v1/questions/$questionId/comments',
-        data: {
-          'organisation_id': AppConfig.developmentOrganisationId,
-          'author_id': AppConfig.developmentUserId,
-          'body': body,
-        },
+        data: {'body': body},
       ),
     );
   }

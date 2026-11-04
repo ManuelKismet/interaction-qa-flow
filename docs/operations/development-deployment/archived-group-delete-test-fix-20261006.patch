@@ -1,0 +1,26 @@
+From c38edd880f83919208d9ff6d219b3ad4127ab9f5 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 12:08:34 +0000
+Subject: [PATCH] Update autosave navigation test sign-in selector
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ apps/flutter_app/test/guest_group_dialog_test.dart | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index 1235453..2f0a302 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -859,7 +859,7 @@ void main() {
+ 
+     await tester.tap(find.byTooltip('Account'));
+     await tester.pumpAndSettle();
+-    await tester.tap(find.text('Sign in'));
++    await tester.tap(find.text('Already have an account? Sign in'));
+     await tester.pumpAndSettle();
+ 
+     expect(find.byType(SignInPage), findsNothing);
+-- 
+2.55.0
+

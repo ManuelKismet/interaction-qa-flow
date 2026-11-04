@@ -1,26 +1,31 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/app.dart';
 
 void main() {
-  testWidgets('shows IntQAFlow Knowledge and platform modules', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: IntQaFlowApp()));
+  testWidgets('opens the local guest workspace without a login gate', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const ProviderScope(child: IntQaFlowApp(firebaseReady: false)),
+    );
+    await tester.pumpAndSettle();
 
-    expect(find.text('IntQAFlow Knowledge'), findsOneWidget);
-    expect(find.text('What do you need to know?'), findsOneWidget);
-    expect(find.text('Ask a question'), findsOneWidget);
-    expect(find.text('Add detail (optional)'), findsOneWidget);
-    expect(find.text('Ask'), findsWidgets);
+    expect(find.text('Guest workspace'), findsOneWidget);
     expect(find.text('Knowledge'), findsOneWidget);
-    expect(find.text('Questions'), findsOneWidget);
     expect(find.text('Interact'), findsOneWidget);
-    expect(find.text('Review'), findsNothing);
-    expect(find.text('Admin'), findsNothing);
-
-    final platformDestinations = tester
-        .widgetList<NavigationDestination>(find.byType(NavigationDestination))
-        .map((destination) => destination.label);
-    expect(platformDestinations, isNot(contains('Questions')));
+    expect(find.text('Sign in to IntQAFlow'), findsNothing);
+    expect(find.text('Add a local question'), findsOneWidget);
+    expect(find.text('Search Knowledge & Interact'), findsOneWidget);
+    expect(find.text('Saved Q&A'), findsOneWidget);
+    await tester.tap(find.text('Saved Q&A'));
+    await tester.pumpAndSettle();
+    expect(find.text('Search Knowledge & Interact'), findsOneWidget);
+    await tester.tap(find.text('Back to add a local question'));
+    await tester.pumpAndSettle();
+    expect(find.text('Create session locally'), findsNothing);
+    await tester.tap(find.text('Interact'));
+    await tester.pumpAndSettle();
+    expect(find.text('Create session locally'), findsOneWidget);
   });
 }

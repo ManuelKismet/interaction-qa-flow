@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -10,6 +11,10 @@ class Settings(BaseSettings):
     )
     app_env: str = "development"
     debug: bool = False
+    firebase_project_id: str = "intqaflow-dev"
+    firebase_web_app_id: str = "1:398672910103:web:e968506023d8eab9290952"
+    app_check_mode: Literal["observe", "enforce"] = "observe"
+    cors_origins: list[str] = Field(default_factory=list)
     embedding_provider: str = "openai_compatible"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
@@ -41,6 +46,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Search thresholds must satisfy 0 <= related <= high <= 1"
             )
+        if any("*" in origin for origin in self.cors_origins):
+            raise ValueError("CORS_ORIGINS must not include wildcard origins")
         return self
 
 

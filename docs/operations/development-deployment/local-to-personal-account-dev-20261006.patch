@@ -1,0 +1,3337 @@
+From af80e625dce436f945784f1d3db798fe61f50b28 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 15:39:38 +0000
+Subject: [PATCH] Add UID-private personal workspace imports
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ apps/flutter_app/lib/app.dart                 |  53 +-
+ apps/flutter_app/lib/core/api/api_client.dart |  28 +-
+ .../lib/core/auth/sign_in_page.dart           | 215 +-----
+ .../lib/core/routing/app_router.dart          |   7 +
+ .../data/personal_workspace_repository.dart   |  81 +++
+ .../presentation/guest_workspace_page.dart    | 652 ++++++++++++++++--
+ .../lib/shared/widgets/app_shell.dart         |   6 +
+ .../test/account_state_widget_test.dart       | 607 ++++++++--------
+ apps/flutter_app/test/api_client_test.dart    |  25 +
+ .../versions/0013_personal_workspace.py       |  60 ++
+ .../app/api/v1/routes/personal_workspace.py   | 102 +++
+ backend/app/main.py                           |   4 +-
+ backend/app/models/__init__.py                |   2 +
+ backend/app/models/personal_workspace.py      |  28 +
+ backend/app/schemas/personal_workspace.py     |  94 +++
+ backend/app/services/personal_workspace.py    | 146 ++++
+ backend/tests/test_personal_workspace.py      | 309 +++++++++
+ docs/architecture.md                          |  31 +-
+ docs/operations/guest-group-retention.md      |  36 +-
+ 19 files changed, 1913 insertions(+), 573 deletions(-)
+ create mode 100644 apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+ create mode 100644 backend/alembic/versions/0013_personal_workspace.py
+ create mode 100644 backend/app/api/v1/routes/personal_workspace.py
+ create mode 100644 backend/app/models/personal_workspace.py
+ create mode 100644 backend/app/schemas/personal_workspace.py
+ create mode 100644 backend/app/services/personal_workspace.py
+ create mode 100644 backend/tests/test_personal_workspace.py
+
+diff --git a/apps/flutter_app/lib/app.dart b/apps/flutter_app/lib/app.dart
+index bc80d5af71d240f029ca3a81ce7d61370bd4ff89..a665dfd7f4b5d73fabaf5e73d5d9d437199f093e 100644
+--- a/apps/flutter_app/lib/app.dart
++++ b/apps/flutter_app/lib/app.dart
+@@ -1,3 +1,5 @@
++import 'dart:async';
++
+ import 'package:firebase_auth/firebase_auth.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+@@ -39,11 +41,7 @@ class IntQaFlowApp extends ConsumerWidget {
+         if (user.isAnonymous) {
+           return ProviderScope(
+             key: ValueKey(user.uid),
+-            child: _guestApp(
+-              firebaseReady: true,
+-              accountUser: user,
+-              sharedIdentityActive: true,
+-            ),
++            child: _AnonymousSessionToLocalWorkspace(user: user),
+           );
+         }
+         return ProviderScope(
+@@ -56,8 +54,48 @@ class IntQaFlowApp extends ConsumerWidget {
+       },
+     );
+   }
++}
++
++class _AnonymousSessionToLocalWorkspace extends ConsumerStatefulWidget {
++  const _AnonymousSessionToLocalWorkspace({required this.user});
++
++  final User user;
+ 
+-  MaterialApp _accountStatusApp(String title, String message) => MaterialApp(
++  @override
++  ConsumerState<_AnonymousSessionToLocalWorkspace> createState() =>
++      _AnonymousSessionToLocalWorkspaceState();
++}
++
++class _AnonymousSessionToLocalWorkspaceState
++    extends ConsumerState<_AnonymousSessionToLocalWorkspace> {
++  var _signOutFailed = false;
++
++  @override
++  void initState() {
++    super.initState();
++    unawaited(_endAnonymousSession());
++  }
++
++  Future<void> _endAnonymousSession() async {
++    try {
++      final auth = ref.read(firebaseAuthProvider);
++      final currentUser = auth.currentUser;
++      if (currentUser?.uid == widget.user.uid && currentUser!.isAnonymous) {
++        await auth.signOut();
++      }
++    } on Object {
++      if (mounted) setState(() => _signOutFailed = true);
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) => _guestApp(
++    firebaseReady: _signOutFailed,
++    accountUser: _signOutFailed ? widget.user : null,
++  );
++}
++
++MaterialApp _accountStatusApp(String title, String message) => MaterialApp(
+     title: 'IntQAFlow',
+     debugShowCheckedModeBanner: false,
+     theme: AppTheme.light,
+@@ -76,8 +114,6 @@ class IntQaFlowApp extends ConsumerWidget {
+       ),
+     ),
+   );
+-}
+-
+ MaterialApp _guestApp({
+   required bool firebaseReady,
+   User? accountUser,
+@@ -91,6 +127,7 @@ MaterialApp _guestApp({
+   theme: AppTheme.light,
+   home: GuestWorkspacePage(
+     firebaseReady: firebaseReady,
++    personalWorkspaceEnabled: true,
+     accountUser: accountUser,
+     sharedIdentityActive: sharedIdentityActive,
+     membershipStatus: membershipStatus,
+diff --git a/apps/flutter_app/lib/core/api/api_client.dart b/apps/flutter_app/lib/core/api/api_client.dart
+index 74ecf5f0912e8e0f74547a4cee0387f500617577..5b357d77dd311e6adde958697f014aff47498b21 100644
+--- a/apps/flutter_app/lib/core/api/api_client.dart
++++ b/apps/flutter_app/lib/core/api/api_client.dart
+@@ -19,6 +19,8 @@ final apiClientProvider = Provider<Dio>((ref) {
+ });
+ 
+ abstract interface class ApiTokenSource {
++  String? get currentUid;
++
+   Future<String?> idToken({bool forceRefresh = false});
+ 
+   Future<String?> appCheckToken();
+@@ -32,6 +34,9 @@ class _FirebaseTokenSource implements ApiTokenSource {
+   final FirebaseAuth auth;
+   final FirebaseAppCheck appCheck;
+ 
++  @override
++  String? get currentUid => auth.currentUser?.uid;
++
+   @override
+   Future<String?> idToken({bool forceRefresh = false}) async =>
+       auth.currentUser?.getIdToken(forceRefresh);
+@@ -76,16 +81,25 @@ Dio createApiClient(
+       onError: (error, handler) async {
+         final options = error.requestOptions;
+         final detail = jsonEncode(error.response?.data ?? '').toLowerCase();
++        final expectedUid = options.extra['expectedFirebaseUid'];
+         if (error.response?.statusCode != 401 ||
+             options.extra['authRetried'] == true ||
+-            detail.contains('app check')) {
++            detail.contains('app check') ||
++            (expectedUid is String &&
++                tokenSource.currentUid != expectedUid)) {
+           handler.next(error);
+           return;
+         }
+         try {
+           final idToken = await tokenSource.idToken(forceRefresh: true);
++          if (expectedUid is String &&
++              tokenSource.currentUid != expectedUid) {
++            handler.next(error);
++            return;
++          }
+           if (idToken == null) {
+-            if (options.uri.path != '/api/v1/account/state') {
++            if (expectedUid is! String &&
++                options.uri.path != '/api/v1/account/state') {
+               await tokenSource.signOut();
+             }
+             handler.next(error);
+@@ -100,7 +114,8 @@ Dio createApiClient(
+               !{
+                 '/api/v1/auth/me',
+                 '/api/v1/account/state',
+-              }.contains(options.uri.path)) {
++              }.contains(options.uri.path) &&
++              expectedUid is! String) {
+             await tokenSource.signOut();
+           }
+           handler.next(retryError);
+@@ -118,7 +133,14 @@ Future<void> _attachTokens(
+   ApiTokenSource tokenSource, {
+   String? idToken,
+ }) async {
++  final expectedUid = options.extra['expectedFirebaseUid'];
++  if (expectedUid is String && tokenSource.currentUid != expectedUid) {
++    throw StateError('The signed-in account changed before the request.');
++  }
+   final currentIdToken = idToken ?? await tokenSource.idToken();
++  if (expectedUid is String && tokenSource.currentUid != expectedUid) {
++    throw StateError('The signed-in account changed before the request.');
++  }
+   final appCheckToken = await tokenSource.appCheckToken();
+   if (currentIdToken == null ||
+       currentIdToken.isEmpty ||
+diff --git a/apps/flutter_app/lib/core/auth/sign_in_page.dart b/apps/flutter_app/lib/core/auth/sign_in_page.dart
+index 9b76d75fea62330d625afa38f948cfefcb95063e..d9488b6a62a489b1277fc682b3281db9ccc46093 100644
+--- a/apps/flutter_app/lib/core/auth/sign_in_page.dart
++++ b/apps/flutter_app/lib/core/auth/sign_in_page.dart
+@@ -5,15 +5,11 @@ import 'package:int_qa_flow/core/auth/auth_providers.dart';
+ 
+ class SignInPage extends ConsumerStatefulWidget {
+   const SignInPage({
+-    this.linkGuestIdentity = false,
+     this.createAccount = false,
+-    this.hasMeaningfulGuestWork = false,
+     super.key,
+   });
+ 
+-  final bool linkGuestIdentity;
+   final bool createAccount;
+-  final bool hasMeaningfulGuestWork;
+ 
+   @override
+   ConsumerState<SignInPage> createState() => _SignInPageState();
+@@ -27,13 +23,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+   String? _message;
+   String? _error;
+   bool _createAccountMode = false;
+-  bool _linkGuestMode = false;
+ 
+   @override
+   void initState() {
+     super.initState();
+-    _linkGuestMode = widget.linkGuestIdentity;
+-    _createAccountMode = _linkGuestMode || widget.createAccount;
++    _createAccountMode = widget.createAccount;
+   }
+ 
+   @override
+@@ -45,7 +39,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+ 
+   Future<void> _submit() async {
+     final isResetOperation = _resetMode;
+-    final isSeparateAccountCreation = _createAccountMode && !_linkGuestMode;
++    final isAccountCreation = _createAccountMode;
+     final email = _email.text.trim();
+     final password = _password.text;
+     setState(() {
+@@ -61,65 +55,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+         setState(() {
+           _message = 'If that account exists, a reset email has been sent.';
+         });
+-      } else if (_createAccountMode && _linkGuestMode) {
+-        final user = auth.currentUser;
+-        if (user?.isAnonymous != true) {
+-          setState(() {
+-            _error =
+-                'The guest identity is no longer available. Sign in or create a separate account instead.';
+-          });
+-          return;
+-        }
+-        final credential = EmailAuthProvider.credential(
+-          email: email,
+-          password: password,
+-        );
+-        final linkedCredential = await user!.linkWithCredential(credential);
+-        final linkedUser = linkedCredential.user ?? user;
+-        var verificationEmailFailed = false;
+-        try {
+-          if (!linkedUser.emailVerified) {
+-            await linkedUser.sendEmailVerification();
+-          }
+-        } on FirebaseAuthException {
+-          verificationEmailFailed = true;
+-        }
+-        try {
+-          await linkedUser.reload();
+-        } on FirebaseAuthException {
+-          if (!mounted) return;
+-          await _finishGuestLink(
+-            'Account created from this guest, but the account status could not '
+-            'be refreshed. The guest identity remains linked. Sign in again to '
+-            'verify the account state.',
+-          );
+-          return;
+-        }
+-        if (!mounted) return;
+-        await _finishGuestLink(
+-          verificationEmailFailed
+-              ? 'Account created from this guest, but the verification email '
+-                  'could not be sent. The guest identity remains linked. Sign '
+-                  'in normally and contact your administrator if verification '
+-                  'is still pending.'
+-              : linkedUser.emailVerified
+-              ? 'Account created from this guest and verified. Local work '
+-                  'stays on this device.'
+-              : 'Account created from this guest. Check your email to verify '
+-                  'it. The guest identity remains linked; local work stays on '
+-                  'this device.',
+-        );
+       } else if (_createAccountMode) {
+-        final currentUser = auth.currentUser;
+-        if ((currentUser?.isAnonymous == true ||
+-                _hasMeaningfulCurrentGuestState) &&
+-            !await _confirmCurrentGuestState(
+-              auth,
+-              currentUser,
+-              createSeparateAccount: true,
+-            )) {
+-          return;
+-        }
+         final credential = await auth.createUserWithEmailAndPassword(
+           email: email,
+           password: password,
+@@ -130,8 +66,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+           setState(() {
+             _createAccountMode = false;
+             _message =
+-                'Account created, but email verification could not be started. '
+-                'Contact your administrator before requesting organisation access.';
++                'Personal account created, but email verification could not be '
++                'started. Local work is unchanged; try again later.';
+           });
+           return;
+         }
+@@ -140,32 +76,20 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+           if (!mounted) return;
+           setState(() {
+             _createAccountMode = false;
+-            _message =
+-                'Account created. Check your email to verify it, then sign out '
+-                'and sign in again before requesting organisation access. '
+-                'Account creation does not add organisation membership.';
++            _message = 'Personal account created. Check your email to verify '
++                'it. Your local work remains on this device; nothing is uploaded '
++                'unless you choose items to import after verification.';
+           });
+         } on FirebaseAuthException {
+           if (!mounted) return;
+           setState(() {
+             _createAccountMode = false;
+-            _message =
+-                'Account created, but the verification email could not be sent. '
+-                'Try again later or contact your administrator before requesting '
+-                'organisation access.';
++            _message = 'Personal account created, but the verification email '
++                'could not be sent. Local work remains on this device. Try again '
++                'later or request a new verification email.';
+           });
+         }
+       } else {
+-        final currentUser = auth.currentUser;
+-        if ((currentUser?.isAnonymous == true ||
+-                (currentUser == null && _hasMeaningfulCurrentGuestState)) &&
+-            !await _confirmCurrentGuestState(
+-              auth,
+-              currentUser,
+-              createSeparateAccount: false,
+-            )) {
+-          return;
+-        }
+         await auth.signInWithEmailAndPassword(
+           email: email,
+           password: password,
+@@ -190,7 +114,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+       if (!mounted) return;
+       final message = isResetOperation
+           ? 'Unable to send a reset email. Please check the address and try again.'
+-          : isSeparateAccountCreation
++          : isAccountCreation
+           ? switch (code) {
+               'email-already-in-use' =>
+                 'An account already uses this email. Sign in or reset the password instead.',
+@@ -210,11 +134,6 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+               _ => 'Unable to create the account. Check the details and try again.',
+             }
+           : switch (code) {
+-              'email-already-in-use' ||
+-              'credential-already-in-use' ||
+-              'provider-already-linked' =>
+-                'That account could not be linked. This guest identity remains '
+-                'active; sign in with the existing account or try again.',
+               'network-request-failed' =>
+                 'Unable to reach the sign-in service. Check your connection and try again.',
+               'too-many-requests' =>
+@@ -247,100 +166,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+     }
+   }
+ 
+-  bool get _hasMeaningfulCurrentGuestState =>
+-      widget.hasMeaningfulGuestWork;
+-
+-  Future<bool> _confirmCurrentGuestState(
+-    FirebaseAuth auth,
+-    User? currentUser, {
+-    required bool createSeparateAccount,
+-  }) async {
+-    if (!_hasMeaningfulCurrentGuestState) return true;
+-
+-    final currentUid = currentUser?.uid;
+-    final wasAnonymous = currentUser?.isAnonymous == true;
+-    final confirmed = await showDialog<bool>(
+-      context: context,
+-      builder: (context) => AlertDialog(
+-        title: Text(
+-          createSeparateAccount
+-              ? 'Start fresh with a separate account?'
+-              : 'Sign in to your existing account?',
+-        ),
+-        content: Text(
+-          (createSeparateAccount
+-              ? 'This starts a separate registered identity. The current guest '
+-                    'workspace is different from that new account: local work '
+-                    'stays in this browser unless you explicitly clear only its '
+-                    'local copy from Workspace options.'
+-              : 'This signs in to your existing account; it does not upgrade '
+-                    'the current guest identity. Local work stays in this browser. '
+-                    'Keep it, or explicitly clear only the local copy from '
+-                    'Workspace options; sign-in never clears it.'),
+-        ),
+-        actions: [
+-          TextButton(
+-            onPressed: () => Navigator.pop(context, false),
+-            child: Text(
+-              createSeparateAccount
+-                  ? 'Cancel account creation'
+-                  : currentUser?.isAnonymous == true
+-                  ? 'Keep guest workspace'
+-                  : 'Keep local workspace',
+-            ),
+-          ),
+-          FilledButton(
+-            onPressed: () => Navigator.pop(context, true),
+-            child: Text(
+-              createSeparateAccount ? 'Start fresh' : 'Continue to sign in',
+-            ),
+-          ),
+-        ],
+-      ),
+-    );
+-    if (confirmed != true || !mounted) {
+-      if (confirmed == false && createSeparateAccount && mounted) {
+-        setState(() {
+-          _message = currentUser?.isAnonymous == true
+-              ? 'Account creation cancelled. Your guest identity and local work '
+-                  'are unchanged.'
+-              : 'Account creation cancelled. Your current workspace and local '
+-                  'work are unchanged.';
+-        });
+-      }
+-      return false;
+-    }
+-    if (auth.currentUser?.uid != currentUid ||
+-        (auth.currentUser?.isAnonymous == true) != wasAnonymous) {
+-      setState(() {
+-        _error =
+-            'The current identity changed while confirming. No account action was started.';
+-      });
+-      return false;
+-    }
+-    return true;
+-  }
+-
+-  Future<void> _finishGuestLink(String message) async {
+-    if (!mounted) return;
+-    setState(() {
+-      _createAccountMode = false;
+-      _message = message;
+-    });
+-    final navigator = Navigator.of(context);
+-    if (!navigator.canPop()) return;
+-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+-    await navigator.maybePop();
+-  }
+-
+   String _actionLabel() {
+     if (_busy) return 'Please wait…';
+     if (_resetMode) return 'Send reset email';
+     if (!_createAccountMode) return 'Sign in';
+-    if (!_linkGuestMode) return 'Create a separate account';
+-    return ref.read(firebaseAuthProvider).currentUser?.isAnonymous == true
+-        ? 'Create account from this guest'
+-        : 'Guest identity unavailable';
++    return 'Create account';
+   }
+ 
+   @override
+@@ -367,30 +197,23 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+                                 onPressed: () =>
+                                     Navigator.of(context).maybePop(),
+                                 icon: const Icon(Icons.arrow_back),
+-                                label: const Text('Back to guest workspace'),
++                                label: const Text('Back to workspace'),
+                               ),
+                             ),
+                             Text(
+                               _resetMode
+                                   ? 'Reset password'
+                                   : _createAccountMode
+-                                      ? _linkGuestMode
+-                                          ? 'Create account from this guest'
+-                                          : 'Create a separate account'
++                                      ? 'Create a personal account'
+                                       : 'Sign in to IntQAFlow',
+                               style: Theme.of(context).textTheme.headlineSmall,
+                             ),
+                             if (_createAccountMode) ...[
+                               const SizedBox(height: 8),
+                               Text(
+-                                _linkGuestMode
+-                                      ? 'Create a registered account from this '
+-                                          'guest identity. Local work stays on '
+-                                          'this device; it is not uploaded.'
+-                                      : 'Start fresh with a separate registered identity. '
+-                                          'It does not transfer local work or '
+-                                          'upload it; '
+-                                          'local work remains on this device.',
++                                'A personal account is separate from local '
++                                'work. Nothing is uploaded unless you choose '
++                                'items to import.',
+                               ),
+                             ],
+                             const SizedBox(height: 20),
+@@ -440,10 +263,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+                                         _resetMode = false;
+                                       } else if (_createAccountMode) {
+                                         _createAccountMode = false;
+-                                        _linkGuestMode = false;
+                                       } else {
+                                         _createAccountMode = true;
+-                                        _linkGuestMode = false;
+                                       }
+                                       _error = null;
+                                       _message = null;
+@@ -453,7 +274,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+                                     ? 'Back to sign in'
+                                     : _createAccountMode
+                                         ? 'Back to sign in'
+-                                        : 'Create a separate account',
++                                        : 'Create a personal account',
+                               ),
+                             ),
+                             if (!_resetMode && !_createAccountMode)
+diff --git a/apps/flutter_app/lib/core/routing/app_router.dart b/apps/flutter_app/lib/core/routing/app_router.dart
+index 0c2c7e5320362d89d86240d62937bd0fe668bac9..564df27c6d0bdbf57d5d197b44048b7fbc85ab01 100644
+--- a/apps/flutter_app/lib/core/routing/app_router.dart
++++ b/apps/flutter_app/lib/core/routing/app_router.dart
+@@ -58,6 +58,13 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+             path: '/guest/groups',
+             builder: (context, state) => const SharedGuestGroupsPage(),
+           ),
++          GoRoute(
++            path: '/personal',
++            builder: (context, state) => const GuestWorkspacePage(
++              firebaseReady: true,
++              personalWorkspaceEnabled: true,
++            ),
++          ),
+         ],
+       ),
+     ],
+diff --git a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..292d8c004567b4cd7acd9b83fd9c066c87177bf4
+--- /dev/null
++++ b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+@@ -0,0 +1,81 @@
++import 'package:dio/dio.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:int_qa_flow/core/api/api_client.dart';
++
++final personalWorkspaceRepositoryProvider = Provider<PersonalWorkspaceRepository>(
++  (ref) => PersonalWorkspaceRepository(ref.watch(apiClientProvider)),
++);
++
++class PersonalWorkspaceRepository {
++  const PersonalWorkspaceRepository(this._client);
++
++  final Dio _client;
++
++  Future<List<Map<String, dynamic>>> listItems({
++    required String expectedUid,
++  }) async {
++    final response = await _client.get<List<dynamic>>(
++      '/api/v1/personal/items',
++      options: Options(
++        extra: {'expectedFirebaseUid': expectedUid},
++      ),
++    );
++    return [
++      for (final item in response.data ?? const [])
++        if (item is Map<String, dynamic>) item,
++    ];
++  }
++
++  Future<List<Map<String, dynamic>>> importItems(
++    List<Map<String, dynamic>> items, {
++    required String expectedUid,
++  }) async {
++    final response = await _client.post<Map<String, dynamic>>(
++      '/api/v1/personal/items/import',
++      data: {'items': items},
++      options: Options(
++        extra: {'expectedFirebaseUid': expectedUid},
++      ),
++    );
++    final result = response.data?['items'];
++    if (result is! List ||
++        result.length != items.length ||
++        result.any((item) => item is! Map<String, dynamic>)) {
++      throw const FormatException('The account import response was invalid.');
++    }
++    return [for (final item in result) item as Map<String, dynamic>];
++  }
++
++  Future<Map<String, dynamic>> updateItem({
++    required String id,
++    required String expectedUid,
++    required int expectedRevision,
++    required String title,
++    required Map<String, dynamic> data,
++  }) async {
++    final response = await _client.put<Map<String, dynamic>>(
++      '/api/v1/personal/items/$id',
++      data: {
++        'expected_revision': expectedRevision,
++        'title': title,
++        'data': data,
++      },
++      options: Options(
++        extra: {'expectedFirebaseUid': expectedUid},
++      ),
++    );
++    return response.data!;
++  }
++
++  Future<void> deleteItem(
++    String id, {
++    required String expectedUid,
++  }) async {
++    await _client.delete<void>(
++      '/api/v1/personal/items/$id',
++      options: Options(
++        extra: {'expectedFirebaseUid': expectedUid},
++      ),
++    );
++  }
++}
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 9504cd01e3803bf6b6d724110c6d419e8c5f00b6..50a71a14aded6528b2f2b9c1983692ec4f334ba4 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -15,6 +15,7 @@ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
+ import 'package:int_qa_flow/core/platform/pdf_download.dart';
+ import 'package:int_qa_flow/core/platform/print_page.dart';
+ import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
++import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
+ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_interact_helpers.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+@@ -33,6 +34,26 @@ void _showPdfFontFallbackNotice(BuildContext context) {
+   );
+ }
+ 
++class _PersonalWorkspaceWrite {
++  const _PersonalWorkspaceWrite({
++    required this.action,
++    required this.kind,
++    required this.sourceKey,
++    required this.sourceId,
++    this.itemId,
++    this.title,
++    this.data,
++  });
++
++  final String action;
++  final String kind;
++  final String sourceKey;
++  final String sourceId;
++  final String? itemId;
++  final String? title;
++  final Map<String, dynamic>? data;
++}
++
+ String _pdfFontPreviewMessage() => kIsWeb
+     ? 'If the bundled font lacks a character, direct PDF is skipped. The full report opens in browser print; check print preview for glyph support.'
+     : 'If the bundled font lacks a character, direct PDF is skipped. Use the web report’s browser-print export to retain the full text.';
+@@ -40,6 +61,7 @@ String _pdfFontPreviewMessage() => kIsWeb
+ class GuestWorkspacePage extends ConsumerStatefulWidget {
+   const GuestWorkspacePage({
+     required this.firebaseReady,
++    this.personalWorkspaceEnabled = false,
+     this.sharedIdentityActive = false,
+     this.accountUser,
+     this.membershipStatus,
+@@ -49,6 +71,7 @@ class GuestWorkspacePage extends ConsumerStatefulWidget {
+   });
+ 
+   final bool firebaseReady;
++  final bool personalWorkspaceEnabled;
+   final bool sharedIdentityActive;
+   final User? accountUser;
+   final AccountMembershipStatus? membershipStatus;
+@@ -72,13 +95,46 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   int _savedRevision = 0;
+   Future<bool>? _saveOperation;
+   Timer? _autosaveTimer;
++  List<Map<String, dynamic>> _personalItems = [];
++  List<Map<String, dynamic>> _pendingPersonalItems = [];
++  final Map<String, _PersonalWorkspaceWrite> _pendingPersonalWrites = {};
++  String? _personalError;
++  List<Map<String, dynamic>> _pendingPersonalImport = [];
++  int _personalGeneration = 0;
++  String? _personalOwnerUid;
++  bool _personalLoading = false;
++  bool _personalSaving = false;
+ 
+   @override
+   void initState() {
+     super.initState();
+     _store = ref.read(guestWorkspaceStoreProvider);
++    _personalOwnerUid = _verifiedPersonalUid;
+     WidgetsBinding.instance.addObserver(this);
+     _load();
++    WidgetsBinding.instance.addPostFrameCallback((_) {
++      unawaited(_refreshPersonalWorkspace());
++    });
++  }
++
++  @override
++  void didUpdateWidget(covariant GuestWorkspacePage oldWidget) {
++    super.didUpdateWidget(oldWidget);
++    final uid = _verifiedPersonalUid;
++    if (uid == _personalOwnerUid) return;
++    _personalGeneration++;
++    _personalOwnerUid = uid;
++    _personalItems = [];
++    _pendingPersonalItems = [];
++    _pendingPersonalWrites.clear();
++    _pendingPersonalImport = [];
++    _personalError = null;
++    _personalLoading = false;
++    if (uid != null) {
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        unawaited(_refreshPersonalWorkspace());
++      });
++    }
+   }
+ 
+   @override
+@@ -127,9 +183,150 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     }
+   }
+ 
+-  void _save(GuestWorkspaceData data) {
++  String? get _verifiedPersonalUid {
++    if (!widget.personalWorkspaceEnabled || !widget.firebaseReady) return null;
++    final user = _currentAccountUser;
++    return isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null;
++  }
++
++  Future<void> _refreshPersonalWorkspace() async {
++    final uid = _verifiedPersonalUid;
++    if (uid == null || !mounted) return;
++    final generation = ++_personalGeneration;
+     setState(() {
+-      _data = data;
++      _personalLoading = true;
++      _personalError = null;
++    });
++    try {
++      final items = await ref
++          .read(personalWorkspaceRepositoryProvider)
++          .listItems(expectedUid: uid);
++      if (!mounted ||
++          generation != _personalGeneration ||
++          uid != _verifiedPersonalUid) {
++        return;
++      }
++      setState(() {
++        _personalItems = items;
++        _personalLoading = false;
++      });
++    } on Object {
++      if (!mounted ||
++          generation != _personalGeneration ||
++          uid != _verifiedPersonalUid) {
++        return;
++      }
++      setState(() {
++        _personalLoading = false;
++        _personalError =
++            'Personal account work could not be loaded. Local work is unchanged; retry when connected.';
++      });
++    }
++  }
++
++  GuestWorkspaceData _withPersonalWorkspace(GuestWorkspaceData local) {
++    List<Map<String, dynamic>> combine(
++      String kind,
++      List<Map<String, dynamic>> localItems,
++    ) {
++      final personal = <String, Map<String, dynamic>>{};
++      for (final record in _personalItems.where(
++        (item) => item['kind'] == kind,
++      )) {
++        final data = record['data'];
++        if (data is Map<String, dynamic> && data['id'] is String) {
++          personal[data['id'] as String] = data;
++        }
++      }
++      for (final record in _pendingPersonalItems.where(
++        (item) => item['kind'] == kind,
++      )) {
++        final data = record['data'];
++        if (data is Map<String, dynamic> && data['id'] is String) {
++          personal[data['id'] as String] = data;
++        }
++      }
++      for (final write in _pendingPersonalWrites.values.where(
++        (item) => item.kind == kind && item.action == 'delete',
++      )) {
++        personal.remove(write.sourceId);
++      }
++      return [
++        ...personal.values,
++        for (final item in localItems)
++          if (!personal.containsKey(item['id'])) item,
++      ];
++    }
++
++    return GuestWorkspaceData(
++      knowledge: combine('knowledge', local.knowledge),
++      sessions: combine('interact_session', local.sessions),
++      templates: combine('template', local.templates),
++    );
++  }
++
++  void _save(GuestWorkspaceData submitted) {
++    final previousLocal = _data ?? const GuestWorkspaceData();
++    final uid = _verifiedPersonalUid;
++    final remoteKeys = {
++      for (final record in _personalItems)
++        if (record['kind'] is String &&
++            record['data'] is Map &&
++            (record['data'] as Map)['id'] is String)
++          '${record['kind']}:${(record['data'] as Map)['id']}',
++    };
++
++    List<Map<String, dynamic>> keepLocal(
++      String kind,
++      List<Map<String, dynamic>> previous,
++      List<Map<String, dynamic>> next,
++    ) {
++      final previousById = {
++        for (final item in previous)
++          if (item['id'] is String) item['id'] as String: item,
++      };
++      final nextById = {
++        for (final item in next)
++          if (item['id'] is String) item['id'] as String: item,
++      };
++      final local = <Map<String, dynamic>>[];
++      for (final entry in previousById.entries) {
++        if (remoteKeys.contains('$kind:${entry.key}')) {
++          local.add(entry.value);
++        } else if (nextById.containsKey(entry.key)) {
++          local.add(nextById[entry.key]!);
++        }
++      }
++      for (final entry in nextById.entries) {
++        if (!previousById.containsKey(entry.key) &&
++            !remoteKeys.contains('$kind:${entry.key}')) {
++          local.add(entry.value);
++        }
++      }
++      return local;
++    }
++
++    final local = uid == null
++        ? submitted
++        : GuestWorkspaceData(
++            knowledge: keepLocal(
++              'knowledge',
++              previousLocal.knowledge,
++              submitted.knowledge,
++            ),
++            sessions: keepLocal(
++              'interact_session',
++              previousLocal.sessions,
++              submitted.sessions,
++            ),
++            templates: keepLocal(
++              'template',
++              previousLocal.templates,
++              submitted.templates,
++            ),
++          );
++    setState(() {
++      _data = local;
+       _dataRevision++;
+       _saveStatus = 'Saving locally…';
+     });
+@@ -138,6 +335,181 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       const Duration(milliseconds: 250),
+       _flushPendingSave,
+     );
++    if (uid != null) {
++      unawaited(_syncPersonalWorkspace(uid, submitted));
++    }
++  }
++
++  Future<void> _syncPersonalWorkspace(
++    String uid,
++    GuestWorkspaceData submitted,
++  ) async {
++    final generation = _personalGeneration;
++    final repository = ref.read(personalWorkspaceRepositoryProvider);
++    final submittedByKey = {
++      for (final item in submitted.knowledge)
++        'knowledge:${item['id']}': item,
++      for (final item in submitted.sessions)
++        'interact_session:${item['id']}': item,
++      for (final item in submitted.templates) 'template:${item['id']}': item,
++    };
++
++    for (final record in _personalItems) {
++      final data = record['data'];
++      final kind = record['kind'];
++      if (data is! Map<String, dynamic> ||
++          kind is! String ||
++          data['id'] is! String) {
++        continue;
++      }
++      final key = '$kind:${data['id']}';
++      final replacement = submittedByKey[key];
++      if (replacement == null) {
++        _enqueuePersonalWrite(
++          _PersonalWorkspaceWrite(
++            action: 'delete',
++            kind: kind,
++            sourceKey: record['source_key'] as String,
++            sourceId: data['id'] as String,
++            itemId: record['id'] as String,
++          ),
++        );
++      } else if (jsonEncode(replacement) != jsonEncode(data) ||
++          _personalTitle(kind, replacement) != record['title']) {
++        _enqueuePersonalWrite(
++          _PersonalWorkspaceWrite(
++            action: 'update',
++            kind: kind,
++            sourceKey: record['source_key'] as String,
++            sourceId: data['id'] as String,
++            itemId: record['id'] as String,
++            title: _personalTitle(kind, replacement),
++            data: replacement,
++          ),
++        );
++      }
++    }
++
++    await _processPersonalWrites(uid, generation, repository);
++  }
++
++  void _enqueuePersonalWrite(_PersonalWorkspaceWrite write) {
++    setState(() {
++      _pendingPersonalWrites['${write.kind}:${write.sourceId}'] = write;
++      _pendingPersonalItems.removeWhere(
++        (item) => item['kind'] == write.kind &&
++            (item['data'] as Map?)?['id'] == write.sourceId,
++      );
++      if (write.action != 'delete') {
++        _pendingPersonalItems.add({
++          'kind': write.kind,
++          'data': write.data,
++        });
++      }
++      _personalError = null;
++    });
++  }
++
++  Future<void> _processPersonalWrites(
++    String uid,
++    int generation,
++    PersonalWorkspaceRepository repository,
++  ) async {
++    if (_personalSaving || !mounted) return;
++    _personalSaving = true;
++    try {
++      while (mounted &&
++          generation == _personalGeneration &&
++          uid == _verifiedPersonalUid &&
++          _pendingPersonalWrites.isNotEmpty) {
++        final entry = _pendingPersonalWrites.entries.first;
++        final write = entry.value;
++        try {
++          Map<String, dynamic>? saved;
++          if (write.action == 'update') {
++            final current = _personalItems.firstWhere(
++              (item) => item['source_key'] == write.sourceKey,
++            );
++            saved = await repository.updateItem(
++              id: current['id'] as String,
++              expectedUid: uid,
++              expectedRevision: current['revision'] as int,
++              title: write.title!,
++              data: write.data!,
++            );
++          } else {
++            await repository.deleteItem(
++              write.itemId!,
++              expectedUid: uid,
++            );
++          }
++          if (!mounted ||
++              generation != _personalGeneration ||
++              uid != _verifiedPersonalUid) {
++            return;
++          }
++          setState(() {
++            if (saved != null) {
++              _personalItems.removeWhere(
++                (item) => item['source_key'] == write.sourceKey,
++              );
++              _personalItems.add(saved!);
++            } else {
++              _personalItems.removeWhere(
++                (item) => item['source_key'] == write.sourceKey,
++              );
++            }
++            if (identical(_pendingPersonalWrites[entry.key], write)) {
++              _pendingPersonalWrites.remove(entry.key);
++              _pendingPersonalItems.removeWhere(
++                (item) => item['kind'] == write.kind &&
++                    (item['data'] as Map?)?['id'] == write.sourceId,
++              );
++            }
++          });
++        } on Object {
++          if (mounted && generation == _personalGeneration) {
++            setState(() {
++              _personalError =
++                  'A personal account change was not confirmed. Your local copy is unchanged; retry the account save.';
++            });
++          }
++          return;
++        }
++      }
++      if (mounted && generation == _personalGeneration) {
++        setState(() => _personalError = null);
++      }
++    } finally {
++      _personalSaving = false;
++    }
++  }
++
++  Future<void> _retryPersonalWrites() async {
++    final uid = _verifiedPersonalUid;
++    if (uid == null) return;
++    await _processPersonalWrites(
++      uid,
++      _personalGeneration,
++      ref.read(personalWorkspaceRepositoryProvider),
++    );
++  }
++
++  String _personalTitle(String kind, Map<String, dynamic> item) =>
++      kind == 'template'
++      ? item['name'] as String? ?? 'Interact template'
++      : item['title'] as String? ??
++            (kind == 'knowledge' ? 'Knowledge item' : 'Interact session');
++
++  String _personalSourceKey(String kind, String sourceId) {
++    final key = '$kind:$sourceId';
++    if (key.length > 128 ||
++        !RegExp(r'^[A-Za-z0-9._:-]+$').hasMatch(key)) {
++      throw const FormatException(
++        'This item has an unsupported local ID and cannot be saved to an account.',
++      );
++    }
++    return key;
+   }
+ 
+   Future<bool> _flushPendingSave() {
+@@ -200,23 +572,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+ 
+   Future<void> _openSignIn({
+     bool createAccount = false,
+-    bool linkGuest = false,
+   }) async {
+     if (_data == null && _loadError == null) await _load();
+     if (!mounted) return;
+     if (!await _saveBeforeLeaving() || !mounted) return;
+-    final data = _data;
+     await Navigator.of(context).push<void>(
+       MaterialPageRoute<void>(
+         builder: (_) => SignInPage(
+           createAccount: createAccount,
+-          linkGuestIdentity: linkGuest,
+-          hasMeaningfulGuestWork:
+-              data == null ||
+-              _loadError != null ||
+-              data.knowledge.isNotEmpty ||
+-              data.sessions.isNotEmpty ||
+-              data.templates.isNotEmpty,
+         ),
+       ),
+     );
+@@ -279,8 +642,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       if (action == 'sign-in') {
+         await _openSignIn();
+       } else if (action == 'create-account') {
+-        final linkGuest = user?.isAnonymous == true;
+-        await _openSignIn(createAccount: true, linkGuest: linkGuest);
++        await _openSignIn(createAccount: true);
+       }
+       return;
+     }
+@@ -315,6 +677,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       if (!await _saveBeforeLeaving() || !mounted) return;
+       try {
+         await ref.read(firebaseAuthProvider).signOut();
++        _personalGeneration++;
++        if (mounted) {
++          setState(() {
++            _personalItems = [];
++            _pendingPersonalItems = [];
++            _pendingPersonalWrites.clear();
++            _pendingPersonalImport = [];
++            _personalError = null;
++            _personalOwnerUid = null;
++          });
++        }
+       } on Object {
+         if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+@@ -377,7 +750,16 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       return;
+     }
+     if (!mounted) return;
+-    _save(const GuestWorkspaceData());
++    setState(() {
++      _data = const GuestWorkspaceData();
++      _dataRevision++;
++      _saveStatus = 'Saving locally…';
++    });
++    _autosaveTimer?.cancel();
++    _autosaveTimer = Timer(
++      const Duration(milliseconds: 250),
++      _flushPendingSave,
++    );
+   }
+ 
+   Future<void> _copyLocalBackup() async {
+@@ -432,6 +814,126 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     );
+   }
+ 
++  bool _hasMeaningfulWork(GuestWorkspaceData data) =>
++      data.knowledge.isNotEmpty ||
++      data.sessions.isNotEmpty ||
++      data.templates.isNotEmpty;
++
++  Future<void> _openPersonalImport() async {
++    final uid = _verifiedPersonalUid;
++    final local = _data;
++    if (uid == null || local == null) return;
++    if (!_hasMeaningfulWork(local)) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(content: Text('There is no local work to import.')),
++      );
++      return;
++    }
++    if (_unsavedChanges || !await _flushPendingSave()) {
++      if (mounted) {
++        ScaffoldMessenger.of(context).showSnackBar(
++          const SnackBar(
++            content: Text(
++              'Save local changes on this device before selecting an account import.',
++            ),
++          ),
++        );
++      }
++      return;
++    }
++    if (!mounted || uid != _verifiedPersonalUid) return;
++    final selection = await showDialog<_GuestImportSelection>(
++      context: context,
++      builder: (context) => _GuestImportPreview(
++        data: local,
++        title: 'Import local work into your personal account',
++        confirmLabel: 'Import selected work',
++        includeTemplates: true,
++        personalAccountImport: true,
++      ),
++    );
++    if (selection == null || !mounted || uid != _verifiedPersonalUid) return;
++    final selected = <Map<String, dynamic>>[];
++    void addItems(
++      String kind,
++      List<Map<String, dynamic>> items,
++      Set<String> selectedIds,
++    ) {
++      for (final item in items) {
++        if (!selectedIds.contains(item['id'])) continue;
++        final sourceId = item['id'];
++        if (sourceId is! String) continue;
++        selected.add({
++          'kind': kind,
++          'source_key': _personalSourceKey(kind, sourceId),
++          'title': _personalTitle(kind, item),
++          'data': item,
++        });
++      }
++    }
++
++    try {
++      addItems('knowledge', local.knowledge, selection.knowledgeIds);
++      addItems('interact_session', local.sessions, selection.sessionIds);
++      addItems('template', local.templates, selection.templateIds);
++    } on FormatException catch (error) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        SnackBar(content: Text(error.message.toString())),
++      );
++      return;
++    }
++    if (selected.isEmpty) return;
++    _pendingPersonalImport = selected;
++    await _submitPersonalImport(uid, _personalGeneration);
++  }
++
++  Future<void> _retryPersonalImport() async {
++    final uid = _verifiedPersonalUid;
++    if (uid == null || _pendingPersonalImport.isEmpty) return;
++    await _submitPersonalImport(uid, _personalGeneration);
++  }
++
++  Future<void> _submitPersonalImport(String uid, int generation) async {
++    final payload = _pendingPersonalImport;
++    try {
++      final items = await ref
++          .read(personalWorkspaceRepositoryProvider)
++          .importItems(payload, expectedUid: uid);
++      if (!mounted ||
++          uid != _verifiedPersonalUid ||
++          generation != _personalGeneration) {
++        return;
++      }
++      setState(() {
++        for (final item in items) {
++          _personalItems.removeWhere(
++            (existing) => existing['source_key'] == item['source_key'],
++          );
++          _personalItems.add(item);
++        }
++        _pendingPersonalImport = [];
++        _personalError = null;
++      });
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text(
++            'Selected work is available in your personal account. Local copies remain on this device.',
++          ),
++        ),
++      );
++    } on Object {
++      if (!mounted ||
++          uid != _verifiedPersonalUid ||
++          generation != _personalGeneration) {
++        return;
++      }
++      setState(() {
++        _personalError =
++            'The account import was not confirmed. Local copies remain on this device; retry safely.';
++      });
++    }
++  }
++
+   Future<void> _importLocalBackup() async {
+     final controller = TextEditingController(text: _pendingImportJson ?? '');
+     try {
+@@ -553,7 +1055,8 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+ 
+   @override
+   Widget build(BuildContext context) {
+-    final data = _data;
++    final localData = _data;
++    final data = localData == null ? null : _withPersonalWorkspace(localData);
+     final groupIdentity = widget.firebaseReady
+         ? ref.watch(authStateProvider).value ??
+               ref.read(firebaseAuthProvider).currentUser
+@@ -591,6 +1094,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                 if (value == 'clear') _clearLocalCopy();
+                 if (value == 'backup') _copyLocalBackup();
+                 if (value == 'import') _importLocalBackup();
++                if (value == 'account-import') _openPersonalImport();
+               },
+               itemBuilder: (context) => [
+                 PopupMenuItem(
+@@ -601,6 +1105,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                   value: 'import',
+                   child: Text('Import local JSON backup'),
+                 ),
++                if (_verifiedPersonalUid != null)
++                  const PopupMenuItem(
++                    value: 'account-import',
++                    child: Text('Import local work into my account'),
++                  ),
+                 PopupMenuDivider(),
+                 PopupMenuItem(
+                   value: 'clear',
+@@ -645,7 +1154,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             : Column(
+                 children: [
+                   _GuestNotice(
+-                    sharedIdentityActive: widget.sharedIdentityActive,
+                     isRegistered: _hasSignedInNonGuestUser,
+                     saveStatus: _saveStatus,
+                   ),
+@@ -665,6 +1173,42 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                     const _AccountMembershipNotice(
+                       text: 'Account status could not be verified. This workspace is local; organisation access is not assumed.',
+                     ),
++                  if (_verifiedPersonalUid != null &&
++                      localData != null &&
++                      _hasMeaningfulWork(localData))
++                    MaterialBanner(
++                      content: const Text(
++                        'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
++                      ),
++                      actions: [
++                        TextButton(
++                          onPressed: _personalSaving || _personalLoading
++                              ? null
++                              : _openPersonalImport,
++                          child: const Text('Import local work'),
++                        ),
++                      ],
++                    ),
++                  if (_personalError != null)
++                    MaterialBanner(
++                      content: Text(_personalError!),
++                      actions: [
++                        TextButton(
++                          onPressed: _pendingPersonalImport.isNotEmpty
++                              ? _retryPersonalImport
++                              : _pendingPersonalWrites.isNotEmpty
++                              ? _retryPersonalWrites
++                              : _refreshPersonalWorkspace,
++                          child: Text(
++                            _pendingPersonalImport.isNotEmpty
++                                ? 'Retry import'
++                                : _pendingPersonalWrites.isNotEmpty
++                                ? 'Retry account save'
++                                : 'Retry account load',
++                          ),
++                        ),
++                      ],
++                    ),
+                   if (widget.membershipStatus ==
+                       AccountMembershipStatus.noMembership)
+                     const _AccountMembershipNotice(
+@@ -1089,7 +1633,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         AccountMembershipStatus.inactive => 'Organisation membership inactive',
+         AccountMembershipStatus.unavailable =>
+           'Organisation membership unavailable',
+-        _ => 'Registered account',
++        _ => 'Registered personal account',
+       };
+       explanation = switch (widget.membershipStatus) {
+         AccountMembershipStatus.noMembership =>
+@@ -1100,17 +1644,17 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           'Organisation access is inactive. Local work remains on this device.',
+         AccountMembershipStatus.unavailable =>
+           'Organisation access could not be verified. No organisation access is being assumed.',
+-        _ => 'Organisation roles and group roles are separate.',
++        _ => 'This registered personal account is separate from the local '
++            'copy on this device. Importing local work is optional; organisation '
++            'and group access remain separate.',
+       };
+-    } else if (widget.sharedIdentityActive) {
+-      stateText = 'Anonymous guest workspace';
+-      explanation =
+-          'Anonymous guest identities can use local Knowledge and Interact '
+-          'only. Groups require a registered account with a verified email.';
+     } else {
+       stateText = 'Local guest workspace';
+       explanation =
+-          'Solo work stays in this browser until you explicitly share it.';
++          'This is a local workspace. Knowledge, Interact sessions, answers, '
++          'and templates stay in this browser until you choose items to import '
++          'to a verified personal account or explicitly share selected copies '
++          'with a group.';
+     }
+ 
+     return PopupMenuButton<String>(
+@@ -1118,11 +1662,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       onSelected: (action) {
+         if (action == 'sign-in') _openSignIn();
+         else if (action == 'create-account') {
+-          _openSignIn(
+-            createAccount: !widget.sharedIdentityActive,
+-            linkGuest: widget.sharedIdentityActive,
+-          );
+-        } else if (action == 'start-fresh') {
+           _openSignIn(createAccount: true);
+         } else if (action == 'retry-account') {
+           widget.onRetryAccount?.call();
+@@ -1154,21 +1693,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             value: 'sign-in',
+             child: Text('Already have an account? Sign in'),
+           ),
+-          if (widget.sharedIdentityActive)
+-            const PopupMenuItem(
+-              value: 'create-account',
+-              child: Text('Create account from this guest'),
+-            )
+-          else
+-            const PopupMenuItem(
+-              value: 'create-account',
+-              child: Text('Create account'),
+-            ),
+-          if (widget.sharedIdentityActive)
+-            const PopupMenuItem(
+-              value: 'start-fresh',
+-              child: Text('Start fresh with a separate account'),
+-            ),
++          const PopupMenuItem(
++            value: 'create-account',
++            child: Text('Create account'),
++          ),
+         ],
+         if (widget.onRetryAccount != null) ...[
+             const PopupMenuDivider(),
+@@ -1202,30 +1730,23 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+ 
+ class _GuestNotice extends StatelessWidget {
+   const _GuestNotice({
+-    required this.sharedIdentityActive,
+     required this.isRegistered,
+     required this.saveStatus,
+   });
+ 
+-  final bool sharedIdentityActive;
+   final bool isRegistered;
+   final String saveStatus;
+ 
+   @override
+   Widget build(BuildContext context) {
+-    final status = sharedIdentityActive
+-        ? 'Guest sign-in active · $saveStatus'
+-        : isRegistered
+-        ? 'Registered workspace · $saveStatus'
++    final status = isRegistered
++        ? 'Registered personal account · $saveStatus'
+         : 'Guest workspace · $saveStatus';
+-    final explanation = sharedIdentityActive
+-        ? 'An anonymous guest sign-in is active in this browser profile. '
+-            'People using this profile share that sign-in and its local drafts. '
+-            'Groups require a registered account with a verified email.'
+-        : isRegistered
++    final explanation = isRegistered
+         ? 'Registered workspace. Local drafts stay in this browser profile '
+-            'and may be visible to people using it. Group and organisation '
+-            'access are separate.'
++            'and may be visible to people using it. This local copy is separate '
++            'from your personal account. Importing selected items to your account '
++            'is optional. Group and organisation access are separate.'
+         : 'Guest workspace active in this browser profile. People using this '
+             'profile can see its local work. Groups require a registered '
+             'account with a verified email. Clearing browser data or losing '
+@@ -4158,7 +4679,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+                         builder: (_) => const SignInPage(),
+                       ),
+                     ),
+-                    child: const Text('Sign in'),
++                    child: const Text('Already have an account? Sign in'),
+                   ),
+                   if (!needsEmailVerification)
+                     FilledButton(
+@@ -4166,7 +4687,6 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+                         MaterialPageRoute<void>(
+                           builder: (_) => SignInPage(
+                             createAccount: true,
+-                            linkGuestIdentity: user?.isAnonymous == true,
+                           ),
+                         ),
+                       ),
+@@ -5008,6 +5528,7 @@ class _GuestImportPreview extends StatefulWidget {
+     this.confirmLabel = 'Import selected locally',
+     this.includeTemplates = true,
+     this.shareWithGroup = false,
++    this.personalAccountImport = false,
+     this.groupName,
+   });
+ 
+@@ -5016,6 +5537,7 @@ class _GuestImportPreview extends StatefulWidget {
+   final String confirmLabel;
+   final bool includeTemplates;
+   final bool shareWithGroup;
++  final bool personalAccountImport;
+   final String? groupName;
+ 
+   @override
+@@ -5053,6 +5575,8 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
+                     'from this identity was already shared to this group, '
+                     'its existing group copy is reused without being '
+                     'overwritten.'
++                  : widget.personalAccountImport
++                  ? 'Selected items are copied to your private personal account, available after sign-in on other devices. Your browser-local originals stay on this device. The data is not added to an organisation, group, or shared Knowledge index.'
+                   : 'Selected items are added locally. Existing items with matching IDs are kept unchanged.',
+             ),
+           ),
+@@ -5097,9 +5621,13 @@ class _GuestImportPreviewState extends State<_GuestImportPreview> {
+     actions: [
+       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+       FilledButton(
+-        onPressed: widget.shareWithGroup &&
+-                _knowledge.isEmpty &&
+-                _sessions.isEmpty
++        onPressed: (widget.shareWithGroup &&
++                    _knowledge.isEmpty &&
++                    _sessions.isEmpty) ||
++                (widget.personalAccountImport &&
++                    _knowledge.isEmpty &&
++                    _sessions.isEmpty &&
++                    _templates.isEmpty)
+             ? null
+             : () => Navigator.pop(
+                 context,
+diff --git a/apps/flutter_app/lib/shared/widgets/app_shell.dart b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+index 5eafa821fdfe9e26acf05e6c47f9677b6bd2fd3a..711f126468f802bc908f1e6b54f91e60e1038667 100644
+--- a/apps/flutter_app/lib/shared/widgets/app_shell.dart
++++ b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+@@ -88,6 +88,8 @@ class AppShell extends ConsumerWidget {
+         onSelected: (value) {
+           if (value == 'sign-out') {
+             ref.read(firebaseAuthProvider).signOut();
++          } else if (value == 'personal') {
++            context.go('/personal');
+           }
+         },
+         itemBuilder: (context) => [
+@@ -112,6 +114,10 @@ class AppShell extends ConsumerWidget {
+             ),
+           ),
+           const PopupMenuDivider(),
++          const PopupMenuItem(
++            value: 'personal',
++            child: Text('Personal workspace'),
++          ),
+           const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
+         ],
+         child: Padding(
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index f900ceebde90b9e0b098fd1c573d9db1287a91f9..26e007cdfc24a118d748367f34d8da95c36f2eff 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -8,6 +8,7 @@ import 'package:int_qa_flow/app.dart';
+ import 'package:int_qa_flow/core/auth/auth_providers.dart';
+ import 'package:int_qa_flow/core/auth/sign_in_page.dart';
+ import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
++import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
+ import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
+ import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+@@ -18,6 +19,7 @@ class _TestUser extends Fake implements User {
+   _TestUser({
+     required this.isAnonymous,
+     this.isEmailVerified = false,
++    this.testUid = 'account-uid',
+     this.linkError,
+     this.verificationEmailError,
+     this.reloadError,
+@@ -35,8 +37,9 @@ class _TestUser extends Fake implements User {
+   String? get email => 'account@example.test';
+ 
+   @override
+-  String get uid => 'account-uid';
++  String get uid => testUid;
+ 
++  final String testUid;
+   final FirebaseAuthException? linkError;
+   final FirebaseAuthException? verificationEmailError;
+   final FirebaseAuthException? reloadError;
+@@ -181,6 +184,54 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
+   }
+ }
+ 
++class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
++  _TestPersonalWorkspaceRepository(this.items) : super(Dio());
++
++  List<Map<String, dynamic>> items;
++  var listCalls = 0;
++  var failedImports = 0;
++  final imports = <List<Map<String, dynamic>>>[];
++  var deleteCalls = 0;
++
++  @override
++  Future<List<Map<String, dynamic>>> listItems({
++    required String expectedUid,
++  }) async {
++    listCalls++;
++    return items;
++  }
++
++  @override
++  Future<List<Map<String, dynamic>>> importItems(
++    List<Map<String, dynamic>> payload, {
++    required String expectedUid,
++  }) async {
++    imports.add(payload);
++    if (failedImports > 0) {
++      failedImports--;
++      throw StateError('Simulated uncertain response.');
++    }
++    return [
++      for (final item in payload)
++        {
++          ...item,
++          'id': 'record-${item['source_key']}',
++          'revision': 1,
++          'created_at': '2026-10-06T00:00:00+00:00',
++          'updated_at': '2026-10-06T00:00:00+00:00',
++        },
++    ];
++  }
++
++  @override
++  Future<void> deleteItem(
++    String id, {
++    required String expectedUid,
++  }) async {
++    deleteCalls++;
++  }
++}
++
+ class _SignInLauncher extends StatelessWidget {
+   const _SignInLauncher();
+ 
+@@ -190,10 +241,10 @@ class _SignInLauncher extends StatelessWidget {
+       child: TextButton(
+         onPressed: () => Navigator.of(context).push<void>(
+           MaterialPageRoute<void>(
+-            builder: (_) => const SignInPage(linkGuestIdentity: true),
++            builder: (_) => const SignInPage(createAccount: true),
+           ),
+         ),
+-        child: const Text('Open account linking'),
++        child: const Text('Open personal account creation'),
+       ),
+     ),
+   );
+@@ -222,7 +273,7 @@ Future<void> _expectSeparateAccountError(
+   final passwordField = tester.widget<TextField>(find.byType(TextField).last);
+   expect(passwordField.obscureText, isTrue);
+   await tester.tap(
+-    find.widgetWithText(FilledButton, 'Create a separate account'),
++    find.widgetWithText(FilledButton, 'Create account'),
+   );
+   await tester.pumpAndSettle();
+ 
+@@ -337,7 +388,7 @@ void main() {
+   });
+ 
+   testWidgets(
+-    'sign-in return keeps guest workspace content available',
++    'leaving sign-in keeps the local workspace available',
+     (tester) async {
+       final store = GuestWorkspaceStore(_MemoryGuestStorage());
+       await store.save(
+@@ -358,17 +409,10 @@ void main() {
+       await tester.pumpAndSettle();
+       await tester.tap(find.text('Already have an account? Sign in'));
+       await tester.pumpAndSettle();
+-      expect(find.text('Back to guest workspace'), findsOneWidget);
+-      await tester.enterText(find.byType(TextField).first, 'member@example.test');
+-      await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+-      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+-      await tester.pumpAndSettle();
+-      expect(find.text('Sign in to your existing account?'), findsOneWidget);
+-      await tester.tap(find.text('Keep local workspace'));
++      expect(find.text('Back to workspace'), findsOneWidget);
++      await tester.tap(find.text('Back to workspace'));
+       await tester.pumpAndSettle();
+ 
+-      await tester.tap(find.text('Back to guest workspace'));
+-      await tester.pumpAndSettle();
+       expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+       await tester.tap(find.text('Interact').first);
+       await tester.pumpAndSettle();
+@@ -415,7 +459,7 @@ void main() {
+     expect((await store.load()).sessions, isEmpty);
+   });
+ 
+-  testWidgets('shared guest account offers explicit recovery linking', (
++  testWidgets('anonymous auth is treated as a local guest workspace', (
+     tester,
+   ) async {
+     await pumpGuestWorkspace(
+@@ -424,27 +468,12 @@ void main() {
+       sharedIdentityActive: true,
+     );
+ 
+-    expect(
+-      find.text('Guest sign-in active · Saved on this device'),
+-      findsOneWidget,
+-    );
+-    expect(
+-      find.textContaining(
+-        'People using this profile share that sign-in and its local drafts.',
+-      ),
+-      findsNothing,
+-    );
++    expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+     await tester.tap(find.byTooltip('Workspace storage information'));
+     await tester.pumpAndSettle();
+     expect(
+       find.textContaining(
+-        'People using this profile share that sign-in and its local drafts.',
+-      ),
+-      findsOneWidget,
+-    );
+-    expect(
+-      find.textContaining(
+-        'Groups require a registered account with a verified email.',
++        'This is a local workspace.',
+       ),
+       findsOneWidget,
+     );
+@@ -452,19 +481,22 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.byTooltip('Account'));
+     await tester.pumpAndSettle();
+-    expect(find.text('Anonymous guest workspace'), findsOneWidget);
++    expect(find.text('Local guest workspace'), findsOneWidget);
+     expect(find.text('Already have an account? Sign in'), findsOneWidget);
+-    expect(find.text('Create account from this guest'), findsOneWidget);
+-    expect(find.text('Start fresh with a separate account'), findsOneWidget);
++    expect(find.text('Create account'), findsOneWidget);
++    expect(find.text('Create account from this guest'), findsNothing);
++    expect(find.text('Start fresh with a separate account'), findsNothing);
+     expect(find.text('Sign out'), findsNothing);
+     expect(find.text('Organisation admin'), findsNothing);
+   });
+ 
+-  testWidgets('shared guest account creation defaults to same-UID linking', (
++  testWidgets('local guest account creation uses normal registration', (
+     tester,
+   ) async {
+     final user = _TestUser(isAnonymous: true);
+-    final auth = _TestFirebaseAuth(user);
++    final registered = _TestUser(isAnonymous: false);
++    final auth = _TestFirebaseAuth(user)
++      ..createCredential = _TestUserCredential(registered);
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [
+@@ -485,32 +517,234 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.byTooltip('Account'));
+     await tester.pumpAndSettle();
+-    await tester.tap(find.text('Create account from this guest'));
++    await tester.tap(find.text('Create account'));
+     await tester.pumpAndSettle();
+ 
+     expect(find.byType(SignInPage), findsOneWidget);
++    expect(find.widgetWithText(FilledButton, 'Create account'), findsOneWidget);
+     expect(
+-      find.widgetWithText(FilledButton, 'Create account from this guest'),
++      find.textContaining('A personal account is separate from local work.'),
+       findsOneWidget,
+     );
+-    expect(
+-      find.textContaining('Create a registered account from this guest identity'),
+-      findsOneWidget,
+-    );
+-    expect(find.text('Start fresh with a separate account'), findsNothing);
+ 
+-    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
++    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
++    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
++    await tester.pumpAndSettle();
++
++    expect(user.linkAttempts, 0);
++    expect(user.isAnonymous, isTrue);
++    expect(auth.createAttempts, 1);
++    expect(auth.signInAttempts, 0);
++  });
++
++  testWidgets('personal workspace data is cleared between account identities', (
++    tester,
++  ) async {
++    Map<String, dynamic> personalItem(String id, String title) => {
++      'id': 'record-$id',
++      'kind': 'knowledge',
++      'source_key': 'knowledge:$id',
++      'title': title,
++      'data': {'id': id, 'title': title, 'body': 'Private content'},
++      'revision': 1,
++      'created_at': '2026-10-06T00:00:00+00:00',
++      'updated_at': '2026-10-06T00:00:00+00:00',
++    };
++
++    final repository = _TestPersonalWorkspaceRepository([
++      personalItem('a', 'Account A private item'),
++    ]);
++    final storage = GuestWorkspaceStore(_MemoryGuestStorage());
++    Widget page(User user) => ProviderScope(
++      overrides: [
++        firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++        guestWorkspaceStoreProvider.overrideWithValue(storage),
++        personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++      ],
++      child: MaterialApp(
++        home: GuestWorkspacePage(
++          firebaseReady: true,
++          personalWorkspaceEnabled: true,
++          accountUser: user,
++        ),
++      ),
++    );
++
++    await tester.pumpWidget(
++      page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'a')),
++    );
++    await tester.pumpAndSettle();
++    expect(find.text('Account A private item'), findsOneWidget);
++    expect((await storage.load()).knowledge, isEmpty);
++
++    repository.items = [personalItem('b', 'Account B private item')];
++    await tester.pumpWidget(
++      page(_TestUser(isAnonymous: false, isEmailVerified: true, testUid: 'b')),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.text('Account A private item'), findsNothing);
++    expect(find.text('Account B private item'), findsOneWidget);
++    expect(repository.listCalls, 2);
++    expect((await storage.load()).knowledge, isEmpty);
++  });
++
++  testWidgets('clearing local work does not delete personal account items', (
++    tester,
++  ) async {
++    final store = GuestWorkspaceStore(_MemoryGuestStorage());
++    await store.save(
++      const GuestWorkspaceData(
++        knowledge: [
++          {'id': 'local-id', 'title': 'Local item', 'body': 'Local'},
++        ],
++      ),
++    );
++    final repository = _TestPersonalWorkspaceRepository([
++      {
++        'id': 'remote-record',
++        'kind': 'knowledge',
++        'source_key': 'knowledge:remote-id',
++        'title': 'Personal account item',
++        'data': {
++          'id': 'remote-id',
++          'title': 'Personal account item',
++          'body': 'Remote',
++        },
++        'revision': 1,
++        'created_at': '2026-10-06T00:00:00+00:00',
++        'updated_at': '2026-10-06T00:00:00+00:00',
++      },
++    ]);
++    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          guestWorkspaceStoreProvider.overrideWithValue(store),
++          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: MaterialApp(
++          home: GuestWorkspacePage(
++            firebaseReady: true,
++            personalWorkspaceEnabled: true,
++            accountUser: user,
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++    await tester.tap(find.byTooltip('Workspace options'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Clear local copy on this device'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Clear local copy'));
++    await tester.pumpAndSettle();
++
++    expect((await store.load()).knowledge, isEmpty);
++    expect(find.text('Personal account item'), findsOneWidget);
++    expect(repository.deleteCalls, 0);
++  });
++
++  testWidgets('personal import retries selected items without removing locals', (
++    tester,
++  ) async {
++    final localData = GuestWorkspaceData(
++      knowledge: [
++        {'id': 'selected', 'title': 'Import this item', 'body': 'Selected'},
++        {'id': 'local-only', 'title': 'Keep this item local', 'body': 'Private'},
++      ],
++    );
++    final store = GuestWorkspaceStore(_MemoryGuestStorage());
++    await store.save(localData);
++    final repository = _TestPersonalWorkspaceRepository([])..failedImports = 1;
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(
++            _TestFirebaseAuth(
++              _TestUser(isAnonymous: false, isEmailVerified: true),
++            ),
++          ),
++          guestWorkspaceStoreProvider.overrideWithValue(store),
++          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: MaterialApp(
++          home: GuestWorkspacePage(
++            firebaseReady: true,
++            personalWorkspaceEnabled: true,
++            accountUser: _TestUser(isAnonymous: false, isEmailVerified: true),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Import local work'));
++    await tester.pumpAndSettle();
+     await tester.tap(
+-      find.widgetWithText(FilledButton, 'Create account from this guest'),
++      find.descendant(
++        of: find.byType(AlertDialog),
++        matching: find.text('Keep this item local'),
++      ),
+     );
+     await tester.pumpAndSettle();
++    await tester.tap(find.text('Import selected work'));
++    await tester.pumpAndSettle();
+ 
+-    expect(user.linkAttempts, 1);
+-    expect(user.uid, 'account-uid');
+-    expect(user.isAnonymous, isFalse);
+-    expect(auth.createAttempts, 0);
+-    expect(auth.signInAttempts, 0);
++    expect(repository.imports, hasLength(1));
++    expect(repository.imports.single, hasLength(1));
++    expect(repository.imports.single.single['source_key'], 'knowledge:selected');
++    expect(find.text('Retry import'), findsOneWidget);
++    await tester.tap(find.text('Retry import'));
++    await tester.pumpAndSettle();
++
++    expect(repository.imports, hasLength(2));
++    expect(
++      repository.imports[0].single['source_key'],
++      repository.imports[1].single['source_key'],
++    );
++    expect((await store.load()).knowledge, hasLength(2));
++    expect(find.text('Import this item'), findsOneWidget);
++    expect(find.text('Keep this item local'), findsOneWidget);
++  });
++
++  testWidgets('new local work is not uploaded before explicit import', (
++    tester,
++  ) async {
++    final storage = _MemoryGuestStorage();
++    final store = GuestWorkspaceStore(storage);
++    final repository = _TestPersonalWorkspaceRepository([]);
++    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          guestWorkspaceStoreProvider.overrideWithValue(store),
++          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: MaterialApp(
++          home: GuestWorkspacePage(
++            firebaseReady: true,
++            personalWorkspaceEnabled: true,
++            accountUser: user,
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++    await tester.enterText(
++      find.byType(TextFormField).first,
++      'Keep this Knowledge item local',
++    );
++    await tester.tap(find.text('Save locally'));
++    await tester.pumpAndSettle();
++
++    expect(repository.imports, isEmpty);
++    expect(
++      (await store.load()).knowledge.single['title'],
++      'Keep this Knowledge item local',
++    );
+   });
+ 
+   testWidgets('existing-account sign-in errors do not reveal Firebase details', (
+@@ -1005,139 +1239,32 @@ void main() {
+     expect(attempts, 0);
+   });
+ 
+-  testWidgets('link conflict keeps the current shared guest identity', (
+-    tester,
+-  ) async {
+-    final user = _TestUser(
+-      isAnonymous: true,
+-      linkError: FirebaseAuthException(code: 'credential-already-in-use'),
+-    );
+-    final auth = _TestFirebaseAuth(user);
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(
+-          home: SignInPage(linkGuestIdentity: true),
+-        ),
+-      ),
+-    );
+-    expect(
+-      find.textContaining('Create a registered account from this guest identity'),
+-      findsOneWidget,
+-    );
+-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+-    await tester.tap(
+-      find.widgetWithText(FilledButton, 'Create account from this guest'),
+-    );
+-    await tester.pumpAndSettle();
+-
+-    expect(
+-      find.textContaining('This guest identity remains active'),
+-      findsOneWidget,
+-    );
+-    expect(auth.createAttempts, 0);
+-    expect(auth.signInAttempts, 0);
+-    expect(identical(auth.currentUser, user), isTrue);
+-  });
+-
+-  testWidgets('guest account linking verifies, refreshes, and closes on success', (
++  testWidgets('registration from anonymous session uses separate account flow', (
+     tester,
+   ) async {
+-    final user = _TestUser(isAnonymous: true);
+-    final auth = _TestFirebaseAuth(user);
++    final anonymousUser = _TestUser(isAnonymous: true);
++    final registeredUser = _TestUser(isAnonymous: false);
++    final auth = _TestFirebaseAuth(anonymousUser)
++      ..createCredential = _TestUserCredential(registeredUser);
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+         child: const MaterialApp(home: _SignInLauncher()),
+       ),
+     );
+-    await tester.tap(find.text('Open account linking'));
+-    await tester.pumpAndSettle();
+-    expect(find.text('Create account from this guest'), findsNWidgets(2));
+-
+-    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+-    await tester.tap(
+-      find.widgetWithText(FilledButton, 'Create account from this guest'),
+-    );
+-    await tester.pumpAndSettle();
+-
+-    expect(user.linkAttempts, 1);
+-    expect(user.isAnonymous, isFalse);
+-    expect(user.uid, 'account-uid');
+-    expect(user.verificationEmailAttempts, 1);
+-    expect(user.reloadAttempts, 1);
+-    expect(find.byType(SignInPage), findsNothing);
+-    expect(
+-      find.textContaining('The guest identity remains linked'),
+-      findsOneWidget,
+-    );
+-  });
+-
+-  testWidgets('guest linking reports verification-email failure after linking', (
+-    tester,
+-  ) async {
+-    final user = _TestUser(
+-      isAnonymous: true,
+-      verificationEmailError: FirebaseAuthException(code: 'network-request-failed'),
+-    );
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user))],
+-        child: const MaterialApp(home: _SignInLauncher()),
+-      ),
+-    );
+-    await tester.tap(find.text('Open account linking'));
++    await tester.tap(find.text('Open personal account creation'));
+     await tester.pumpAndSettle();
+-    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+-    await tester.tap(
+-      find.widgetWithText(FilledButton, 'Create account from this guest'),
+-    );
+-    await tester.pumpAndSettle();
+-
+-    expect(user.isAnonymous, isFalse);
+-    expect(user.verificationEmailAttempts, 1);
+-    expect(find.byType(SignInPage), findsNothing);
+-    expect(
+-      find.textContaining('verification email could not be sent'),
+-      findsOneWidget,
+-    );
+-    expect(
+-      find.textContaining('group access remain linked'),
+-      findsNothing,
+-    );
+-  });
+-
+-  testWidgets('guest linking reports account refresh failure after linking', (
+-    tester,
+-  ) async {
+-    final user = _TestUser(
+-      isAnonymous: true,
+-      reloadError: FirebaseAuthException(code: 'network-request-failed'),
+-    );
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user))],
+-        child: const MaterialApp(home: _SignInLauncher()),
+-      ),
+-    );
+-    await tester.tap(find.text('Open account linking'));
+-    await tester.pumpAndSettle();
+-    await tester.enterText(find.byType(TextField).first, 'linked@example.test');
++    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+-    await tester.tap(
+-      find.widgetWithText(FilledButton, 'Create account from this guest'),
+-    );
++    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+     await tester.pumpAndSettle();
+ 
+-    expect(user.isAnonymous, isFalse);
+-    expect(user.verificationEmailAttempts, 1);
+-    expect(user.reloadAttempts, 1);
+-    expect(find.byType(SignInPage), findsNothing);
++    expect(anonymousUser.linkAttempts, 0);
++    expect(anonymousUser.isAnonymous, isTrue);
++    expect(auth.createAttempts, 1);
++    expect(registeredUser.verificationEmailAttempts, 1);
+     expect(
+-      find.textContaining('account status could not be refreshed'),
++      find.textContaining('nothing is uploaded unless you choose items'),
+       findsOneWidget,
+     );
+   });
+@@ -1157,15 +1284,12 @@ void main() {
+       ),
+     );
+     expect(
+-      find.textContaining(
+-        'Start fresh with a separate registered identity. '
+-        'It does not transfer local work',
+-      ),
++      find.textContaining('A personal account is separate from local work.'),
+       findsOneWidget,
+     );
+     await tester.enterText(find.byType(TextField).first, 'new@example.test');
+     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+-    await tester.tap(find.widgetWithText(FilledButton, 'Create a separate account'));
++    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+     await tester.pumpAndSettle();
+ 
+     expect(auth.createAttempts, 1);
+@@ -1175,7 +1299,7 @@ void main() {
+       findsOneWidget,
+     );
+     expect(
+-      find.textContaining('does not add organisation membership'),
++      find.textContaining('nothing is uploaded unless you choose items'),
+       findsOneWidget,
+     );
+   });
+@@ -1204,80 +1328,13 @@ void main() {
+     );
+   });
+ 
+-  testWidgets('separate account creation preserves local-work confirmation', (
+-    tester,
+-  ) async {
+-    final user = _TestUser(isAnonymous: true);
+-    final auth = _TestFirebaseAuth(user);
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(
+-          home: SignInPage(
+-            createAccount: true,
+-            hasMeaningfulGuestWork: true,
+-          ),
+-        ),
+-      ),
+-    );
+-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+-    await tester.tap(
+-      find.widgetWithText(FilledButton, 'Create a separate account'),
+-    );
+-    await tester.pumpAndSettle();
+-
+-    expect(
+-      find.textContaining('current guest workspace is different from that new account'),
+-      findsOneWidget,
+-    );
+-    expect(find.textContaining('group access'), findsNothing);
+-    await tester.tap(find.text('Cancel account creation'));
+-    await tester.pumpAndSettle();
+-    expect(auth.createAttempts, 0);
+-    expect(identical(auth.currentUser, user), isTrue);
+-    expect(
+-      find.textContaining('Account creation cancelled. Your guest identity'),
+-      findsOneWidget,
+-    );
+-  });
+-
+-  testWidgets('start fresh discloses local-work retention before signup', (
+-    tester,
+-  ) async {
+-    final auth = _TestFirebaseAuth(null);
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(
+-          home: SignInPage(
+-            createAccount: true,
+-            hasMeaningfulGuestWork: true,
+-          ),
+-        ),
+-      ),
+-    );
+-    await tester.enterText(find.byType(TextField).first, 'new@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+-    await tester.tap(
+-      find.widgetWithText(FilledButton, 'Create a separate account'),
+-    );
+-    await tester.pumpAndSettle();
+-
+-    expect(find.text('Start fresh with a separate account?'), findsOneWidget);
+-    expect(find.textContaining('local work stays in this browser'), findsOneWidget);
+-    expect(find.textContaining('group membership'), findsNothing);
+-    await tester.tap(find.text('Cancel account creation'));
+-    await tester.pumpAndSettle();
+-    expect(auth.createAttempts, 0);
+-  });
+-
+-  testWidgets('empty anonymous guest signs in without workspace confirmation', (
++  testWidgets('sign-in proceeds without local-work ownership confirmation', (
+     tester,
+   ) async {
+-    final guest = _TestUser(isAnonymous: true);
+-    final auth = _TestFirebaseAuth(guest)
+-      ..signInCredential = _TestUserCredential(_TestUser(isAnonymous: false));
++    final auth = _TestFirebaseAuth(null)
++      ..signInCredential = _TestUserCredential(
++        _TestUser(isAnonymous: false, isEmailVerified: true),
++      );
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+@@ -1296,54 +1353,43 @@ void main() {
+     expect(auth.lastSignInPassword, 'safe-test-password');
+   });
+ 
+-  testWidgets('sign-in confirmation identifies local workspace and destination', (
++  testWidgets('account creation does not prompt before normal registration', (
+     tester,
+   ) async {
+-    final guest = _TestUser(isAnonymous: true);
+-    final auth = _TestFirebaseAuth(guest)
+-      ..signInCredential = _TestUserCredential(_TestUser(isAnonymous: false));
++    final auth = _TestFirebaseAuth(null)
++      ..createCredential = _TestUserCredential(
++        _TestUser(isAnonymous: false),
++      );
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+         child: const MaterialApp(
+-          home: SignInPage(hasMeaningfulGuestWork: true),
++          home: SignInPage(createAccount: true),
+         ),
+       ),
+     );
+-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
++    await tester.enterText(find.byType(TextField).first, 'new@example.test');
+     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+-    await tester.pumpAndSettle();
+-
+-    expect(find.text('Sign in to your existing account?'), findsOneWidget);
+-    expect(find.textContaining('does not upgrade the current guest identity'), findsOneWidget);
+-    expect(find.textContaining('explicitly clear only the local copy'), findsOneWidget);
+-    expect(find.text('Continue to sign in'), findsOneWidget);
+-    tester.widget<TextField>(find.byType(TextField).first).controller!.text =
+-        'changed@example.test';
+-    tester.widget<TextField>(find.byType(TextField).last).controller!.text =
+-        'changed-password';
+-    await tester.tap(find.text('Continue to sign in'));
++    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+     await tester.pumpAndSettle();
+ 
+-    expect(auth.signInAttempts, 1);
+-    expect(auth.lastSignInEmail, 'destination@example.test');
+-    expect(auth.lastSignInPassword, 'safe-test-password');
++    expect(find.text('Sign in to your existing account?'), findsNothing);
++    expect(find.text('Start fresh with a separate account?'), findsNothing);
++    expect(auth.createAttempts, 1);
+   });
+ 
+-  testWidgets('guest sign-in is blocked only for local-work confirmation', (
++  testWidgets('sign-in errors are shown without guest ownership warnings', (
+     tester,
+   ) async {
+-    final guest = _TestUser(isAnonymous: true);
+     final auth = _TestFirebaseAuth(
+-      guest,
++      null,
+       signInError: FirebaseAuthException(code: 'network-request-failed'),
+     );
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+         child: const MaterialApp(
+-          home: SignInPage(hasMeaningfulGuestWork: true),
++          home: SignInPage(),
+         ),
+       ),
+     );
+@@ -1352,13 +1398,14 @@ void main() {
+     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+     await tester.pumpAndSettle();
+ 
+-    expect(find.text('Sign in to your existing account?'), findsOneWidget);
++    expect(find.text('Sign in to your existing account?'), findsNothing);
+     expect(find.textContaining('group access'), findsNothing);
+     expect(find.text('Keep this group identity'), findsNothing);
+-    await tester.tap(find.text('Continue to sign in'));
+-    await tester.pumpAndSettle();
+     expect(auth.signInAttempts, 1);
+-    expect(identical(auth.currentUser, guest), isTrue);
++    expect(
++      find.textContaining('Unable to reach the sign-in service'),
++      findsOneWidget,
++    );
+   });
+ 
+   testWidgets('opening sign-in never preflights Groups ownership', (
+@@ -1409,10 +1456,6 @@ void main() {
+     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+     await tester.pumpAndSettle();
+ 
+-    if (find.text('Continue to sign in').evaluate().isNotEmpty) {
+-      await tester.tap(find.text('Continue to sign in'));
+-      await tester.pumpAndSettle();
+-    }
+     expect(auth.signInAttempts, 1);
+     expect(find.text('Keep this group identity'), findsNothing);
+     expect(identical(auth.currentUser, guest), isTrue);
+diff --git a/apps/flutter_app/test/api_client_test.dart b/apps/flutter_app/test/api_client_test.dart
+index 687c6adf7a2b44f43c527c8671ddc4de5f3fd125..8dcb1a603bed094b68205d86e5ac0bbb02b1475a 100644
+--- a/apps/flutter_app/test/api_client_test.dart
++++ b/apps/flutter_app/test/api_client_test.dart
+@@ -93,6 +93,28 @@ void main() {
+     client.close();
+   });
+ 
++  test('does not retry a personal request with a different Firebase UID', () async {
++    final tokens = _FakeTokenSource()..currentUid = 'owner-a';
++    final adapter = _RecordingAdapter((_) {
++      tokens.currentUid = 'owner-b';
++      return _unauthorized();
++    });
++    final client = createApiClient(tokens, adapter: adapter);
++
++    await expectLater(
++      client.get<void>(
++        '/api/v1/personal/items',
++        options: Options(extra: {'expectedFirebaseUid': 'owner-a'}),
++      ),
++      throwsA(isA<DioException>()),
++    );
++
++    expect(tokens.forceRefreshCount, 0);
++    expect(tokens.signedOut, isFalse);
++    expect(adapter.requests, hasLength(1));
++    client.close();
++  });
++
+   test('keeps a linked guest identity after organisation membership lookup returns 401', () async {
+     final tokens = _FakeTokenSource();
+     final adapter = _RecordingAdapter((_) => _unauthorized());
+@@ -127,6 +149,9 @@ void main() {
+ }
+ 
+ class _FakeTokenSource implements ApiTokenSource {
++  @override
++  String? currentUid = 'test-uid';
++
+   String currentToken = 'current-id-token';
+   int forceRefreshCount = 0;
+   bool signedOut = false;
+diff --git a/backend/alembic/versions/0013_personal_workspace.py b/backend/alembic/versions/0013_personal_workspace.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..aef4f14a849c3121e3cf6116843230f6c437c581
+--- /dev/null
++++ b/backend/alembic/versions/0013_personal_workspace.py
+@@ -0,0 +1,60 @@
++"""Add UID-private personal workspace items."""
++
++from collections.abc import Sequence
++
++import sqlalchemy as sa
++from alembic import op
++
++revision: str = "0013"
++down_revision: str | None = "0012"
++branch_labels: str | Sequence[str] | None = None
++depends_on: str | Sequence[str] | None = None
++
++
++def upgrade() -> None:
++    op.create_table(
++        "personal_workspace_items",
++        sa.Column("id", sa.Uuid(), nullable=False),
++        sa.Column("firebase_uid", sa.String(length=128), nullable=False),
++        sa.Column("source_key", sa.String(length=128), nullable=False),
++        sa.Column("kind", sa.String(length=30), nullable=False),
++        sa.Column("title", sa.String(length=500), nullable=False),
++        sa.Column("data", sa.JSON(), nullable=False),
++        sa.Column("revision", sa.Integer(), nullable=False),
++        sa.Column(
++            "created_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.func.now(),
++            nullable=False,
++        ),
++        sa.Column(
++            "updated_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.func.now(),
++            nullable=False,
++        ),
++        sa.CheckConstraint(
++            "kind IN ('knowledge', 'interact_session', 'template')",
++            name="ck_personal_workspace_item_kind",
++        ),
++        sa.CheckConstraint("revision > 0", name="ck_personal_workspace_item_revision"),
++        sa.PrimaryKeyConstraint("id"),
++        sa.UniqueConstraint(
++            "firebase_uid",
++            "source_key",
++            name="uq_personal_workspace_item_source",
++        ),
++    )
++    op.create_index(
++        "ix_personal_workspace_items_firebase_uid",
++        "personal_workspace_items",
++        ["firebase_uid"],
++    )
++
++
++def downgrade() -> None:
++    op.drop_index(
++        "ix_personal_workspace_items_firebase_uid",
++        table_name="personal_workspace_items",
++    )
++    op.drop_table("personal_workspace_items")
+diff --git a/backend/app/api/v1/routes/personal_workspace.py b/backend/app/api/v1/routes/personal_workspace.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..99a634945fc00f69986c7f83e9f4e0736798e634
+--- /dev/null
++++ b/backend/app/api/v1/routes/personal_workspace.py
+@@ -0,0 +1,102 @@
++from uuid import UUID
++
++from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
++from sqlalchemy.ext.asyncio import AsyncSession
++
++from app.api.dependencies import GuestIdentity, get_guest_identity, require_app_check
++from app.core.database import get_session
++from app.schemas.personal_workspace import (
++    PersonalWorkspaceImport,
++    PersonalWorkspaceImportResult,
++    PersonalWorkspaceItemResult,
++    PersonalWorkspaceItemUpdate,
++)
++from app.services.personal_workspace import PersonalWorkspaceService
++
++
++async def reject_identity_overrides(request: Request) -> None:
++    if any(
++        header in request.headers
++        for header in ("x-user-id", "x-organisation-id", "x-user-role")
++    ):
++        raise HTTPException(
++            status_code=status.HTTP_400_BAD_REQUEST,
++            detail="Caller-selected identity and organisation headers are not accepted.",
++        )
++
++
++def require_verified_personal_identity(
++    identity: GuestIdentity = Depends(get_guest_identity),
++) -> None:
++    if identity.sign_in_provider == "anonymous":
++        raise HTTPException(
++            status_code=status.HTTP_403_FORBIDDEN,
++            detail="A registered account is required to use personal storage.",
++        )
++    if not identity.email_verified:
++        raise HTTPException(
++            status_code=status.HTTP_403_FORBIDDEN,
++            detail="Verify your email address before using personal storage.",
++        )
++
++
++router = APIRouter(
++    prefix="/personal",
++    tags=["personal workspace"],
++    dependencies=[
++        Depends(require_app_check),
++        Depends(require_verified_personal_identity),
++        Depends(reject_identity_overrides),
++    ],
++)
++
++
++@router.get("/items", response_model=list[PersonalWorkspaceItemResult])
++async def list_items(
++    identity: GuestIdentity = Depends(get_guest_identity),
++    session: AsyncSession = Depends(get_session),
++) -> list[dict]:
++    return await PersonalWorkspaceService(session).list_items(identity.firebase_uid)
++
++
++@router.post(
++    "/items/import",
++    response_model=PersonalWorkspaceImportResult,
++    status_code=status.HTTP_201_CREATED,
++)
++async def import_items(
++    payload: PersonalWorkspaceImport,
++    identity: GuestIdentity = Depends(get_guest_identity),
++    session: AsyncSession = Depends(get_session),
++) -> dict:
++    return await PersonalWorkspaceService(session).import_items(
++        identity.firebase_uid, payload.items
++    )
++
++
++@router.put("/items/{item_id}", response_model=PersonalWorkspaceItemResult)
++async def update_item(
++    item_id: UUID,
++    payload: PersonalWorkspaceItemUpdate,
++    identity: GuestIdentity = Depends(get_guest_identity),
++    session: AsyncSession = Depends(get_session),
++) -> dict:
++    return await PersonalWorkspaceService(session).update_item(
++        identity.firebase_uid,
++        item_id,
++        expected_revision=payload.expected_revision,
++        title=payload.title,
++        data=payload.data,
++    )
++
++
++@router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
++async def delete_item(
++    item_id: UUID,
++    identity: GuestIdentity = Depends(get_guest_identity),
++    session: AsyncSession = Depends(get_session),
++) -> Response:
++    await PersonalWorkspaceService(session).delete_item(
++        identity.firebase_uid, item_id
++    )
++    return Response(status_code=status.HTTP_204_NO_CONTENT)
+diff --git a/backend/app/main.py b/backend/app/main.py
+index dbf5ab4c945bd905eb12db3d81e7fb5a9a23ff83..a9991c4e649cda34fc02d7c5d17e59cdc1174ae5 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
+ from app.api.v1.router import api_router
+ from app.api.v1.routes.account_state import router as account_state_router
+ from app.api.v1.routes.guest import router as guest_router
++from app.api.v1.routes.personal_workspace import router as personal_workspace_router
+ from app.core.config import get_settings
+ from app.core.exceptions import (
+     ConflictError,
+@@ -102,4 +103,5 @@ async def readiness(
+ 
+ app.include_router(api_router, prefix="/api/v1")
+ app.include_router(account_state_router, prefix="/api/v1")
+-app.include_router(guest_router, prefix="/api/v1")
+\ No newline at end of file
++app.include_router(guest_router, prefix="/api/v1")
++app.include_router(personal_workspace_router, prefix="/api/v1")
+\ No newline at end of file
+diff --git a/backend/app/models/__init__.py b/backend/app/models/__init__.py
+index 97310ae0f260d5eda2b52e2a1fa19c0853bf607b..fedf3509204feb3f5dbfd1cb816eb7f9d085d0b3 100644
+--- a/backend/app/models/__init__.py
++++ b/backend/app/models/__init__.py
+@@ -43,6 +43,7 @@ from app.models.guest import (
+     GuestGroupMembership,
+ )
+ from app.models.organisation import Organisation
++from app.models.personal_workspace import PersonalWorkspaceItem
+ from app.models.question import Question, QuestionStatus, QuestionVisibility
+ from app.models.question_embedding import QuestionEmbedding
+ from app.models.question_version import QuestionVersion
+@@ -91,6 +92,7 @@ __all__ = [
+     "KnowledgeProposal",
+     "KnowledgeProposalStatus",
+     "Organisation",
++    "PersonalWorkspaceItem",
+     "Question",
+     "QuestionChangeRequest",
+     "QuestionEmbedding",
+diff --git a/backend/app/models/personal_workspace.py b/backend/app/models/personal_workspace.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d7fe0ec276ae0bc9da552e983a49caccb8780207
+--- /dev/null
++++ b/backend/app/models/personal_workspace.py
+@@ -0,0 +1,28 @@
++from sqlalchemy import CheckConstraint, Index, Integer, JSON, String, UniqueConstraint
++from sqlalchemy.orm import Mapped, mapped_column
++
++from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
++
++
++class PersonalWorkspaceItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
++    __tablename__ = "personal_workspace_items"
++    __table_args__ = (
++        UniqueConstraint(
++            "firebase_uid",
++            "source_key",
++            name="uq_personal_workspace_item_source",
++        ),
++        CheckConstraint(
++            "kind IN ('knowledge', 'interact_session', 'template')",
++            name="ck_personal_workspace_item_kind",
++        ),
++        CheckConstraint("revision > 0", name="ck_personal_workspace_item_revision"),
++        Index("ix_personal_workspace_items_firebase_uid", "firebase_uid"),
++    )
++
++    firebase_uid: Mapped[str] = mapped_column(String(128), nullable=False)
++    source_key: Mapped[str] = mapped_column(String(128), nullable=False)
++    kind: Mapped[str] = mapped_column(String(30), nullable=False)
++    title: Mapped[str] = mapped_column(String(500), nullable=False)
++    data: Mapped[dict] = mapped_column(JSON, nullable=False)
++    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+diff --git a/backend/app/schemas/personal_workspace.py b/backend/app/schemas/personal_workspace.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..396220aa39f6ab10d4c2cbf78ef7e3e591b39320
+--- /dev/null
++++ b/backend/app/schemas/personal_workspace.py
+@@ -0,0 +1,94 @@
++import json
++from typing import Any, Literal
++from uuid import UUID
++
++from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
++
++
++def _validate_content(value: dict[str, Any]) -> dict[str, Any]:
++    try:
++        encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
++    except (TypeError, ValueError, RecursionError):
++        raise ValueError("Personal workspace content must be valid JSON.") from None
++    if len(encoded.encode("utf-8")) > 250_000:
++        raise ValueError("A personal workspace item exceeds the size limit.")
++    return value
++
++
++class PersonalWorkspaceSchema(BaseModel):
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++
++class PersonalWorkspaceItemInput(PersonalWorkspaceSchema):
++    kind: Literal["knowledge", "interact_session", "template"]
++    source_key: str = Field(
++        min_length=1,
++        max_length=128,
++        pattern=r"^[A-Za-z0-9._:-]+$",
++    )
++    title: str = Field(min_length=1, max_length=500)
++    data: dict[str, Any]
++
++    @field_validator("data")
++    @classmethod
++    def validate_data(cls, value: dict[str, Any]) -> dict[str, Any]:
++        return _validate_content(value)
++
++    @model_validator(mode="after")
++    def validate_kind_content(self) -> "PersonalWorkspaceItemInput":
++        if self.kind == "knowledge":
++            if not isinstance(self.data.get("id"), str):
++                raise ValueError("Knowledge items require a stable local item ID.")
++        elif self.kind == "interact_session":
++            if not isinstance(self.data.get("participants"), list) or not isinstance(
++                self.data.get("questions"), list
++            ):
++                raise ValueError("Interact sessions require participants and questions.")
++        elif self.kind == "template" and not isinstance(
++            self.data.get("questions"), list
++        ):
++            raise ValueError("Interact templates require a questions list.")
++        return self
++
++
++class PersonalWorkspaceImport(PersonalWorkspaceSchema):
++    items: list[PersonalWorkspaceItemInput] = Field(min_length=1, max_length=50)
++
++    @model_validator(mode="after")
++    def validate_batch_size(self) -> "PersonalWorkspaceImport":
++        if len({item.source_key for item in self.items}) != len(self.items):
++            raise ValueError("An import cannot contain duplicate source items.")
++        total_bytes = sum(
++            len(json.dumps(item.data, ensure_ascii=False).encode("utf-8"))
++            for item in self.items
++        )
++        if total_bytes > 1_000_000:
++            raise ValueError("The selected import exceeds the size limit.")
++        return self
++
++
++class PersonalWorkspaceItemUpdate(PersonalWorkspaceSchema):
++    expected_revision: int = Field(ge=1)
++    title: str = Field(min_length=1, max_length=500)
++    data: dict[str, Any]
++
++    @field_validator("data")
++    @classmethod
++    def validate_data(cls, value: dict[str, Any]) -> dict[str, Any]:
++        return _validate_content(value)
++
++
++class PersonalWorkspaceItemResult(PersonalWorkspaceSchema):
++    id: UUID
++    kind: Literal["knowledge", "interact_session", "template"]
++    source_key: str
++    title: str
++    data: dict[str, Any]
++    revision: int
++    created_at: str
++    updated_at: str
++
++
++class PersonalWorkspaceImportResult(PersonalWorkspaceSchema):
++    items: list[PersonalWorkspaceItemResult]
++    created: list[bool]
+diff --git a/backend/app/services/personal_workspace.py b/backend/app/services/personal_workspace.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..32ad55abd34036e393db90282c680fee16ae31a1
+--- /dev/null
++++ b/backend/app/services/personal_workspace.py
+@@ -0,0 +1,146 @@
++from __future__ import annotations
++
++from typing import Any
++from uuid import UUID
++
++from fastapi import HTTPException, status
++from sqlalchemy import select
++from sqlalchemy.dialects.postgresql import insert as postgres_insert
++from sqlalchemy.dialects.sqlite import insert as sqlite_insert
++from sqlalchemy.ext.asyncio import AsyncSession
++
++from app.models.personal_workspace import PersonalWorkspaceItem
++from app.schemas.personal_workspace import PersonalWorkspaceItemInput
++
++
++def _item_result(item: PersonalWorkspaceItem) -> dict[str, Any]:
++    return {
++        "id": item.id,
++        "kind": item.kind,
++        "source_key": item.source_key,
++        "title": item.title,
++        "data": item.data,
++        "revision": item.revision,
++        "created_at": item.created_at.isoformat(),
++        "updated_at": item.updated_at.isoformat(),
++    }
++
++
++class PersonalWorkspaceService:
++    def __init__(self, session: AsyncSession) -> None:
++        self.session = session
++
++    async def list_items(self, firebase_uid: str) -> list[dict[str, Any]]:
++        result = await self.session.scalars(
++            select(PersonalWorkspaceItem)
++            .where(PersonalWorkspaceItem.firebase_uid == firebase_uid)
++            .order_by(PersonalWorkspaceItem.created_at, PersonalWorkspaceItem.id)
++        )
++        return [_item_result(item) for item in result]
++
++    async def import_items(
++        self,
++        firebase_uid: str,
++        items: list[PersonalWorkspaceItemInput],
++    ) -> dict[str, Any]:
++        bind = self.session.get_bind()
++        insert = {
++            "sqlite": sqlite_insert,
++            "postgresql": postgres_insert,
++        }.get(bind.dialect.name)
++        if insert is None:
++            raise HTTPException(
++                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
++                detail="Personal workspace storage is unavailable.",
++            )
++
++        stored: list[dict[str, Any]] = []
++        created: list[bool] = []
++        for payload in items:
++            statement = (
++                insert(PersonalWorkspaceItem)
++                .values(
++                    firebase_uid=firebase_uid,
++                    source_key=payload.source_key,
++                    kind=payload.kind,
++                    title=payload.title,
++                    data=payload.data,
++                    revision=1,
++                )
++                .on_conflict_do_nothing(
++                    index_elements=[
++                        PersonalWorkspaceItem.firebase_uid,
++                        PersonalWorkspaceItem.source_key,
++                    ]
++                )
++                .returning(PersonalWorkspaceItem)
++            )
++            item = (await self.session.scalars(statement)).one_or_none()
++            was_created = item is not None
++            if item is None:
++                item = await self.session.scalar(
++                    select(PersonalWorkspaceItem).where(
++                        PersonalWorkspaceItem.firebase_uid == firebase_uid,
++                        PersonalWorkspaceItem.source_key == payload.source_key,
++                    )
++                )
++            if item is None:
++                raise HTTPException(
++                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
++                    detail="The personal import could not be confirmed. Retry safely.",
++                )
++            stored.append(_item_result(item))
++            created.append(was_created)
++        await self.session.commit()
++        return {"items": stored, "created": created}
++
++    async def update_item(
++        self,
++        firebase_uid: str,
++        item_id: UUID,
++        *,
++        expected_revision: int,
++        title: str,
++        data: dict[str, Any],
++    ) -> dict[str, Any]:
++        item = await self.session.scalar(
++            select(PersonalWorkspaceItem)
++            .where(
++                PersonalWorkspaceItem.id == item_id,
++                PersonalWorkspaceItem.firebase_uid == firebase_uid,
++            )
++            .with_for_update()
++        )
++        if item is None:
++            raise HTTPException(status_code=404, detail="Personal item not found.")
++        if item.revision != expected_revision:
++            if (
++                item.revision == expected_revision + 1
++                and item.title == title
++                and item.data == data
++            ):
++                return _item_result(item)
++            raise HTTPException(
++                status_code=status.HTTP_409_CONFLICT,
++                detail="This personal item changed elsewhere. Reload it and retry.",
++            )
++        item.title = title
++        item.data = data
++        item.revision += 1
++        await self.session.commit()
++        await self.session.refresh(item)
++        return _item_result(item)
++
++    async def delete_item(self, firebase_uid: str, item_id: UUID) -> None:
++        item = await self.session.scalar(
++            select(PersonalWorkspaceItem)
++            .where(
++                PersonalWorkspaceItem.id == item_id,
++                PersonalWorkspaceItem.firebase_uid == firebase_uid,
++            )
++            .with_for_update()
++        )
++        if item is None:
++            return
++        await self.session.delete(item)
++        await self.session.commit()
+diff --git a/backend/tests/test_personal_workspace.py b/backend/tests/test_personal_workspace.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..515b1c41377e5c022275f415a1fd4135f190d5c9
+--- /dev/null
++++ b/backend/tests/test_personal_workspace.py
+@@ -0,0 +1,309 @@
++import asyncio
++from uuid import UUID
++
++import pytest
++from sqlalchemy import func, select
++
++from app.api import dependencies
++from app.main import app
++from app.models.personal_workspace import PersonalWorkspaceItem
++
++PROJECT_ID = "intqaflow-dev"
++
++
++def bearer(uid: str, provider: str = "password", verified: bool = True) -> dict[str, str]:
++    token = f"personal-{provider}-{uid}~{int(verified)}"
++    return {"Authorization": "Bearer " + token}
++
++
++def install_test_tokens(monkeypatch) -> None:
++    def verify(token: str, _settings) -> dict[str, object]:
++        token, verified = token.rsplit("~", 1)
++        _, provider, uid = token.split("-", 2)
++        return {
++            "aud": PROJECT_ID,
++            "iss": f"https://securetoken.google.com/{PROJECT_ID}",
++            "sub": uid,
++            "firebase": {"sign_in_provider": provider},
++            "email_verified": verified == "1",
++        }
++
++    monkeypatch.setattr(dependencies, "verify_id_token", verify)
++
++
++def knowledge(source_key: str = "knowledge:local-id") -> dict:
++    return {
++        "kind": "knowledge",
++        "source_key": source_key,
++        "title": "Private answer",
++        "data": {
++            "id": source_key.split(":", 1)[1],
++            "title": "Private answer",
++            "body": "private search sentinel",
++            "answer": "Only on this account",
++        },
++    }
++
++
++@pytest.mark.asyncio
++async def test_personal_workspace_is_verified_uid_private_and_idempotent(
++    app_client, monkeypatch
++) -> None:
++    client, session_factory = app_client
++    install_test_tokens(monkeypatch)
++    nested_session = {
++        "kind": "interact_session",
++        "source_key": "session:local-session",
++        "title": "Private interview",
++        "data": {
++            "id": "local-session",
++            "title": "Private interview",
++            "participants": [{"id": "p1", "name": "Alice"}],
++            "questions": [
++                {
++                    "id": "q1",
++                    "text": "Question",
++                    "scope": "shared",
++                    "answers": [
++                        {
++                            "participant_id": "p1",
++                            "body": "Private answer",
++                            "follow_ups": [
++                                {
++                                    "id": "q2",
++                                    "text": "Nested question",
++                                    "scope": "participant",
++                                    "answers": [],
++                                }
++                            ],
++                        }
++                    ],
++                }
++            ],
++        },
++    }
++    template = {
++        "kind": "template",
++        "source_key": "template:local-template",
++        "title": "Private template",
++        "data": {
++            "id": "local-template",
++            "name": "Private template",
++            "questions": [{"id": "root", "text": "Root", "follow_ups": []}],
++        },
++    }
++    headers = bearer("verified-without-organisation")
++    response = await client.post(
++        "/api/v1/personal/items/import",
++        headers=headers,
++        json={"items": [knowledge(), nested_session, template]},
++    )
++    assert response.status_code == 201, response.text
++    result = response.json()
++    assert result["created"] == [True, True, True]
++    assert result["items"][1]["data"]["questions"][0]["answers"][0][
++        "follow_ups"
++    ][0]["text"] == "Nested question"
++
++    replay = await client.post(
++        "/api/v1/personal/items/import",
++        headers=headers,
++        json={
++            "items": [
++                knowledge(),
++                {
++                    **knowledge("knowledge:other"),
++                    "data": {
++                        **knowledge("knowledge:other")["data"],
++                        "id": "other",
++                    },
++                },
++            ]
++        },
++    )
++    assert replay.status_code == 201, replay.text
++    assert replay.json()["created"] == [False, True]
++    assert replay.json()["items"][0]["data"]["answer"] == "Only on this account"
++
++    listed = await client.get("/api/v1/personal/items", headers=headers)
++    assert listed.status_code == 200
++    assert {item["kind"] for item in listed.json()} == {
++        "knowledge",
++        "interact_session",
++        "template",
++    }
++    item_id = UUID(result["items"][0]["id"])
++    assert (await client.get("/api/v1/personal/items", headers=bearer("other"))).json() == []
++    denied_update = await client.put(
++        f"/api/v1/personal/items/{item_id}",
++        headers=bearer("other"),
++        json={
++            "expected_revision": 1,
++            "title": "Attempted overwrite",
++            "data": knowledge()["data"],
++        },
++    )
++    assert denied_update.status_code == 404
++    hidden_delete = await client.delete(
++        f"/api/v1/personal/items/{item_id}",
++        headers=bearer("other"),
++    )
++    assert hidden_delete.status_code == 204
++    assert len(
++        (await client.get("/api/v1/personal/items", headers=headers)).json()
++    ) == 4
++
++    update_payload = {
++        "expected_revision": 1,
++        "title": "Updated privately",
++        "data": {
++            **knowledge()["data"],
++            "title": "Updated privately",
++        },
++    }
++    updated = await client.put(
++        f"/api/v1/personal/items/{item_id}",
++        headers=headers,
++        json=update_payload,
++    )
++    assert updated.status_code == 200
++    assert updated.json()["revision"] == 2
++    replayed_update = await client.put(
++        f"/api/v1/personal/items/{item_id}",
++        headers=headers,
++        json=update_payload,
++    )
++    assert replayed_update.status_code == 200
++    assert replayed_update.json()["revision"] == 2
++    conflict = await client.put(
++        f"/api/v1/personal/items/{item_id}",
++        headers=headers,
++        json={
++            "expected_revision": 1,
++            "title": "Stale write",
++            "data": knowledge()["data"],
++        },
++    )
++    assert conflict.status_code == 409
++    async with session_factory() as session:
++        assert await session.scalar(
++            select(PersonalWorkspaceItem).where(
++                PersonalWorkspaceItem.firebase_uid == "other"
++            )
++        ) is None
++
++    deleted = await client.delete(
++        f"/api/v1/personal/items/{item_id}",
++        headers=headers,
++    )
++    assert deleted.status_code == 204
++    assert (
++        await client.delete(f"/api/v1/personal/items/{item_id}", headers=headers)
++    ).status_code == 204
++    remaining = await client.get("/api/v1/personal/items", headers=headers)
++    assert {item["kind"] for item in remaining.json()} == {
++        "knowledge",
++        "interact_session",
++        "template",
++    }
++
++
++@pytest.mark.asyncio
++async def test_personal_workspace_denies_anonymous_unverified_and_overrides(
++    app_client, monkeypatch
++) -> None:
++    client, _ = app_client
++    install_test_tokens(monkeypatch)
++    for headers, detail in [
++        (
++            bearer("anonymous-owner", provider="anonymous"),
++            "A registered account is required to use personal storage.",
++        ),
++        (
++            bearer("unverified-user", verified=False),
++            "Verify your email address before using personal storage.",
++        ),
++    ]:
++        response = await client.get("/api/v1/personal/items", headers=headers)
++        assert response.status_code == 403
++        assert response.json()["detail"] == detail
++        write = await client.post(
++            "/api/v1/personal/items/import",
++            headers=headers,
++            json={"items": [knowledge()]},
++        )
++        assert write.status_code == 403
++
++    invalid = await client.get("/api/v1/personal/items")
++    assert invalid.status_code == 401
++    malformed = await client.get(
++        "/api/v1/personal/items",
++        headers={"Authorization": "******"},
++    )
++    assert malformed.status_code == 401
++    for header, value in [
++        ("X-User-ID", "other-user"),
++        ("X-Organisation-ID", "other-organisation"),
++        ("X-User-Role", "admin"),
++    ]:
++        override = await client.post(
++            "/api/v1/personal/items/import",
++            headers={**bearer("verified-user"), header: value},
++            json={"items": [knowledge()]},
++        )
++        assert override.status_code == 400
++    body_override = await client.post(
++        "/api/v1/personal/items/import",
++        headers=bearer("verified-user"),
++        json={
++            "items": [
++                {
++                    **knowledge(),
++                    "firebase_uid": "victim",
++                }
++            ]
++        },
++    )
++    assert body_override.status_code == 422
++
++
++@pytest.mark.asyncio
++async def test_personal_import_concurrent_replay_and_invalid_batch_are_atomic(
++    app_client, monkeypatch
++) -> None:
++    client, session_factory = app_client
++    install_test_tokens(monkeypatch)
++    payload = {"items": [knowledge()]}
++    headers = bearer("concurrent-user")
++    first, second = await asyncio.gather(
++        client.post(
++            "/api/v1/personal/items/import", headers=headers, json=payload
++        ),
++        client.post(
++            "/api/v1/personal/items/import", headers=headers, json=payload
++        ),
++    )
++    assert first.status_code == second.status_code == 201
++    assert sum(first.json()["created"] + second.json()["created"]) == 1
++
++    invalid = await client.post(
++        "/api/v1/personal/items/import",
++        headers=headers,
++        json={
++            "items": [
++                knowledge("knowledge:valid"),
++                {
++                    "kind": "knowledge",
++                    "source_key": "knowledge:invalid",
++                    "title": "Bad item",
++                    "data": {"title": "Missing stable item ID"},
++                },
++            ]
++        },
++    )
++    assert invalid.status_code == 422
++    async with session_factory() as session:
++        count = await session.scalar(
++            select(func.count()).select_from(PersonalWorkspaceItem)
++        )
++    assert count == 1
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 472379635a2b9f9953ac874d6b69acf37ae453a5..0741513d7b5b2650ad210f783fb373044ff332b2 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -93,10 +93,9 @@ infer the user's formal department.
+   rejected. Every group operation requires a non-anonymous Firebase identity
+   with a verified email; organisation membership is not required. Anonymous and
+   unverified identities are denied access, including read-only operations.
+-  Existing group content remains keyed to its Firebase UID; linking credentials
+-  to that same UID and verifying the email restores eligibility without
+-  migrating the content. Every invitation redemption remains pending until a
+-  group admin approves it.
++  Group content remains keyed to its Firebase UID; a separate personal account
++  does not inherit memberships. Every invitation redemption remains pending
++  until a group admin approves it.
+ - Group roles and invitation approval are enforced by guest services on every
+   content, search, history, export, and membership request. Invitation previews
+   disclose validity only. Group membership does not grant organisation,
+@@ -123,11 +122,29 @@ infer the user's formal department.
+   exists; group content is stored remotely only after an explicit group action.
+ - Anonymous guests can continue using local Knowledge, Interact, templates, and
+   backup/import. Creating or signing into an account does not upload, migrate,
+-  or delete that local data; account creation also does not purge existing
+-  Groups content.
++  or delete that local data. Account creation uses normal Firebase registration;
++  it does not link credentials to an anonymous UID or transfer existing Groups
++  membership.
++- Verified registered accounts may explicitly import selected local Knowledge
++  items, Interact sessions, or templates into the separate
++  `personal_workspace_items` store. Rows are scoped to the verified Firebase UID,
++  not an organisation, and are available across devices after signing into that
++  account. The personal API independently verifies the Firebase ID token,
++  registered provider, verified email, and App Check; request-supplied identity
++  headers are rejected. Personal content is not part of organisation search,
++  Groups, or organisation routes. Imports are idempotent by account and stable
++  source key, and never remove the local originals.
++- Personal rows persist until their owner deletes them; signing out does not
++  delete server data. Firebase account deletion does not cascade to these rows.
++  This feature adds no expiry or automatic purge.
++- Migration `0013` creates the personal workspace table without backfilling
++  existing local or group data. For an isolated development database, run
++  `cd backend && alembic upgrade head` using its intended `DATABASE_URL`.
++  Hosted migrations require the existing reviewed development migration process;
++  this feature work does not run a hosted migration.
+ - Registered organisation routes continue to resolve active Firebase UID
+   mappings and retain the existing tenant, department, private-session,
+-  governance, and audit checks. A linked guest identity can access only its
++  governance, and audit checks. A registered identity can access only its
+   existing group memberships. Each Firebase UID maps to one account and each
+   account belongs to one organisation; multiple organisation memberships per
+   account are not supported. Group roles remain independent of organisation
+diff --git a/docs/operations/guest-group-retention.md b/docs/operations/guest-group-retention.md
+index ef411ff7d2cbfa0ce4c42daa668b32a9010345c9..7576499745424a8f2351f2630b3420177aaa23df 100644
+--- a/docs/operations/guest-group-retention.md
++++ b/docs/operations/guest-group-retention.md
+@@ -19,10 +19,10 @@ The current non-web storage implementation is process-memory only. Firebase
+ identity persistence is managed by the Firebase SDK; this app does not set an
+ identity-expiry policy, and actual hosted/device persistence has not been
+ independently verified. Firebase anonymous-account cleanup/project retention
+-configuration is also unverified. The backend stores only explicitly shared
+-group content, not private solo drafts. Introducing backend draft storage would
+-require a separate design for identity binding, access control, expiry, and
+-cleanup.
++configuration is also unverified. The backend also stores explicitly imported
++personal work in `personal_workspace_items`; this is separate from Groups and
++organisation content, and each row is bound to the verified registered Firebase
++UID. No local or group content is backfilled.
+ 
+ Invitations are individually time-limited (24 hours by default; API limits are
+ one hour to seven days) and revoked/expired invitations cannot be redeemed.
+@@ -69,15 +69,25 @@ confirms its grants; do not broaden IAM or database privileges for this task.
+ ## Account identity continuity
+ 
+ Shared-group membership and administrator roles are keyed to the Firebase UID.
+-Creating an account from the current guest identity links credentials to that
+-same UID; after email verification, that registered identity can continue to
+-access groups already linked to the UID. Groups require a non-anonymous Firebase
+-identity with a verified email, but do not require organisation membership.
+-Signing into or creating a separate identity does not transfer group membership
+-or local browser work. Anonymous guests retain local Knowledge, Interact,
+-templates, and import/export; account creation or sign-in does not upload,
+-migrate, or delete that local data or automatically purge existing Groups data.
+-Organisation membership and roles are independent of shared-group membership.
++Groups require a non-anonymous Firebase identity with a verified email, but do
++not require organisation membership. Creating or signing into a personal
++account uses ordinary Firebase account flows and does not link an anonymous
++identity, transfer group membership, or change the local browser copy. Local
++Knowledge, Interact sessions, templates, and import/export remain available to
++anonymous guests. After email verification, a registered account can explicitly
++select local items to import to its UID-private personal workspace. Imports
++preserve the local originals, are safe to retry using a stable source key, and
++are not exposed through Groups or organisation search. Organisation membership
++and roles are independent of both personal storage and group membership.
++
++The `0013_personal_workspace` Alembic migration creates the empty table; it does
++not import or rewrite existing data. For an isolated development database, run
++`cd backend && alembic upgrade head` with the intended `DATABASE_URL`. Apply
++hosted migrations only through the existing reviewed development migration
++process; no hosted migration or deployment is part of this feature change.
++Personal rows have no configured expiry or automatic purge; signing out leaves
++them stored, Firebase account deletion does not cascade to them, and removal
++must be initiated by the owning account.
+ 
+ Administration transfer is recipient-accepted. An active group admin may request
+ transfer to an active member; the request expires after seven days. The requester
+-- 
+2.55.0
+

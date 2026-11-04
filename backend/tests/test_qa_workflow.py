@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 
 from app.models.answer_reaction import AnswerReaction
 from app.models.organisation import Organisation
+from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.user import User, UserRole
 
 
@@ -34,6 +35,16 @@ async def seed_users(session_factory):
             display_name="Outsider",
         )
         session.add_all([author, contributor, admin, outsider])
+        await session.flush()
+        session.add(
+            OrganisationPermissionGrant(
+                organisation_id=organisation.id,
+                user_id=admin.id,
+                permission="legacy_admin",
+                scope_type="organisation",
+                granted_by=admin.id,
+            )
+        )
         await session.commit()
         return {
             "organisation_id": organisation.id,
@@ -93,18 +104,27 @@ async def test_answer_resolve_detail_and_reopen(app_client) -> None:
 
     detail = await client.get(
         f"/api/v1/questions/{question['id']}",
-        params={"organisation_id": str(identities["organisation_id"])},
+        params={
+            "organisation_id": str(identities["organisation_id"]),
+            "user_id": str(identities["author_id"]),
+        },
     )
     assert detail.status_code == 200
     assert detail.json()["accepted_answer"]["id"] == answer["id"]
     assert detail.json()["accepted_answer"]["is_accepted"] is True
     assert len(detail.json()["answers"]) == 1
 
+    missing_reopen_body = await client.post(
+        f"/api/v1/questions/{question['id']}/reopen",
+    )
+    assert missing_reopen_body.status_code == 422
+
     reopened = await client.post(
         f"/api/v1/questions/{question['id']}/reopen",
-        json={
-            "organisation_id": str(identities["organisation_id"]),
-            "user_id": str(identities["admin_id"]),
+        json={},
+        headers={
+            "X-Organisation-ID": str(identities["organisation_id"]),
+            "X-User-ID": str(identities["admin_id"]),
         },
     )
     assert reopened.status_code == 200
@@ -203,6 +223,7 @@ async def test_update_archive_and_owned_content_crud(app_client) -> None:
         "/api/v1/questions",
         params={
             "organisation_id": str(identities["organisation_id"]),
+            "user_id": str(identities["author_id"]),
             "status": "open",
         },
     )
@@ -263,6 +284,7 @@ async def test_update_archive_and_owned_content_crud(app_client) -> None:
         json={
             "organisation_id": str(identities["organisation_id"]),
             "user_id": str(identities["admin_id"]),
+            "reason": "No longer current.",
         },
     )
     assert archived.status_code == 200

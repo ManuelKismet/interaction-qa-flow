@@ -1,8 +1,15 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.embedding_provider import (
+    EmbeddingProviderError,
+    get_embedding_provider,
+)
+from app.ai.embedding_service import EmbeddingService
 from app.core.config import Settings
 from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
 from app.models.answer import Answer, AnswerStatus
@@ -35,6 +42,8 @@ from app.schemas.governance import (
 from app.schemas.user import UserSummary
 from app.services.permissions import PermissionService
 
+logger = logging.getLogger(__name__)
+
 
 class GovernanceService:
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
@@ -63,6 +72,8 @@ class GovernanceService:
         await self._supersede_current(question, answer.id, actor)
         now = datetime.now(UTC)
         answer.status = AnswerStatus.VERIFIED
+        answer.protected_at = answer.protected_at or now
+        question.protected_at = question.protected_at or now
         answer.verified_by = actor.id
         answer.verified_at = now
         answer.last_reviewed_by = actor.id
@@ -78,6 +89,7 @@ class GovernanceService:
         await self._audit(actor, AuditAction.ANSWER_VERIFIED, "answer", answer.id)
         await self.session.commit()
         await self.session.refresh(answer)
+        await self._sync_question_embedding(question)
         return answer
 
     async def unverify(
@@ -86,7 +98,9 @@ class GovernanceService:
         organisation_id: UUID,
         user_id: UUID,
     ) -> Answer:
-        answer, _, actor = await self._managed_answer(answer_id, organisation_id, user_id)
+        answer, question, actor = await self._managed_answer(
+            answer_id, organisation_id, user_id
+        )
         if answer.status != AnswerStatus.VERIFIED:
             raise ConflictError("Only a verified answer can be unverified")
         answer.status = AnswerStatus.COMMUNITY
@@ -98,6 +112,7 @@ class GovernanceService:
         await self._audit(actor, AuditAction.ANSWER_UNVERIFIED, "answer", answer.id)
         await self.session.commit()
         await self.session.refresh(answer)
+        await self._sync_question_embedding(question)
         return answer
 
     async def review(
@@ -107,7 +122,9 @@ class GovernanceService:
         user_id: UUID,
         data: ReviewAnswerRequest,
     ) -> Answer:
-        answer, _, actor = await self._managed_answer(answer_id, organisation_id, user_id)
+        answer, _, actor = await self._managed_answer(
+            answer_id, organisation_id, user_id, permission="review"
+        )
         if answer.status != AnswerStatus.VERIFIED:
             raise ConflictError("Only verified answers can be reviewed")
         now = datetime.now(UTC)
@@ -149,6 +166,20 @@ class GovernanceService:
         await self.session.refresh(challenge)
         return AnswerChallengeResponse.model_validate(challenge)
 
+    async def _sync_question_embedding(self, question: Question | None) -> None:
+        if question is None:
+            return
+        try:
+            await EmbeddingService(
+                self.session, get_embedding_provider(self.settings)
+            ).sync_question(question)
+        except EmbeddingProviderError:
+            logger.exception(
+                "Failed to regenerate search embedding for question %s", question.id
+            )
+        except Exception:
+            logger.exception("Failed to persist search embedding for question %s", question.id)
+
     async def list_challenges(
         self,
         answer_id: UUID,
@@ -186,7 +217,10 @@ class GovernanceService:
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
-        await self.permissions.require_answer_manager(actor, question, self.governance)
+        await self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_answer_manager(
+            actor, question, self.governance, permission="review"
+        )
 
         now = datetime.now(UTC)
         challenge.status = ChallengeStatus.ACCEPTED if accept else ChallengeStatus.REJECTED
@@ -196,6 +230,9 @@ class GovernanceService:
         if accept:
             replacement_body = data.replacement_body or challenge.suggested_answer
             if replacement_body:
+                await self.permissions.require_answer_manager(
+                    actor, question, self.governance, permission="answer_approval"
+                )
                 await self._replace_answer(
                     answer,
                     question,
@@ -212,6 +249,8 @@ class GovernanceService:
         await self._audit(actor, action, "answer_challenge", challenge.id)
         await self.session.commit()
         await self.session.refresh(challenge)
+        if accept:
+            await self._sync_question_embedding(question)
         return AnswerChallengeResponse.model_validate(challenge)
 
     async def versions(
@@ -238,11 +277,16 @@ class GovernanceService:
         owner_user_id: UUID,
     ) -> DepartmentAnswerOwnerResponse:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
+        await self.permissions.require_admin(actor)
         department = await self.departments.get_for_organisation(
             department_id, organisation_id
         )
-        owner = await self.users.get_for_organisation(owner_user_id, organisation_id)
+        owner = await self.session.scalar(
+            select(User).where(
+                User.id == owner_user_id,
+                User.organisation_id == organisation_id,
+            ).with_for_update().execution_options(populate_existing=True)
+        )
         if not department or not owner:
             raise NotFoundError("Department or user not found in this organisation")
         if owner.role != UserRole.ANSWER_OWNER:
@@ -282,7 +326,7 @@ class GovernanceService:
         user_id: UUID,
     ) -> None:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
+        await self.permissions.require_admin(actor)
         assignment = await self.governance.get_department_owner(
             organisation_id, department_id, owner_user_id
         )
@@ -305,7 +349,7 @@ class GovernanceService:
         user_id: UUID,
     ) -> list[DepartmentAnswerOwnerResponse]:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
+        await self.permissions.require_admin(actor)
         return [
             DepartmentAnswerOwnerResponse.model_validate(
                 {
@@ -319,6 +363,27 @@ class GovernanceService:
             )
         ]
 
+    async def my_department_owner_ids(
+        self,
+        organisation_id: UUID,
+        user_id: UUID,
+    ) -> list[UUID]:
+        actor = await self.permissions.actor(user_id, organisation_id)
+        if actor.role != UserRole.ANSWER_OWNER:
+            raise PermissionDeniedError(
+                "Only answer owners can view their department assignments"
+            )
+        return sorted(
+            {
+                department.id
+                for _, department, owner in await self.governance.list_department_owners(
+                    organisation_id
+                )
+                if owner.id == actor.id
+            },
+            key=str,
+        )
+
     async def audit_events(
         self,
         organisation_id: UUID,
@@ -326,7 +391,7 @@ class GovernanceService:
         limit: int,
     ) -> list[AuditEventResponse]:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
+        await self.permissions.require_admin(actor)
         return [
             AuditEventResponse.model_validate(
                 {**event.__dict__, "metadata": event.event_metadata}
@@ -343,9 +408,13 @@ class GovernanceService:
         status: ChallengeStatus | None = None,
     ) -> list[ReviewQueueItem]:
         actor = await self.permissions.actor(user_id, organisation_id)
-        if actor.role == UserRole.ADMIN:
-            department_ids = None if department_id is None else [department_id]
-        elif actor.role == UserRole.ANSWER_OWNER:
+        can_review_anywhere = await self.permissions.has_any_permission(
+            actor, "review"
+        )
+        can_approve_anywhere = await self.permissions.has_any_permission(
+            actor, "answer_approval"
+        )
+        if actor.role == UserRole.ANSWER_OWNER:
             department_ids = await self.governance.owned_department_ids(
                 organisation_id, actor.id
             )
@@ -353,6 +422,8 @@ class GovernanceService:
                 department_ids = (
                     [department_id] if department_id in department_ids else []
                 )
+        elif can_review_anywhere or can_approve_anywhere:
+            department_ids = None if department_id is None else [department_id]
         else:
             raise PermissionDeniedError("You do not have access to the review queue")
 
@@ -377,6 +448,46 @@ class GovernanceService:
                 organisation_id, department_ids, suggestion_status
             )
         )
+        async def may_access(question: Question, permission: str) -> bool:
+            if not await self.permissions.can_view_question(actor, question):
+                return False
+            department_id = question.department_id
+            if department_id is None and question.team_id is not None:
+                department_id = await self.governance.team_department_id(
+                    question.team_id, organisation_id
+                )
+            if await self.permissions.has_permission(
+                actor,
+                permission,
+                department_id=department_id,
+                team_id=question.team_id,
+            ):
+                return True
+            return bool(
+                actor.role == UserRole.ANSWER_OWNER
+                and department_id is not None
+                and await self.governance.is_department_owner(
+                    organisation_id, department_id, actor.id
+                )
+            )
+
+        challenges = [
+            row for row in challenges if await may_access(row[2], "review")
+        ]
+        due_answers = [
+            row for row in due_answers if await may_access(row[1], "review")
+        ]
+        community_answers = [
+            row
+            for row in community_answers
+            if await may_access(row[1], "answer_approval")
+        ]
+        suggestion_rows = [
+            row
+            for row in suggestion_rows
+            if await may_access(row[1], "review")
+            and await may_access(row[2], "review")
+        ]
         items: list[ReviewQueueItem] = []
         if item_type in (None, ReviewQueueType.CHALLENGE):
             items.extend(
@@ -469,13 +580,17 @@ class GovernanceService:
         answer = await self.answers.get_for_organisation(answer_id, organisation_id)
         if not answer:
             raise NotFoundError("Answer not found")
+        if answer.archived_at is not None:
+            raise ConflictError("Archived answers cannot be governed")
         question = await self.questions.get_for_organisation(
             answer.question_id, organisation_id
         )
         if not question:
             raise NotFoundError("Question not found")
+        if question.status == QuestionStatus.ARCHIVED:
+            raise ConflictError("Archived questions cannot be governed")
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         return answer, question, actor
 
     async def _managed_answer(
@@ -483,6 +598,8 @@ class GovernanceService:
         answer_id: UUID,
         organisation_id: UUID,
         user_id: UUID,
+        *,
+        permission: str = "answer_approval",
     ) -> tuple[Answer, Question, User]:
         answer, question, actor = await self._visible_answer(
             answer_id, organisation_id, user_id
@@ -493,7 +610,7 @@ class GovernanceService:
         if not locked_question:
             raise NotFoundError("Question not found")
         await self.permissions.require_answer_manager(
-            actor, locked_question, self.governance
+            actor, locked_question, self.governance, permission=permission
         )
         return answer, locked_question, actor
 

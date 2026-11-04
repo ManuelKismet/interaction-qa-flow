@@ -135,6 +135,17 @@ async def list_department_answer_owners(
     )
 
 
+@router.get("/department-answer-owners/mine", response_model=list[UUID])
+async def list_my_department_answer_owner_ids(
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+) -> list[UUID]:
+    return await GovernanceService(session, settings).my_department_owner_ids(
+        identity.organisation_id, identity.user_id
+    )
+
+
 @router.post(
     "/departments/{department_id}/answer-owners",
     response_model=DepartmentAnswerOwnerResponse,

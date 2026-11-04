@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/shared/utils/responsive.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
+import 'package:int_qa_flow/features/guided/presentation/guided_scope_dialog.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 
 class GuidedPage extends ConsumerWidget {
   const GuidedPage({super.key});
@@ -15,42 +19,50 @@ class GuidedPage extends ConsumerWidget {
     final drafts = ref.watch(draftGuidedSessionsProvider);
     final active = ref.watch(activeGuidedSessionsProvider);
     final completed = ref.watch(completedGuidedSessionsProvider);
+    final archived = ref.watch(archivedGuidedSessionsProvider);
     final templates = ref.watch(guidedTemplatesProvider);
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(32, 28, 32, 12),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    'IntQAFlow Interact',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
+                PopupMenuButton<String>(
+                  tooltip: 'Interact options',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (_) =>
+                      _guidedAction(context, () => _importLegacy(context, ref)),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'import',
+                      child: Text('Import session'),
+                    ),
+                  ],
                 ),
-                Tooltip(
-                  message: 'Import legacy Interact JSON',
-                  child: IconButton(
-                    icon: const Icon(Icons.upload_file_outlined),
-                    onPressed: () => _importLegacy(context, ref),
-                  ),
-                ),
-                const SizedBox(width: 8),
                 FilledButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('New session'),
-                  onPressed: () => _createSession(context, ref),
+                  onPressed: () => _guidedAction(
+                    context,
+                    () => _createSession(context, ref),
+                  ),
                 ),
               ],
             ),
           ),
           const TabBar(
+            isScrollable: true,
             tabs: [
-              Tab(text: 'Active sessions'),
+              Tab(text: 'Active'),
               Tab(text: 'Templates'),
-              Tab(text: 'Completed sessions'),
+              Tab(text: 'Completed'),
+              Tab(text: 'Archived'),
             ],
           ),
           Expanded(
@@ -59,6 +71,7 @@ class GuidedPage extends ConsumerWidget {
                 _SessionsList(groups: [drafts, active]),
                 _TemplatesList(templates: templates),
                 _SessionsList(groups: [completed]),
+                _SessionsList(groups: [archived]),
               ],
             ),
           ),
@@ -68,6 +81,7 @@ class GuidedPage extends ConsumerWidget {
   }
 
   Future<void> _createSession(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(guidedRepositoryProvider);
     final title = TextEditingController();
     final owner = TextEditingController();
     final reference = TextEditingController();
@@ -79,8 +93,9 @@ class GuidedPage extends ConsumerWidget {
     final departments = await ref.read(departmentsProvider.future);
     final teams = await ref.read(teamsProvider.future);
     if (!context.mounted) return;
-    final create = await showDialog<bool>(
+    final create = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: const Text('New Interact session'),
@@ -90,98 +105,216 @@ class GuidedPage extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(controller: title, decoration: const InputDecoration(labelText: 'Session title')),
-                  TextField(controller: owner, decoration: const InputDecoration(labelText: 'Owner (optional)')),
-                  TextField(controller: reference, decoration: const InputDecoration(labelText: 'Context / reference')),
+                  TextField(
+                    controller: title,
+                    decoration: const InputDecoration(
+                      labelText: 'Session title',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: owner,
+                    decoration: const InputDecoration(
+                      labelText: 'Owner (optional)',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: reference,
+                    decoration: const InputDecoration(
+                      labelText: 'Context / reference',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
                     initialValue: templateId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Start'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('Blank session')),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Blank session'),
+                      ),
                       for (final template in templates)
-                        DropdownMenuItem(value: template.id, child: Text('${template.name} · v${template.currentVersion}')),
+                        DropdownMenuItem(
+                          value: template.id,
+                          child: Text(
+                            '${template.name} · v${template.currentVersion}',
+                          ),
+                        ),
                     ],
                     onChanged: (value) => setState(() => templateId = value),
                   ),
                   DropdownButtonFormField<String?>(
                     initialValue: departmentId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Department'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('No department')),
-                      for (final item in departments) DropdownMenuItem(value: item.id, child: Text(item.name)),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('No department'),
+                      ),
+                      for (final item in departments)
+                        DropdownMenuItem(
+                          value: item.id,
+                          child: Text(item.name),
+                        ),
                     ],
                     onChanged: (value) => setState(() => departmentId = value),
                   ),
                   DropdownButtonFormField<String?>(
                     initialValue: teamId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Team'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('No team')),
-                      for (final item in teams) DropdownMenuItem(value: item.id, child: Text(item.name)),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('No team'),
+                      ),
+                      for (final item in teams)
+                        DropdownMenuItem(
+                          value: item.id,
+                          child: Text(item.name),
+                        ),
                     ],
                     onChanged: (value) => setState(() => teamId = value),
                   ),
                   DropdownButtonFormField<String>(
                     initialValue: visibility,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Visibility'),
                     items: const [
-                      DropdownMenuItem(value: 'private', child: Text('Private')),
-                      DropdownMenuItem(value: 'department', child: Text('Department')),
+                      DropdownMenuItem(
+                        value: 'private',
+                        child: Text('Private'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'department',
+                        child: Text('Department'),
+                      ),
                       DropdownMenuItem(value: 'team', child: Text('Team')),
-                      DropdownMenuItem(value: 'organisation', child: Text('Organisation')),
+                      DropdownMenuItem(
+                        value: 'organisation',
+                        child: Text('Organisation'),
+                      ),
                     ],
-                    onChanged: (value) => setState(() => visibility = value ?? 'private'),
+                    onChanged: (value) =>
+                        setState(() => visibility = value ?? 'private'),
                   ),
                 ],
               ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Create'),
+            ),
           ],
         ),
       ),
     );
-    if (create != true || title.text.trim().isEmpty) return;
-    final session = await ref.read(guidedRepositoryProvider).createSession(
-          title: title.text.trim(),
-          owner: owner.text.trim().isEmpty ? null : owner.text.trim(),
-          contextReference: reference.text.trim().isEmpty ? null : reference.text.trim(),
-          departmentId: departmentId,
-          teamId: teamId,
-          visibility: visibility,
-          templateId: templateId,
-        );
-    invalidateGuidedLists(ref);
-    if (context.mounted) context.go('/guided/sessions/${session.id}');
+    if (create != true || title.text.trim().isEmpty || !context.mounted) return;
+    final session = await repository.createSession(
+      title: title.text.trim(),
+      owner: owner.text.trim().isEmpty ? null : owner.text.trim(),
+      contextReference: reference.text.trim().isEmpty
+          ? null
+          : reference.text.trim(),
+      departmentId: departmentId,
+      teamId: teamId,
+      visibility: visibility,
+      templateId: templateId,
+    );
+    if (context.mounted) {
+      invalidateGuidedLists(ref);
+      repository.ensureCurrent();
+      context.go('/guided/sessions/${session.id}');
+    }
   }
 
   Future<void> _importLegacy(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(guidedRepositoryProvider);
     final payload = TextEditingController();
-    final submit = await showDialog<bool>(
+    final submit = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
       builder: (context) => AlertDialog(
-        title: const Text('Import legacy Interact JSON'),
+        title: const Text('Import session'),
         content: SizedBox(
           width: 620,
           child: TextField(
             controller: payload,
             minLines: 10,
             maxLines: 18,
-            decoration: const InputDecoration(labelText: 'Legacy JSON'),
+            decoration: const InputDecoration(labelText: 'Session JSON'),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Import')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Import'),
+          ),
         ],
       ),
     );
-    if (submit != true || payload.text.trim().isEmpty) return;
-    final session = await ref.read(guidedRepositoryProvider).importLegacy(payload.text);
-    invalidateGuidedLists(ref);
-    if (context.mounted) context.go('/guided/sessions/${session.id}');
+    if (submit != true || payload.text.trim().isEmpty || !context.mounted) {
+      return;
+    }
+    var imported = false;
+    try {
+      final result = await repository.importLegacy(payload.text);
+      imported = true;
+      if (!context.mounted) return;
+      invalidateGuidedLists(ref);
+      if (result.warnings.isNotEmpty) {
+        await showGuidedScopedDialog<void>(
+          context: context,
+          repository: repository,
+          builder: (context) => AlertDialog(
+            title: const Text('Imported with warnings'),
+            content: SingleChildScrollView(
+              child: SelectableText(result.warnings.join('\n')),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Review session'),
+              ),
+            ],
+          ),
+        );
+      }
+      repository.ensureCurrent();
+      if (context.mounted) context.go('/guided/sessions/${result.session.id}');
+    } catch (error) {
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Import failed'),
+          content: Text(
+            imported
+                ? 'The session was imported, but the view changed. Reopen Interact to review it.\n$error'
+                : 'No session was imported. Use an organisation session export or supported legacy JSON, not a guest workspace backup.\n$error',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
 
@@ -192,28 +325,47 @@ class _SessionsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loading = groups.any((group) => group.isLoading);
-    final sessions = groups.expand((group) => group.value ?? const <GuidedSessionSummary>[]).toList()
-      ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
-    if (loading && sessions.isEmpty) return const Center(child: CircularProgressIndicator());
-    if (sessions.isEmpty) return const Center(child: Text('No sessions here yet.'));
-    return ListView.separated(
-      padding: const EdgeInsets.all(32),
-      itemCount: sessions.length,
-      separatorBuilder: (_, _) => const Divider(),
-      itemBuilder: (context, index) {
-        final session = sessions[index];
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          title: Text(session.title),
-          subtitle: Text([
-            session.status,
-            session.visibility,
-            if (session.contextReference?.isNotEmpty == true) session.contextReference!,
-          ].join(' · ')),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.go('/guided/sessions/${session.id}'),
-        );
-      },
+    final sessions =
+        groups
+            .expand((group) => group.value ?? const <GuidedSessionSummary>[])
+            .toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    if (loading && sessions.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (sessions.isEmpty) {
+      return const Center(child: Text('No sessions here yet.'));
+    }
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1040),
+        child: ListView.separated(
+          padding: Responsive.pagePadding(context, desktop: 32),
+          itemCount: sessions.length,
+          separatorBuilder: (_, _) => const Divider(),
+          itemBuilder: (context, index) {
+            final session = sessions[index];
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 8,
+              ),
+              title: Text(session.title),
+              subtitle: Text(
+                [
+                  session.status,
+                  session.visibility,
+                  if (session.contextReference?.isNotEmpty == true)
+                    session.contextReference!,
+                ].join(' · '),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.go('/guided/sessions/${session.id}'),
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -224,106 +376,233 @@ class _TemplatesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final membershipState = ref.watch(currentMembershipProvider);
+    final membership = membershipState.isLoading || membershipState.hasError
+        ? null
+        : membershipState.value;
+    final authorityState = ref.watch(organisationProfileProvider);
+    final authority = authorityState.isLoading || authorityState.hasError
+        ? null
+        : authorityState.value;
     return templates.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => const Center(child: Text('Unable to load templates.')),
-      data: (items) => ListView(
-        padding: const EdgeInsets.all(32),
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create template'),
-                  onPressed: () => _create(context, ref),
+      data: (items) => Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1040),
+          child: ListView(
+            padding: Responsive.pagePadding(context, desktop: 32),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create template'),
+                      onPressed: () =>
+                          _guidedAction(context, () => _create(context, ref)),
+                    ),
+                    IconButton(
+                      tooltip: 'Import templates',
+                      icon: const Icon(Icons.upload_file_outlined),
+                      onPressed: () =>
+                          _guidedAction(context, () => _import(context, ref)),
+                    ),
+                    IconButton(
+                      tooltip: 'Export templates',
+                      icon: const Icon(Icons.download_outlined),
+                      onPressed: () =>
+                          _guidedAction(context, () => _export(context, ref)),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  tooltip: 'Import templates',
-                  icon: const Icon(Icons.upload_file_outlined),
-                  onPressed: () => _import(context, ref),
-                ),
-                IconButton(
-                  tooltip: 'Export templates',
-                  icon: const Icon(Icons.download_outlined),
-                  onPressed: () => _export(context, ref),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (items.isEmpty) const Center(child: Text('No templates yet.')),
-          for (final item in items)
-            ListTile(
-              title: Text(item.name),
-              subtitle: Text('v${item.currentVersion} · ${item.questions.length} questions · ${item.status}'),
-              trailing: PopupMenuButton<String>(
-                onSelected: (action) async {
-                  final repository = ref.read(guidedRepositoryProvider);
-                  if (action == 'version') await repository.versionTemplate(item.id, item.questions);
-                  if (action == 'duplicate') await repository.duplicateTemplate(item.id);
-                  if (action == 'archive') await repository.archiveTemplate(item.id);
-                  ref.invalidate(guidedTemplatesProvider);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'version', child: Text('Save as new version')),
-                  PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
-                  PopupMenuItem(value: 'archive', child: Text('Archive')),
-                ],
               ),
-              onTap: item.status == 'active' ? () => _start(context, ref, item) : null,
-            ),
-        ],
+              const SizedBox(height: 20),
+              if (items.isEmpty) const Center(child: Text('No templates yet.')),
+              for (final item in items)
+                _templateTile(
+                  context,
+                  ref,
+                  item,
+                  canManage:
+                      membership != null &&
+                      authority != null &&
+                      authority.userId == membership.userId &&
+                      authority.organisationId == membership.organisationId &&
+                      (membership.userId == item.createdById ||
+                          authority.isOwner ||
+                          authority.permissions.contains('legacy_admin')),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
+  Widget _templateTile(
+    BuildContext context,
+    WidgetRef ref,
+    GuidedTemplate template, {
+    required bool canManage,
+  }) => ListTile(
+    key: ValueKey('guided-template-${template.id}'),
+    title: Text(template.name),
+    subtitle: Text(
+      'v${template.currentVersion} · ${template.questions.length} questions · ${template.status}',
+    ),
+    trailing: canManage
+        ? PopupMenuButton<String>(
+            onSelected: (action) async {
+              try {
+                final repository = ref.read(guidedRepositoryProvider);
+                if (action == 'version') {
+                  await _saveVersion(context, ref, template);
+                  return;
+                }
+                if (action == 'duplicate') {
+                  await repository.duplicateTemplate(template.id);
+                }
+                if (action == 'archive') {
+                  await repository.archiveTemplate(template.id);
+                }
+                if (action == 'restore') {
+                  await repository.restoreTemplate(template.id);
+                }
+                if (context.mounted) ref.invalidate(guidedTemplatesProvider);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Could not update this template. Please try again.',
+                        ),
+                      ),
+                    );
+                }
+              }
+            },
+            itemBuilder: (_) => template.status == 'archived'
+                ? const [
+                    PopupMenuItem(value: 'restore', child: Text('Restore')),
+                  ]
+                : const [
+                    PopupMenuItem(
+                      value: 'version',
+                      child: Text('Save as new version'),
+                    ),
+                    PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
+                    PopupMenuItem(value: 'archive', child: Text('Archive')),
+                  ],
+          )
+        : null,
+    onTap: template.status == 'active'
+        ? () => _guidedAction(context, () => _start(context, ref, template))
+        : null,
+  );
+
+  Future<void> _saveVersion(
+    BuildContext context,
+    WidgetRef ref,
+    GuidedTemplate template,
+  ) async {
+    final repository = ref.read(guidedRepositoryProvider);
+    final questions =
+        await showGuidedScopedDialog<List<GuidedTemplateQuestion>>(
+          context: context,
+          repository: repository,
+          builder: (_) => GuidedTemplateVersionDraftDialog(
+            questions: template.questions,
+            currentVersion: template.currentVersion,
+          ),
+        );
+    if (questions == null || !context.mounted) return;
+    await repository.versionTemplate(template.id, questions);
+    if (context.mounted) ref.invalidate(guidedTemplatesProvider);
+  }
+
   Future<void> _create(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(guidedRepositoryProvider);
     final name = TextEditingController();
     final questions = TextEditingController();
-    final submit = await showDialog<bool>(
+    final submit = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
       builder: (context) => AlertDialog(
         title: const Text('Create template'),
         content: SizedBox(
           width: 520,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Template name')),
-            TextField(
-              controller: questions,
-              minLines: 5,
-              maxLines: 10,
-              decoration: const InputDecoration(labelText: 'Shared questions · one per line'),
-            ),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Template name'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: questions,
+                minLines: 5,
+                maxLines: 10,
+                decoration: const InputDecoration(
+                  labelText: 'Shared questions · one per line',
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create'),
+          ),
         ],
       ),
     );
-    final lines = questions.text.split('\n').map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
-    if (submit != true || name.text.trim().isEmpty || lines.isEmpty) return;
-    await ref.read(guidedRepositoryProvider).createTemplate(name.text.trim(), lines);
-    ref.invalidate(guidedTemplatesProvider);
+    final lines = questions.text
+        .split('\n')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (submit != true ||
+        name.text.trim().isEmpty ||
+        lines.isEmpty ||
+        !context.mounted) {
+      return;
+    }
+    await repository.createTemplate(name.text.trim(), lines);
+    if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }
 
-  Future<void> _start(BuildContext context, WidgetRef ref, GuidedTemplate template) async {
-    final session = await ref.read(guidedRepositoryProvider).createSession(
-          title: template.name,
-          templateId: template.id,
-        );
-    invalidateGuidedLists(ref);
-    if (context.mounted) context.go('/guided/sessions/${session.id}');
+  Future<void> _start(
+    BuildContext context,
+    WidgetRef ref,
+    GuidedTemplate template,
+  ) async {
+    final session = await ref
+        .read(guidedRepositoryProvider)
+        .createSession(title: template.name, templateId: template.id);
+    if (context.mounted) {
+      invalidateGuidedLists(ref);
+      context.go('/guided/sessions/${session.id}');
+    }
   }
 
   Future<void> _import(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(guidedRepositoryProvider);
     final payload = TextEditingController();
-    final submit = await showDialog<bool>(
+    final submit = await showGuidedScopedDialog<bool>(
       context: context,
+      repository: repository,
       builder: (context) => AlertDialog(
         title: const Text('Import templates'),
         content: SizedBox(
@@ -336,21 +615,31 @@ class _TemplatesList extends ConsumerWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Import')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Import'),
+          ),
         ],
       ),
     );
-    if (submit != true || payload.text.trim().isEmpty) return;
-    await ref.read(guidedRepositoryProvider).importTemplates(payload.text);
-    ref.invalidate(guidedTemplatesProvider);
+    if (submit != true || payload.text.trim().isEmpty || !context.mounted) {
+      return;
+    }
+    await repository.importTemplates(payload.text);
+    if (context.mounted) ref.invalidate(guidedTemplatesProvider);
   }
 
   Future<void> _export(BuildContext context, WidgetRef ref) async {
-    final contents = await ref.read(guidedRepositoryProvider).exportTemplates();
+    final repository = ref.read(guidedRepositoryProvider);
+    final contents = await repository.exportTemplates();
     if (!context.mounted) return;
-    await showDialog<void>(
+    await showGuidedScopedDialog<void>(
       context: context,
+      repository: repository,
       builder: (context) => AlertDialog(
         title: const Text('Template JSON export'),
         content: SizedBox(
@@ -364,9 +653,167 @@ class _TemplatesList extends ConsumerWidget {
             label: const Text('Copy'),
             onPressed: () => Clipboard.setData(ClipboardData(text: contents)),
           ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
       ),
+    );
+  }
+}
+
+Future<void> _guidedAction(
+  BuildContext context,
+  Future<void> Function() action,
+) async {
+  try {
+    await action();
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not complete this Interact action: $error'),
+        ),
+      );
+    }
+  }
+}
+
+class _TemplateVersionDraftQuestion {
+  _TemplateVersionDraftQuestion.existing(GuidedTemplateQuestion question)
+    : id = question.id,
+      source = question,
+      controller = TextEditingController(text: question.text);
+
+  _TemplateVersionDraftQuestion.newShared()
+    : id = 'draft-${DateTime.now().microsecondsSinceEpoch}',
+      source = null,
+      controller = TextEditingController();
+
+  final String id;
+  final GuidedTemplateQuestion? source;
+  final TextEditingController controller;
+}
+
+class GuidedTemplateVersionDraftDialog extends StatefulWidget {
+  const GuidedTemplateVersionDraftDialog({
+    super.key,
+    required this.questions,
+    this.currentVersion = 0,
+  });
+
+  final List<GuidedTemplateQuestion> questions;
+  final int currentVersion;
+
+  @override
+  State<GuidedTemplateVersionDraftDialog> createState() =>
+      _TemplateVersionDialogState();
+}
+
+class _TemplateVersionDialogState
+    extends State<GuidedTemplateVersionDraftDialog> {
+  late final List<_TemplateVersionDraftQuestion> _drafts = [
+    for (final question in widget.questions)
+      _TemplateVersionDraftQuestion.existing(question),
+  ];
+
+  late final Set<String> _questionsWithChildren = widget.questions
+      .map((question) => question.parentTemplateQuestionId)
+      .whereType<String>()
+      .toSet();
+
+  @override
+  void dispose() {
+    for (final draft in _drafts) {
+      draft.controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final questions = [
+      for (var index = 0; index < _drafts.length; index++)
+        GuidedTemplateQuestion(
+          id: _drafts[index].id,
+          text: _drafts[index].controller.text.trim(),
+          scope: _drafts[index].source?.scope ?? 'shared',
+          orderIndex: index,
+          participantReference: _drafts[index].source?.participantReference,
+          parentTemplateQuestionId:
+              _drafts[index].source?.parentTemplateQuestionId,
+        ),
+    ];
+    Navigator.pop(context, questions);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSave =
+        _drafts.isNotEmpty &&
+        _drafts.every((draft) => draft.controller.text.trim().isNotEmpty);
+    return AlertDialog(
+      title: Text('Edit questions for v${widget.currentVersion + 1}'),
+      content: SizedBox(
+        width: 600,
+        height: 520,
+        child: ListView(
+          children: [
+            for (final draft in _drafts)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: ValueKey('template-question-${draft.id}'),
+                        controller: draft.controller,
+                        decoration: InputDecoration(
+                          labelText: draft.source?.scope == 'participant'
+                              ? 'Participant question'
+                              : 'Shared question',
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: _questionsWithChildren.contains(draft.id)
+                          ? 'Remove child questions first'
+                          : 'Remove draft question',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: _questionsWithChildren.contains(draft.id)
+                          ? null
+                          : () => setState(() {
+                              _drafts.remove(draft);
+                              draft.controller.dispose();
+                            }),
+                    ),
+                  ],
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Add shared question'),
+                onPressed: () => setState(() {
+                  _drafts.add(_TemplateVersionDraftQuestion.newShared());
+                }),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: canSave ? _save : null,
+          child: const Text('Save new version'),
+        ),
+      ],
     );
   }
 }

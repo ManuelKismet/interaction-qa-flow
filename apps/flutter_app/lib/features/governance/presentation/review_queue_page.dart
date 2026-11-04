@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:int_qa_flow/core/config/app_config.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
 import 'package:int_qa_flow/features/ask/application/ask_controller.dart';
 import 'package:int_qa_flow/features/governance/application/governance_providers.dart';
@@ -10,6 +10,10 @@ import 'package:int_qa_flow/features/governance/domain/governance_models.dart';
 import 'package:int_qa_flow/features/guided/application/guided_providers.dart';
 import 'package:int_qa_flow/features/guided/data/guided_repository.dart';
 import 'package:int_qa_flow/features/guided/domain/guided_models.dart';
+import 'package:int_qa_flow/features/questions/application/question_providers.dart';
+import 'package:int_qa_flow/features/questions/data/questions_repository.dart';
+import 'package:int_qa_flow/features/questions/domain/question_models.dart';
+import 'package:int_qa_flow/features/organisation/application/organisation_providers.dart';
 
 class ReviewQueuePage extends ConsumerStatefulWidget {
   const ReviewQueuePage({super.key});
@@ -28,9 +32,22 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!{'admin', 'answer_owner'}.contains(AppConfig.developmentUserRole)) {
+    final role = ref.watch(currentMembershipProvider).value?.role;
+    final organisation = ref.watch(organisationProfileProvider);
+    if (organisation.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (organisation.hasError ||
+        !organisation.hasValue ||
+        (role != 'answer_owner' &&
+            !organisation.requireValue.can('review') &&
+            !organisation.requireValue.can('answer_approval'))) {
       return const Center(child: Text('You do not have access to this queue.'));
     }
+    final profile = organisation.requireValue;
+    final canReview = profile.can('review');
+    final canApproveAnswers =
+        role == 'answer_owner' || profile.can('answer_approval');
     final queue = ref.watch(reviewQueueProvider(_filter));
     final departments = ref.watch(departmentsProvider);
     return RefreshIndicator(
@@ -43,8 +60,12 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Challenges, expiring guidance, and answers awaiting verification.',
+          Text(
+            canReview && canApproveAnswers
+                ? 'Challenges, expiring guidance, and answers awaiting verification.'
+                : canReview
+                ? 'Challenges, expiring guidance, and duplicate suggestions.'
+                : 'Answers awaiting verification.',
           ),
           const SizedBox(height: 24),
           Wrap(
@@ -81,55 +102,62 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
                   initialValue: _type,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Queue type'),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('All types')),
-                    DropdownMenuItem(
-                      value: 'challenge',
-                      child: Text('Challenges'),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('All types'),
                     ),
-                    DropdownMenuItem(
-                      value: 'review_due',
-                      child: Text('Review due'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'review_due_soon',
-                      child: Text('Due soon'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'needs_verification',
-                      child: Text('Needs verification'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'duplicate_suggestion',
-                      child: Text('Duplicate suggestions'),
-                    ),
+                    if (canReview) ...[
+                      const DropdownMenuItem(
+                        value: 'challenge',
+                        child: Text('Challenges'),
+                      ),
+                      const DropdownMenuItem(
+                        value: 'review_due',
+                        child: Text('Review due'),
+                      ),
+                      const DropdownMenuItem(
+                        value: 'review_due_soon',
+                        child: Text('Due soon'),
+                      ),
+                      const DropdownMenuItem(
+                        value: 'duplicate_suggestion',
+                        child: Text('Duplicate suggestions'),
+                      ),
+                    ],
+                    if (canApproveAnswers)
+                      const DropdownMenuItem(
+                        value: 'needs_verification',
+                        child: Text('Needs verification'),
+                      ),
                   ],
                   onChanged: (value) => setState(() => _type = value),
                 ),
               ),
-              SizedBox(
-                width: 180,
-                child: DropdownButtonFormField<String?>(
-                  initialValue: _status,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Challenge status',
+              if (canReview)
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<String?>(
+                    initialValue: _status,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Challenge status',
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Open only')),
+                      DropdownMenuItem(value: 'open', child: Text('Open')),
+                      DropdownMenuItem(
+                        value: 'accepted',
+                        child: Text('Accepted'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'rejected',
+                        child: Text('Rejected'),
+                      ),
+                    ],
+                    onChanged: (value) => setState(() => _status = value),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('Open only')),
-                    DropdownMenuItem(value: 'open', child: Text('Open')),
-                    DropdownMenuItem(
-                      value: 'accepted',
-                      child: Text('Accepted'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'rejected',
-                      child: Text('Rejected'),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => _status = value),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -146,7 +174,7 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
             error: (_, _) =>
                 const Center(child: Text('Unable to load the review queue.')),
           ),
-          if (AppConfig.developmentUserRole == 'admin') ...[
+          if (canReview) ...[
             const SizedBox(height: 32),
             Text(
               'Interact proposals for Knowledge',
@@ -174,10 +202,74 @@ class _ReviewQueuePageState extends ConsumerState<ReviewQueuePage> {
                   error: (_, _) =>
                       const Text('Unable to load Interact proposals.'),
                 ),
+            const SizedBox(height: 32),
+            Text(
+              'Question change requests',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            ref
+                .watch(questionChangeRequestsProvider)
+                .when(
+                  data: (items) => items.isEmpty
+                      ? const Text('No question changes pending review.')
+                      : Column(
+                          children: [
+                            for (final item in items)
+                              _QuestionChangeRequestRow(request: item),
+                          ],
+                        ),
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, _) =>
+                      const Text('Unable to load question change requests.'),
+                ),
           ],
         ],
       ),
     );
+  }
+}
+
+class _QuestionChangeRequestRow extends ConsumerWidget {
+  const _QuestionChangeRequestRow({required this.request});
+
+  final QuestionChangeRequest request;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ListTile(
+    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+    title: Text(
+      request.proposedTitle ??
+          (request.archiveRequested
+              ? 'Question archival request'
+              : 'Question content change request'),
+    ),
+    subtitle: Text(request.reason),
+    onTap: () => context.go('/questions/${request.questionId}'),
+    trailing: Wrap(
+      spacing: 4,
+      children: [
+        IconButton(
+          tooltip: 'Reject change request',
+          icon: const Icon(Icons.close),
+          onPressed: () => _review(ref, 'reject'),
+        ),
+        IconButton(
+          tooltip: 'Approve change request',
+          icon: const Icon(Icons.check),
+          onPressed: () => _review(ref, 'approve'),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _review(WidgetRef ref, String decision) async {
+    await ref
+        .read(questionsRepositoryProvider)
+        .reviewChangeRequest(request.id, decision: decision);
+    ref.invalidate(questionChangeRequestsProvider);
+    ref.invalidate(questionDetailProvider(request.questionId));
+    ref.invalidate(questionsProvider);
   }
 }
 

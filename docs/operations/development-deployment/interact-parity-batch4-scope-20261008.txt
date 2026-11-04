@@ -1,0 +1,79 @@
+Batch 4 completion — shared Interact copy editing
+
+Authority: docs/user-admin-e2e-checkpoint-20261004, batch4 handoff at
+584d7044500d90e25a18d79436b770854623da02, including founder timeout recovery.
+Complete base: 5a2dd26410a428b6a0b516efe53afc37d89362b7.
+Resumed unchanged checkpoint: 9fa5caa84fb4da1f3b25f81602385c60336ca8e0.
+Original editor commit: 8db08bd27f53cc49c9e2017e2a98314a11895b63.
+Both existing commits and all batches 1–3 remain ancestors, unmodified.
+
+Delivered scope
+- Group Interact editing reuses the existing recursive session editor and
+  participant helpers. It is an explicit revision-checked shared-copy Save,
+  not personal autosave, a new personal item, re-import, reshare or a live link.
+- Admin/editor and contributor-own authority stays server enforced; organisation
+  ownership/grants never grant Group membership. Registration verification,
+  revocation, removal, archive/deletion, 403/404 and revision 409 remain distinct.
+- Questions, targets, stable IDs, participant answers, empty answers, nested
+  answer-owned branches and collapse state are retained. Participants with
+  content (or the last participant) cannot be removed. Blank shared answers are
+  added for new participants; rename/remove/Undo retain appropriate identity.
+- Failed saves retain drafts. Unconfirmed writes are reconciled against
+  authorised same-origin saved content: confirm applied content, permit explicit
+  retry against an unchanged baseline, or require review of competing content.
+  Keep draft does not write. Discard cannot undo a remote-applied write.
+- Account/generation/Group/entry guards prevent stale reads, PATCH completions,
+  nested dialogs and exports from acting in a later scope. An already-dispatched
+  write may still apply remotely; closing a stale UI is not cancellation.
+- Report/JSON exports use saved authorised content, not the unsaved draft.
+  Privacy confirmations remain explicit; downloaded copies cannot be revoked.
+- Phone widgets exercise deep branches, long Group/participant names, retained
+  keyboard insets, pinned participant/Add-question controls and keyboard focus.
+  This is automated layout/focus evidence, not physical-device acceptance.
+
+Completion review corrections (not unrelated rewrites)
+- Clear a lifecycle-induced conflict when reconciliation confirms the applied
+  draft, so the next explicit Save is possible.
+- Scope the existing entry-dialog report path as well as the editor path;
+  reauthorize output after PDF generation and before native download fallback.
+  Loading covers the initial export read, not the whole preview-dialog lifetime.
+- Close scoped report dialogs on same-UID generation refresh.
+- Isolate editor SnackBars so participant Undo appears only in the editor and
+  cannot escape onto the underlying workspace.
+- Retain the original 35 editor tests; add meaningful delayed-response,
+  uncertain/newer-content, pending/back/close, report access, nested-dialog,
+  participant Undo/reopen and phone/keyboard regressions. Existing backend/API
+  and real PostgreSQL lock-wait permission/concurrency tests are retained.
+
+Honest acceptance boundary
+IP01–IP24 evidence and intentional workspace differences are in the adjacent
+interact-parity-batch4-acceptance-20261008.json. Its manual scenarios remain OPEN.
+Guest/nonmember reload to the session list is an accepted decision; users reopen
+their session. No remembered-session, authentication or router redesign.
+Configured DEV compile belongs to Codex. Hosted authenticated personal,
+organisation and Group checks, physical phone, enlarged text/screen reader and
+native OS sharing/printing acceptance remain OPEN; auth investigation is paused.
+No deployment, merge, migration, production/schema, IAM, credential, firewall or
+access change was performed. Disposable test schemas are not hosted migrations.
+
+Historical environment incident and mailbox blocker
+The original 8db08bd commit accidentally added batch4-backend/ and 9fa5caa removed
+it. Exact paths, modes, Git blob hashes and byte sizes are preserved in adjacent
+interact-parity-batch4-historical-environment-20261008.tsv (git ls-tree inventory).
+There were 3,974 paths / 155,360,113 blob bytes:
+  batch4-backend/venv/: 3,964 paths / 155,330,697 bytes, including scripts,
+  site-packages and native binaries, pyvenv.cfg, and the lib64 symlink;
+  batch4-backend/ logs/results: 10 paths / 29,416 bytes.
+These paths are absent from the final tracked tree; environments for completion
+were kept under /tmp/batch4-completion, and disposable PostgreSQL was stopped.
+
+Normal unfiltered git format-patch --binary for the original two source commits
+alone is already 206,736,279 UTF-8 bytes, exceeding GitHub's 104,857,600-byte
+per-file limit. The complete final-source mailbox cannot safely be committed at
+docs/operations/development-deployment/interact-parity-batch4-20261008.patch.
+No replacement/squashed patch, filtered hunks, historical reconstruction, LFS
+pointer or misleading placeholder is published. Previous mailboxes are unchanged.
+The original complete history and clean source/receipts are durable on the SAME
+assigned branch. Final provenance records the actual complete mailbox hash/size,
+unchanged git-am proof and exact source/tree hashes; publication of that oversized
+mailbox remains blocked and independent Codex acceptance remains pending.

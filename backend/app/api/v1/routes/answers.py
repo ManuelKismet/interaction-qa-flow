@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import DevelopmentIdentity, get_development_identity
@@ -8,6 +8,7 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.schemas.answer import (
     AnswerDetailResponse,
+    AnswerRestoreRequest,
     AnswerResponse,
     AnswerUpdate,
     ReactionCreate,
@@ -109,27 +110,64 @@ async def list_versions(
 async def update_answer(
     answer_id: UUID,
     payload: AnswerUpdate,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> AnswerDetailResponse:
-    return await AnswerService(session).update(answer_id, payload)
+    return await AnswerService(session).update(
+        answer_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )
 
 
 @router.delete("/{answer_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_answer(
     answer_id: UUID,
-    # TODO(auth): derive organisation_id and user_id from the authenticated identity.
-    organisation_id: UUID,
-    user_id: UUID,
+    reason: str | None = Query(default=None, max_length=4000),
+    identity: DevelopmentIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    await AnswerService(session).delete(answer_id, organisation_id, user_id)
+    await AnswerService(session).delete(
+        answer_id,
+        identity.organisation_id,
+        identity.user_id,
+        reason,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{answer_id}/restore", response_model=AnswerDetailResponse)
+async def restore_answer(
+    answer_id: UUID,
+    payload: AnswerRestoreRequest,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> AnswerDetailResponse:
+    return await AnswerService(session).restore(
+        answer_id,
+        identity.organisation_id,
+        identity.user_id,
+        payload,
+    )
 
 
 @router.post("/{answer_id}/reaction", response_model=ReactionResponse)
 async def react_to_answer(
     answer_id: UUID,
     payload: ReactionCreate,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
     session: AsyncSession = Depends(get_session),
 ) -> ReactionResponse:
-    return await AnswerService(session).react(answer_id, payload)
+    return await AnswerService(session).react(
+        answer_id,
+        payload.model_copy(
+            update={
+                "organisation_id": identity.organisation_id,
+                "user_id": identity.user_id,
+            }
+        ),
+    )

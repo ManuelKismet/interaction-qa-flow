@@ -4,9 +4,18 @@ import 'package:go_router/go_router.dart';
 enum KnowledgeSection { ask, questions }
 
 class KnowledgeSectionTabs extends StatelessWidget {
-  const KnowledgeSectionTabs({required this.selected, super.key});
+  const KnowledgeSectionTabs({
+    required this.selected,
+    this.onChanged,
+    this.searchLabel = 'Ask & search',
+    this.savedLabel = 'Questions',
+    super.key,
+  });
 
   final KnowledgeSection selected;
+  final String searchLabel;
+  final String savedLabel;
+  final ValueChanged<KnowledgeSection>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -21,11 +30,19 @@ class KnowledgeSectionTabs extends StatelessWidget {
           child: TabBar(
             onTap: (index) {
               if (index == selectedIndex) return;
-              context.go(index == KnowledgeSection.ask.index ? '/' : '/questions');
+              final section = KnowledgeSection.values[index];
+              final callback = onChanged;
+              if (callback != null) {
+                callback(section);
+              } else {
+                context.go(
+                  index == KnowledgeSection.ask.index ? '/' : '/questions',
+                );
+              }
             },
-            tabs: const [
-              Tab(text: 'Ask & search'),
-              Tab(text: 'Questions'),
+            tabs: [
+              Tab(text: searchLabel),
+              Tab(text: savedLabel),
             ],
           ),
         ),

@@ -10,9 +10,11 @@ from app.models.audit_event import AuditAction, AuditEvent
 from app.models.department import Department
 from app.models.department_answer_owner import DepartmentAnswerOwner
 from app.models.organisation import Organisation
+from app.models.organisation_permission import OrganisationPermissionGrant
 from app.models.question import Question, QuestionStatus
 from app.models.user import User, UserRole
 from app.schemas.governance import FreshnessStatus
+from app.services import governance as governance_module
 from app.services.freshness import answer_freshness
 
 
@@ -62,6 +64,14 @@ async def seed_governance(session_factory):
         await session.flush()
         session.add_all(
             [
+                OrganisationPermissionGrant(
+                    organisation_id=organisation.id,
+                    user_id=admin.id,
+                    permission="legacy_admin",
+                    scope_type="organisation",
+                    scope_id=None,
+                    granted_by=admin.id,
+                ),
                 DepartmentAnswerOwner(
                     organisation_id=organisation.id,
                     department_id=finance.id,
@@ -122,6 +132,7 @@ async def seed_governance(session_factory):
             "admin": admin.id,
             "outsider": outsider.id,
             "finance_department": finance.id,
+            "people_department": people.id,
             "finance_question": finance_question.id,
             "finance_answer": finance_answer.id,
             "replacement_answer": replacement_answer.id,
@@ -182,6 +193,48 @@ async def test_verification_permissions_metadata_and_audit(app_client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_verification_and_accepted_challenges_refresh_answer_embeddings(
+    app_client, monkeypatch
+) -> None:
+    client, session_factory = app_client
+    ids = await seed_governance(session_factory)
+    synced_questions = []
+
+    async def record_sync(_service, question):
+        synced_questions.append(question.id)
+        return True
+
+    monkeypatch.setattr(
+        governance_module.EmbeddingService, "sync_question", record_sync
+    )
+    answer_id = ids["finance_answer"]
+    for path in ("verify", "unverify", "verify"):
+        response = await client.post(
+            f"/api/v1/answers/{answer_id}/{path}",
+            headers=headers(ids, "finance_owner"),
+            json={},
+        )
+        assert response.status_code == 200, response.text
+    challenge = await client.post(
+        f"/api/v1/answers/{answer_id}/challenges",
+        headers=headers(ids, "employee"),
+        json={
+            "type": "outdated",
+            "reason": "The process changed.",
+            "suggested_answer": "Use the new mileage portal.",
+        },
+    )
+    assert challenge.status_code == 201, challenge.text
+    accepted = await client.post(
+        f"/api/v1/challenges/{challenge.json()['id']}/accept",
+        headers=headers(ids, "finance_owner"),
+        json={},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert synced_questions == [ids["finance_question"]] * 4
+
+
+@pytest.mark.asyncio
 async def test_replacing_verified_answer_supersedes_and_versions(app_client) -> None:
     client, session_factory = app_client
     ids = await seed_governance(session_factory)
@@ -232,6 +285,7 @@ async def test_challenge_accept_replaces_answer_and_reject_is_final(app_client) 
 
     detail = await client.get(
         f"/api/v1/questions/{ids['finance_question']}",
+        headers=headers(ids),
         params={"organisation_id": str(ids["organisation"])},
     )
     assert detail.json()["accepted_answer"]["freshness_status"] == "challenged"
@@ -353,8 +407,7 @@ async def test_review_queue_and_cross_tenant_access(app_client) -> None:
         "/api/v1/audit-events",
         headers=headers(ids, "outsider", "other_organisation"),
     )
-    assert foreign_audit.status_code == 200
-    assert foreign_audit.json() == []
+    assert foreign_audit.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -387,12 +440,41 @@ async def test_admin_assigns_and_removes_department_owner(app_client) -> None:
         for item in owners.json()
     )
 
+    finance_owner_departments = await client.get(
+        "/api/v1/department-answer-owners/mine",
+        headers=headers(ids, "finance_owner"),
+    )
+    assert finance_owner_departments.status_code == 200
+    assert finance_owner_departments.json() == [str(ids["finance_department"])]
+
+    people_owner_departments = await client.get(
+        "/api/v1/department-answer-owners/mine",
+        headers=headers(ids, "people_owner"),
+    )
+    assert people_owner_departments.status_code == 200
+    assert set(people_owner_departments.json()) == {
+        str(ids["finance_department"]),
+        str(ids["people_department"]),
+    }
+
+    employee_departments = await client.get(
+        "/api/v1/department-answer-owners/mine",
+        headers=headers(ids, "employee"),
+    )
+    assert employee_departments.status_code == 403
+
     removed = await client.delete(
         f"/api/v1/departments/{ids['finance_department']}/answer-owners/"
         f"{ids['people_owner']}",
         headers=headers(ids),
     )
     assert removed.status_code == 204
+    remaining_owner_departments = await client.get(
+        "/api/v1/department-answer-owners/mine",
+        headers=headers(ids, "people_owner"),
+    )
+    assert remaining_owner_departments.status_code == 200
+    assert remaining_owner_departments.json() == [str(ids["people_department"])]
 
     async with session_factory() as session:
         actions = set(await session.scalars(select(AuditEvent.action)))

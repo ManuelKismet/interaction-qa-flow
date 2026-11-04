@@ -1,6 +1,6 @@
 # IntQAFlow
 
-IntQAFlow is a multi-tenant internal knowledge platform with two connected
+IntQAFlow is a multi-tenant internal knowledge platform with three connected
 modules:
 
 - **IntQAFlow Knowledge** provides organisational Q&A, semantic retrieval,
@@ -8,6 +8,8 @@ modules:
 - **IntQAFlow Interact** provides structured sessions, participants, shared and
   participant-specific questions, answer-triggered follow-ups, templates,
   reports, and deliberate knowledge capture.
+
+- **IntQAFlow Suggestion Bank** connects employee ideas, review responses, tracked proposals and standing workplace practices to Knowledge and Interact. See [the module guide](docs/suggestion-bank.md).
 
 They are modules of the same platform, not separate applications. Interact can
 produce reusable Knowledge, and Knowledge can be referenced during Interact
@@ -61,7 +63,7 @@ From the repository root:
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock
 cp .env.example .env
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
@@ -89,10 +91,16 @@ cd backend
 The command is idempotent: unchanged question text and model combinations are
 skipped using a source hash, while failures can be retried by rerunning it.
 
-The API is available at `http://localhost:8000`, health at `/health`, and
-interactive documentation at `/docs`.
+The API is available at `http://localhost:8000`; `/health` is a liveness check,
+and `/ready` checks database connectivity and the required `organisations` table.
+Interactive documentation is available at `/docs`.
 
-Run backend tests with:
+`requirements.txt` contains supported dependency ranges;
+`backend/requirements.lock` pins the resolved runtime and test dependencies for
+reproducible Python 3.12 installs. Backend CI installs the lock, runs
+`pip check`, Ruff syntax/undefined-name checks, compiles application/test
+modules, and runs the full test suite.
+Run backend tests locally with:
 
 ```sh
 cd backend
@@ -103,19 +111,9 @@ cd backend
 
 From the repository root:
 
-```sh
-cd apps/flutter_app
-flutter pub get
-flutter run -d chrome \
-	--dart-define=API_BASE_URL=http://localhost:8000 \
-	--dart-define=DEV_ORGANISATION_ID=<organisation-uuid> \
-	--dart-define=DEV_USER_ID=<user-uuid> \
-	--dart-define=DEV_USER_ROLE=<employee-answer_owner-or-admin>
-```
-
-The development IDs are temporary. They require matching organisation and user
-rows in PostgreSQL and will be replaced by token-derived identity when
-authentication is implemented.
+See [`apps/flutter_app/README.md`](apps/flutter_app/README.md) for local and
+hosted build configuration. The app uses Firebase email/password
+authentication; never pass caller-selected user, organisation, or role IDs.
 
 Run Flutter checks with:
 
@@ -129,7 +127,7 @@ flutter build web
 ## Current API
 
 - `GET /health`
-- `POST /api/v1/organisations`
+- `GET /api/v1/auth/me`
 - `POST /api/v1/departments`
 - `GET /api/v1/departments`
 - `GET /api/v1/teams`
@@ -179,13 +177,15 @@ flutter build web
 - Interact participant, question, answer, and recursive follow-up operations
 - Interact-to-Knowledge search and proposal review operations
 
-Question lists support `status`, `department_id`, `team_id`, `author_id`, `offset`, and
-`limit` query parameters. `organisation_id` remains an explicit development
-parameter until authentication is implemented.
+All `/api/v1` routes require a verified Firebase ID token mapped to an active
+server-side membership and a distinct App Check gate. Tenant scope is derived
+from that membership; organisation creation is a private operator operation,
+not an API endpoint.
 
-Semantic search accepts `{ "query": "...", "limit": 5 }`. During development,
-the caller identity is supplied in `X-Organisation-ID` and `X-User-ID` headers;
-these headers will be replaced by authenticated claims. Search returns answered
+Question lists support `status`, `department_id`, `team_id`, `author_id`, `offset`, and
+`limit` query parameters. Tenant selection is not caller-controlled.
+
+Semantic search accepts `{ "query": "...", "limit": 5 }`. Search returns answered
 or resolved questions with eligible answers that the caller may access.
 Knowledge Ask sends `include_unanswered: true` so duplicate prevention also
 returns accessible open questions. Normalized exact-title matches are retained
@@ -349,3 +349,16 @@ node -e 'const fs=require("fs"); const html=fs.readFileSync("index.html","utf8")
 ## License
 
 MIT. See `LICENSE`.
+
+Development acceptance update (2026-10-05): frontend ed24b0a is published to intqaflow-dev, Hosting release 1791182719884000/version 3bbec4254fc5fdc1; backend remains review80b0c61. All 105 Flutter tests, analyzer (12 infos only) and release build passed. Hosted department creation, primary department assignment, cross-functional and department-linked team membership, reversible membership removal, and repaired Reopen passed. Detailed remaining account and governance checks are tracked in docs/operations/development-deployment/user-admin-e2e-checkpoint-2026-10-04.md. PR13, PR15 and PR16 remain unmerged.
+
+Development acceptance update (2026-10-05, superseding the deployment above): tested commit a4ec6c1801d05cd584ef543417bd5ca9eb131bc3 is deployed to development, with API revision reviewa4ec6c1 at 100% traffic/health 200 and Hosting release 1791191062153600/version 6d1293539c97c22c. Flutter 111 tests, analysis and release build passed; unchanged backend retains its independent 84-test pass. Both Hosting origins match the tested release bytes. Populated organisation-visible Interact read-only content, history/report access and admin owner controls passed. Private employee owner controls passed after reload; a direct navigation spinner/repeated-404 issue is reported to Copilot for investigation. Remaining tests and lessons are tracked in docs/operations/development-deployment/user-admin-e2e-checkpoint-2026-10-04.md. Production, the old local database and repository merges remain excluded.
+
+
+Development acceptance update (2026-10-05): exact PR13 head `8e243bf` deployed with 113 Flutter and 85 backend tests passed, analyze/build passed, Cloud Run healthy at 100% traffic and both Hosting origins matching the tested build. Admin template Restore/start passed; non-owner restore is denied by the API, with UI action gating/feedback still under review. See the user/admin E2E checkpoint for fixture cleanup, rollout identifiers, remaining checks and lessons. PRs remain draft/unmerged.
+
+
+Development update (2026-10-05): frontend bd0ae05 deployed after 115 Flutter tests, analyze and release build passed. Hosted creator/admin template mutation gating now passes; validated backend remains review8e243bf (85 tests). Broader E2E acceptance remains in progress; checkpoint records remaining work.
+
+
+Development acceptance (2026-10-05): reviewed `0f87f47` deployed, API `intqaflow-dev-api-review0f87f47`, Hosting release `1791199919218000`; backend87/Flutter118/analyze/build passed. Registered shared-group create/join/approval and viewer UI boundaries passed; Remove member blanks the owner page and remains pending. Test-only `a67a246` separately passed backend87. See [acceptance checkpoint](docs/operations/development-deployment/user-admin-e2e-checkpoint-2026-10-04.md) for evidence and lessons.

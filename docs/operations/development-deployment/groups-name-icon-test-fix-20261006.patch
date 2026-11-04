@@ -1,0 +1,29 @@
+From 53a41cf80f849f465309c9abe145a13d88c9d749 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 12:48:05 +0000
+Subject: [PATCH] Fix Groups icon widget test finder
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ apps/flutter_app/test/account_state_widget_test.dart | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 21f256d..11fc25c 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -271,7 +271,10 @@ void main() {
+ 
+       expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+       final enableGroupsButton = tester.widget<IconButton>(
+-        find.byTooltip('Enable groups'),
++        find.byWidgetPredicate(
++          (widget) =>
++              widget is IconButton && widget.tooltip == 'Enable groups',
++        ),
+       );
+       expect((enableGroupsButton.icon as Icon).icon, Icons.group_outlined);
+       expect(
+-- 
+2.55.0
+

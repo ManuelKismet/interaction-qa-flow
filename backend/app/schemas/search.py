@@ -23,8 +23,14 @@ class MatchSource(StrEnum):
     HISTORICAL_QUESTION = "historical_question"
 
 
+class MatchMethod(StrEnum):
+    SEMANTIC = "semantic"
+    KEYWORD = "keyword"
+    HYBRID = "hybrid"
+
+
 class SemanticSearchRequest(BaseModel):
-    query: str = Field(min_length=3, max_length=1000)
+    query: str = Field(min_length=1, max_length=1000)
     limit: int = Field(default=5, ge=1, le=10)
     include_unanswered: bool = False
 
@@ -38,7 +44,10 @@ class SemanticSearchResult(BaseModel):
     matched_question_ids: list[UUID]
     matched_text: str
     match_source: MatchSource
+    match_method: MatchMethod
     answer_id: UUID | None
+    organisation_name: str
+    relevance_score: float
     title: str
     accepted_answer_body: str | None
     department: DepartmentSummary | None

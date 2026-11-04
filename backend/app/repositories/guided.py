@@ -26,13 +26,16 @@ class GuidedRepository:
         self.session.add(entity)
         await self.session.flush()
 
-    async def guided_session(self, entity_id: UUID, organisation_id: UUID) -> GuidedSession | None:
-        return await self.session.scalar(
-            select(GuidedSession).where(
-                GuidedSession.id == entity_id,
-                GuidedSession.organisation_id == organisation_id,
-            )
+    async def guided_session(
+        self, entity_id: UUID, organisation_id: UUID, *, for_update: bool = False
+    ) -> GuidedSession | None:
+        statement = select(GuidedSession).where(
+            GuidedSession.id == entity_id,
+            GuidedSession.organisation_id == organisation_id,
         )
+        if for_update:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        return await self.session.scalar(statement)
 
     async def visible_sessions(
         self,
@@ -47,10 +50,11 @@ class GuidedRepository:
             GuidedSession.created_by == user_id,
             GuidedSession.visibility == GuidedSessionVisibility.ORGANISATION,
         ]
-        if department_id:
+        if department_id is not None:
             visibility.append(
                 and_(
                     GuidedSession.visibility == GuidedSessionVisibility.DEPARTMENT,
+                    GuidedSession.department_id.is_not(None),
                     GuidedSession.department_id == department_id,
                 )
             )
@@ -62,7 +66,14 @@ class GuidedRepository:
                 )
             )
         statement = select(GuidedSession).where(GuidedSession.organisation_id == organisation_id)
-        if not is_admin:
+        if is_admin:
+            statement = statement.where(
+                or_(
+                    GuidedSession.visibility != GuidedSessionVisibility.PRIVATE,
+                    GuidedSession.created_by == user_id,
+                )
+            )
+        else:
             statement = statement.where(or_(*visibility))
         if status:
             statement = statement.where(GuidedSession.status == status)

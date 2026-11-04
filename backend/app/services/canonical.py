@@ -1,10 +1,16 @@
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.embedding_provider import EmbeddingProvider
+from app.ai.embedding_provider import (
+    EmbeddingProvider,
+    EmbeddingProviderError,
+    get_embedding_provider,
+)
+from app.ai.embedding_service import EmbeddingService
 from app.core.config import Settings
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.answer import Answer, AnswerStatus
@@ -30,6 +36,8 @@ from app.schemas.canonical import (
 from app.schemas.search import SemanticSearchResult
 from app.services.permissions import PermissionService
 from app.services.search import SearchService
+
+logger = logging.getLogger(__name__)
 
 
 class CanonicalQuestionService:
@@ -57,6 +65,8 @@ class CanonicalQuestionService:
         actor = await self.permissions.actor(user_id, organisation_id)
         response = await self._merge(canonical_question_id, organisation_id, actor, data)
         await self.session.commit()
+        question = await self.canonical.question(canonical_question_id, organisation_id)
+        await self._sync_embedding_for_question(question)
         return response
 
     async def unmerge(
@@ -74,7 +84,7 @@ class CanonicalQuestionService:
             raise NotFoundError("Question not found")
         if question.canonical_question_id is None:
             raise ConflictError("Question is not linked to a canonical question")
-        root = await self._root(question, organisation_id)
+        root = await self._root(question, organisation_id, actor)
         await self._require_manager(actor, question, root)
         previous_root_id = question.canonical_question_id
         question.canonical_question_id = None
@@ -87,7 +97,26 @@ class CanonicalQuestionService:
         )
         await self.session.commit()
         await self.session.refresh(question)
+        await self._sync_embedding_for_question(question)
+        await self._sync_embedding_for_question(
+            await self.canonical.question(previous_root_id, organisation_id)
+        )
         return question
+
+    async def _sync_embedding_for_question(self, question: Question | None) -> None:
+        if question is None:
+            return
+        try:
+            provider = self.embedding_provider or get_embedding_provider(self.settings)
+            await EmbeddingService(self.session, provider).sync_question(question)
+        except EmbeddingProviderError:
+            logger.exception(
+                "Failed to regenerate search embedding for question %s", question.id
+            )
+        except Exception:
+            logger.exception(
+                "Failed to persist search embedding for question %s", question.id
+            )
 
     async def candidates(
         self,
@@ -100,7 +129,7 @@ class CanonicalQuestionService:
         question = await self.canonical.question(question_id, organisation_id)
         if not question:
             raise NotFoundError("Question not found")
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         if self.embedding_provider is None:
             raise RuntimeError("Embedding provider is required for duplicate candidates")
         query = "\n\n".join(
@@ -114,7 +143,7 @@ class CanonicalQuestionService:
             organisation_id=organisation_id,
             user_id=user_id,
         )
-        current_root = (await self._root(question, organisation_id)).id
+        current_root = (await self._root(question, organisation_id, actor)).id
         return [
             result
             for result in results
@@ -136,9 +165,9 @@ class CanonicalQuestionService:
         )
         if not question or not target:
             raise NotFoundError("Question not found")
-        self.permissions.require_question_visibility(actor, question)
-        self.permissions.require_question_visibility(actor, target)
-        target = await self._root(target, organisation_id)
+        await self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, target)
+        target = await self._root(target, organisation_id, actor)
         if question.id == target.id or question.canonical_question_id == target.id:
             raise ConflictError("Question already resolves to this canonical question")
         suggestion = DuplicateSuggestion(
@@ -195,7 +224,7 @@ class CanonicalQuestionService:
         )
         if not question or not target:
             raise NotFoundError("Question not found")
-        target = await self._root(target, organisation_id)
+        target = await self._root(target, organisation_id, actor)
         await self._require_manager(actor, question, target)
         if accept:
             await self._merge(
@@ -219,6 +248,8 @@ class CanonicalQuestionService:
             await self._audit(actor, action, "duplicate_suggestion", suggestion.id)
         await self.session.commit()
         await self.session.refresh(suggestion)
+        if accept:
+            await self._sync_embedding_for_question(target)
         return self._suggestion_response(suggestion, question, target)
 
     async def _merge(
@@ -233,7 +264,7 @@ class CanonicalQuestionService:
         )
         if not canonical:
             raise NotFoundError("Canonical question not found")
-        canonical = await self._root(canonical, organisation_id)
+        canonical = await self._root(canonical, organisation_id, actor)
         requested: list[Question] = []
         for question_id in dict.fromkeys(data.duplicate_question_ids):
             question = await self.canonical.question(
@@ -243,7 +274,7 @@ class CanonicalQuestionService:
                 raise NotFoundError("Duplicate question not found")
             if question.id == canonical.id:
                 raise ConflictError("A question cannot be merged into itself")
-            if (await self._root(question, organisation_id)).id == canonical.id:
+            if (await self._root(question, organisation_id, actor)).id == canonical.id:
                 raise ConflictError("Question is already linked to this canonical question")
             requested.append(question)
 
@@ -257,6 +288,8 @@ class CanonicalQuestionService:
             affected.update((question.id, question) for question in descendants)
         for question in (canonical, *affected.values()):
             await self._validate_structure(question, organisation_id)
+            if self._audience(question) != self._audience(canonical):
+                raise ConflictError("Questions with different visibility audiences cannot be merged")
         await self._require_manager(actor, canonical, *affected.values())
 
         selected = None
@@ -348,9 +381,12 @@ class CanonicalQuestionService:
             canonical_answer_id=canonical.accepted_answer_id,
         )
 
-    async def _root(self, question: Question, organisation_id: UUID) -> Question:
+    async def _root(
+        self, question: Question, organisation_id: UUID, actor: User
+    ) -> Question:
         seen = {question.id}
         current = question
+        await self.permissions.require_question_visibility(actor, current)
         while current.canonical_question_id is not None:
             if current.canonical_question_id in seen:
                 raise ConflictError("Circular canonical question relationship detected")
@@ -360,14 +396,25 @@ class CanonicalQuestionService:
             )
             if not parent:
                 raise NotFoundError("Canonical question not found")
+            await self.permissions.require_question_visibility(actor, parent)
             current = parent
         return current
 
     async def _require_manager(self, actor: User, *questions: Question) -> None:
         for question in questions:
+            await self.permissions.require_question_visibility(actor, question)
             await self.permissions.require_answer_manager(
-                actor, question, self.governance
+                actor, question, self.governance, permission="review"
             )
+
+    @staticmethod
+    def _audience(question: Question):
+        scope = {
+            "department": question.department_id,
+            "team": question.team_id,
+            "private": question.author_id,
+        }.get(question.visibility.value)
+        return question.visibility, scope
 
     async def _validate_structure(
         self,

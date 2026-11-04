@@ -5,6 +5,11 @@ import 'package:int_qa_flow/features/questions/domain/question_models.dart';
 
 typedef ReviewQueueFilter = ({String? departmentId, String? type, String? status});
 
+final organisationMembersProvider =
+    FutureProvider.autoDispose<List<OrganisationMember>>(
+  (ref) => ref.watch(governanceRepositoryProvider).organisationMembers(),
+);
+
 final reviewQueueProvider = FutureProvider.autoDispose
     .family<List<ReviewQueueItem>, ReviewQueueFilter>(
   (ref, filter) => ref.watch(governanceRepositoryProvider).reviewQueue(
@@ -17,6 +22,11 @@ final reviewQueueProvider = FutureProvider.autoDispose
 final departmentOwnersProvider =
     FutureProvider.autoDispose<List<DepartmentAnswerOwner>>(
   (ref) => ref.watch(governanceRepositoryProvider).departmentOwners(),
+);
+
+final myDepartmentOwnerIdsProvider =
+    FutureProvider.autoDispose<Set<String>>(
+  (ref) => ref.watch(governanceRepositoryProvider).myDepartmentOwnerIds(),
 );
 
 final duplicateCandidatesProvider = FutureProvider.autoDispose

@@ -7,7 +7,6 @@ from app.schemas.common import EntityResponse, ORMModel
 
 
 class UserCreate(BaseModel):
-    # TODO(auth): derive organisation_id from the authenticated identity.
     organisation_id: UUID
     department_id: UUID | None = None
     email: str = Field(min_length=3, max_length=320)

@@ -1,0 +1,57 @@
+00:00 +0: loading /home/runner/work/interaction-qa-flow/interaction-qa-flow/apps/flutter_app/test/group_interact_editor_test.dart
+00:00 +0: save and reload preserve graph IDs targets nested branches and clear a blank answer without mutating original
+00:02 +1: admin can edit its own shared Interact copy
+00:02 +2: editor can edit its own shared Interact copy
+00:03 +3: contributor can edit its own shared Interact copy
+00:03 +4: viewer cannot edit another member shared Interact copy
+00:04 +5: contributor cannot edit another member shared Interact copy
+00:04 +6: admin can edit another member shared Interact copy
+00:04 +7: editor can edit another member shared Interact copy
+00:05 +8: 409 competing edit keeps draft and review never retries
+00:05 +9: revision changed before save prevents even the first write
+00:06 +10: uncertain save applied=true reconciles before safe retry
+00:06 +11: uncertain save applied=false reconciles before safe retry
+00:07 +12: applied uncertain save after resume clears conflict on confirmation
+00:07 +13: uncertain save with newer content requires review without retry
+00:08 +14: delayed PATCH completion after signout=true never restores draft
+00:08 +15: delayed PATCH completion after signout=false never restores draft
+00:09 +16: delayed entries response after UID switch cannot disclose
+00:09 +17: delayed export response after UID switch cannot disclose
+00:09 +18: entry report scope is disposed on UID change
+00:09 +19: entry report preview is disposed on UID change
+00:10 +20: entry report confirmation is disposed on UID change
+00:10 +21: entry report confirmation rechecks actual 403 permission
+00:10 +22: entry report confirmation rechecks actual 404 permission
+00:10 +23: same UID lifecycle refresh invalidates report generation
+00:10 +24: uncertain Save and close keeps editor and admits remote write
+00:11 +25: system Back during pending save cannot dismiss editor
+00:11 +26: actual 403 write response removes editable draft
+00:11 +27: actual 404 write response removes editable draft
+00:12 +28: re-read catches deletion before write
+00:12 +29: re-read catches revocation before write
+00:12 +30: delayed capability read after signout cannot write
+00:13 +31: delayed capability read after UID switch cannot write
+00:13 +32: delayed export capability read after signout cannot disclose JSON
+00:13 +33: delayed export capability read after UID switch cannot disclose JSON
+00:14 +34: auth event signout disposes open draft without writing
+00:14 +35: actual export menu confirms saved JSON and excludes unsaved draft
+00:15 +36: editor revision history reads persisted saves not draft
+00:15 +37: saved Group PDF selected participant preview excludes unsaved draft
+00:16 +38: saved Group PDF all participant preview excludes unsaved draft
+00:16 +39: PDF confirmation actual 403 recheck prevents export
+00:17 +40: PDF confirmation actual 404 recheck prevents export
+00:17 +41: export confirmation switch prevents clipboard disclosure
+00:17 +42: export confirmation signout prevents clipboard disclosure
+00:17 +43: export confirmation revoke prevents clipboard disclosure
+00:18 +44: export confirmation delete prevents clipboard disclosure
+00:18 +45: close editor Cancel has explicit draft and persistence semantics
+00:18 +46: close editor Discard draft has explicit draft and persistence semantics
+00:19 +47: close editor Save and close has explicit draft and persistence semantics
+00:19 +48: Group participant management preserves graph and blocks content removal
+00:20 +49: signout disposes nested participant dialog and draft
+00:20 +50: signout disposes nested question dialog and draft
+00:21 +51: signout disposes nested history dialog and draft
+00:21 +52: signout disposes nested review dialog and draft
+00:21 +53: phone long names keeps participant and question controls reachable with answer keyboard
+00:22 +54: narrow phone keyboard long deep branches keep editing controls reachable
+00:22 +55: All tests passed!

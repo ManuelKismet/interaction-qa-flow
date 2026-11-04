@@ -2,12 +2,49 @@
 
 IntQAFlow is a monorepo with one shared backend for **IntQAFlow Knowledge** and
 **IntQAFlow Interact**, plus future Teams, browser extension, and agent clients.
-They are modules of one platform: Interact can produce reusable Knowledge, and
-Knowledge can be referenced during Interact sessions.
+The intended end-user delivery direction is browser extensions and application
+plugins such as Microsoft Teams, with the web interface supporting administration
+and functions those clients do not provide. The standalone web interface remains
+supported. They are modules of one platform: Interact can produce reusable
+Knowledge, and Knowledge can be referenced during Interact sessions.
 
 The application shell exposes Knowledge and Interact as primary destinations.
 Knowledge owns the route-backed Ask/Search and Questions views; Review remains
 a shared governance destination rather than a third product module.
+
+## Current identity, storage and hosting model — 2026-10-06
+
+Development runs in project `intqaflow-dev`. Firebase hosts the Flutter frontend
+at [web.app](https://intqaflow-dev.web.app/) and
+[firebaseapp.com](https://intqaflow-dev.firebaseapp.com/) and provides
+authentication. A separate [Cloud Run API](https://intqaflow-dev-api-bycdjb22qq-nw.a.run.app)
+connects to PostgreSQL hosted by Google Cloud SQL (`intqaflow-dev-pg`,
+`europe-west2`, London). Firebase does not host this PostgreSQL database.
+
+| Workspace | Identity and ownership | Storage and boundary |
+|---|---|---|
+| Guest/local | No anonymous Firebase account | Browser-local Knowledge and Interact content |
+| Personal account | Verified registered Firebase UID; no organisation required | Private backend `personal_workspace_items`; excluded from organisation/group/global and semantic indexes |
+| Group | Verified registered account; no organisation required | Backend content with group permissions |
+| Organisation | Authenticated account with server-controlled membership/role | Tenant-scoped backend entities and governance |
+
+Registration creates a separate real account; there is no guest UID to link.
+Sign-in/signup never silently uploads or deletes local work. Selected import
+creates private account copies and retains the local originals. Registered users
+can still create local work; it remains local until explicitly imported.
+Storage labels describe the actual item origin and save state. Removing an
+account copy can reveal a retained local original, labelled Local.
+
+Account requests are bound to the expected UID; identity transitions clear
+private UI state and late responses are ignored. Pending edits, retry/conflict
+handling and revision-guarded deletion protect account saves. Search Knowledge
+stays in its existing location and searches loaded local/account content using
+client keyword/prefix matching. This is separate from organisation semantic search.
+
+[Deployment checkpoint](operations/development-deployment/README.md) records
+the exact released source, validation limits and rollback. The organisation
+sections below describe that module and do not imply organisation membership
+is required for a personal workspace or Group.
 
 ## Current boundaries
 
@@ -17,8 +54,8 @@ a shared governance destination rather than a third product module.
 - `backend/app/services` owns validation and business rules.
 - `backend/app/repositories` owns SQLAlchemy queries.
 - `backend/app/models` owns persisted entities and tenant foreign keys.
-- `backend/app/services/permissions.py` owns temporary actor authorization so
-  token-based identity can replace request IDs without moving business rules.
+- `backend/app/services/permissions.py` owns role and actor authorization after
+  the API resolves Firebase identity to an active membership.
 - `backend/app/ai` owns the swappable embedding provider and canonical question
   text/hash lifecycle. It does not generate answers or other content.
 - `apps/flutter_app/lib/features/guided` owns the native Interact workspace,
@@ -39,16 +76,16 @@ Question detail uses bounded aggregate reads: question/author/department,
 answers/authors/reaction counts, and comment count. It does not issue one query
 per answer.
 
-Authentication is not implemented. Development clients currently send
-`organisation_id` and `user_id`; TODO markers identify every boundary where
-these values must later come from validated authentication tokens.
-
-Semantic search and governance take their temporary identity from
-`X-Organisation-ID` and `X-User-ID` headers rather than the request body. Its
-repository filters by organisation, answered/resolved state, eligible answer,
-embedding model, and visibility before returning candidates. Organisation-visible rows
-are shared within the tenant, department-visible rows require the user's single
-primary `department_id`, and private rows are visible only to their author.
+All `/api/v1` routes require a Firebase ID token verified for the configured
+project and an independent App Check token gate. A unique Firebase UID mapping
+resolves the active user, organisation, and role from PostgreSQL; request
+headers and body fields cannot select that identity. App Check supports explicit
+observation and enforcement modes. Semantic search and governance use this
+server-resolved membership; repositories still filter by organisation,
+answered/resolved state, eligible answer, embedding model, and visibility.
+Organisation-visible rows are shared within the tenant, department-visible rows
+require the user's single primary `department_id`, and private rows are visible
+only to their author.
 
 `users.department_id` is the nullable primary department. Operational team
 membership is many-to-many through `team_memberships`; it does not replace or
@@ -71,14 +108,102 @@ infer the user's formal department.
 - Search returns canonical department/team metadata without weighting teams in
   ranking. Canonical merges preserve every historical question's team.
 
+## Guest access
+
+- Solo guest Knowledge, Interact sessions, templates, search, and backup/import
+  stay in browser-local storage under `intqaflow.guest.workspace.v1`; entering
+  the guest workspace does not upload drafts. The app has no local-draft expiry
+  or automatic cleanup. Local data
+  remains until explicitly cleared in the app or removed by browser/site-data
+  cleanup or browser storage policy; persistence is not guaranteed. Same-origin
+  tabs share the browser's storage and Firebase auth context; a tab is not an
+  isolated account workspace.
+  The non-web guest-storage implementation is in-memory and has no durable
+  retention guarantee.
+- Shared guest groups are a separate persistence scope in
+  `backend/app/models/guest.py`, not an organisation or department. Their API
+  verifies Firebase ID tokens and App Check independently and derives access
+  from the Firebase UID's group membership; caller-supplied identity headers are
+  rejected. Every group operation requires a non-anonymous Firebase identity
+  with a verified email; organisation membership is not required. Anonymous and
+  unverified identities are denied access, including read-only operations.
+  Group content remains keyed to its Firebase UID; a separate personal account
+  does not inherit memberships. Every invitation redemption remains pending
+  until a group admin approves it.
+- Group roles and invitation approval are enforced by guest services on every
+  content, search, history, export, and membership request. Invitation previews
+  disclose validity only. Group membership does not grant organisation,
+  department, or private Interact access.
+- Administration transfer requires recipient acceptance and serializes role
+  changes under the group-row lock. Active admins may archive groups; only the
+  recorded archiver UID can restore during the 30-day recovery window. Archived
+  membership/content remain stored, invitations are revoked, and archived groups
+  are excluded from automatic expiry cleanup pending separate retention review.
+- Import is a deliberate selection and confirmation. Local items remain in the
+  browser after sharing, and Interact entries require explicit
+  `share_with_group` confirmation. Exports cannot be revoked after download.
+- Group access expires after 90 days without an authorized request. The
+  `backend/app/maintenance/guest_retention.py` command supports bounded,
+  dry-run-first deletion of expired groups and their group-owned rows; no
+  scheduler is configured in the repository, and hosted scheduler state is
+  unverified. Expiry denies access but does not itself delete data;
+  repository cleanup removes expired rows only in reviewed apply-mode runs.
+  Cleanup locks and
+  rechecks each group before deleting, and does not touch organisation or
+  private-session data. Invitations expire after their configured lifetime
+  (24 hours by default, up to seven days); expired/revoked invitations are not
+  valid for preview or redemption. No backend store for private guest drafts
+  exists; group content is stored remotely only after an explicit group action.
+- Anonymous guests can continue using local Knowledge, Interact, templates, and
+  backup/import. Creating or signing into an account does not upload, migrate,
+  or delete that local data. Account creation uses normal Firebase registration;
+  it does not link credentials to an anonymous UID or transfer existing Groups
+  membership.
+- Verified registered accounts may explicitly import selected local Knowledge
+  items, Interact sessions, or templates into the separate
+  `personal_workspace_items` store. Rows are scoped to the verified Firebase UID,
+  not an organisation, and are available across devices after signing into that
+  account. The personal API independently verifies the Firebase ID token,
+  registered provider, verified email, and App Check; request-supplied identity
+  headers are rejected. Personal content is not part of organisation search,
+  Groups, or organisation routes. Imports are idempotent by account and stable
+  source key, and never remove the local originals.
+- Personal rows persist until their owner deletes them; signing out does not
+  delete server data. Firebase account deletion does not cascade to these rows.
+  This feature adds no expiry or automatic purge.
+- Migration `0013` creates the personal workspace table without backfilling
+  existing local or group data. For an isolated development database, run
+  `cd backend && alembic upgrade head` using its intended `DATABASE_URL`.
+  Hosted migrations require the existing reviewed development migration process;
+  this feature work does not run a hosted migration.
+- Registered organisation routes continue to resolve active Firebase UID
+  mappings and retain the existing tenant, department, private-session,
+  governance, and audit checks. A registered identity can access only its
+  existing group memberships. Each Firebase UID maps to one account and each
+  account belongs to one organisation; multiple organisation memberships per
+  account are not supported. Group roles remain independent of organisation
+  roles, and group membership does not create organisation membership.
+
 ## Semantic search
 
-- Canonical embedding input is the trimmed question title followed by the body,
-  when present. Author, tenant, timestamps, reactions, and answers are excluded.
+- Canonical embedding input is the trimmed question title and body, followed by
+  the best eligible verified or accepted answer when present. Author, tenant,
+  timestamps, and reactions are excluded.
 - `question_embeddings` stores vectors separately from questions. A source hash
   avoids provider calls when text and model are unchanged.
 - Question creation and title/body updates commit before best-effort embedding
   synchronization, so provider outages do not make core Q&A writes unusable.
+- Verification, unverification, accepted challenge replacements, canonical
+  merge/unmerge, and question restoration also synchronize affected vectors.
+  Changed vectors are removed before re-embedding, so provider failures leave
+  keyword search available rather than exposing stale semantic results.
+- Personal-account and Group Knowledge vectors live on their own source rows,
+  not in `question_embeddings`. Personal queries filter by Firebase UID and
+  Group queries filter by active membership, group archive state, and expiry
+  before ranking; stored source hashes are checked before a vector can match.
+  Writes synchronize new and changed records. Existing records can be indexed
+  with `cd backend && python scripts/backfill_private_knowledge_embeddings.py`;
+  this is an explicit operator action and is not part of migrations.
 - The default provider uses an OpenAI-compatible embeddings API. A deterministic
   fake implements the same interface for tests and local development.
 - Candidate retrieval uses pgvector cosine distance. The search service owns
@@ -138,7 +263,8 @@ infer the user's formal department.
   Open suggestions appear in the existing department-scoped review queue and
   may be accepted through merge or rejected without altering either question.
 - Canonical linking, answer selection, and suggestions derive tenant/actor
-  identity from headers and use the existing admin/department-owner policy.
+  identity from the authenticated membership and use the existing
+  admin/department-owner policy.
 
 ## IntQAFlow Interact
 
@@ -163,10 +289,14 @@ infer the user's formal department.
   and audit behavior.
 - Legacy import normalizes local Interact JSON into the same answer-
   owned recursive graph. Native sessions and template sets have portable JSON;
-  session reports also support CSV and browser print/PDF.
+  session reports also support CSV and browser print/PDF. CSV export prefixes
+  formula-like user text, including formulas after leading whitespace/control
+  characters, so spreadsheet software treats it as text; JSON export retains the
+  original values.
 
 ## Deferred work
 
-Generative AI, Firebase Auth, team-only visibility for primary Q&A, Microsoft
-Teams integration, browser extensions, document ingestion, and agent access
-remain intentionally deferred.
+Generative AI, team-only visibility for primary Q&A, Microsoft Teams
+integration, browser extensions, document ingestion, and agent access remain
+intentionally deferred. The delivery direction above does not change these
+implementation phases; no extension or plugin is delivered by this work.

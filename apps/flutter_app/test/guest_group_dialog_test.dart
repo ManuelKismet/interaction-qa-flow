@@ -1,0 +1,2045 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:int_qa_flow/app.dart';
+import 'package:int_qa_flow/core/auth/auth_providers.dart';
+import 'package:int_qa_flow/core/auth/sign_in_page.dart';
+import 'package:int_qa_flow/core/routing/app_router.dart';
+import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
+import 'package:int_qa_flow/features/guest/data/personal_workspace_repository.dart';
+import 'package:int_qa_flow/features/guest/data/guest_storage_interface.dart';
+import 'package:int_qa_flow/features/guest/data/guest_workspace_store.dart';
+import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+import 'package:int_qa_flow/features/guest/presentation/guest_workspace_page.dart';
+
+class _TestFirebaseAuth implements FirebaseAuth {
+  _TestFirebaseAuth([this.user]);
+
+  final User? user;
+
+  @override
+  User? get currentUser => user ?? _TestUser(anonymous: false, verified: true);
+
+  @override
+  Stream<User?> authStateChanges() => Stream.value(currentUser);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _TestUser implements User {
+  _TestUser({
+    this.anonymous = false,
+    this.verified = true,
+    this.testUid = 'test-anonymous-uid',
+  });
+
+  @override
+  String get uid => testUid;
+
+  @override
+  bool get isAnonymous => anonymous;
+
+  @override
+  bool get emailVerified => verified;
+
+  @override
+  String? get email => 'test@example.test';
+
+  final bool anonymous;
+  final bool verified;
+  final String testUid;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _SwitchingFirebaseAuth implements FirebaseAuth {
+  _SwitchingFirebaseAuth(this.user);
+
+  User? user;
+
+  @override
+  User? get currentUser => user;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _PendingEntryRepository extends GuestGroupRepository {
+  _PendingEntryRepository() : super(Dio());
+
+  final exportResult = Completer<Map<String, dynamic>>();
+  final historyResult = Completer<List<Map<String, dynamic>>>();
+  var exportRequested = false;
+  var historyRequested = false;
+  bool noGroups = false;
+  final groupReads = <String>[];
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => noGroups
+      ? []
+      : [
+          {'id': 'group-1', 'name': 'Group', 'role': 'viewer'},
+        ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async {
+    groupReads.add(groupId);
+    return {'id': groupId, 'role': 'viewer', 'members': []};
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => [
+    {
+      'id': 'entry-1',
+      'kind': 'knowledge',
+      'title': 'Shared entry',
+      'revision': 1,
+      'data': {'answer': 'Shared answer'},
+    },
+  ];
+
+  @override
+  Future<Map<String, dynamic>> exportEntry({
+    required String groupId,
+    required String entryId,
+  }) {
+    exportRequested = true;
+    return exportResult.future;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> entryHistory({
+    required String groupId,
+    required String entryId,
+  }) {
+    historyRequested = true;
+    return historyResult.future;
+  }
+}
+
+class _FailingGroupsRepository extends GuestGroupRepository {
+  _FailingGroupsRepository() : super(Dio());
+
+  var attempts = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async {
+    attempts++;
+    throw StateError('private test detail');
+  }
+}
+
+class _FailingDraftRepository extends GuestGroupRepository {
+  _FailingDraftRepository() : super(Dio());
+
+  var createGroupAttempts = 0;
+  var joinAttempts = 0;
+  var createKnowledgeAttempts = 0;
+  var updateEntryAttempts = 0;
+  var failGroupReads = false;
+  var failRefreshAfterCreateGroup = false;
+  var twoGroups = false;
+  var usedInvitation = false;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async {
+    if (failGroupReads) throw StateError('private status detail');
+    return [
+      {'id': 'group-1', 'name': 'Test group', 'role': 'editor'},
+      if (twoGroups) {'id': 'group-2', 'name': 'Other group', 'role': 'editor'},
+    ];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async => {
+    'id': groupId,
+    'name': groupId == 'group-2' ? 'Other group' : 'Test group',
+    'role': 'editor',
+    'members': [],
+  };
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => twoGroups && groupId == 'group-2'
+      ? []
+      : [
+          {
+            'id': 'entry-1',
+            'kind': 'knowledge',
+            'title': 'Original title',
+            'revision': 1,
+            'created_by_uid': 'test-anonymous-uid',
+            'data': {'body': 'Original body', 'answer': 'Original answer'},
+          },
+        ];
+
+  @override
+  Future<Map<String, dynamic>> createGroup({
+    required String name,
+    required String displayName,
+  }) async {
+    createGroupAttempts++;
+    if (failRefreshAfterCreateGroup) failGroupReads = true;
+    throw StateError('private invitation-token detail');
+  }
+
+  @override
+  Future<({bool valid, bool used})> previewInvitation(String token) async =>
+      (valid: !usedInvitation, used: usedInvitation);
+
+  @override
+  Future<Map<String, dynamic>> joinInvitation({
+    required String token,
+    required String displayName,
+  }) async {
+    joinAttempts++;
+    throw StateError('private invitation-token detail');
+  }
+
+  @override
+  Future<Map<String, dynamic>> createKnowledge({
+    required String groupId,
+    required String title,
+    required String body,
+    required String answer,
+  }) async {
+    createKnowledgeAttempts++;
+    throw StateError('private answer detail');
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateEntry({
+    required String groupId,
+    required String entryId,
+    required int expectedRevision,
+    required String title,
+    required Map<String, dynamic> data,
+  }) async {
+    updateEntryAttempts++;
+    throw StateError('private answer detail');
+  }
+}
+
+class _FailingLocalStorage implements GuestStorage {
+  @override
+  String? read() => null;
+
+  @override
+  void write(String value) => throw StateError('private storage detail');
+
+  @override
+  void remove() {}
+}
+
+class _EmptyGroupsRepository extends GuestGroupRepository {
+  _EmptyGroupsRepository() : super(Dio());
+
+  var listGroupsCalls = 0;
+  var listArchivedGroupsCalls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async {
+    listGroupsCalls++;
+    return [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
+    listArchivedGroupsCalls++;
+    return const [];
+  }
+}
+
+class _IdentityTransitionGroupsRepository extends GuestGroupRepository {
+  _IdentityTransitionGroupsRepository() : super(Dio());
+
+  final staleGroups = Completer<List<Map<String, dynamic>>>();
+  final recipientGroups = Completer<List<Map<String, dynamic>>>();
+  var listGroupsCalls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() {
+    listGroupsCalls++;
+    return switch (listGroupsCalls) {
+      1 => Future<List<Map<String, dynamic>>>.value([
+        {'id': 'owner-group', 'name': 'Owner group', 'role': 'viewer'},
+      ]),
+      2 => staleGroups.future,
+      _ => recipientGroups.future,
+    };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async => {
+    'id': groupId,
+    'name': groupId == 'owner-group' ? 'Owner group' : 'Recipient group',
+    'role': 'viewer',
+    'members': [],
+  };
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => const [];
+}
+
+class _PendingGroupsRepository extends GuestGroupRepository {
+  _PendingGroupsRepository() : super(Dio());
+
+  final groups = Completer<List<Map<String, dynamic>>>();
+  var listGroupsCalls = 0;
+  var listArchivedGroupsCalls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() {
+    listGroupsCalls++;
+    return groups.future;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
+    listArchivedGroupsCalls++;
+    return const [];
+  }
+}
+
+class _SharePersonalRepository extends PersonalWorkspaceRepository {
+  _SharePersonalRepository() : super(Dio());
+
+  String? requestedUid;
+
+  @override
+  Future<List<Map<String, dynamic>>> listItems({
+    required String expectedUid,
+  }) async {
+    requestedUid = expectedUid;
+    return [
+      {
+        'id': 'private-record-1',
+        'kind': 'interact_session',
+        'title': 'Account interview',
+        'data': {
+          'id': 'session-1',
+          'title': 'Account interview',
+          'participants': [
+            {'id': 'participant-1', 'name': 'Alice'},
+          ],
+          'questions': [
+            {
+              'id': 'question-1',
+              'text': 'Account prompt',
+              'answers': [
+                {
+                  'participant_id': 'participant-1',
+                  'body': 'Account answer',
+                  'follow_ups': [
+                    {'id': 'branch-1', 'text': 'Nested prompt', 'answers': []},
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        'id': 'private-knowledge-1',
+        'kind': 'knowledge',
+        'title': 'Account Knowledge',
+      },
+    ];
+  }
+}
+
+class _ShareRepository extends GuestGroupRepository {
+  _ShareRepository() : super(Dio());
+
+  Map<String, Map<String, dynamic>>? sharedSessions;
+  String? sharedUid;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => [
+    {'id': 'group-1', 'name': 'Local Safety Team', 'role': 'editor'},
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async => {
+    'id': groupId,
+    'name': 'Local Safety Team',
+    'role': 'editor',
+    'members': [],
+  };
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> shareInteract({
+    required String groupId,
+    required String expectedUid,
+    required Map<String, Map<String, dynamic>> sessions,
+  }) async {
+    sharedUid = expectedUid;
+    sharedSessions = sessions;
+    return const [];
+  }
+}
+
+class _MemberManagementRepository extends GuestGroupRepository {
+  _MemberManagementRepository({
+    this.isTransferTarget = false,
+    this.transferRequested = false,
+  }) : super(Dio());
+
+  var removeRequests = 0;
+  var memberStatus = 'active';
+  final bool isTransferTarget;
+  bool transferRequested;
+  bool transferAccepted = false;
+  bool archived = false;
+  bool deleted = false;
+  bool canRestore = true;
+  bool canDelete = true;
+  bool permanentDeleteFails = false;
+  bool archivedRefreshFails = false;
+  var transferRequests = 0;
+  var acceptTransferRequests = 0;
+  var archiveRequests = 0;
+  var restoreRequests = 0;
+  var permanentDeleteRequests = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => archived || deleted
+      ? []
+      : [
+          {
+            'id': 'group-1',
+            'name': 'Research group',
+            'role': isTransferTarget && !transferAccepted ? 'viewer' : 'admin',
+          },
+        ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
+    if (archivedRefreshFails) throw StateError('private refresh detail');
+    return archived && !deleted
+        ? [
+            {
+              'id': 'group-1',
+              'name': 'Research group',
+              'can_restore': canRestore,
+              'can_delete': canDelete,
+              'restore_until': '2030-01-31T00:00:00+00:00',
+            },
+          ]
+        : const [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async => {
+    'id': groupId,
+    'name': 'Research group',
+    'role': isTransferTarget && !transferAccepted ? 'viewer' : 'admin',
+    'pending_admin_transfer': transferRequested && !transferAccepted
+        ? {
+            'id': 'transfer-1',
+            'target_display_name': 'Invited viewer',
+            'expires_at': '2030-01-08T00:00:00+00:00',
+            'is_target': isTransferTarget,
+            'is_requester': !isTransferTarget,
+          }
+        : null,
+    'members': [
+      if (memberStatus != 'removed')
+        {
+          'id': 'member-1',
+          'display_name': 'Invited viewer',
+          'role': 'viewer',
+          'status': memberStatus,
+        },
+    ],
+  };
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> listInvitations(String groupId) async =>
+      [];
+
+  @override
+  Future<void> removeMember({
+    required String groupId,
+    required String memberId,
+  }) async {
+    removeRequests++;
+    memberStatus = 'removed';
+  }
+
+  @override
+  Future<Map<String, dynamic>> transferAdministration({
+    required String groupId,
+    required String memberId,
+  }) async {
+    transferRequests++;
+    transferRequested = true;
+    return {'id': 'transfer-1', 'status': 'pending'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> acceptAdminTransfer({
+    required String groupId,
+    required String transferId,
+  }) async {
+    acceptTransferRequests++;
+    transferAccepted = true;
+    return {'id': transferId, 'status': 'accepted'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> archiveGroup(String groupId) async {
+    archiveRequests++;
+    archived = true;
+    return {'id': groupId};
+  }
+
+  @override
+  Future<Map<String, dynamic>> restoreGroup(String groupId) async {
+    restoreRequests++;
+    archived = false;
+    return {'id': groupId};
+  }
+
+  @override
+  Future<void> permanentlyDeleteGroup(String groupId) async {
+    permanentDeleteRequests++;
+    if (permanentDeleteFails) throw StateError('private backend detail');
+    deleted = true;
+  }
+}
+
+class _AccountTransitionRepository extends GuestGroupRepository {
+  _AccountTransitionRepository(this.auth) : super(Dio());
+
+  final _SwitchingFirebaseAuth auth;
+  var transferAccepted = false;
+  var acceptedByUid = '';
+
+  @override
+  Future<List<Map<String, dynamic>>> listGroups() async => [
+    {
+      'id': 'transition-group',
+      'name': 'Transition group',
+      'role': auth.currentUser?.uid == 'recipient-uid' && !transferAccepted
+          ? 'viewer'
+          : 'admin',
+    },
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
+
+  @override
+  Future<Map<String, dynamic>> getGroup(String groupId) async {
+    final isRecipient = auth.currentUser?.uid == 'recipient-uid';
+    return {
+      'id': groupId,
+      'name': 'Transition group',
+      'role': isRecipient && !transferAccepted ? 'viewer' : 'admin',
+      'pending_admin_transfer': transferAccepted
+          ? null
+          : {
+              'id': 'transfer-1',
+              'target_display_name': 'Recipient',
+              'expires_at': '2030-01-08T00:00:00+00:00',
+              'is_target': isRecipient,
+              'is_requester': !isRecipient,
+            },
+      'members': [],
+    };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> searchEntries({
+    required String groupId,
+    String query = '',
+  }) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> listInvitations(String groupId) async =>
+      [];
+
+  @override
+  Future<Map<String, dynamic>> acceptAdminTransfer({
+    required String groupId,
+    required String transferId,
+  }) async {
+    acceptedByUid = auth.currentUser!.uid;
+    transferAccepted = true;
+    return {'id': transferId, 'status': 'accepted'};
+  }
+}
+
+class _MemoryGuestStorage implements GuestStorage {
+  String? value;
+
+  @override
+  void remove() => value = null;
+
+  @override
+  String? read() => value;
+
+  @override
+  void write(String value) => this.value = value;
+}
+
+void main() {
+  for (final hasGroups in [true, false]) {
+    testWidgets(
+      'inaccessible Group link stays unavailable (${hasGroups ? 'other approved Group' : 'no Groups'})',
+      (tester) async {
+        final repository = _PendingEntryRepository()..noGroups = !hasGroups;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+              guestGroupRepositoryProvider.overrideWithValue(repository),
+            ],
+            child: const MaterialApp(
+              home: SharedGuestGroupsPage(
+                initialGroupId: 'inaccessible',
+                initialEntryId: 'entry-1',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('The requested Group is unavailable'),
+          findsOneWidget,
+        );
+        expect(repository.groupReads, isEmpty);
+        expect(find.text('Shared entry'), findsNothing);
+        await tester.tap(find.byTooltip('Refresh'));
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('The requested Group is unavailable'),
+          findsOneWidget,
+        );
+        expect(repository.groupReads, isEmpty);
+        if (hasGroups) {
+          await tester.tap(
+            find.byKey(const ValueKey('approved-group-selection')),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Group · viewer').last);
+          await tester.pumpAndSettle();
+          expect(repository.groupReads, ['group-1']);
+          expect(
+            find.textContaining('The requested Group is unavailable'),
+            findsNothing,
+          );
+          expect(find.text('Shared entry'), findsOneWidget);
+          expect(find.byType(AlertDialog), findsNothing);
+        }
+      },
+    );
+  }
+
+  testWidgets(
+    'used invitation preview explains rejection without offering join',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _FailingDraftRepository()..usedInvitation = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+            guestGroupRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: const MaterialApp(home: SharedGuestGroupsPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _openGroupAction(tester, 'Join with invitation');
+      await tester.pumpAndSettle();
+      Finder field(String label) => find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == label,
+      );
+      await tester.enterText(field('Invitation token'), 'used-token');
+      await tester.enterText(field('Display name'), 'Alice');
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog).last,
+          matching: find.text('Preview invitation'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('This invitation has already been used.'),
+        findsWidgets,
+      );
+      expect(find.text('Request to join?'), findsNothing);
+      expect(find.text('Request access'), findsNothing);
+      expect(find.textContaining('used-token'), findsNothing);
+      expect(repository.joinAttempts, 0);
+    },
+  );
+
+  testWidgets(
+    'only verified registered identities can create and join groups',
+    (tester) async {
+      for (final user in [
+        _TestUser(anonymous: true, verified: false),
+        _TestUser(anonymous: false, verified: true),
+        _TestUser(anonymous: false, verified: false),
+      ]) {
+        final eligible = !user.isAnonymous && user.emailVerified;
+        final repository = _EmptyGroupsRepository();
+        final auth = _TestFirebaseAuth(user);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              firebaseAuthProvider.overrideWithValue(auth),
+              guestGroupRepositoryProvider.overrideWithValue(repository),
+            ],
+            child: const MaterialApp(home: SharedGuestGroupsPage()),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        if (eligible || user.isAnonymous) {
+          expect(find.text('Groups'), findsOneWidget);
+        }
+        if (eligible) {
+          final createButton = tester.widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Create group'),
+          );
+          final joinButton = tester.widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Join with invitation'),
+          );
+          expect(createButton.onPressed, isNotNull);
+          expect(joinButton.onPressed, isNotNull);
+          expect(repository.listGroupsCalls, 1);
+        } else {
+          expect(find.text('Create group'), findsNothing);
+          expect(repository.listGroupsCalls, 0);
+          expect(repository.listArchivedGroupsCalls, 0);
+          if (user.isAnonymous) {
+            expect(
+              find.textContaining('Groups require a registered account'),
+              findsOneWidget,
+            );
+            expect(find.text('Create account'), findsOneWidget);
+          } else {
+            expect(
+              find.text('Verify your email to use Groups'),
+              findsOneWidget,
+            );
+            expect(
+              find.textContaining('Check your email for the verification link'),
+              findsOneWidget,
+            );
+            expect(
+              find.text('Already have an account? Sign in'),
+              findsOneWidget,
+            );
+            expect(find.text('Create account'), findsNothing);
+          }
+        }
+        expect(identical(user, auth.currentUser), isTrue);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
+  testWidgets(
+    'direct Groups route and lifecycle loads do not call API for guests',
+    (tester) async {
+      final user = _TestUser(anonymous: true, verified: false);
+      final auth = _TestFirebaseAuth(user);
+      final repository = _EmptyGroupsRepository();
+      final router = GoRouter(
+        initialLocation: '/guest/groups',
+        routes: [
+          GoRoute(
+            path: '/guest/groups',
+            builder: (context, state) => const SharedGuestGroupsPage(),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authStateProvider.overrideWith((ref) => Stream.value(user)),
+            firebaseAuthProvider.overrideWithValue(auth),
+            guestGroupRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Groups require a registered account'),
+        findsOneWidget,
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(repository.listGroupsCalls, 0);
+      expect(repository.listArchivedGroupsCalls, 0);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      router.dispose();
+    },
+  );
+
+  testWidgets('pending Groups response is ignored after page disposal', (
+    tester,
+  ) async {
+    final repository = _PendingGroupsRepository();
+    final user = _TestUser(anonymous: false, verified: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pump();
+    expect(repository.listGroupsCalls, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    repository.groups.complete([
+      {'id': 'late-group', 'name': 'Late group', 'role': 'viewer'},
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(repository.listArchivedGroupsCalls, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('UID change clears Groups state and ignores stale loads', (
+    tester,
+  ) async {
+    final owner = _TestUser(testUid: 'owner-uid');
+    final recipient = _TestUser(testUid: 'recipient-uid');
+    final auth = _SwitchingFirebaseAuth(owner);
+    final authEvents = StreamController<User?>.broadcast();
+    final repository = _IdentityTransitionGroupsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => authEvents.stream),
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Owner group · viewer'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pump();
+    expect(repository.listGroupsCalls, 2);
+
+    auth.user = recipient;
+    authEvents.add(recipient);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Owner group · viewer'), findsNothing);
+
+    repository.staleGroups.complete([
+      {'id': 'stale-group', 'name': 'Stale group', 'role': 'viewer'},
+    ]);
+    await tester.pump();
+    expect(find.text('Stale group · viewer'), findsNothing);
+
+    repository.recipientGroups.complete([
+      {'id': 'recipient-group', 'name': 'Recipient group', 'role': 'viewer'},
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.text('Recipient group · viewer'), findsOneWidget);
+    expect(find.text('Stale group · viewer'), findsNothing);
+    await authEvents.close();
+  });
+
+  testWidgets('sign-out hides previously loaded Groups state', (tester) async {
+    final owner = _TestUser(testUid: 'owner-uid');
+    final auth = _SwitchingFirebaseAuth(owner);
+    final authEvents = StreamController<User?>.broadcast();
+    final repository = _IdentityTransitionGroupsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => authEvents.stream),
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Owner group · viewer'), findsOneWidget);
+
+    auth.user = null;
+    authEvents.add(null);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Owner group · viewer'), findsNothing);
+    expect(
+      find.textContaining('Groups require a registered account'),
+      findsOneWidget,
+    );
+    expect(repository.listGroupsCalls, 1);
+    await authEvents.close();
+  });
+
+  testWidgets('Groups page explains access behind its info button', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(
+            _EmptyGroupsRepository(),
+          ),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Groups'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Groups require a registered account with a verified email, but do '
+        'not require organisation membership.',
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.byTooltip('Groups information'));
+    await tester.pumpAndSettle();
+    expect(find.text('About groups'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Group data remains associated with its Firebase UID;',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('group creation validates required fields in place', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(
+            _EmptyGroupsRepository(),
+          ),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create group'));
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == label,
+    );
+    final createDialogButton = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, 'Create group'),
+    );
+    await tester.tap(createDialogButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a group name.'), findsOneWidget);
+    expect(find.text('Enter a display name.'), findsOneWidget);
+
+    await tester.enterText(field('Group name'), 'Safety');
+    await tester.tap(createDialogButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a group name.'), findsNothing);
+    expect(find.text('Enter a display name.'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(field('Group name')).controller!.text,
+      'Safety',
+    );
+  });
+
+  testWidgets('failed remote forms retain drafts without replaying writes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _FailingDraftRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == label,
+    );
+    Future<void> tapDialogAction(String label) async {
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog).last,
+          matching: find.text(label),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await _openGroupAction(tester, 'Create group');
+    await tester.pumpAndSettle();
+    await tester.enterText(field('Group name'), 'Safety team');
+    await tester.enterText(field('Your display name'), 'Alice');
+    await tapDialogAction('Create group');
+    expect(repository.createGroupAttempts, 1);
+    expect(
+      find.textContaining('private invitation-token detail'),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('Status was refreshed. Review it before retrying.'),
+      findsOneWidget,
+    );
+    await _openGroupAction(tester, 'Create group');
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(field('Group name')).controller!.text,
+      'Safety team',
+    );
+    expect(
+      tester.widget<TextField>(field('Your display name')).controller!.text,
+      'Alice',
+    );
+    await tapDialogAction('Cancel');
+
+    await _openGroupAction(tester, 'Join with invitation');
+    await tester.pumpAndSettle();
+    await tester.enterText(field('Invitation token'), 'temporary-token');
+    await tester.enterText(field('Display name'), 'Alice');
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Preview invitation'),
+      ),
+    );
+    await _pumpUntilFound(tester, find.text('Request to join?'));
+    await tapDialogAction('Request access');
+    expect(repository.joinAttempts, 1);
+    expect(find.textContaining('temporary-token'), findsNothing);
+    await _openGroupAction(tester, 'Join with invitation');
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(field('Invitation token')).controller!.text,
+      'temporary-token',
+    );
+    expect(
+      tester.widget<TextField>(field('Display name')).controller!.text,
+      'Alice',
+    );
+    await tapDialogAction('Cancel');
+
+    final addKnowledge = find.widgetWithText(
+      OutlinedButton,
+      'Add shared Knowledge',
+    );
+    await tester.ensureVisible(addKnowledge);
+    await tester.tap(addKnowledge);
+    await tester.pumpAndSettle();
+    await tester.enterText(field('Title'), 'Draft title');
+    await tester.enterText(field('Knowledge / answer'), 'Draft content');
+    await tapDialogAction('Share with group');
+    expect(repository.createKnowledgeAttempts, 1);
+    await tester.tap(addKnowledge);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(field('Title')).controller!.text,
+      'Draft title',
+    );
+    expect(
+      tester.widget<TextField>(field('Knowledge / answer')).controller!.text,
+      'Draft content',
+    );
+    await tapDialogAction('Cancel');
+
+    await tester.tap(find.text('Original title'));
+    await tester.pumpAndSettle();
+    await tapDialogAction('Edit');
+    await tester.enterText(field('Title'), 'Edited draft title');
+    await tester.enterText(field('Knowledge'), 'Edited draft body');
+    await tester.enterText(field('Answer'), 'Edited draft answer');
+    await tapDialogAction('Save revision');
+    expect(repository.updateEntryAttempts, 1);
+    await tester.tap(find.text('Original title'));
+    await tester.pumpAndSettle();
+    await tapDialogAction('Edit');
+    expect(
+      tester.widget<TextField>(field('Title')).controller!.text,
+      'Edited draft title',
+    );
+    expect(
+      tester.widget<TextField>(field('Knowledge')).controller!.text,
+      'Edited draft body',
+    );
+    expect(
+      tester.widget<TextField>(field('Answer')).controller!.text,
+      'Edited draft answer',
+    );
+    expect(find.textContaining('private answer detail'), findsNothing);
+    await tapDialogAction('Cancel');
+    expect(repository.createGroupAttempts, 1);
+    expect(repository.joinAttempts, 1);
+    expect(repository.createKnowledgeAttempts, 1);
+    expect(repository.updateEntryAttempts, 1);
+  });
+
+  testWidgets('failed status refresh is not reported as successful', (
+    tester,
+  ) async {
+    final repository = _FailingDraftRepository()
+      ..failRefreshAfterCreateGroup = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == label,
+    );
+    await _openGroupAction(tester, 'Create group');
+    await tester.pumpAndSettle();
+    await tester.enterText(field('Group name'), 'Uncertain group');
+    await tester.enterText(field('Your display name'), 'Alice');
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Create group'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.createGroupAttempts, 1);
+    expect(find.textContaining('status refresh failed'), findsOneWidget);
+    expect(find.textContaining('Status was refreshed'), findsNothing);
+    expect(find.textContaining('private status detail'), findsNothing);
+    expect(
+      find.textContaining('private invitation-token detail'),
+      findsNothing,
+    );
+    await _openGroupAction(tester, 'Create group');
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(field('Group name')).controller!.text,
+      'Uncertain group',
+    );
+    expect(
+      tester.widget<TextField>(field('Your display name')).controller!.text,
+      'Alice',
+    );
+    expect(repository.createGroupAttempts, 1);
+  });
+
+  testWidgets('shared Knowledge drafts stay scoped to their group', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _FailingDraftRepository()..twoGroups = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == label,
+    );
+    final addKnowledge = find.widgetWithText(
+      OutlinedButton,
+      'Add shared Knowledge',
+    );
+    await tester.ensureVisible(addKnowledge);
+    await tester.tap(addKnowledge);
+    await tester.pumpAndSettle();
+    await tester.enterText(field('Title'), 'Group one private draft');
+    await tester.enterText(field('Knowledge / answer'), 'Draft body');
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Share with group'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.createKnowledgeAttempts, 1);
+
+    final groupPicker = find.byType(DropdownButtonFormField<String>);
+    await tester.ensureVisible(groupPicker);
+    await tester.tap(groupPicker);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Other group · editor').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(addKnowledge);
+    await tester.tap(addKnowledge);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field('Title')).controller!.text, isEmpty);
+    expect(
+      tester.widget<TextField>(field('Knowledge / answer')).controller!.text,
+      isEmpty,
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Cancel'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(groupPicker);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Test group · editor').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(addKnowledge);
+    await tester.tap(addKnowledge);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(field('Title')).controller!.text,
+      'Group one private draft',
+    );
+    expect(
+      tester.widget<TextField>(field('Knowledge / answer')).controller!.text,
+      'Draft body',
+    );
+  });
+
+  testWidgets('failed autosave blocks sign-in navigation with warning', (
+    tester,
+  ) async {
+    final storage = _FailingLocalStorage();
+    final store = GuestWorkspaceStore(storage);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(
+            _TestFirebaseAuth(_TestUser(anonymous: true, verified: false)),
+          ),
+          guestGroupRepositoryProvider.overrideWithValue(
+            _EmptyGroupsRepository(),
+          ),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+        ],
+        child: const MaterialApp(home: GuestWorkspacePage(firebaseReady: true)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final question = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == 'Question',
+    );
+    await tester.enterText(question, 'Keep this draft');
+    final save = find.widgetWithText(FilledButton, 'Save locally');
+    await _ensureVisibleInVerticalList(tester, save, anchor: question);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Already have an account? Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SignInPage), findsNothing);
+    expect(
+      find.text(
+        'Unable to save local changes. Retry saving before leaving this workspace.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Your changes are not saved. Keep this page open and retry.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('private storage detail'), findsNothing);
+  });
+
+  testWidgets('group lookup failure does not claim there are no groups', (
+    tester,
+  ) async {
+    final repository = _FailingGroupsRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('The group request could not be verified'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('No approved groups are linked'), findsNothing);
+    expect(find.text('private test detail'), findsNothing);
+    await tester.tap(find.text('Refresh status'));
+    await tester.pumpAndSettle();
+    expect(repository.attempts, 2);
+  });
+
+  testWidgets('group sharing is opt-in and describes online destination', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = _ShareRepository();
+    final personal = _SharePersonalRepository();
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'knowledge-1', 'title': 'Local knowledge'},
+        ],
+        sessions: [
+          {
+            'id': 'session-1',
+            'title': 'Private interview',
+            'participants': [
+              {'id': 'participant-1', 'name': 'Alice'},
+            ],
+            'questions': [
+              {
+                'id': 'question-1',
+                'text': 'Prompt',
+                'answers': [
+                  {'participant_id': 'participant-1', 'body': 'Private answer'},
+                ],
+              },
+            ],
+          },
+        ],
+        templates: [
+          {
+            'id': 'template-1',
+            'name': 'Local template',
+            'participant_slots': [
+              {'id': 'slot-1', 'label': 'Participant 1'},
+            ],
+            'questions': [
+              {'id': 'template-question-1', 'text': 'Template prompt'},
+            ],
+          },
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+          personalWorkspaceRepositoryProvider.overrideWithValue(personal),
+          guestWorkspaceStoreProvider.overrideWithValue(store),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await _openGroupAction(tester, 'Preview & share Interact');
+    await _pumpUntilFound(
+      tester,
+      find.text('Preview sharing to Local Safety Team'),
+    );
+    expect(find.text('Preview sharing to Local Safety Team'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'uploads selected copies online to Local Safety Team',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Approved group members'), findsOneWidget);
+    expect(
+      find.textContaining('local originals stay on this device'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'Sharing uploads all participants and answer-owned branches',
+      ),
+      findsNWidgets(2),
+    );
+    expect(find.text('Local templates remain on this device'), findsNothing);
+    expect(find.text('Account Knowledge'), findsNothing);
+    expect(find.text('Account interview'), findsOneWidget);
+    expect(personal.requestedUid, 'test-anonymous-uid');
+    expect(
+      find.textContaining(
+        'existing group copy is reused without being overwritten',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('added locally'), findsNothing);
+    expect(find.text('Local knowledge'), findsNothing);
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.ancestor(
+              of: find.text('Private interview'),
+              matching: find.byType(CheckboxListTile),
+            ),
+          )
+          .value,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Share selected with group'),
+          )
+          .onPressed,
+      isNull,
+    );
+
+    await tester.tap(find.text('Cancel'));
+    await _pumpUntilGone(
+      tester,
+      find.text('Preview sharing to Local Safety Team'),
+    );
+    expect(repository.sharedSessions, isNull);
+    expect((await store.load()).sessions.single['title'], 'Private interview');
+
+    await _openGroupAction(tester, 'Preview & share Interact');
+    await _pumpUntilFound(
+      tester,
+      find.text('Preview sharing to Local Safety Team'),
+    );
+    await tester.tap(find.text('Private interview'));
+    await tester.tap(find.text('Account interview'));
+    await tester.pump();
+    await tester.tap(find.text('Share selected with group'));
+    await tester.pumpAndSettle();
+
+    expect(repository.sharedSessions!.keys.toSet(), {
+      'local-session-1',
+      'private-private-record-1',
+    });
+    expect(repository.sharedUid, 'test-anonymous-uid');
+    final account = repository.sharedSessions!['private-private-record-1']!;
+    expect(account['id'], 'session-1');
+    final question = (account['questions'] as List).single as Map;
+    final answer = (question['answers'] as List).single as Map;
+    expect((answer['follow_ups'] as List).single['id'], 'branch-1');
+    expect((await store.load()).knowledge.single['title'], 'Local knowledge');
+    expect((await store.load()).sessions.single['title'], 'Private interview');
+  });
+
+  testWidgets('a search deep link opens its authorized Group entry', (
+    tester,
+  ) async {
+    final auth = _TestFirebaseAuth();
+    final repository = _PendingEntryRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(auth),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(
+          home: SharedGuestGroupsPage(
+            initialGroupId: 'group-1',
+            initialEntryId: 'entry-1',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(
+      find.descendant(of: dialog, matching: find.text('Shared entry')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.text('Shared answer')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('removing a member keeps the groups page mounted', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openGroupAction(tester, 'Manage members and invitations');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>).hitTestable());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove member'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Remove this Group member?'), findsOneWidget);
+    expect(find.text('Groups'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Remove member').last);
+    await tester.pumpAndSettle();
+
+    expect(repository.removeRequests, 1);
+    expect(repository.memberStatus, 'removed');
+    expect(find.text('Groups'), findsOneWidget);
+    expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.text('Invited viewer'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('group administration transfer requires recipient acceptance', (
+    tester,
+  ) async {
+    final ownerRepository = _MemberManagementRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(ownerRepository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openGroupAction(tester, 'Manage members and invitations');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>).hitTestable());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Request admin transfer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Request group administration?'), findsOneWidget);
+    expect(
+      find.textContaining('You remain an administrator unless they accept'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Send request'));
+    await tester.pumpAndSettle();
+
+    expect(ownerRepository.transferRequests, 1);
+    expect(
+      find.textContaining('Waiting for Invited viewer to accept'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(' · admin'),
+      findsOneWidget,
+      reason:
+          'The requester keeps the current role until the recipient accepts.',
+    );
+  });
+
+  testWidgets('recipient sees and can accept pending administration transfer', (
+    tester,
+  ) async {
+    final recipientRepository = _MemberManagementRepository(
+      isTransferTarget: true,
+      transferRequested: true,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(recipientRepository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('asked to accept group administration'),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Accept administration'),
+    );
+    await tester.pumpAndSettle();
+    expect(recipientRepository.acceptTransferRequests, 1);
+    expect(
+      find.textContaining('asked to accept group administration'),
+      findsNothing,
+    );
+    await tester.tap(find.byTooltip('Groups information'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Your group role: admin.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('account transition remounts group state for recipient', (
+    tester,
+  ) async {
+    final owner = _TestUser(anonymous: false, testUid: 'owner-uid');
+    final recipient = _TestUser(anonymous: false, testUid: 'recipient-uid');
+    final auth = _SwitchingFirebaseAuth(owner);
+    final authEvents = StreamController<User?>();
+    final repository = _AccountTransitionRepository(auth);
+    final routers = <String, GoRouter>{};
+    authEvents.add(owner);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authStateProvider.overrideWith((ref) => authEvents.stream),
+          firebaseAuthProvider.overrideWithValue(auth),
+          accountMembershipStatusProvider.overrideWith(
+            (ref) async => AccountMembershipStatus.active,
+          ),
+          currentMembershipProvider.overrideWith(
+            (ref) async => const ActiveMembership(
+              userId: 'app-user',
+              organisationId: 'org',
+              email: 'member@example.test',
+              displayName: 'Member',
+              role: 'member',
+            ),
+          ),
+          appRouterProvider.overrideWith((ref, firebaseUid) {
+            final router = GoRouter(
+              initialLocation: '/guest/groups',
+              routes: [
+                GoRoute(
+                  path: '/guest/groups',
+                  builder: (context, state) => const SharedGuestGroupsPage(),
+                ),
+              ],
+            );
+            routers[firebaseUid] = router;
+            ref.onDispose(router.dispose);
+            return router;
+          }),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const IntQaFlowApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Waiting for Recipient to accept'),
+      findsOneWidget,
+    );
+    expect(find.text('Accept administration'), findsNothing);
+    expect(routers.keys, contains('owner-uid'));
+
+    auth.user = recipient;
+    authEvents.add(recipient);
+    await tester.pumpAndSettle();
+    expect(routers.keys, containsAll(['owner-uid', 'recipient-uid']));
+    expect(routers['owner-uid'], isNot(same(routers['recipient-uid'])));
+    expect(
+      find.textContaining('asked to accept group administration'),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Accept administration'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.acceptedByUid, 'recipient-uid');
+    expect(
+      find.textContaining('asked to accept group administration'),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+    await authEvents.close();
+  });
+
+  testWidgets('group archive explains same-UID recovery and can be restored', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openGroupAction(tester, 'Archive group');
+    await tester.pumpAndSettle();
+    expect(find.text('Archive this group?'), findsOneWidget);
+    expect(
+      find.textContaining('only the same Firebase account'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Archive group').last);
+    await tester.pumpAndSettle();
+
+    expect(repository.archiveRequests, 1);
+    expect(find.text('Archived groups'), findsOneWidget);
+    expect(
+      find.textContaining('Only this same Firebase account can restore'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Restore'));
+    await tester.pumpAndSettle();
+    expect(repository.restoreRequests, 1);
+    expect(find.text('Research group · admin'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('archived group deletion requires confirmation and refreshes', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository()
+      ..archived = true
+      ..canRestore = false;
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Restore'), findsNothing);
+    expect(find.text('Delete permanently'), findsOneWidget);
+    await tester.ensureVisible(find.text('Delete permanently'));
+    await tester.tap(find.text('Delete permanently'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete "Research group" permanently?'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'permanently deletes the group, its content, and its memberships for everyone',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('cannot be restored'), findsOneWidget);
+    expect(
+      find.textContaining('local copies are not affected'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(repository.permanentDeleteRequests, 0);
+    expect(find.text('Delete permanently'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Delete permanently'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
+    await tester.pumpAndSettle();
+    expect(repository.permanentDeleteRequests, 1);
+    expect(find.text('Archived groups'), findsNothing);
+    expect(find.textContaining('Research group'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('archived deletion action follows server can_delete permission', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository()
+      ..archived = true
+      ..canDelete = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Restore'), findsOneWidget);
+    expect(find.text('Delete permanently'), findsNothing);
+    expect(repository.permanentDeleteRequests, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed archived deletion refreshes without replaying request', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository()
+      ..archived = true
+      ..canRestore = false
+      ..permanentDeleteFails = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Delete permanently'));
+    await tester.tap(find.text('Delete permanently'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
+    await tester.pumpAndSettle();
+
+    expect(repository.permanentDeleteRequests, 1);
+    expect(find.text('Archived groups'), findsOneWidget);
+    expect(find.text('Delete permanently'), findsOneWidget);
+    expect(
+      find.textContaining('The group request could not be verified.'),
+      findsWidgets,
+    );
+    expect(find.text('private backend detail'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('uncertain deletion keeps item and blocks retry until refresh', (
+    tester,
+  ) async {
+    final repository = _MemberManagementRepository()
+      ..archived = true
+      ..canRestore = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+          guestGroupRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: SharedGuestGroupsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Delete permanently'));
+    await tester.tap(find.text('Delete permanently'));
+    await tester.pumpAndSettle();
+    repository
+      ..permanentDeleteFails = true
+      ..archivedRefreshFails = true;
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete permanently'));
+    await tester.pumpAndSettle();
+
+    expect(repository.permanentDeleteRequests, 1);
+    expect(find.textContaining('Research group'), findsOneWidget);
+    expect(find.text('Delete permanently'), findsNothing);
+    expect(
+      find.textContaining(
+        'The item is retained; refresh status before retrying.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('private refresh detail'), findsNothing);
+
+    repository
+      ..permanentDeleteFails = false
+      ..archivedRefreshFails = false;
+    await tester.tap(find.text('Refresh status'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete permanently'), findsOneWidget);
+    expect(repository.permanentDeleteRequests, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final action in ['Download / Share PDF', 'History']) {
+    testWidgets(
+      'does not open $action result after the entry dialog is dismissed',
+      (tester) async {
+        final repository = _PendingEntryRepository();
+        final navigatorKey = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
+              guestGroupRepositoryProvider.overrideWithValue(repository),
+            ],
+            child: MaterialApp(
+              navigatorKey: navigatorKey,
+              home: const SharedGuestGroupsPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final entry = find.text('Shared entry');
+        await tester.ensureVisible(entry);
+        await tester.pumpAndSettle();
+        await tester.tap(entry);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(action).last);
+        await tester.pump();
+        expect(
+          action == 'Download / Share PDF'
+              ? repository.exportRequested
+              : repository.historyRequested,
+          isTrue,
+        );
+
+        navigatorKey.currentState!.pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump();
+        expect(find.byType(AlertDialog), findsNothing);
+
+        if (action == 'Download / Share PDF') {
+          repository.exportResult.complete({'answer': 'Authorized export'});
+        } else {
+          repository.historyResult.complete([
+            {'revision': 1},
+          ]);
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('Authorized group export'), findsNothing);
+        expect(find.text('Entry revisions'), findsNothing);
+      },
+    );
+  }
+}
+
+Future<void> _ensureVisibleInVerticalList(
+  WidgetTester tester,
+  Finder target, {
+  required Finder anchor,
+}) async {
+  final scrollable = find
+      .ancestor(of: anchor, matching: find.byType(Scrollable))
+      .first;
+  expect(
+    tester.widget<Scrollable>(scrollable).axisDirection,
+    AxisDirection.down,
+  );
+  await tester.scrollUntilVisible(target, 180, scrollable: scrollable);
+  await tester.pumpAndSettle();
+  await Scrollable.ensureVisible(tester.element(target.first), alignment: 0.5);
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
+}
+
+Future<void> _openGroupAction(WidgetTester tester, String label) async {
+  final menu = find.byWidgetPredicate(
+    (widget) =>
+        widget is PopupMenuButton<String> && widget.tooltip == 'Group options',
+  );
+  for (var attempt = 0; attempt < 40; attempt++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (menu.evaluate().isNotEmpty &&
+        tester.widget<PopupMenuButton<String>>(menu).enabled) {
+      await tester.tap(menu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label).hitTestable());
+      if (label == 'Preview & share Interact') {
+        // Loading stays active behind selection until the dialog closes.
+        await tester.pump(const Duration(milliseconds: 300));
+      } else {
+        await tester.pumpAndSettle();
+      }
+      return;
+    }
+    final button = find.byWidgetPredicate(
+      (widget) => widget is ButtonStyleButton && widget.onPressed != null,
+    );
+    final directAction = find
+        .descendant(of: button, matching: find.text(label))
+        .hitTestable();
+    if (directAction.evaluate().isNotEmpty) {
+      await tester.tap(directAction);
+      await tester.pumpAndSettle();
+      return;
+    }
+  }
+  fail('Group action did not become available: $label');
+}
+
+Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 40; attempt++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (finder.evaluate().isNotEmpty) return;
+  }
+  fail('Widget did not appear: $finder');
+}
+
+Future<void> _pumpUntilGone(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 40; attempt++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (finder.evaluate().isEmpty) return;
+  }
+  fail('Widget did not disappear: $finder');
+}

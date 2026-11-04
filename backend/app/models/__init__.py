@@ -11,6 +11,16 @@ from app.models.duplicate_suggestion import (
     DuplicateSuggestion,
     DuplicateSuggestionStatus,
 )
+from app.models.firebase_uid_mapping import FirebaseUidMapping
+from app.models.guest import (
+    GuestActionRateLimit,
+    GuestGroup,
+    GuestGroupAdminTransfer,
+    GuestGroupEntry,
+    GuestGroupEntryRevision,
+    GuestGroupInvitation,
+    GuestGroupMembership,
+)
 from app.models.guided import (
     GuidedAnswer,
     GuidedParticipant,
@@ -29,11 +39,22 @@ from app.models.guided import (
     KnowledgeProposalStatus,
 )
 from app.models.organisation import Organisation
+from app.models.organisation_join_request import OrganisationJoinRequest
+from app.models.organisation_owner import OrganisationOwner
+from app.models.organisation_permission import OrganisationPermissionGrant
+from app.models.personal_workspace import PersonalWorkspaceItem
 from app.models.question import Question, QuestionStatus, QuestionVisibility
+from app.models.question_change_request import (
+    ChangeRequestStatus,
+    QuestionChangeRequest,
+)
 from app.models.question_embedding import QuestionEmbedding
+from app.models.question_version import QuestionVersion
 from app.models.team import Team, TeamStatus
 from app.models.team_membership import TeamMembership
 from app.models.user import User, UserRole
+
+from app.models.suggestion_bank import BankSuggestion, BankActivity, BankFollower
 
 __all__ = [
     "Answer",
@@ -47,8 +68,10 @@ __all__ = [
     "ChallengeStatus",
     "ChallengeType",
     "Comment",
+    "ChangeRequestStatus",
     "Department",
     "DepartmentAnswerOwner",
+    "FirebaseUidMapping",
     "DuplicateSuggestion",
     "DuplicateSuggestionStatus",
     "GuidedAnswer",
@@ -64,13 +87,26 @@ __all__ = [
     "GuidedTemplateQuestion",
     "GuidedTemplateStatus",
     "GuidedTemplateVersion",
+    "GuestActionRateLimit",
+    "GuestGroup",
+    "GuestGroupAdminTransfer",
+    "GuestGroupEntry",
+    "GuestGroupEntryRevision",
+    "GuestGroupInvitation",
+    "GuestGroupMembership",
     "KnowledgeProposal",
     "KnowledgeProposalStatus",
     "Organisation",
+    "OrganisationJoinRequest",
+    "OrganisationOwner",
+    "OrganisationPermissionGrant",
+    "PersonalWorkspaceItem",
     "Question",
+    "QuestionChangeRequest",
     "QuestionEmbedding",
     "QuestionStatus",
     "QuestionVisibility",
+    "QuestionVersion",
     "ReactionType",
     "Team",
     "TeamMembership",

@@ -6,8 +6,7 @@ from app.schemas.common import EntityResponse, ORMModel
 
 
 class DepartmentCreate(BaseModel):
-    # TODO(auth): derive organisation_id from the authenticated identity.
-    organisation_id: UUID
+    organisation_id: UUID | None = None
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
 

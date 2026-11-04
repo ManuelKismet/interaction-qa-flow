@@ -1,0 +1,158 @@
+From d43f716d35242c576232fa1568589f942cf3f836 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 13:55:05 +0000
+Subject: [PATCH] Keep local guest workspace independent of Firebase
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index a239c59..e910f0c 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -530,10 +530,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   @override
+   Widget build(BuildContext context) {
+     final data = _data;
+-    final groupIdentity =
+-        ref.watch(authStateProvider).value ??
+-        ref.read(firebaseAuthProvider).currentUser;
+-    final canUseGroups = isVerifiedRegisteredFirebaseUser(groupIdentity);
++    final groupIdentity = widget.firebaseReady
++        ? ref.watch(authStateProvider).value ??
++              ref.read(firebaseAuthProvider).currentUser
++        : null;
++    final canUseGroups =
++        widget.firebaseReady &&
++        isVerifiedRegisteredFirebaseUser(groupIdentity);
+     final guestGroupsState = canUseGroups
+         ? ref.watch(currentGuestGroupsProvider)
+         : null;
+@@ -2772,8 +2775,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+       return false;
+     }
+-    final currentUser = user!;
+-    final uid = currentUser.uid;
++    final uid = user.uid;
+     final generation = ++_loadGeneration;
+     setState(() {
+       _busy = true;
+@@ -2837,11 +2839,11 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+   }
+ 
+   bool _isCurrentLoad(String uid, int generation) {
++    if (!mounted || generation != _loadGeneration || uid != _activeUid) {
++      return false;
++    }
+     final user = ref.read(firebaseAuthProvider).currentUser;
+-    return mounted &&
+-        generation == _loadGeneration &&
+-        uid == _activeUid &&
+-        user?.uid == uid &&
++    return user?.uid == uid &&
+         isVerifiedRegisteredFirebaseUser(user);
+   }
+ 
+@@ -2854,7 +2856,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+       return false;
+     }
+-    final loadUid = uid ?? user!.uid;
++    final loadUid = uid ?? user.uid;
+     final loadGeneration = generation ?? ++_loadGeneration;
+     if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
+     setState(() {
+@@ -2980,7 +2982,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+       return;
+     }
+-    final uid = user!.uid;
++    final uid = user.uid;
+     final generation = ++_loadGeneration;
+     final groupId = archived['id'] as String;
+     final failure = _error ?? 'The request could not be verified.';
+@@ -3030,7 +3032,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
+       return;
+     }
+-    final uid = user!.uid;
++    final uid = user.uid;
+     final generation = ++_loadGeneration;
+     setState(() => _busy = true);
+     try {
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index e121380..5520804 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -314,6 +314,28 @@ void main() {
+     },
+   );
+ 
++  testWidgets('local workspace does not access Firebase when unavailable', (
++    tester,
++  ) async {
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          guestWorkspaceStoreProvider.overrideWithValue(
++            GuestWorkspaceStore(_MemoryGuestStorage()),
++          ),
++        ],
++        child: const MaterialApp(
++          home: GuestWorkspacePage(firebaseReady: false),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
++    expect(find.byTooltip('Groups'), findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
+   testWidgets(
+     'sign-in return keeps guest workspace content available',
+     (tester) async {
+@@ -420,7 +442,12 @@ void main() {
+       ),
+       findsOneWidget,
+     );
+-    expect(find.textContaining('Groups are separate'), findsOneWidget);
++    expect(
++      find.textContaining(
++        'Groups require a registered account with a verified email.',
++      ),
++      findsOneWidget,
++    );
+     await tester.tap(find.text('Close'));
+     await tester.pumpAndSettle();
+     await tester.tap(find.byTooltip('Account'));
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index 2582ea3..2062530 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -749,7 +749,9 @@ void main() {
+     await tester.pumpAndSettle();
+     expect(find.text('About groups'), findsOneWidget);
+     expect(
+-      find.textContaining('Group data remains associated with its Firebase UID.'),
++      find.textContaining(
++        'Group data remains associated with its Firebase UID;',
++      ),
+       findsOneWidget,
+     );
+     await tester.tap(find.text('Close'));
+@@ -1040,7 +1042,9 @@ void main() {
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [
+-          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth()),
++          firebaseAuthProvider.overrideWithValue(
++            _TestFirebaseAuth(_TestUser(anonymous: true, verified: false)),
++          ),
+           guestGroupRepositoryProvider.overrideWithValue(
+             _EmptyGroupsRepository(),
+           ),
+-- 
+2.55.0
+

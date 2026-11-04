@@ -40,6 +40,7 @@ from app.schemas.guided import (
 )
 from app.schemas.search import SemanticSearchResult
 from app.services.guided import GuidedService
+from app.services.interact_search import InteractSearchService
 from app.services.guided_knowledge import GuidedKnowledgeService
 
 router = APIRouter(prefix="/guided", tags=["guided"])
@@ -127,6 +128,15 @@ async def archive_template(
     return await GuidedService(session).archive_template(template_id, identity.organisation_id, identity.user_id)
 
 
+@router.post("/templates/{template_id}/restore", response_model=GuidedTemplateResponse)
+async def restore_template(
+    template_id: UUID,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> GuidedTemplateResponse:
+    return await GuidedService(session).restore_template(template_id, identity.organisation_id, identity.user_id)
+
+
 @router.get("/sessions", response_model=list[GuidedSessionSummary])
 async def list_sessions(
     status_filter: GuidedSessionStatus | None = Query(default=None, alias="status"),
@@ -143,6 +153,18 @@ async def create_session(
     session: AsyncSession = Depends(get_session),
 ) -> GuidedSessionResponse:
     return await GuidedService(session).create_session(identity.organisation_id, identity.user_id, payload)
+
+
+@router.get("/sessions/search")
+async def search_interact_sessions(
+    query: str = Query(min_length=2, max_length=100),
+    limit: int = Query(default=25, ge=1, le=50),
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    return await InteractSearchService(session).organisation(
+        identity.organisation_id, identity.user_id, query, limit=limit
+    )
 
 
 @router.get("/sessions/{session_id}", response_model=GuidedSessionResponse)
@@ -202,6 +224,18 @@ async def archive_session(
     session: AsyncSession = Depends(get_session),
 ) -> GuidedSessionResponse:
     return await transition(session_id, GuidedSessionStatus.ARCHIVED, identity, session)
+
+
+@router.post("/sessions/{session_id}/reopen", response_model=GuidedSessionResponse)
+async def reopen_session(
+    session_id: UUID,
+    identity: DevelopmentIdentity = Depends(get_development_identity),
+    session: AsyncSession = Depends(get_session),
+) -> GuidedSessionResponse:
+    return await GuidedService(session).transition_session(
+        session_id, identity.organisation_id, identity.user_id,
+        GuidedSessionStatus.ACTIVE, reopening=True,
+    )
 
 
 @router.get("/sessions/{session_id}/revisions", response_model=list[GuidedRevisionResponse])

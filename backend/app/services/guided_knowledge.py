@@ -1,17 +1,22 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.embedding_provider import EmbeddingProvider, get_embedding_provider
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
 from app.models.audit_event import AuditAction, AuditEvent
-from app.models.guided import KnowledgeProposal, KnowledgeProposalStatus
+from app.models.guided import (
+    GuidedSessionVisibility,
+    GuidedAnswer,
+    KnowledgeProposal,
+    KnowledgeProposalStatus,
+)
 from app.models.question import QuestionVisibility
-from app.models.user import UserRole
-from app.repositories.governance import GovernanceRepository
 from app.repositories.department import DepartmentRepository
+from app.repositories.governance import GovernanceRepository
 from app.repositories.guided import GuidedRepository
 from app.repositories.question import QuestionRepository
 from app.repositories.team import TeamRepository
@@ -56,19 +61,40 @@ class GuidedKnowledgeService:
     ) -> KnowledgeProposalResponse:
         actor = await self.permissions.actor(user_id, organisation_id)
         question = await self.guided.question(data.guided_question_id, organisation_id)
-        answer = await self.guided.answer(data.guided_answer_id, organisation_id)
+        # Serialize submissions for this answer, including overlapping requests.
+        answer = await self.session.scalar(
+            select(GuidedAnswer).where(
+                GuidedAnswer.id == data.guided_answer_id,
+                GuidedAnswer.organisation_id == organisation_id,
+            ).with_for_update()
+        )
         if not question or not answer or answer.question_id != question.id:
             raise NotFoundError("Guided question and answer pair not found")
         session = await self.guided.guided_session(question.session_id, organisation_id)
         if not session:
             raise NotFoundError("Guided session not found")
-        if actor.id != session.created_by and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError("Only the session owner or an admin can propose its knowledge")
+        if actor.id != session.created_by and (
+            session.visibility == GuidedSessionVisibility.PRIVATE
+            or not await self.permissions.is_organisation_admin(actor)
+        ):
+            raise PermissionDeniedError("Only the session owner can use private-session content")
         if not answer.body.strip():
             raise ConflictError("An empty answer cannot be proposed as knowledge")
         department_id = data.department_id if data.department_id is not None else session.department_id
         team_id = data.team_id if data.team_id is not None else session.team_id
         await self._validate_team(department_id, team_id, organisation_id)
+        existing = await self.session.scalar(
+            select(KnowledgeProposal).where(
+                KnowledgeProposal.organisation_id == organisation_id,
+                KnowledgeProposal.guided_question_id == question.id,
+                KnowledgeProposal.guided_answer_id == answer.id,
+                KnowledgeProposal.status == KnowledgeProposalStatus.PENDING,
+            )
+        )
+        if existing is not None:
+            return KnowledgeProposalResponse.model_validate(existing).model_copy(
+                update={"already_pending": True}
+            )
         proposal = KnowledgeProposal(
             organisation_id=organisation_id,
             guided_session_id=session.id,
@@ -97,12 +123,16 @@ class GuidedKnowledgeService:
         self, organisation_id: UUID, user_id: UUID
     ) -> list[KnowledgeProposalResponse]:
         actor = await self.permissions.actor(user_id, organisation_id)
-        if actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError("Administrator permission is required")
-        return [
-            KnowledgeProposalResponse.model_validate(item)
-            for item in await self.guided.proposals(organisation_id)
-        ]
+        visible = []
+        for item in await self.guided.proposals(organisation_id):
+            if await self.permissions.has_permission(
+                actor,
+                "review",
+                department_id=item.department_id,
+                team_id=item.team_id,
+            ):
+                visible.append(KnowledgeProposalResponse.model_validate(item))
+        return visible
 
     async def duplicates(
         self,
@@ -144,9 +174,13 @@ class GuidedKnowledgeService:
         guided_session = await self.guided.guided_session(question.session_id, organisation_id)
         actor = await self.permissions.actor(user_id, organisation_id)
         if not guided_session or (
-            actor.id != guided_session.created_by and actor.role != UserRole.ADMIN
+            actor.id != guided_session.created_by
+            and (
+                guided_session.visibility == GuidedSessionVisibility.PRIVATE
+                or not await self.permissions.is_organisation_admin(actor)
+            )
         ):
-            raise PermissionDeniedError("Only the session owner or an admin can search from this question")
+            raise PermissionDeniedError("Only the session owner can use private-session content")
         return await self.search(query or question.text, organisation_id, user_id, limit)
 
     async def decide(
@@ -157,74 +191,94 @@ class GuidedKnowledgeService:
         data: KnowledgeProposalDecision,
     ) -> KnowledgeProposalResponse:
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_admin(actor)
         proposal = await self._proposal(proposal_id, organisation_id)
+        await self.permissions.require_permission(
+            actor,
+            "review",
+            department_id=proposal.department_id,
+            team_id=proposal.team_id,
+        )
         if proposal.status != KnowledgeProposalStatus.PENDING:
             raise ConflictError("Knowledge proposal has already been reviewed")
-        now = datetime.now(UTC)
-        if data.action == "reject":
-            proposal.status = KnowledgeProposalStatus.REJECTED
-            action = AuditAction.KNOWLEDGE_PROPOSAL_REJECTED
-        elif data.action == "link":
-            if not data.existing_question_id:
-                raise ConflictError("Linking requires an existing question")
-            existing = await self.questions.get_for_organisation(
-                data.existing_question_id, organisation_id
-            )
-            if not existing:
-                raise NotFoundError("Existing knowledge question not found")
-            proposal.status = KnowledgeProposalStatus.DUPLICATE
-            proposal.linked_question_id = existing.canonical_question_id or existing.id
-            action = AuditAction.KNOWLEDGE_PROPOSAL_LINKED_TO_EXISTING
-        else:
-            question = await QuestionService(
-                self.session, embedding_provider=self.provider
-            ).create(
-                QuestionCreate(
-                    organisation_id=organisation_id,
-                    author_id=proposal.proposed_by,
-                    department_id=proposal.department_id,
-                    team_id=proposal.team_id,
-                    title=proposal.proposed_question_text,
-                    body=(
-                        f"Proposed from Guided session {proposal.guided_session_id}."
-                    ),
-                    visibility=(
-                        QuestionVisibility.DEPARTMENT
-                        if proposal.department_id
-                        else QuestionVisibility.ORGANISATION
-                    ),
+        question = None
+        question_service = None
+        try:
+            now = datetime.now(UTC)
+            if data.action == "reject":
+                proposal.status = KnowledgeProposalStatus.REJECTED
+                action = AuditAction.KNOWLEDGE_PROPOSAL_REJECTED
+            elif data.action == "link":
+                if not data.existing_question_id:
+                    raise ConflictError("Linking requires an existing question")
+                existing = await self.questions.get_for_organisation(
+                    data.existing_question_id, organisation_id
                 )
+                if not existing:
+                    raise NotFoundError("Existing knowledge question not found")
+                await self.permissions.require_question_visibility(actor, existing)
+                proposal.status = KnowledgeProposalStatus.DUPLICATE
+                proposal.linked_question_id = (
+                    existing.canonical_question_id or existing.id
+                )
+                action = AuditAction.KNOWLEDGE_PROPOSAL_LINKED_TO_EXISTING
+            else:
+                question_service = QuestionService(
+                    self.session, embedding_provider=self.provider
+                )
+                question = await question_service.create(
+                    QuestionCreate(
+                        organisation_id=organisation_id,
+                        author_id=proposal.proposed_by,
+                        department_id=proposal.department_id,
+                        team_id=proposal.team_id,
+                        title=proposal.proposed_question_text,
+                        body=(
+                            f"Proposed from Guided session {proposal.guided_session_id}."
+                        ),
+                        visibility=(
+                            QuestionVisibility.DEPARTMENT
+                            if proposal.department_id
+                            else QuestionVisibility.ORGANISATION
+                        ),
+                    ),
+                    commit=False,
+                    sync_embedding=False,
+                )
+                await AnswerService(self.session).create(
+                    question.id,
+                    AnswerCreate(
+                        organisation_id=organisation_id,
+                        author_id=proposal.proposed_by,
+                        body=proposal.proposed_answer_text,
+                    ),
+                    commit=False,
+                )
+                proposal.status = KnowledgeProposalStatus.ACCEPTED
+                proposal.created_question_id = question.id
+                action = AuditAction.KNOWLEDGE_PROPOSAL_ACCEPTED
+            proposal.reviewed_by = user_id
+            proposal.reviewed_at = now
+            await self._audit(
+                organisation_id,
+                user_id,
+                action,
+                proposal.id,
+                {
+                    "created_question_id": str(proposal.created_question_id)
+                    if proposal.created_question_id
+                    else None,
+                    "linked_question_id": str(proposal.linked_question_id)
+                    if proposal.linked_question_id
+                    else None,
+                },
             )
-            await AnswerService(self.session).create(
-                question.id,
-                AnswerCreate(
-                    organisation_id=organisation_id,
-                    author_id=proposal.proposed_by,
-                    body=proposal.proposed_answer_text,
-                ),
-            )
-            proposal.status = KnowledgeProposalStatus.ACCEPTED
-            proposal.created_question_id = question.id
-            action = AuditAction.KNOWLEDGE_PROPOSAL_ACCEPTED
-        proposal.reviewed_by = user_id
-        proposal.reviewed_at = now
-        await self._audit(
-            organisation_id,
-            user_id,
-            action,
-            proposal.id,
-            {
-                "created_question_id": str(proposal.created_question_id)
-                if proposal.created_question_id
-                else None,
-                "linked_question_id": str(proposal.linked_question_id)
-                if proposal.linked_question_id
-                else None,
-            },
-        )
-        await self.session.commit()
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            raise
         await self.session.refresh(proposal)
+        if question is not None and question_service is not None:
+            await question_service._sync_embedding_safely(question)
         return KnowledgeProposalResponse.model_validate(proposal)
 
     async def _proposal(

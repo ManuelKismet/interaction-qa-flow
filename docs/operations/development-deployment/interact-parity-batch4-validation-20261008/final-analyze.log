@@ -1,0 +1,16 @@
+Analyzing flutter_app...                                        
+
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/governance/data/governance_repository.dart:52:11 • use_null_aware_elements
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/governance/data/governance_repository.dart:53:11 • use_null_aware_elements
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/services.dart' • lib/features/guest/presentation/guest_report_document.dart:1:8 • unnecessary_import
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/guest/presentation/guest_workspace_page.dart:3:8 • unnecessary_import
+   info • The import of 'package:cross_file/cross_file.dart' is unnecessary because all of the used elements are also provided by the import of 'package:share_plus/share_plus.dart' • lib/features/guest/presentation/guest_workspace_page.dart:5:8 • unnecessary_import
+   info • Statements in an if should be enclosed in a block • lib/features/guest/presentation/guest_workspace_page.dart:2729:11 • curly_braces_in_flow_control_structures
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/questions/data/questions_repository.dart:158:11 • use_null_aware_elements
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/questions/data/questions_repository.dart:193:11 • use_null_aware_elements
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/questions/data/questions_repository.dart:194:11 • use_null_aware_elements
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/questions/data/questions_repository.dart:229:11 • use_null_aware_elements
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/questions/data/questions_repository.dart:245:11 • use_null_aware_elements
+   info • Use the null-aware marker '?' rather than a null check via an 'if' • lib/features/questions/data/questions_repository.dart:255:27 • use_null_aware_elements
+
+12 issues found. (ran in 2.5s)

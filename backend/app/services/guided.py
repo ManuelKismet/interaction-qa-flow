@@ -1,5 +1,6 @@
 import csv
 import io
+import unicodedata
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -24,7 +25,6 @@ from app.models.guided import (
     GuidedTemplateStatus,
     GuidedTemplateVersion,
 )
-from app.models.user import UserRole
 from app.repositories.department import DepartmentRepository
 from app.repositories.governance import GovernanceRepository
 from app.repositories.guided import GuidedRepository
@@ -59,7 +59,26 @@ from app.schemas.guided import (
     GuidedViewMode,
     LegacyImportResponse,
 )
+from app.services.guided_interchange import normalize_import
 from app.services.permissions import PermissionService
+
+
+def _spreadsheet_safe_csv_cell(value: str) -> str:
+    """Prefix formula-like or control-prefixed text so spreadsheets treat it as data."""
+    if not value:
+        return value
+    if unicodedata.category(value[0]) in {"Cc", "Cf"}:
+        return f"'{value}"
+
+    index = 0
+    while index < len(value) and (
+        value[index].isspace()
+        or unicodedata.category(value[index]) in {"Cc", "Cf"}
+    ):
+        index += 1
+    if index < len(value) and value[index] in {"=", "+", "-", "@"}:
+        return f"'{value}"
+    return value
 
 
 class GuidedService:
@@ -86,7 +105,7 @@ class GuidedService:
             user_id,
             actor.department_id,
             team_ids,
-            actor.role == UserRole.ADMIN,
+            await self.permissions.is_organisation_admin(actor),
             status,
         )
         return [GuidedSessionSummary.model_validate(item) for item in sessions]
@@ -98,7 +117,12 @@ class GuidedService:
         data: GuidedSessionCreate,
     ) -> GuidedSessionResponse:
         await self.permissions.actor(user_id, organisation_id)
-        await self._validate_structure(data.department_id, data.team_id, organisation_id)
+        await self._validate_structure(
+            data.department_id,
+            data.team_id,
+            organisation_id,
+            require_department=data.visibility == GuidedSessionVisibility.DEPARTMENT,
+        )
         template = None
         version = None
         if data.template_id:
@@ -147,6 +171,8 @@ class GuidedService:
         user_id: UUID,
         participant_id: UUID | None = None,
         view_mode: GuidedViewMode = GuidedViewMode.ALL_RELEVANT,
+        *,
+        include_deleted: bool = False,
     ) -> GuidedSessionResponse:
         actor = await self.permissions.actor(user_id, organisation_id)
         session = await self._session(session_id, organisation_id)
@@ -154,9 +180,9 @@ class GuidedService:
         participants = await self.guided.participants(session.id, organisation_id)
         if participant_id and not any(item.id == participant_id for item in participants):
             raise NotFoundError("Participant not found in this session")
-        questions = await self.guided.questions(session.id, organisation_id)
+        questions = await self.guided.questions(session.id, organisation_id, include_deleted=include_deleted)
         answers = await self.guided.answers(session.id, organisation_id)
-        flow = self._build_flow(questions, answers, participant_id, view_mode)
+        flow = self._build_flow(questions, answers, participant_id, view_mode, session.revision)
         return GuidedSessionResponse.model_validate(
             {
                 **session.__dict__,
@@ -182,10 +208,12 @@ class GuidedService:
         if data.expected_revision and data.expected_revision != session.revision:
             raise ConflictError("Session changed since it was loaded")
         changes = data.model_dump(exclude_unset=True, exclude={"expected_revision"})
+        visibility = changes.get("visibility", session.visibility)
         await self._validate_structure(
             changes.get("department_id", session.department_id),
             changes.get("team_id", session.team_id),
             organisation_id,
+            require_department=visibility == GuidedSessionVisibility.DEPARTMENT,
         )
         for field, value in changes.items():
             setattr(session, field, value)
@@ -199,27 +227,34 @@ class GuidedService:
         organisation_id: UUID,
         user_id: UUID,
         target: GuidedSessionStatus,
+        *,
+        reopening: bool = False,
     ) -> GuidedSessionResponse:
-        session = await self._owned_session(session_id, organisation_id, user_id)
+        session = await self._owned_session(session_id, organisation_id, user_id, require_edit=False)
         allowed = {
             GuidedSessionStatus.DRAFT: {GuidedSessionStatus.ACTIVE, GuidedSessionStatus.ARCHIVED},
             GuidedSessionStatus.ACTIVE: {GuidedSessionStatus.COMPLETED, GuidedSessionStatus.ARCHIVED},
             GuidedSessionStatus.COMPLETED: {GuidedSessionStatus.ARCHIVED},
             GuidedSessionStatus.ARCHIVED: set(),
         }
-        if target not in allowed[session.status]:
+        if reopening:
+            if session.status != GuidedSessionStatus.COMPLETED or target != GuidedSessionStatus.ACTIVE:
+                raise ConflictError("Only a completed session can be reopened")
+        elif target not in allowed[session.status]:
             raise ConflictError(f"Cannot move session from {session.status.value} to {target.value}")
         session.status = target
         now = datetime.now(UTC)
         if target == GuidedSessionStatus.ACTIVE:
             session.started_at = session.started_at or now
-            action = AuditAction.GUIDED_SESSION_STARTED
+            if reopening:
+                session.completed_at = None
+            action = AuditAction.GUIDED_SESSION_REOPENED if reopening else AuditAction.GUIDED_SESSION_STARTED
         elif target == GuidedSessionStatus.COMPLETED:
             session.completed_at = now
             action = AuditAction.GUIDED_SESSION_COMPLETED
         else:
             action = AuditAction.GUIDED_SESSION_ARCHIVED
-        await self._save_revision(session, user_id, f"Session {target.value}")
+        await self._save_revision(session, user_id, "Session reopened" if reopening else f"Session {target.value}")
         await self._audit(organisation_id, user_id, action, "guided_session", session.id)
         await self.session.commit()
         return await self.get_session(session.id, organisation_id, user_id)
@@ -359,7 +394,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(question)
-        return GuidedQuestionResponse.model_validate(question)
+        return GuidedQuestionResponse.model_validate(
+            {**question.__dict__, "session_revision": session.revision}
+        )
 
     async def add_follow_up(
         self,
@@ -401,7 +438,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(question)
-        return GuidedQuestionResponse.model_validate(question)
+        return GuidedQuestionResponse.model_validate(
+            {**question.__dict__, "session_revision": session.revision}
+        )
 
     async def update_question(
         self,
@@ -412,7 +451,8 @@ class GuidedService:
     ) -> GuidedQuestionResponse:
         question = await self._question(question_id, organisation_id)
         session = await self._owned_session(question.session_id, organisation_id, user_id)
-        changes = data.model_dump(exclude_unset=True)
+        self._check_revision(session, data.expected_revision)
+        changes = data.model_dump(exclude_unset=True, exclude={"expected_revision"})
         if changes.get("knowledge_question_id") and not await self.questions.get_for_organisation(
             changes["knowledge_question_id"], organisation_id
         ):
@@ -430,7 +470,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(question)
-        return GuidedQuestionResponse.model_validate(question)
+        return GuidedQuestionResponse.model_validate(
+            {**question.__dict__, "session_revision": session.revision}
+        )
 
     async def set_question_deleted(
         self,
@@ -454,7 +496,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(question)
-        return GuidedQuestionResponse.model_validate(question)
+        return GuidedQuestionResponse.model_validate(
+            {**question.__dict__, "session_revision": session.revision}
+        )
 
     async def upsert_answer(
         self,
@@ -465,6 +509,7 @@ class GuidedService:
     ) -> GuidedAnswerResponse:
         question = await self._question(question_id, organisation_id)
         session = await self._owned_session(question.session_id, organisation_id, user_id)
+        self._check_revision(session, data.expected_revision)
         participant = await self._participant(data.participant_id, organisation_id)
         if participant.session_id != session.id:
             raise NotFoundError("Participant not found in this session")
@@ -509,7 +554,9 @@ class GuidedService:
             await self.session.rollback()
             raise ConflictError("Answer was updated by another request") from error
         await self.session.refresh(answer)
-        return GuidedAnswerResponse.model_validate(answer)
+        return GuidedAnswerResponse.model_validate(
+            {**answer.__dict__, "session_revision": session.revision}
+        )
 
     async def update_answer(
         self,
@@ -520,7 +567,8 @@ class GuidedService:
     ) -> GuidedAnswerResponse:
         answer = await self._answer(answer_id, organisation_id)
         session = await self._owned_session(answer.session_id, organisation_id, user_id)
-        for field, value in data.model_dump(exclude_unset=True).items():
+        self._check_revision(session, data.expected_revision)
+        for field, value in data.model_dump(exclude_unset=True, exclude={"expected_revision"}).items():
             setattr(answer, field, value)
         answer.answered_by_user_id = user_id
         await self._save_revision(session, user_id, "Answer saved")
@@ -534,7 +582,9 @@ class GuidedService:
         )
         await self.session.commit()
         await self.session.refresh(answer)
-        return GuidedAnswerResponse.model_validate(answer)
+        return GuidedAnswerResponse.model_validate(
+            {**answer.__dict__, "session_revision": session.revision}
+        )
 
     async def revisions(
         self, session_id: UUID, organisation_id: UUID, user_id: UUID
@@ -550,7 +600,9 @@ class GuidedService:
     async def export_json(
         self, session_id: UUID, organisation_id: UUID, user_id: UUID
     ) -> dict[str, Any]:
-        detail = await self.get_session(session_id, organisation_id, user_id)
+        detail = await self.get_session(
+            session_id, organisation_id, user_id, include_deleted=True
+        )
         return {
             "kind": "intqaflow-guided-session",
             "version": 1,
@@ -572,16 +624,22 @@ class GuidedService:
         def write_question(question: GuidedFlowQuestion, depth: int, return_to: str) -> None:
             for answer in question.answers or [None]:
                 participant = participants.get(answer.participant_id, "") if answer else ""
+                row = [
+                    detail.title,
+                    participant,
+                    question.scope.value,
+                    "follow_up" if depth else "question",
+                    depth,
+                    question.text,
+                    answer.body if answer else "",
+                    return_to,
+                ]
                 writer.writerow(
                     [
-                        detail.title,
-                        participant,
-                        question.scope.value,
-                        "follow_up" if depth else "question",
-                        depth,
-                        question.text,
-                        answer.body if answer else "",
-                        return_to,
+                        _spreadsheet_safe_csv_cell(cell)
+                        if isinstance(cell, str)
+                        else cell
+                        for cell in row
                     ]
                 )
             for child in question.follow_ups:
@@ -598,50 +656,32 @@ class GuidedService:
         payload: dict[str, Any] | list[Any],
     ) -> LegacyImportResponse:
         await self.permissions.actor(user_id, organisation_id)
-        warnings: list[str] = []
-        source = {"flow": payload} if isinstance(payload, list) else payload
-        meta = source.get("meta") if isinstance(source.get("meta"), dict) else {}
+        values, participants_payload, flow, warnings = normalize_import(payload)
         session = GuidedSession(
             organisation_id=organisation_id,
             created_by=user_id,
-            title=str(meta.get("caseTitle") or "Imported Interaction QA Flow"),
-            owner_text=str(meta.get("interviewer") or "") or None,
-            context_reference=str(meta.get("interviewee") or "") or None,
+            **values,
             visibility=GuidedSessionVisibility.PRIVATE,
             status=GuidedSessionStatus.DRAFT,
             revision=1,
         )
         await self.guided.add(session)
-        participants_payload = source.get("participants")
-        if not isinstance(participants_payload, list) or not participants_payload:
-            participants_payload = [{"id": "participant-1", "name": "Participant 1"}]
-            warnings.append("No participant list was present; Participant 1 was created.")
         participant_map: dict[str, GuidedParticipant] = {}
-        for index, item in enumerate(participants_payload):
-            if not isinstance(item, dict):
-                warnings.append(f"Participant {index + 1} was not an object and was skipped.")
-                continue
+        for item in participants_payload:
             participant = GuidedParticipant(
                 organisation_id=organisation_id,
                 session_id=session.id,
-                name=str(item.get("name") or f"Participant {index + 1}"),
-                sort_order=index,
+                name=item["name"],
+                role_label=item["role_label"],
+                notes=item["notes"],
+                sort_order=item["sort_order"],
             )
             await self.guided.add(participant)
-            participant_map[str(item.get("id") or f"participant-{index + 1}")] = participant
-        if not participant_map:
-            raise ConflictError("Legacy flow did not contain any usable participants")
-        flow = source.get("flow")
-        if not isinstance(flow, list):
-            flow = []
-            warnings.append("No flow array was present.")
+            participant_map[item["id"]] = participant
         for index, node in enumerate(flow):
-            if isinstance(node, dict):
-                await self._import_legacy_node(
-                    session, node, participant_map, user_id, index, None, warnings
-                )
-            else:
-                warnings.append(f"Flow item {index + 1} was not an object and was skipped.")
+            await self._import_legacy_node(
+                session, node, participant_map, user_id, index, None, warnings
+            )
         await self._audit(
             organisation_id,
             user_id,
@@ -845,7 +885,7 @@ class GuidedService:
         template = await self.guided.template(template_id, organisation_id)
         if not template:
             raise NotFoundError("Guided template not found")
-        if actor.id != template.created_by and actor.role != UserRole.ADMIN:
+        if actor.id != template.created_by and not await self.permissions.is_organisation_admin(actor):
             raise PermissionDeniedError("Only the template owner or an admin can update it")
         changes = data.model_dump(exclude_unset=True)
         await self._validate_structure(
@@ -876,7 +916,7 @@ class GuidedService:
         template = await self.guided.template(template_id, organisation_id)
         if not template:
             raise NotFoundError("Guided template not found")
-        if actor.id != template.created_by and actor.role != UserRole.ADMIN:
+        if actor.id != template.created_by and not await self.permissions.is_organisation_admin(actor):
             raise PermissionDeniedError("Only the template owner or an admin can version it")
         template.current_version += 1
         version = await self._create_template_version(
@@ -900,13 +940,35 @@ class GuidedService:
         template = await self.guided.template(template_id, organisation_id)
         if not template:
             raise NotFoundError("Guided template not found")
-        if actor.id != template.created_by and actor.role != UserRole.ADMIN:
+        if actor.id != template.created_by and not await self.permissions.is_organisation_admin(actor):
             raise PermissionDeniedError("Only the template owner or an admin can archive it")
         template.status = GuidedTemplateStatus.ARCHIVED
         await self._audit(
             organisation_id,
             user_id,
             AuditAction.GUIDED_TEMPLATE_ARCHIVED,
+            "guided_template",
+            template.id,
+        )
+        await self.session.commit()
+        return await self._template_response(template)
+
+    async def restore_template(
+        self, template_id: UUID, organisation_id: UUID, user_id: UUID
+    ) -> GuidedTemplateResponse:
+        actor = await self.permissions.actor(user_id, organisation_id)
+        template = await self.guided.template(template_id, organisation_id)
+        if not template:
+            raise NotFoundError("Guided template not found")
+        if actor.id != template.created_by and not await self.permissions.is_organisation_admin(actor):
+            raise PermissionDeniedError("Only the template owner or an admin can restore it")
+        if template.status != GuidedTemplateStatus.ARCHIVED:
+            raise ConflictError("Only archived templates can be restored")
+        template.status = GuidedTemplateStatus.ACTIVE
+        await self._audit(
+            organisation_id,
+            user_id,
+            AuditAction.GUIDED_TEMPLATE_RESTORED,
             "guided_template",
             template.id,
         )
@@ -1097,61 +1159,44 @@ class GuidedService:
             target = next(
                 item for item in participants.values() if item.id == triggering_answer.participant_id
             )
-        if scope == GuidedQuestionScope.PARTICIPANT and target is None:
-            target = next(iter(participants.values()))
-            warnings.append(f"Question '{node.get('question', 'Untitled')}' had an unknown participant; it was assigned to {target.name}.")
         question = GuidedQuestion(
             organisation_id=session.organisation_id,
             session_id=session.id,
             created_by=user_id,
-            text=str(node.get("question") or "Untitled question"),
+            text=node["question"],
             scope=scope,
             target_participant_id=target.id if target else None,
-            source=GuidedQuestionSource.FOLLOW_UP if triggering_answer else GuidedQuestionSource.MANUAL,
-            main_order_index=None if triggering_answer else order,
-            branch_order_index=order if triggering_answer else None,
+            source=node.get("source", GuidedQuestionSource.FOLLOW_UP if triggering_answer else GuidedQuestionSource.MANUAL),
+            main_order_index=None if triggering_answer else node.get("order", order),
+            branch_order_index=node.get("order", order) if triggering_answer else None,
             triggering_answer_id=triggering_answer.id if triggering_answer else None,
+            deleted_at=node.get("deleted_at"),
         )
         await self.guided.add(question)
-        raw_answers = node.get("answers") if isinstance(node.get("answers"), dict) else None
-        if raw_answers is None:
-            participant_key = str(node.get("participantId") or next(iter(participants)))
-            raw_answers = {
-                participant_key: {
-                    "answer": node.get("answer", ""),
-                    "branches": node.get("branches", []),
-                    "branchesCollapsed": node.get("branchesCollapsed", False),
-                }
-            }
+        raw_answers = node["answers"]
         for participant_key, record in raw_answers.items():
             participant = participants.get(str(participant_key))
-            if not participant or not isinstance(record, dict):
-                warnings.append(f"An answer for '{question.text}' had an unknown participant and was skipped.")
-                continue
-            if target and participant.id != target.id:
-                continue
             answer = GuidedAnswer(
                 organisation_id=session.organisation_id,
                 session_id=session.id,
                 question_id=question.id,
                 participant_id=participant.id,
                 answered_by_user_id=user_id,
-                body=str(record.get("answer") or ""),
-                branches_collapsed=bool(record.get("branchesCollapsed")),
+                body=record["answer"],
+                branches_collapsed=record["branchesCollapsed"],
             )
             await self.guided.add(answer)
-            branches = record.get("branches") if isinstance(record.get("branches"), list) else []
+            branches = record["branches"]
             for branch_order, branch in enumerate(branches):
-                if isinstance(branch, dict):
-                    await self._import_legacy_node(
-                        session,
-                        branch,
-                        participants,
-                        user_id,
-                        branch_order,
-                        answer,
-                        warnings,
-                    )
+                await self._import_legacy_node(
+                    session,
+                    branch,
+                    participants,
+                    user_id,
+                    branch_order,
+                    answer,
+                    warnings,
+                )
 
     def _build_flow(
         self,
@@ -1159,6 +1204,7 @@ class GuidedService:
         answers: list[GuidedAnswer],
         participant_id: UUID | None,
         view_mode: GuidedViewMode,
+        session_revision: int | None = None,
     ) -> list[GuidedFlowQuestion]:
         answers_by_question: dict[UUID, list[GuidedAnswer]] = {}
         for answer in answers:
@@ -1191,7 +1237,13 @@ class GuidedService:
             return GuidedFlowQuestion.model_validate(
                 {
                     **question.__dict__,
-                    "answers": [GuidedAnswerResponse.model_validate(item) for item in question_answers],
+                    "session_revision": session_revision,
+                    "answers": [
+                        GuidedAnswerResponse.model_validate(
+                            {**item.__dict__, "session_revision": session_revision}
+                        )
+                        for item in question_answers
+                    ],
                     "follow_ups": follow_ups,
                 }
             )
@@ -1203,7 +1255,11 @@ class GuidedService:
         department_id: UUID | None,
         team_id: UUID | None,
         organisation_id: UUID,
+        *,
+        require_department: bool = False,
     ) -> None:
+        if require_department and department_id is None:
+            raise ConflictError("Department-visible sessions require a department")
         if department_id and not await self.departments.get_for_organisation(
             department_id, organisation_id
         ):
@@ -1216,28 +1272,47 @@ class GuidedService:
             if team.department_id and department_id and team.department_id != department_id:
                 raise ConflictError("Team does not belong to the selected department")
 
-    async def _session(self, session_id: UUID, organisation_id: UUID) -> GuidedSession:
-        session = await self.guided.guided_session(session_id, organisation_id)
+    async def _session(
+        self, session_id: UUID, organisation_id: UUID, *, for_update: bool = False
+    ) -> GuidedSession:
+        session = await self.guided.guided_session(session_id, organisation_id, for_update=for_update)
         if not session:
             raise NotFoundError("Guided session not found")
         return session
 
     async def _owned_session(
-        self, session_id: UUID, organisation_id: UUID, user_id: UUID
+        self, session_id: UUID, organisation_id: UUID, user_id: UUID, *, require_edit: bool = True
     ) -> GuidedSession:
         actor = await self.permissions.actor(user_id, organisation_id)
-        session = await self._session(session_id, organisation_id)
-        if actor.id != session.created_by and actor.role != UserRole.ADMIN:
-            raise PermissionDeniedError("Only the session owner or an admin can change it")
+        session = await self._session(session_id, organisation_id, for_update=True)
+        if actor.id != session.created_by and (
+            session.visibility == GuidedSessionVisibility.PRIVATE
+            or not await self.permissions.is_organisation_admin(actor)
+        ):
+            raise PermissionDeniedError("Only the session owner can change a private session")
+        if require_edit and session.status not in {GuidedSessionStatus.DRAFT, GuidedSessionStatus.ACTIVE}:
+            raise ConflictError("This session is read-only. Reopen a completed session before editing; archived sessions cannot be reopened")
         return session
 
+    @staticmethod
+    def _check_revision(session: GuidedSession, expected_revision: int | None) -> None:
+        if expected_revision is not None and expected_revision != session.revision:
+            raise ConflictError("Session changed since it was loaded")
+
     async def _require_view(self, actor, session: GuidedSession) -> None:
-        if actor.role == UserRole.ADMIN or actor.id == session.created_by:
+        if actor.id == session.created_by:
+            return
+        if (
+            await self.permissions.is_organisation_admin(actor)
+            and session.visibility != GuidedSessionVisibility.PRIVATE
+        ):
             return
         if session.visibility == GuidedSessionVisibility.ORGANISATION:
             return
         if (
             session.visibility == GuidedSessionVisibility.DEPARTMENT
+            and session.department_id is not None
+            and actor.department_id is not None
             and actor.department_id == session.department_id
         ):
             return

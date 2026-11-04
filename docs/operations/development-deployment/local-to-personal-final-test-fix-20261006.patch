@@ -1,0 +1,79 @@
+From 2978fb892bc9de90cf96f8bdba598f6239a781a5 Mon Sep 17 00:00:00 2001
+From: Copilot <copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 16:53:34 +0000
+Subject: [PATCH] Fix guest workflow test scrolling and labels
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ apps/flutter_app/test/account_state_widget_test.dart  | 11 ++++++++++-
+ apps/flutter_app/test/guest_interact_widget_test.dart | 11 ++++++++---
+ 2 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 0a1a09b..a325a71 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -765,6 +765,11 @@ void main() {
+     expect((await store.load()).knowledge, hasLength(2));
+     await tester.tap(find.text('Saved Q&A'));
+     await tester.pumpAndSettle();
++    await tester.scrollUntilVisible(
++      find.text('Keep this item local'),
++      250,
++      scrollable: find.byType(Scrollable).first,
++    );
+     expect(find.text('Import this item'), findsOneWidget);
+     expect(find.text('Keep this item local'), findsOneWidget);
+   });
+@@ -1037,7 +1042,11 @@ void main() {
+       'Keep this Knowledge item local',
+     );
+     final saveLocally = find.text('Save locally');
+-    await tester.ensureVisible(saveLocally);
++    await tester.scrollUntilVisible(
++      saveLocally,
++      250,
++      scrollable: find.byType(Scrollable).first,
++    );
+     await tester.tap(saveLocally);
+     await tester.pumpAndSettle();
+ 
+diff --git a/apps/flutter_app/test/guest_interact_widget_test.dart b/apps/flutter_app/test/guest_interact_widget_test.dart
+index 0000dd4..723fb29 100644
+--- a/apps/flutter_app/test/guest_interact_widget_test.dart
++++ b/apps/flutter_app/test/guest_interact_widget_test.dart
+@@ -385,14 +385,19 @@ void main() {
+     await tester.tap(find.text('Interact').first);
+     await tester.pumpAndSettle();
+     expect(
+-      find.text('Interact sessions stay private on this device.'),
++      find.text(
++        'New Interact sessions stay local. '
++        'Imported sessions stay in your personal account.',
++      ),
+       findsOneWidget,
+     );
+     await tester.tap(find.byTooltip('Interact privacy information'));
+     await tester.pumpAndSettle();
+     expect(
+       find.text(
+-        'Interact sessions stay private on this device until you explicitly select one for a group.',
++        'New sessions stay on this device unless you explicitly import them. '
++        'Imported sessions and their edits stay in your personal account; '
++        'group sharing is separate.',
+       ),
+       findsOneWidget,
+     );
+@@ -402,7 +407,7 @@ void main() {
+     final templatePicker = find.byWidgetPredicate(
+       (widget) =>
+           widget is DropdownButtonFormField<String?> &&
+-          widget.decoration.labelText == 'Optional local template',
++          widget.decoration.labelText == 'Optional template',
+     );
+     expect(tester.getSize(templatePicker).width, lessThanOrEqualTo(1040));
+   });
+base-commit: 84ff1cca5f04f24c45016ea9a8f8a5ed95b99127
+-- 
+2.55.0
+

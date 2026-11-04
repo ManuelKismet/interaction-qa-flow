@@ -1,0 +1,2583 @@
+From 3f1f5b7fe4c12c6213b5634ad0fb2e9ea9de35d8 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 09:02:33 +0000
+Subject: [PATCH 1/2] Apply verified official Dart formatter diff
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../lib/core/routing/app_router.dart          |   10 +-
+ .../features/ask/presentation/ask_page.dart   |    5 +-
+ .../personal_workspace_status.dart            |    7 +-
+ .../data/personal_workspace_repository.dart   |   37 +-
+ .../presentation/guest_workspace_page.dart    |  552 ++++----
+ .../lib/shared/widgets/app_shell.dart         |  158 +--
+ .../widgets/knowledge_section_tabs.dart       |    2 +-
+ .../test/account_state_widget_test.dart       | 1162 +++++++++--------
+ apps/flutter_app/test/ask_page_test.dart      |   12 +-
+ 9 files changed, 970 insertions(+), 975 deletions(-)
+
+diff --git a/apps/flutter_app/lib/core/routing/app_router.dart b/apps/flutter_app/lib/core/routing/app_router.dart
+index f880b25..3d44b65 100644
+--- a/apps/flutter_app/lib/core/routing/app_router.dart
++++ b/apps/flutter_app/lib/core/routing/app_router.dart
+@@ -91,9 +91,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+                     ? '/personal/ask'
+                     : '/personal/questions',
+               ),
+-              onWorkspaceTabChanged: (index) => context.go(
+-                index == 0 ? '/personal' : '/personal/interact',
+-              ),
++              onWorkspaceTabChanged: (index) =>
++                  context.go(index == 0 ? '/personal' : '/personal/interact'),
+             ),
+           ),
+           GoRoute(
+@@ -141,9 +140,8 @@ final appRouterProvider = Provider.autoDispose.family<GoRouter, String>((
+               personalWorkspaceEnabled: true,
+               membershipStatus: AccountMembershipStatus.active,
+               initialWorkspaceTab: 1,
+-              onWorkspaceTabChanged: (index) => context.go(
+-                index == 0 ? '/personal' : '/personal/interact',
+-              ),
++              onWorkspaceTabChanged: (index) =>
++                  context.go(index == 0 ? '/personal' : '/personal/interact'),
+             ),
+           ),
+         ],
+diff --git a/apps/flutter_app/lib/features/ask/presentation/ask_page.dart b/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
+index 1ca3957..92b2ed5 100644
+--- a/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
++++ b/apps/flutter_app/lib/features/ask/presentation/ask_page.dart
+@@ -194,10 +194,7 @@ class _AskPageState extends ConsumerState<AskPage> {
+ }
+ 
+ class _SuggestionList extends StatelessWidget {
+-  const _SuggestionList({
+-    required this.suggestions,
+-    required this.onRetry,
+-  });
++  const _SuggestionList({required this.suggestions, required this.onRetry});
+ 
+   final AsyncValue<AskSuggestions> suggestions;
+   final VoidCallback onRetry;
+diff --git a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+index 13bd45a..f1c9f4f 100644
+--- a/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
++++ b/apps/flutter_app/lib/features/guest/application/personal_workspace_status.dart
+@@ -1,9 +1,10 @@
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ 
+ final personalWorkspaceStatusProvider =
+-    NotifierProvider<PersonalWorkspaceStatusController, PersonalWorkspaceStatus>(
+-      PersonalWorkspaceStatusController.new,
+-    );
++    NotifierProvider<
++      PersonalWorkspaceStatusController,
++      PersonalWorkspaceStatus
++    >(PersonalWorkspaceStatusController.new);
+ 
+ class PersonalWorkspaceStatus {
+   const PersonalWorkspaceStatus({
+diff --git a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+index 14d9266..3e9c377 100644
+--- a/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
++++ b/apps/flutter_app/lib/features/guest/data/personal_workspace_repository.dart
+@@ -2,9 +2,10 @@ import 'package:dio/dio.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:int_qa_flow/core/api/api_client.dart';
+ 
+-final personalWorkspaceRepositoryProvider = Provider<PersonalWorkspaceRepository>(
+-  (ref) => PersonalWorkspaceRepository(ref.watch(apiClientProvider)),
+-);
++final personalWorkspaceRepositoryProvider =
++    Provider<PersonalWorkspaceRepository>(
++      (ref) => PersonalWorkspaceRepository(ref.watch(apiClientProvider)),
++    );
+ 
+ class PersonalWorkspaceRepository {
+   const PersonalWorkspaceRepository(this._client);
+@@ -16,9 +17,7 @@ class PersonalWorkspaceRepository {
+   }) async {
+     final response = await _client.get<List<dynamic>>(
+       '/api/v1/personal/items',
+-      options: Options(
+-        extra: {'expectedFirebaseUid': expectedUid},
+-      ),
++      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+     );
+     return [
+       for (final item in response.data ?? const [])
+@@ -51,9 +50,7 @@ class PersonalWorkspaceRepository {
+     final response = await _client.post<Map<String, dynamic>>(
+       '/api/v1/personal/items/import',
+       data: {'items': items},
+-      options: Options(
+-        extra: {'expectedFirebaseUid': expectedUid},
+-      ),
++      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+     );
+     final result = response.data?['items'];
+     if (result is! List ||
+@@ -71,17 +68,9 @@ class PersonalWorkspaceRepository {
+     required Map<String, dynamic> data,
+     required String expectedUid,
+   }) async {
+-    final items = await importItems(
+-      [
+-        {
+-          'kind': kind,
+-          'source_key': sourceKey,
+-          'title': title,
+-          'data': data,
+-        },
+-      ],
+-      expectedUid: expectedUid,
+-    );
++    final items = await importItems([
++      {'kind': kind, 'source_key': sourceKey, 'title': title, 'data': data},
++    ], expectedUid: expectedUid);
+     return items.single;
+   }
+ 
+@@ -99,9 +88,7 @@ class PersonalWorkspaceRepository {
+         'title': title,
+         'data': data,
+       },
+-      options: Options(
+-        extra: {'expectedFirebaseUid': expectedUid},
+-      ),
++      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+     );
+     return response.data!;
+   }
+@@ -114,9 +101,7 @@ class PersonalWorkspaceRepository {
+     await _client.delete<void>(
+       '/api/v1/personal/items/$id',
+       queryParameters: {'expected_revision': expectedRevision},
+-      options: Options(
+-        extra: {'expectedFirebaseUid': expectedUid},
+-      ),
++      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+     );
+   }
+ }
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index 06fce5f..8585249 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -479,9 +479,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             'interact_session' => updated.copyWith(
+               sessions: [
+                 accountItem,
+-                ...updated.sessions.where(
+-                  (value) => value['id'] != item['id'],
+-                ),
++                ...updated.sessions.where((value) => value['id'] != item['id']),
+               ],
+             ),
+             'template' => updated.copyWith(
+@@ -496,9 +494,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+           };
+     _save(
+       submitted,
+-      accountPrivateKeys: uid == null
+-          ? const {}
+-          : {'$kind:${item['id']}'},
++      accountPrivateKeys: uid == null ? const {} : {'$kind:${item['id']}'},
+     );
+     if (uid == null) return;
+     final sourceId = item['id'] as String;
+@@ -601,8 +597,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   void _enqueuePersonalWrite(_PersonalWorkspaceWrite write) {
+     final key = '${write.kind}:${write.sourceId}';
+     final previous = _pendingPersonalWrites[key];
+-    final nextWrite =
+-        write.action == 'delete' && previous?.action == 'create'
++    final nextWrite = write.action == 'delete' && previous?.action == 'create'
+         ? _PersonalWorkspaceWrite(
+             action: 'create',
+             kind: previous!.kind,
+@@ -1083,9 +1078,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       await _retryPersonalWrites();
+     }
+     final deadline = DateTime.now().add(const Duration(seconds: 12));
+-    while (mounted &&
+-        _personalSaving &&
+-        DateTime.now().isBefore(deadline)) {
++    while (mounted && _personalSaving && DateTime.now().isBefore(deadline)) {
+       await Future<void>.delayed(const Duration(milliseconds: 20));
+     }
+     if (!_hasPendingWorkspaceChanges) return true;
+@@ -1656,296 +1649,299 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         length: 2,
+         initialIndex: widget.initialWorkspaceTab,
+         child: Scaffold(
+-        appBar: AppBar(
+-          title: Text(
+-            _verifiedPersonalUid != null
+-                ? 'Personal workspace'
+-                : _hasSignedInNonGuestUser
+-                ? 'Registered local workspace'
+-                : 'IntQAFlow guest workspace',
+-            maxLines: 1,
+-            overflow: TextOverflow.ellipsis,
+-          ),
+-          actions: [
+-            _accountMenu(),
+-            PopupMenuButton<String>(
+-              tooltip: _hasSignedInNonGuestUser
+-                  ? 'Workspace options'
+-                  : 'Guest workspace options',
+-              onSelected: (value) {
+-                if (value == 'clear') _clearLocalCopy();
+-                if (value == 'backup') _copyLocalBackup();
+-                if (value == 'import') _importLocalBackup();
+-                if (value == 'account-import') _openPersonalImport();
+-                if (value == 'groups') _openSharedGroups();
+-              },
+-              itemBuilder: (context) => [
+-                if (widget.firebaseReady)
+-                  const PopupMenuItem(value: 'groups', child: Text('Groups')),
+-                PopupMenuDivider(),
+-                PopupMenuItem(
+-                  value: 'backup',
+-                  child: Text('Copy local JSON backup'),
+-                ),
+-                PopupMenuItem(
+-                  value: 'import',
+-                  child: Text('Import local JSON backup'),
+-                ),
+-                if (_verifiedPersonalUid != null)
+-                  const PopupMenuItem(
+-                    value: 'account-import',
+-                    child: Text('Import local work into my account'),
++          appBar: AppBar(
++            title: Text(
++              _verifiedPersonalUid != null
++                  ? 'Personal workspace'
++                  : _hasSignedInNonGuestUser
++                  ? 'Registered local workspace'
++                  : 'IntQAFlow guest workspace',
++              maxLines: 1,
++              overflow: TextOverflow.ellipsis,
++            ),
++            actions: [
++              _accountMenu(),
++              PopupMenuButton<String>(
++                tooltip: _hasSignedInNonGuestUser
++                    ? 'Workspace options'
++                    : 'Guest workspace options',
++                onSelected: (value) {
++                  if (value == 'clear') _clearLocalCopy();
++                  if (value == 'backup') _copyLocalBackup();
++                  if (value == 'import') _importLocalBackup();
++                  if (value == 'account-import') _openPersonalImport();
++                  if (value == 'groups') _openSharedGroups();
++                },
++                itemBuilder: (context) => [
++                  if (widget.firebaseReady)
++                    const PopupMenuItem(value: 'groups', child: Text('Groups')),
++                  PopupMenuDivider(),
++                  PopupMenuItem(
++                    value: 'backup',
++                    child: Text('Copy local JSON backup'),
+                   ),
+-                PopupMenuDivider(),
+-                PopupMenuItem(
+-                  value: 'clear',
+-                  child: Text(
+-                    _hasSignedInNonGuestUser
+-                        ? 'Clear local copy on this device'
+-                        : 'Clear local guest copy',
++                  PopupMenuItem(
++                    value: 'import',
++                    child: Text('Import local JSON backup'),
+                   ),
+-                ),
++                  if (_verifiedPersonalUid != null)
++                    const PopupMenuItem(
++                      value: 'account-import',
++                      child: Text('Import local work into my account'),
++                    ),
++                  PopupMenuDivider(),
++                  PopupMenuItem(
++                    value: 'clear',
++                    child: Text(
++                      _hasSignedInNonGuestUser
++                          ? 'Clear local copy on this device'
++                          : 'Clear local guest copy',
++                    ),
++                  ),
++                ],
++              ),
++            ],
++            bottom: TabBar(
++              onTap: _handleWorkspaceTabChanged,
++              tabs: [
++                Tab(text: 'Knowledge', icon: Icon(Icons.search)),
++                Tab(text: 'Interact', icon: Icon(Icons.account_tree_outlined)),
+               ],
+             ),
+-          ],
+-          bottom: TabBar(
+-            onTap: _handleWorkspaceTabChanged,
+-            tabs: [
+-              Tab(text: 'Knowledge', icon: Icon(Icons.search)),
+-              Tab(text: 'Interact', icon: Icon(Icons.account_tree_outlined)),
+-            ],
+           ),
+-        ),
+-        body: data == null
+-            ? Center(
+-                child: _loadError == null
+-                    ? const CircularProgressIndicator()
+-                    : Padding(
+-                        padding: const EdgeInsets.all(24),
+-                        child: Column(
+-                          mainAxisSize: MainAxisSize.min,
+-                          children: [
+-                            Text(_loadError!, textAlign: TextAlign.center),
+-                            const SizedBox(height: 12),
+-                            FilledButton.icon(
+-                              onPressed: _isLoading ? null : _load,
+-                              icon: const Icon(Icons.refresh),
+-                              label: Text(
+-                                _isLoading ? 'Retrying…' : 'Retry loading',
++          body: data == null
++              ? Center(
++                  child: _loadError == null
++                      ? const CircularProgressIndicator()
++                      : Padding(
++                          padding: const EdgeInsets.all(24),
++                          child: Column(
++                            mainAxisSize: MainAxisSize.min,
++                            children: [
++                              Text(_loadError!, textAlign: TextAlign.center),
++                              const SizedBox(height: 12),
++                              FilledButton.icon(
++                                onPressed: _isLoading ? null : _load,
++                                icon: const Icon(Icons.refresh),
++                                label: Text(
++                                  _isLoading ? 'Retrying…' : 'Retry loading',
++                                ),
+                               ),
+-                            ),
+-                          ],
++                            ],
++                          ),
++                        ),
++                )
++              : Column(
++                  children: [
++                    _GuestNotice(
++                      isRegistered: _hasSignedInNonGuestUser,
++                      saveStatus: _saveStatus,
++                    ),
++                    if (_unsavedChanges)
++                      MaterialBanner(
++                        content: const Text(
++                          'Your changes are not saved. Keep this page open and retry.',
+                         ),
++                        actions: [
++                          TextButton(
++                            onPressed: _flushPendingSave,
++                            child: const Text('Retry saving'),
++                          ),
++                        ],
+                       ),
+-              )
+-            : Column(
+-                children: [
+-                  _GuestNotice(
+-                    isRegistered: _hasSignedInNonGuestUser,
+-                    saveStatus: _saveStatus,
+-                  ),
+-                  if (_unsavedChanges)
+-                    MaterialBanner(
+-                      content: const Text(
+-                        'Your changes are not saved. Keep this page open and retry.',
++                    if (widget.authUnavailable)
++                      const _AccountMembershipNotice(
++                        text:
++                            'Account status could not be verified. This workspace is local; organisation access is not assumed.',
+                       ),
+-                      actions: [
+-                        TextButton(
+-                          onPressed: _flushPendingSave,
+-                          child: const Text('Retry saving'),
++                    if (_verifiedPersonalUid != null &&
++                        localData != null &&
++                        _hasMeaningfulWork(localData))
++                      MaterialBanner(
++                        content: const Text(
++                          'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
+                         ),
+-                      ],
+-                    ),
+-                  if (widget.authUnavailable)
+-                    const _AccountMembershipNotice(
+-                      text:
+-                          'Account status could not be verified. This workspace is local; organisation access is not assumed.',
+-                    ),
+-                  if (_verifiedPersonalUid != null &&
+-                      localData != null &&
+-                      _hasMeaningfulWork(localData))
+-                    MaterialBanner(
+-                      content: const Text(
+-                        'This personal account is private to your verified identity. Local browser work remains separate until you choose items to import.',
++                        actions: [
++                          TextButton(
++                            onPressed: _personalSaving || _personalLoading
++                                ? null
++                                : _openPersonalImport,
++                            child: const Text('Import local work'),
++                          ),
++                        ],
+                       ),
+-                      actions: [
+-                        TextButton(
+-                          onPressed: _personalSaving || _personalLoading
+-                              ? null
+-                              : _openPersonalImport,
+-                          child: const Text('Import local work'),
+-                        ),
+-                      ],
+-                    ),
+-                  if (_personalError != null)
+-                    MaterialBanner(
+-                      content: Text(_personalError!),
+-                      actions: [
+-                        TextButton(
+-                          onPressed: _personalImportNeedsReselection
+-                              ? _openPersonalImport
+-                              : _personalConflictSourceKey != null
+-                              ? _personalConflictReloadFailed
+-                                    ? _reloadPendingPersonalConflict
+-                                    : _reviewPersonalConflict
+-                              : _pendingPersonalImport.isNotEmpty
+-                              ? _retryPersonalImport
+-                              : _pendingPersonalWrites.isNotEmpty
+-                              ? _retryPersonalWrites
+-                              : _refreshPersonalWorkspace,
+-                          child: Text(
+-                            _personalImportNeedsReselection
+-                                ? 'Change selection'
++                    if (_personalError != null)
++                      MaterialBanner(
++                        content: Text(_personalError!),
++                        actions: [
++                          TextButton(
++                            onPressed: _personalImportNeedsReselection
++                                ? _openPersonalImport
+                                 : _personalConflictSourceKey != null
+                                 ? _personalConflictReloadFailed
+-                                      ? 'Reload account version'
+-                                      : 'Review account change'
++                                      ? _reloadPendingPersonalConflict
++                                      : _reviewPersonalConflict
+                                 : _pendingPersonalImport.isNotEmpty
+-                                ? 'Retry import'
++                                ? _retryPersonalImport
+                                 : _pendingPersonalWrites.isNotEmpty
+-                                ? 'Retry account save'
+-                                : 'Retry account load',
++                                ? _retryPersonalWrites
++                                : _refreshPersonalWorkspace,
++                            child: Text(
++                              _personalImportNeedsReselection
++                                  ? 'Change selection'
++                                  : _personalConflictSourceKey != null
++                                  ? _personalConflictReloadFailed
++                                        ? 'Reload account version'
++                                        : 'Review account change'
++                                  : _pendingPersonalImport.isNotEmpty
++                                  ? 'Retry import'
++                                  : _pendingPersonalWrites.isNotEmpty
++                                  ? 'Retry account save'
++                                  : 'Retry account load',
++                            ),
+                           ),
+-                        ),
+-                      ],
+-                    ),
+-                  if (widget.membershipStatus ==
+-                      AccountMembershipStatus.noMembership)
+-                    const _AccountMembershipNotice(
+-                      text:
+-                          'This signed-in account has no organisation '
+-                          'membership. Groups require a verified registered '
+-                          'account, but do not require organisation membership.',
+-                    ),
+-                  if (widget.membershipStatus ==
+-                      AccountMembershipStatus.inactive)
+-                    const _AccountMembershipNotice(
+-                      text:
+-                          'This organisation membership is inactive. You can continue local work; contact your organisation administrator about access.',
+-                    ),
+-                  if (widget.membershipStatus ==
+-                      AccountMembershipStatus.unavailable)
+-                    const _AccountMembershipNotice(
+-                      text:
+-                          'Organisation membership could not be verified. You can continue local work, but no organisation access is assumed.',
+-                    ),
+-                  if (widget.firebaseReady &&
+-                      _hasSignedInNonGuestUser &&
+-                      !widget.sharedIdentityActive)
+-                    Padding(
+-                      padding: const EdgeInsets.all(12),
+-                      child: canUseGroups
+-                          ? const Align(
+-                              alignment: Alignment.centerLeft,
+-                              child: _GuestInfoButton(
+-                                tooltip: 'Group identity information',
+-                                title: 'About Group identity',
+-                                content:
+-                                    'Group access is associated with this '
+-                                    'signed-in verified identity. A separate '
+-                                    'account does not inherit its Group data.',
++                        ],
++                      ),
++                    if (widget.membershipStatus ==
++                        AccountMembershipStatus.noMembership)
++                      const _AccountMembershipNotice(
++                        text:
++                            'This signed-in account has no organisation '
++                            'membership. Groups require a verified registered '
++                            'account, but do not require organisation membership.',
++                      ),
++                    if (widget.membershipStatus ==
++                        AccountMembershipStatus.inactive)
++                      const _AccountMembershipNotice(
++                        text:
++                            'This organisation membership is inactive. You can continue local work; contact your organisation administrator about access.',
++                      ),
++                    if (widget.membershipStatus ==
++                        AccountMembershipStatus.unavailable)
++                      const _AccountMembershipNotice(
++                        text:
++                            'Organisation membership could not be verified. You can continue local work, but no organisation access is assumed.',
++                      ),
++                    if (widget.firebaseReady &&
++                        _hasSignedInNonGuestUser &&
++                        !widget.sharedIdentityActive)
++                      Padding(
++                        padding: const EdgeInsets.all(12),
++                        child: canUseGroups
++                            ? const Align(
++                                alignment: Alignment.centerLeft,
++                                child: _GuestInfoButton(
++                                  tooltip: 'Group identity information',
++                                  title: 'About Group identity',
++                                  content:
++                                      'Group access is associated with this '
++                                      'signed-in verified identity. A separate '
++                                      'account does not inherit its Group data.',
++                                ),
++                              )
++                            : const Text(
++                                'Verify this account’s email before using Groups. '
++                                'Local work remains available, and organisation '
++                                'membership is not required for Groups.',
+                               ),
+-                            )
+-                          : const Text(
+-                              'Verify this account’s email before using Groups. '
+-                              'Local work remains available, and organisation '
+-                              'membership is not required for Groups.',
+-                            ),
+-                    ),
+-                  if (guestGroupsState?.hasError == true)
+-                    MaterialBanner(
+-                      content: const Text(
+-                        'Existing group access could not be checked. This does not confirm that no groups are linked.',
+                       ),
+-                      actions: [
+-                        TextButton(
+-                          onPressed: () =>
+-                              ref.invalidate(currentGuestGroupsProvider),
+-                          child: const Text('Retry groups'),
+-                        ),
+-                      ],
+-                    ),
+-                  if (_loadError != null)
+-                    MaterialBanner(
+-                      content: Text(_loadError!),
+-                      actions: [
+-                        TextButton(
+-                          onPressed: _load,
+-                          child: const Text('Retry'),
++                    if (guestGroupsState?.hasError == true)
++                      MaterialBanner(
++                        content: const Text(
++                          'Existing group access could not be checked. This does not confirm that no groups are linked.',
+                         ),
+-                      ],
+-                    ),
+-                  Expanded(
+-                    child: TabBarView(
+-                      children: [
+-                        _GuestKnowledgeTab(
+-                          items: data.knowledge,
+-                          initialKnowledgeItemId: widget.initialKnowledgeItemId,
+-                          initialKnowledgeSection:
+-                              widget.initialKnowledgeSection,
+-                          onKnowledgeSectionChanged:
+-                              _handleKnowledgeSectionChanged,
+-                          onOpenGroup: _openGroupKnowledge,
+-                          privateWorkspace: _verifiedPersonalUid != null,
+-                          searchIdentityKey: _verifiedPersonalUid == null
+-                              ? null
+-                              : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
+-                          searchOrganization: null,
+-                          searchPersonal: _verifiedPersonalUid == null
+-                              ? null
+-                              : (query) => ref
+-                                    .read(personalWorkspaceRepositoryProvider)
+-                                    .searchKnowledge(
+-                                      query,
+-                                      expectedUid: _verifiedPersonalUid!,
+-                                    ),
+-                          searchGroups: _verifiedPersonalUid == null
+-                              ? null
+-                              : (query) => ref
+-                                    .read(guestGroupRepositoryProvider)
+-                                    .searchKnowledge(query),
+-                          reloadPersonalWorkspace: _refreshPersonalWorkspace,
+-                          storageStatus: (item) =>
+-                              _storageStatus('knowledge', item),
+-                          isPersonalAccount: (item) => _storageStatus(
+-                            'knowledge',
+-                            item,
+-                          ).startsWith('Personal account'),
+-                          onCreate: (item) => _createWorkspaceItem(
+-                            kind: 'knowledge',
+-                            item: item,
+-                            updated: data.copyWith(
+-                              knowledge: [item, ...data.knowledge],
+-                            ),
++                        actions: [
++                          TextButton(
++                            onPressed: () =>
++                                ref.invalidate(currentGuestGroupsProvider),
++                            child: const Text('Retry groups'),
+                           ),
+-                          onUpdate: (item) => _save(
+-                            data.copyWith(
+-                              knowledge: [
+-                                for (final current in data.knowledge)
+-                                  current['id'] == item['id'] ? item : current,
+-                              ],
+-                            ),
++                        ],
++                      ),
++                    if (_loadError != null)
++                      MaterialBanner(
++                        content: Text(_loadError!),
++                        actions: [
++                          TextButton(
++                            onPressed: _load,
++                            child: const Text('Retry'),
+                           ),
+-                          onDelete: (id) => _deleteKnowledge(data, id),
+-                        ),
+-                        _GuestInteractTab(
+-                          data: data,
+-                          privateWorkspace: _verifiedPersonalUid != null,
+-                          storageStatus: _storageStatus,
+-                          onChange: _save,
+-                          onCreateItem: (kind, item, updated) =>
+-                              _createWorkspaceItem(
+-                                kind: kind,
+-                                item: item,
+-                                updated: updated,
++                        ],
++                      ),
++                    Expanded(
++                      child: TabBarView(
++                        children: [
++                          _GuestKnowledgeTab(
++                            items: data.knowledge,
++                            initialKnowledgeItemId:
++                                widget.initialKnowledgeItemId,
++                            initialKnowledgeSection:
++                                widget.initialKnowledgeSection,
++                            onKnowledgeSectionChanged:
++                                _handleKnowledgeSectionChanged,
++                            onOpenGroup: _openGroupKnowledge,
++                            privateWorkspace: _verifiedPersonalUid != null,
++                            searchIdentityKey: _verifiedPersonalUid == null
++                                ? null
++                                : '${_verifiedPersonalUid!}:${widget.membershipStatus?.name ?? AccountMembershipStatus.unavailable.name}',
++                            searchOrganization: null,
++                            searchPersonal: _verifiedPersonalUid == null
++                                ? null
++                                : (query) => ref
++                                      .read(personalWorkspaceRepositoryProvider)
++                                      .searchKnowledge(
++                                        query,
++                                        expectedUid: _verifiedPersonalUid!,
++                                      ),
++                            searchGroups: _verifiedPersonalUid == null
++                                ? null
++                                : (query) => ref
++                                      .read(guestGroupRepositoryProvider)
++                                      .searchKnowledge(query),
++                            reloadPersonalWorkspace: _refreshPersonalWorkspace,
++                            storageStatus: (item) =>
++                                _storageStatus('knowledge', item),
++                            isPersonalAccount: (item) => _storageStatus(
++                              'knowledge',
++                              item,
++                            ).startsWith('Personal account'),
++                            onCreate: (item) => _createWorkspaceItem(
++                              kind: 'knowledge',
++                              item: item,
++                              updated: data.copyWith(
++                                knowledge: [item, ...data.knowledge],
+                               ),
+-                          onPrint: _printReport,
+-                        ),
+-                      ],
++                            ),
++                            onUpdate: (item) => _save(
++                              data.copyWith(
++                                knowledge: [
++                                  for (final current in data.knowledge)
++                                    current['id'] == item['id']
++                                        ? item
++                                        : current,
++                                ],
++                              ),
++                            ),
++                            onDelete: (id) => _deleteKnowledge(data, id),
++                          ),
++                          _GuestInteractTab(
++                            data: data,
++                            privateWorkspace: _verifiedPersonalUid != null,
++                            storageStatus: _storageStatus,
++                            onChange: _save,
++                            onCreateItem: (kind, item, updated) =>
++                                _createWorkspaceItem(
++                                  kind: kind,
++                                  item: item,
++                                  updated: updated,
++                                ),
++                            onPrint: _printReport,
++                          ),
++                        ],
++                      ),
+                     ),
+-                  ),
+-                ],
+-              ),
++                  ],
++                ),
+         ),
+       ),
+     );
+diff --git a/apps/flutter_app/lib/shared/widgets/app_shell.dart b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+index 6db2852..c0b7e0c 100644
+--- a/apps/flutter_app/lib/shared/widgets/app_shell.dart
++++ b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+@@ -83,8 +83,10 @@ class AppShell extends ConsumerWidget {
+   int _selectedIndex(List<AppDestination> destinations) {
+     final selectedPath = switch (currentPath) {
+       final path when path.startsWith('/questions') => '/',
+-      final path when path.startsWith('/personal/questions') ||
+-          path.startsWith('/personal/ask') => '/personal/ask',
++      final path
++          when path.startsWith('/personal/questions') ||
++              path.startsWith('/personal/ask') =>
++        '/personal/ask',
+       final path when path.startsWith('/guided') => '/guided',
+       final path when path.startsWith('/personal/interact') =>
+         '/personal/interact',
+@@ -292,87 +294,87 @@ class AppShell extends ConsumerWidget {
+         }
+       },
+       child: Scaffold(
+-      appBar: isWide
+-          ? null
+-          : AppBar(
+-              backgroundColor: const Color(0xFFFFFBF4),
+-              title: const Text('IntQAFlow'),
+-              actions: [
+-                if (membership != null)
+-                  _workspaceSwitcher(
+-                    context,
+-                    ref: ref,
+-                    personalWorkspace: personalWorkspace,
+-                    showLabel: true,
+-                  ),
+-                if (membership != null)
+-                  _accountMenu(context, ref, membership, showLabel: true),
+-              ],
+-            ),
+-      body: Row(
+-        children: [
+-          if (isWide)
+-            NavigationRail(
+-              selectedIndex: _selectedIndex(destinations),
+-              onDestinationSelected: (index) =>
+-                  _navigate(context, ref, index, destinations),
+-              extended: MediaQuery.sizeOf(context).width >= 1100,
+-              leading: Padding(
+-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+-                child: Column(
+-                  children: [
+-                    const Text(
+-                      'IntQAFlow',
+-                      style: TextStyle(
+-                        fontSize: 20,
+-                        fontWeight: FontWeight.w700,
+-                      ),
++        appBar: isWide
++            ? null
++            : AppBar(
++                backgroundColor: const Color(0xFFFFFBF4),
++                title: const Text('IntQAFlow'),
++                actions: [
++                  if (membership != null)
++                    _workspaceSwitcher(
++                      context,
++                      ref: ref,
++                      personalWorkspace: personalWorkspace,
++                      showLabel: true,
+                     ),
+-                    if (membership != null)
+-                      _workspaceSwitcher(
+-                        context,
+-                        ref: ref,
+-                        personalWorkspace: personalWorkspace,
+-                        showLabel: false,
++                  if (membership != null)
++                    _accountMenu(context, ref, membership, showLabel: true),
++                ],
++              ),
++        body: Row(
++          children: [
++            if (isWide)
++              NavigationRail(
++                selectedIndex: _selectedIndex(destinations),
++                onDestinationSelected: (index) =>
++                    _navigate(context, ref, index, destinations),
++                extended: MediaQuery.sizeOf(context).width >= 1100,
++                leading: Padding(
++                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
++                  child: Column(
++                    children: [
++                      const Text(
++                        'IntQAFlow',
++                        style: TextStyle(
++                          fontSize: 20,
++                          fontWeight: FontWeight.w700,
++                        ),
+                       ),
+-                  ],
++                      if (membership != null)
++                        _workspaceSwitcher(
++                          context,
++                          ref: ref,
++                          personalWorkspace: personalWorkspace,
++                          showLabel: false,
++                        ),
++                    ],
++                  ),
+                 ),
++                trailing: membership == null
++                    ? null
++                    : _accountMenu(
++                        context,
++                        ref,
++                        membership,
++                        showLabel: MediaQuery.sizeOf(context).width >= 1100,
++                      ),
++                destinations: [
++                  for (final destination in destinations)
++                    NavigationRailDestination(
++                      icon: Icon(destination.icon),
++                      selectedIcon: Icon(destination.selectedIcon),
++                      label: Text(destination.label),
++                    ),
++                ],
+               ),
+-              trailing: membership == null
+-                  ? null
+-                  : _accountMenu(
+-                      context,
+-                      ref,
+-                      membership,
+-                      showLabel: MediaQuery.sizeOf(context).width >= 1100,
++            Expanded(child: child),
++          ],
++        ),
++        bottomNavigationBar: isWide
++            ? null
++            : NavigationBar(
++                selectedIndex: _selectedIndex(destinations),
++                onDestinationSelected: (index) =>
++                    _navigate(context, ref, index, destinations),
++                destinations: [
++                  for (final destination in destinations)
++                    NavigationDestination(
++                      icon: Icon(destination.icon),
++                      selectedIcon: Icon(destination.selectedIcon),
++                      label: destination.label,
+                     ),
+-              destinations: [
+-                for (final destination in destinations)
+-                  NavigationRailDestination(
+-                    icon: Icon(destination.icon),
+-                    selectedIcon: Icon(destination.selectedIcon),
+-                    label: Text(destination.label),
+-                  ),
+-              ],
+-            ),
+-          Expanded(child: child),
+-        ],
+-      ),
+-      bottomNavigationBar: isWide
+-          ? null
+-          : NavigationBar(
+-              selectedIndex: _selectedIndex(destinations),
+-              onDestinationSelected: (index) =>
+-                  _navigate(context, ref, index, destinations),
+-              destinations: [
+-                for (final destination in destinations)
+-                  NavigationDestination(
+-                    icon: Icon(destination.icon),
+-                    selectedIcon: Icon(destination.selectedIcon),
+-                    label: destination.label,
+-                  ),
+-              ],
+-            ),
++                ],
++              ),
+       ),
+     );
+   }
+diff --git a/apps/flutter_app/lib/shared/widgets/knowledge_section_tabs.dart b/apps/flutter_app/lib/shared/widgets/knowledge_section_tabs.dart
+index 552211a..8df46f9 100644
+--- a/apps/flutter_app/lib/shared/widgets/knowledge_section_tabs.dart
++++ b/apps/flutter_app/lib/shared/widgets/knowledge_section_tabs.dart
+@@ -45,4 +45,4 @@ class KnowledgeSectionTabs extends StatelessWidget {
+       ),
+     );
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 216e3af..ad5f746 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -73,11 +73,7 @@ class _TestUserCredential extends Fake implements UserCredential {
+ }
+ 
+ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
+-  _TestFirebaseAuth(
+-    this.currentUser, {
+-    this.createError,
+-    this.signInError,
+-  });
++  _TestFirebaseAuth(this.currentUser, {this.createError, this.signInError});
+ 
+   @override
+   final User? currentUser;
+@@ -287,10 +283,7 @@ class _TestPersonalWorkspaceRepository extends PersonalWorkspaceRepository {
+       final request = RequestOptions(path: '/api/v1/personal/items/$id');
+       throw DioException(
+         requestOptions: request,
+-        response: Response(
+-          requestOptions: request,
+-          statusCode: 409,
+-        ),
++        response: Response(requestOptions: request, statusCode: 409),
+       );
+     }
+     final current = items.firstWhere((item) => item['id'] == id);
+@@ -358,19 +351,16 @@ Future<void> _expectSeparateAccountError(
+   await tester.enterText(find.byType(TextField).last, 'secret-password');
+   final passwordField = tester.widget<TextField>(find.byType(TextField).last);
+   expect(passwordField.obscureText, isTrue);
+-  await tester.tap(
+-    find.widgetWithText(FilledButton, 'Create account'),
+-  );
++  await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+   await tester.pumpAndSettle();
+ 
+   expect(find.textContaining(expectedMessage), findsOneWidget);
+   final renderedMessages = tester.widgetList<Text>(
+-    find.descendant(
+-      of: find.byType(SignInPage),
+-      matching: find.byType(Text),
+-    ),
++    find.descendant(of: find.byType(SignInPage), matching: find.byType(Text)),
++  );
++  final renderedMessageText = renderedMessages.map(
++    (widget) => widget.data ?? '',
+   );
+-  final renderedMessageText = renderedMessages.map((widget) => widget.data ?? '');
+   expect(
+     renderedMessageText,
+     isNot(contains('Sensitive credential details must not be shown.')),
+@@ -465,10 +455,7 @@ void main() {
+               builder: (context, state) =>
+                   const Scaffold(body: Text('Organisation route')),
+             ),
+-            GoRoute(
+-              path: '/personal/ask',
+-              builder: (context, state) => page(),
+-            ),
++            GoRoute(path: '/personal/ask', builder: (context, state) => page()),
+             GoRoute(
+               path: '/personal/interact',
+               builder: (context, state) => page(tab: 1),
+@@ -510,40 +497,39 @@ void main() {
+     return router;
+   }
+ 
+-  testWidgets(
+-    'local guest account menu explains local-only work',
+-    (tester) async {
+-      await pumpGuestWorkspace(tester);
++  testWidgets('local guest account menu explains local-only work', (
++    tester,
++  ) async {
++    await pumpGuestWorkspace(tester);
+ 
+-      expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+-      expect(find.byTooltip('Groups'), findsNothing);
+-      await tester.tap(find.byTooltip('Guest workspace options'));
+-      await tester.pumpAndSettle();
+-      expect(find.text('Groups'), findsOneWidget);
+-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+-      await tester.pumpAndSettle();
+-      expect(
+-        find.textContaining('People using this profile can see its local work.'),
+-        findsNothing,
+-      );
+-      await tester.tap(find.byTooltip('Workspace storage information'));
+-      await tester.pumpAndSettle();
+-      expect(
+-        find.textContaining('People using this profile can see its local work.'),
+-        findsOneWidget,
+-      );
+-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+-      await tester.pumpAndSettle();
+-      expect(find.byType(AlertDialog), findsNothing);
++    expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
++    expect(find.byTooltip('Groups'), findsNothing);
++    await tester.tap(find.byTooltip('Guest workspace options'));
++    await tester.pumpAndSettle();
++    expect(find.text('Groups'), findsOneWidget);
++    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
++    await tester.pumpAndSettle();
++    expect(
++      find.textContaining('People using this profile can see its local work.'),
++      findsNothing,
++    );
++    await tester.tap(find.byTooltip('Workspace storage information'));
++    await tester.pumpAndSettle();
++    expect(
++      find.textContaining('People using this profile can see its local work.'),
++      findsOneWidget,
++    );
++    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
++    await tester.pumpAndSettle();
++    expect(find.byType(AlertDialog), findsNothing);
+ 
+-      await tester.tap(find.byTooltip('Account'));
+-      await tester.pumpAndSettle();
+-      expect(find.text('Local guest workspace'), findsOneWidget);
+-      expect(find.text('Already have an account? Sign in'), findsOneWidget);
+-      expect(find.text('Create account'), findsOneWidget);
+-      expect(find.text('Sign out'), findsNothing);
+-    },
+-  );
++    await tester.tap(find.byTooltip('Account'));
++    await tester.pumpAndSettle();
++    expect(find.text('Local guest workspace'), findsOneWidget);
++    expect(find.text('Already have an account? Sign in'), findsOneWidget);
++    expect(find.text('Create account'), findsOneWidget);
++    expect(find.text('Sign out'), findsNothing);
++  });
+ 
+   testWidgets('local workspace does not access Firebase when unavailable', (
+     tester,
+@@ -567,41 +553,40 @@ void main() {
+     expect(tester.takeException(), isNull);
+   });
+ 
+-  testWidgets(
+-    'leaving sign-in keeps the local workspace available',
+-    (tester) async {
+-      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+-      await store.save(
+-        const GuestWorkspaceData(
+-          sessions: [
+-            {
+-              'id': 'local-session',
+-              'title': 'Work in progress',
+-              'participants': [],
+-              'questions': [],
+-            },
+-          ],
+-        ),
+-      );
+-      await pumpGuestWorkspace(tester, store: store);
++  testWidgets('leaving sign-in keeps the local workspace available', (
++    tester,
++  ) async {
++    final store = GuestWorkspaceStore(_MemoryGuestStorage());
++    await store.save(
++      const GuestWorkspaceData(
++        sessions: [
++          {
++            'id': 'local-session',
++            'title': 'Work in progress',
++            'participants': [],
++            'questions': [],
++          },
++        ],
++      ),
++    );
++    await pumpGuestWorkspace(tester, store: store);
+ 
+-      await tester.tap(find.byTooltip('Account'));
+-      await tester.pumpAndSettle();
+-      await tester.tap(find.text('Already have an account? Sign in'));
+-      await tester.pumpAndSettle();
+-      expect(find.text('Back to workspace'), findsOneWidget);
+-      await tester.tap(find.text('Back to workspace'));
+-      await tester.pumpAndSettle();
++    await tester.tap(find.byTooltip('Account'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Already have an account? Sign in'));
++    await tester.pumpAndSettle();
++    expect(find.text('Back to workspace'), findsOneWidget);
++    await tester.tap(find.text('Back to workspace'));
++    await tester.pumpAndSettle();
+ 
+-      expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
+-      await tester.tap(find.text('Interact').first);
+-      await tester.pumpAndSettle();
+-      expect(find.text('Work in progress'), findsOneWidget);
++    expect(find.text('IntQAFlow guest workspace'), findsOneWidget);
++    await tester.tap(find.text('Interact').first);
++    await tester.pumpAndSettle();
++    expect(find.text('Work in progress'), findsOneWidget);
+ 
+-      final saved = await store.load();
+-      expect(saved.sessions.single['title'], 'Work in progress');
+-    },
+-  );
++    final saved = await store.load();
++    expect(saved.sessions.single['title'], 'Work in progress');
++  });
+ 
+   testWidgets('local-work clear option clears only the device copy', (
+     tester,
+@@ -652,9 +637,7 @@ void main() {
+     await tester.tap(find.byTooltip('Workspace storage information'));
+     await tester.pumpAndSettle();
+     expect(
+-      find.textContaining(
+-        'Guest workspace active in this browser profile.',
+-      ),
++      find.textContaining('Guest workspace active in this browser profile.'),
+       findsOneWidget,
+     );
+     await tester.tap(find.text('Close'));
+@@ -707,7 +690,10 @@ void main() {
+       findsOneWidget,
+     );
+ 
+-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
++    await tester.enterText(
++      find.byType(TextField).first,
++      'account@example.test',
++    );
+     await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+     await tester.pumpAndSettle();
+@@ -776,94 +762,98 @@ void main() {
+     expect((await storage.load()).knowledge, isEmpty);
+   });
+ 
+-  testWidgets('stale personal search results are ignored after account switch', (
+-    tester,
+-  ) async {
+-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+-    final staleResponse = Completer<Map<String, dynamic>>();
+-    final userA = _TestUser(
+-      isAnonymous: false,
+-      isEmailVerified: true,
+-      testUid: 'search-account-a',
+-    );
+-    final userB = _TestUser(
+-      isAnonymous: false,
+-      isEmailVerified: true,
+-      testUid: 'search-account-b',
+-    );
+-    final authEvents = StreamController<User?>.broadcast();
+-    final repository = _TestPersonalWorkspaceRepository([])
+-      ..searchHandler = (query, uid) => uid == userA.uid
+-          ? staleResponse.future
+-          : Future.value({
+-              'results': [
+-                {
+-                  'id': 'account-b-record',
+-                  'source_id': 'account-b-item',
+-                  'title': 'Account B result',
+-                  'data': {'id': 'account-b-item', 'body': 'account-b needle'},
+-                  'match_method': 'keyword',
+-                  'relevance_score': 1.1,
+-                },
+-              ],
+-              'partial': false,
+-            });
+-    final groups = _TestGuestGroupRepository([], {});
+-    Widget page(User user) => ProviderScope(
+-      overrides: [
+-        authStateProvider.overrideWith((ref) => authEvents.stream),
+-        firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+-        guestWorkspaceStoreProvider.overrideWithValue(store),
+-        personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+-        guestGroupRepositoryProvider.overrideWithValue(groups),
+-      ],
+-      child: MaterialApp(
+-        home: GuestWorkspacePage(
+-          firebaseReady: true,
+-          personalWorkspaceEnabled: true,
+-          accountUser: user,
+-          membershipStatus: AccountMembershipStatus.noMembership,
++  testWidgets(
++    'stale personal search results are ignored after account switch',
++    (tester) async {
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      final staleResponse = Completer<Map<String, dynamic>>();
++      final userA = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'search-account-a',
++      );
++      final userB = _TestUser(
++        isAnonymous: false,
++        isEmailVerified: true,
++        testUid: 'search-account-b',
++      );
++      final authEvents = StreamController<User?>.broadcast();
++      final repository = _TestPersonalWorkspaceRepository([])
++        ..searchHandler = (query, uid) => uid == userA.uid
++            ? staleResponse.future
++            : Future.value({
++                'results': [
++                  {
++                    'id': 'account-b-record',
++                    'source_id': 'account-b-item',
++                    'title': 'Account B result',
++                    'data': {
++                      'id': 'account-b-item',
++                      'body': 'account-b needle',
++                    },
++                    'match_method': 'keyword',
++                    'relevance_score': 1.1,
++                  },
++                ],
++                'partial': false,
++              });
++      final groups = _TestGuestGroupRepository([], {});
++      Widget page(User user) => ProviderScope(
++        overrides: [
++          authStateProvider.overrideWith((ref) => authEvents.stream),
++          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++          guestWorkspaceStoreProvider.overrideWithValue(store),
++          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++          guestGroupRepositoryProvider.overrideWithValue(groups),
++        ],
++        child: MaterialApp(
++          home: GuestWorkspacePage(
++            firebaseReady: true,
++            personalWorkspaceEnabled: true,
++            accountUser: user,
++            membershipStatus: AccountMembershipStatus.noMembership,
++          ),
+         ),
+-      ),
+-    );
+-    final searchField = find.byWidgetPredicate(
+-      (widget) =>
+-          widget is TextField &&
+-          widget.decoration?.labelText == 'Search Knowledge',
+-    );
++      );
++      final searchField = find.byWidgetPredicate(
++        (widget) =>
++            widget is TextField &&
++            widget.decoration?.labelText == 'Search Knowledge',
++      );
+ 
+-    await tester.pumpWidget(page(userA));
+-    await tester.pumpAndSettle();
+-    await tester.enterText(searchField, 'needle');
+-    await tester.pump(const Duration(milliseconds: 301));
+-    expect(repository.searches, [('needle', userA.uid)]);
++      await tester.pumpWidget(page(userA));
++      await tester.pumpAndSettle();
++      await tester.enterText(searchField, 'needle');
++      await tester.pump(const Duration(milliseconds: 301));
++      expect(repository.searches, [('needle', userA.uid)]);
+ 
+-    await tester.pumpWidget(page(userB));
+-    authEvents.add(userB);
+-    await tester.pumpAndSettle();
+-    await tester.pump(const Duration(milliseconds: 301));
+-    await tester.pumpAndSettle();
+-    expect(repository.searches.last, ('needle', userB.uid));
+-    expect(find.text('Account B result'), findsOneWidget);
++      await tester.pumpWidget(page(userB));
++      authEvents.add(userB);
++      await tester.pumpAndSettle();
++      await tester.pump(const Duration(milliseconds: 301));
++      await tester.pumpAndSettle();
++      expect(repository.searches.last, ('needle', userB.uid));
++      expect(find.text('Account B result'), findsOneWidget);
+ 
+-    staleResponse.complete({
+-      'results': [
+-        {
+-          'id': 'account-a-record',
+-          'source_id': 'account-a-item',
+-          'title': 'Account A stale result',
+-          'data': {'id': 'account-a-item', 'body': 'account-a needle'},
+-          'match_method': 'keyword',
+-          'relevance_score': 1.1,
+-        },
+-      ],
+-      'partial': false,
+-    });
+-    await tester.pumpAndSettle();
+-    expect(find.text('Account A stale result'), findsNothing);
+-    expect(find.text('Account B result'), findsOneWidget);
+-    await authEvents.close();
+-  });
++      staleResponse.complete({
++        'results': [
++          {
++            'id': 'account-a-record',
++            'source_id': 'account-a-item',
++            'title': 'Account A stale result',
++            'data': {'id': 'account-a-item', 'body': 'account-a needle'},
++            'match_method': 'keyword',
++            'relevance_score': 1.1,
++          },
++        ],
++        'partial': false,
++      });
++      await tester.pumpAndSettle();
++      expect(find.text('Account A stale result'), findsNothing);
++      expect(find.text('Account B result'), findsOneWidget);
++      await authEvents.close();
++    },
++  );
+ 
+   testWidgets('partial personal search can be retried from the widget', (
+     tester,
+@@ -957,45 +947,47 @@ void main() {
+       final store = GuestWorkspaceStore(_MemoryGuestStorage());
+       await store.save(GuestWorkspaceData(knowledge: [localItem]));
+       final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+-      final repository = _TestPersonalWorkspaceRepository([
+-        {
+-          'id': 'private-record',
+-          'kind': 'knowledge',
+-          'source_key': 'knowledge:private-answer-match',
+-          'title': 'Private answer evidence',
+-          'data': {
+-            'id': 'private-answer-match',
+-            'title': 'Private answer evidence',
+-            'body': '',
+-            'answer': 'Another precise needle phrase appears here.',
+-          },
+-          'revision': 1,
+-          'created_at': '2026-10-06T00:00:00+00:00',
+-          'updated_at': '2026-10-06T00:00:00+00:00',
+-        },
+-      ])..searchHandler = (searchQuery, uid) async {
+-        expect(searchQuery, query);
+-        expect(uid, user.uid);
+-        return {
+-          'results': [
+-            {
+-              'id': 'semantic-record',
+-              'source_id': 'semantic-only',
+-              'title': 'Remote semantic match',
+-              'data': {
+-                'id': 'semantic-only',
+-                'title': 'Remote semantic match',
+-                'body': 'Related guidance without the query words.',
+-                'answer': '',
++      final repository =
++          _TestPersonalWorkspaceRepository([
++              {
++                'id': 'private-record',
++                'kind': 'knowledge',
++                'source_key': 'knowledge:private-answer-match',
++                'title': 'Private answer evidence',
++                'data': {
++                  'id': 'private-answer-match',
++                  'title': 'Private answer evidence',
++                  'body': '',
++                  'answer': 'Another precise needle phrase appears here.',
++                },
++                'revision': 1,
++                'created_at': '2026-10-06T00:00:00+00:00',
++                'updated_at': '2026-10-06T00:00:00+00:00',
+               },
+-              'snippet': 'Related guidance without the query words.',
+-              'match_method': 'semantic',
+-              'relevance_score': 1,
+-            },
+-          ],
+-          'partial': false,
+-        };
+-      };
++            ])
++            ..searchHandler = (searchQuery, uid) async {
++              expect(searchQuery, query);
++              expect(uid, user.uid);
++              return {
++                'results': [
++                  {
++                    'id': 'semantic-record',
++                    'source_id': 'semantic-only',
++                    'title': 'Remote semantic match',
++                    'data': {
++                      'id': 'semantic-only',
++                      'title': 'Remote semantic match',
++                      'body': 'Related guidance without the query words.',
++                      'answer': '',
++                    },
++                    'snippet': 'Related guidance without the query words.',
++                    'match_method': 'semantic',
++                    'relevance_score': 1,
++                  },
++                ],
++                'partial': false,
++              };
++            };
+       final groups = _TestGuestGroupRepository([], {});
+       await tester.pumpWidget(
+         ProviderScope(
+@@ -1026,10 +1018,8 @@ void main() {
+       await tester.pump(const Duration(milliseconds: 301));
+       await tester.pumpAndSettle();
+ 
+-      Finder resultCard(String title) => find.ancestor(
+-        of: find.text(title),
+-        matching: find.byType(Card),
+-      );
++      Finder resultCard(String title) =>
++          find.ancestor(of: find.text(title), matching: find.byType(Card));
+ 
+       final localCard = resultCard('Local answer evidence');
+       final privateCard = resultCard('Private answer evidence');
+@@ -1134,84 +1124,93 @@ void main() {
+     expect(repository.deleteCalls, 0);
+   });
+ 
+-  testWidgets('personal import retries selected items without removing locals', (
+-    tester,
+-  ) async {
+-    final localData = GuestWorkspaceData(
+-      knowledge: [
+-        {'id': 'selected', 'title': 'Import this item', 'body': 'Selected'},
+-        {'id': 'local-only', 'title': 'Keep this item local', 'body': 'Private'},
+-      ],
+-    );
+-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+-    await store.save(localData);
+-    final repository = _TestPersonalWorkspaceRepository([])..failedImports = 1;
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [
+-          firebaseAuthProvider.overrideWithValue(
+-            _TestFirebaseAuth(
+-              _TestUser(isAnonymous: false, isEmailVerified: true),
+-            ),
+-          ),
+-          guestWorkspaceStoreProvider.overrideWithValue(store),
+-          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++  testWidgets(
++    'personal import retries selected items without removing locals',
++    (tester) async {
++      final localData = GuestWorkspaceData(
++        knowledge: [
++          {'id': 'selected', 'title': 'Import this item', 'body': 'Selected'},
++          {
++            'id': 'local-only',
++            'title': 'Keep this item local',
++            'body': 'Private',
++          },
+         ],
+-        child: MaterialApp(
+-          home: GuestWorkspacePage(
+-            firebaseReady: true,
+-            personalWorkspaceEnabled: true,
+-            accountUser: _TestUser(isAnonymous: false, isEmailVerified: true),
++      );
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await store.save(localData);
++      final repository = _TestPersonalWorkspaceRepository([])
++        ..failedImports = 1;
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [
++            firebaseAuthProvider.overrideWithValue(
++              _TestFirebaseAuth(
++                _TestUser(isAnonymous: false, isEmailVerified: true),
++              ),
++            ),
++            guestWorkspaceStoreProvider.overrideWithValue(store),
++            personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++          ],
++          child: MaterialApp(
++            home: GuestWorkspacePage(
++              firebaseReady: true,
++              personalWorkspaceEnabled: true,
++              accountUser: _TestUser(isAnonymous: false, isEmailVerified: true),
++            ),
+           ),
+         ),
+-      ),
+-    );
+-    await tester.pumpAndSettle();
+-    await tester.tap(find.text('Import local work'));
+-    await tester.pumpAndSettle();
+-    await tester.tap(
+-      find.descendant(
+-        of: find.byType(AlertDialog),
+-        matching: find.text('Keep this item local'),
+-      ),
+-    );
+-    await tester.pumpAndSettle();
+-    await tester.tap(find.text('Import selected work'));
+-    await tester.pumpAndSettle();
++      );
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Import local work'));
++      await tester.pumpAndSettle();
++      await tester.tap(
++        find.descendant(
++          of: find.byType(AlertDialog),
++          matching: find.text('Keep this item local'),
++        ),
++      );
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Import selected work'));
++      await tester.pumpAndSettle();
+ 
+-    expect(repository.imports, hasLength(1));
+-    expect(repository.imports.single, hasLength(1));
+-    expect(repository.imports.single.single['source_key'], 'knowledge:selected');
+-    expect(find.text('Retry import'), findsOneWidget);
+-    await tester.tap(find.text('Retry import'));
+-    await tester.pumpAndSettle();
++      expect(repository.imports, hasLength(1));
++      expect(repository.imports.single, hasLength(1));
++      expect(
++        repository.imports.single.single['source_key'],
++        'knowledge:selected',
++      );
++      expect(find.text('Retry import'), findsOneWidget);
++      await tester.tap(find.text('Retry import'));
++      await tester.pumpAndSettle();
+ 
+-    expect(repository.imports, hasLength(2));
+-    expect(
+-      repository.imports[0].single['source_key'],
+-      repository.imports[1].single['source_key'],
+-    );
+-    expect((await store.load()).knowledge, hasLength(2));
+-    await tester.tap(find.text('Saved Q&A'));
+-    await tester.pumpAndSettle();
+-    final savedListScrollable = find
+-        .ancestor(
+-          of: find.text('Back to add a local question'),
+-          matching: find.byType(Scrollable),
+-        )
+-        .first;
+-    expect(
+-      tester.widget<Scrollable>(savedListScrollable).axisDirection,
+-      AxisDirection.down,
+-    );
+-    await tester.scrollUntilVisible(
+-      find.text('Keep this item local'),
+-      250,
+-      scrollable: savedListScrollable,
+-    );
+-    expect(find.text('Import this item'), findsOneWidget);
+-    expect(find.text('Keep this item local'), findsOneWidget);
+-  });
++      expect(repository.imports, hasLength(2));
++      expect(
++        repository.imports[0].single['source_key'],
++        repository.imports[1].single['source_key'],
++      );
++      expect((await store.load()).knowledge, hasLength(2));
++      await tester.tap(find.text('Saved Q&A'));
++      await tester.pumpAndSettle();
++      final savedListScrollable = find
++          .ancestor(
++            of: find.text('Back to add a local question'),
++            matching: find.byType(Scrollable),
++          )
++          .first;
++      expect(
++        tester.widget<Scrollable>(savedListScrollable).axisDirection,
++        AxisDirection.down,
++      );
++      await tester.scrollUntilVisible(
++        find.text('Keep this item local'),
++        250,
++        scrollable: savedListScrollable,
++      );
++      expect(find.text('Import this item'), findsOneWidget);
++      expect(find.text('Keep this item local'), findsOneWidget);
++    },
++  );
+ 
+   testWidgets('permanent import limit errors ask for a smaller selection', (
+     tester,
+@@ -1252,7 +1251,10 @@ void main() {
+     await tester.pumpAndSettle();
+ 
+     expect(repository.imports, hasLength(1));
+-    expect(find.textContaining('Select fewer items or smaller items'), findsOneWidget);
++    expect(
++      find.textContaining('Select fewer items or smaller items'),
++      findsOneWidget,
++    );
+     expect(find.text('Change selection'), findsOneWidget);
+     expect(find.text('Retry import'), findsNothing);
+     expect((await store.load()).knowledge, hasLength(2));
+@@ -1265,91 +1267,101 @@ void main() {
+     expect(repository.imports, hasLength(1));
+   });
+ 
+-  testWidgets('revision conflicts reload before an explicit pending-edit save', (
+-    tester,
+-  ) async {
+-    Map<String, dynamic> item({
+-      required String title,
+-      required int revision,
+-    }) => {
+-      'id': 'remote-record',
+-      'kind': 'knowledge',
+-      'source_key': 'knowledge:remote-id',
+-      'title': title,
+-      'data': {
+-        'id': 'remote-id',
++  testWidgets(
++    'revision conflicts reload before an explicit pending-edit save',
++    (tester) async {
++      Map<String, dynamic> item({
++        required String title,
++        required int revision,
++      }) => {
++        'id': 'remote-record',
++        'kind': 'knowledge',
++        'source_key': 'knowledge:remote-id',
+         'title': title,
+-        'body': 'Remote details',
+-        'answer': 'Remote answer',
+-      },
+-      'revision': revision,
+-      'created_at': '2026-10-06T00:00:00+00:00',
+-      'updated_at': '2026-10-06T00:00:00+00:00',
+-    };
++        'data': {
++          'id': 'remote-id',
++          'title': title,
++          'body': 'Remote details',
++          'answer': 'Remote answer',
++        },
++        'revision': revision,
++        'created_at': '2026-10-06T00:00:00+00:00',
++        'updated_at': '2026-10-06T00:00:00+00:00',
++      };
+ 
+-    final latestAccountItem = item(title: 'Latest account title', revision: 2);
+-    final repository = _TestPersonalWorkspaceRepository([
+-      item(title: 'Original account title', revision: 1),
+-    ])
+-      ..updateConflicts = 1
+-      ..conflictItems = [latestAccountItem];
+-    final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+-    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [
+-          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+-          guestWorkspaceStoreProvider.overrideWithValue(store),
+-          personalWorkspaceRepositoryProvider.overrideWithValue(repository),
+-        ],
+-        child: MaterialApp(
+-          home: GuestWorkspacePage(
+-            firebaseReady: true,
+-            personalWorkspaceEnabled: true,
+-            accountUser: user,
++      final latestAccountItem = item(
++        title: 'Latest account title',
++        revision: 2,
++      );
++      final repository =
++          _TestPersonalWorkspaceRepository([
++              item(title: 'Original account title', revision: 1),
++            ])
++            ..updateConflicts = 1
++            ..conflictItems = [latestAccountItem];
++      final user = _TestUser(isAnonymous: false, isEmailVerified: true);
++      final store = GuestWorkspaceStore(_MemoryGuestStorage());
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [
++            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++            guestWorkspaceStoreProvider.overrideWithValue(store),
++            personalWorkspaceRepositoryProvider.overrideWithValue(repository),
++          ],
++          child: MaterialApp(
++            home: GuestWorkspacePage(
++              firebaseReady: true,
++              personalWorkspaceEnabled: true,
++              accountUser: user,
++            ),
+           ),
+         ),
+-      ),
+-    );
+-    await tester.pumpAndSettle();
+-    await tester.tap(find.text('Saved Q&A'));
+-    await tester.pumpAndSettle();
+-    await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
+-    await tester.pumpAndSettle();
+-    await tester.enterText(
+-      find.descendant(
+-        of: find.byType(AlertDialog),
+-        matching: find.byType(TextFormField),
+-      ).first,
+-      'My pending edit',
+-    );
+-    await tester.tap(
+-      find.descendant(
+-        of: find.byType(AlertDialog),
+-        matching: find.text('Save account changes'),
+-      ),
+-    );
+-    await tester.pumpAndSettle();
++      );
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Saved Q&A'));
++      await tester.pumpAndSettle();
++      await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
++      await tester.pumpAndSettle();
++      await tester.enterText(
++        find
++            .descendant(
++              of: find.byType(AlertDialog),
++              matching: find.byType(TextFormField),
++            )
++            .first,
++        'My pending edit',
++      );
++      await tester.tap(
++        find.descendant(
++          of: find.byType(AlertDialog),
++          matching: find.text('Save account changes'),
++        ),
++      );
++      await tester.pumpAndSettle();
+ 
+-    expect(repository.updateRevisions, [1]);
+-    expect(find.text('My pending edit'), findsOneWidget);
+-    await tester.tap(find.text('Review account change'));
+-    await tester.pumpAndSettle();
+-    expect(find.textContaining('Latest saved version (revision 2)'), findsOneWidget);
+-    expect(find.text('Your pending edit: My pending edit'), findsOneWidget);
+-    await tester.tap(find.text('Cancel'));
+-    await tester.pumpAndSettle();
+-    expect(find.text('My pending edit'), findsOneWidget);
++      expect(repository.updateRevisions, [1]);
++      expect(find.text('My pending edit'), findsOneWidget);
++      await tester.tap(find.text('Review account change'));
++      await tester.pumpAndSettle();
++      expect(
++        find.textContaining('Latest saved version (revision 2)'),
++        findsOneWidget,
++      );
++      expect(find.text('Your pending edit: My pending edit'), findsOneWidget);
++      await tester.tap(find.text('Cancel'));
++      await tester.pumpAndSettle();
++      expect(find.text('My pending edit'), findsOneWidget);
+ 
+-    await tester.tap(find.text('Review account change'));
+-    await tester.pumpAndSettle();
+-    await tester.tap(find.text('Save my pending edit'));
+-    await tester.pumpAndSettle();
++      await tester.tap(find.text('Review account change'));
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Save my pending edit'));
++      await tester.pumpAndSettle();
+ 
+-    expect(repository.updateRevisions, [1, 2]);
+-    expect(find.text('My pending edit'), findsOneWidget);
+-    expect(find.text('Latest account title'), findsNothing);
+-  });
++      expect(repository.updateRevisions, [1, 2]);
++      expect(find.text('My pending edit'), findsOneWidget);
++      expect(find.text('Latest account title'), findsNothing);
++    },
++  );
+ 
+   testWidgets('editing an imported nested session updates the account copy', (
+     tester,
+@@ -1497,10 +1509,7 @@ void main() {
+       scrollable: addQuestionScrollable,
+     );
+     await tester.pumpAndSettle();
+-    await Scrollable.ensureVisible(
+-      tester.element(saveLocally),
+-      alignment: 0.5,
+-    );
++    await Scrollable.ensureVisible(tester.element(saveLocally), alignment: 0.5);
+     await tester.pumpAndSettle();
+     await tester.tap(saveLocally.hitTestable());
+     await tester.pump(const Duration(milliseconds: 300));
+@@ -1544,16 +1553,14 @@ void main() {
+       await tester.enterText(
+         find.byWidgetPredicate(
+           (widget) =>
+-              widget is TextField &&
+-              widget.decoration?.labelText == 'Details',
++              widget is TextField && widget.decoration?.labelText == 'Details',
+         ),
+         'Account-only detail',
+       );
+       await tester.enterText(
+         find.byWidgetPredicate(
+           (widget) =>
+-              widget is TextField &&
+-              widget.decoration?.labelText == 'Answer',
++              widget is TextField && widget.decoration?.labelText == 'Answer',
+         ),
+         'Account-only answer',
+       );
+@@ -1572,10 +1579,12 @@ void main() {
+       await tester.tap(find.byTooltip('Edit personal-account Knowledge'));
+       await tester.pumpAndSettle();
+       await tester.enterText(
+-        find.descendant(
+-          of: find.byType(AlertDialog),
+-          matching: find.byType(TextFormField),
+-        ).first,
++        find
++            .descendant(
++              of: find.byType(AlertDialog),
++              matching: find.byType(TextFormField),
++            )
++            .first,
+         'Edited while create confirmation was uncertain',
+       );
+       await tester.tap(find.text('Save account changes'));
+@@ -1765,9 +1774,7 @@ void main() {
+       await tester.pumpAndSettle();
+       expect(repository.items, hasLength(1));
+ 
+-      await tester.tap(
+-        find.byTooltip('Remove personal-account Knowledge'),
+-      );
++      await tester.tap(find.byTooltip('Remove personal-account Knowledge'));
+       await tester.pumpAndSettle();
+ 
+       expect(repository.imports, hasLength(2));
+@@ -2024,53 +2031,61 @@ void main() {
+     expect(find.text('Private session'), findsOneWidget);
+   });
+ 
+-  testWidgets('existing-account sign-in errors do not reveal Firebase details', (
+-    tester,
+-  ) async {
+-    final auth = _TestFirebaseAuth(
+-      null,
+-      signInError: FirebaseAuthException(
+-        code: 'invalid-credential',
+-        message: 'Sensitive credential details must not be shown.',
+-      ),
+-    );
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(home: SignInPage()),
+-      ),
+-    );
+-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'secret-password');
+-    expect(
+-      tester.widget<TextField>(find.byType(TextField).last).obscureText,
+-      isTrue,
+-    );
+-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+-    await tester.pumpAndSettle();
++  testWidgets(
++    'existing-account sign-in errors do not reveal Firebase details',
++    (tester) async {
++      final auth = _TestFirebaseAuth(
++        null,
++        signInError: FirebaseAuthException(
++          code: 'invalid-credential',
++          message: 'Sensitive credential details must not be shown.',
++        ),
++      );
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [firebaseAuthProvider.overrideWithValue(auth)],
++          child: const MaterialApp(home: SignInPage()),
++        ),
++      );
++      await tester.enterText(
++        find.byType(TextField).first,
++        'account@example.test',
++      );
++      await tester.enterText(find.byType(TextField).last, 'secret-password');
++      expect(
++        tester.widget<TextField>(find.byType(TextField).last).obscureText,
++        isTrue,
++      );
++      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
++      await tester.pumpAndSettle();
+ 
+-    expect(auth.signInAttempts, 1);
+-    expect(
+-      find.text('Sign-in failed. Check your email and password and try again.'),
+-      findsOneWidget,
+-    );
+-    final renderedText = tester.widgetList<Text>(
+-      find.descendant(
+-        of: find.byType(SignInPage),
+-        matching: find.byType(Text),
+-      ),
+-    ).map((widget) => widget.data ?? '');
+-    expect(
+-      renderedText.any(
+-        (text) => text.contains('Sensitive credential details'),
+-      ),
+-      isFalse,
+-    );
+-    expect(
+-      renderedText.any((text) => text.contains('secret-password')),
+-      isFalse,
+-    );
+-  });
++      expect(auth.signInAttempts, 1);
++      expect(
++        find.text(
++          'Sign-in failed. Check your email and password and try again.',
++        ),
++        findsOneWidget,
++      );
++      final renderedText = tester
++          .widgetList<Text>(
++            find.descendant(
++              of: find.byType(SignInPage),
++              matching: find.byType(Text),
++            ),
++          )
++          .map((widget) => widget.data ?? '');
++      expect(
++        renderedText.any(
++          (text) => text.contains('Sensitive credential details'),
++        ),
++        isFalse,
++      );
++      expect(
++        renderedText.any((text) => text.contains('secret-password')),
++        isFalse,
++      );
++    },
++  );
+ 
+   testWidgets('unexpected sign-in errors show a safe recovery message', (
+     tester,
+@@ -2082,7 +2097,10 @@ void main() {
+         child: const MaterialApp(home: SignInPage()),
+       ),
+     );
+-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
++    await tester.enterText(
++      find.byType(TextField).first,
++      'account@example.test',
++    );
+     await tester.enterText(find.byType(TextField).last, 'secret-password');
+     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+     await tester.pumpAndSettle();
+@@ -2092,12 +2110,14 @@ void main() {
+       find.text('Unable to complete this account request. Please try again.'),
+       findsOneWidget,
+     );
+-    final renderedText = tester.widgetList<Text>(
+-      find.descendant(
+-        of: find.byType(SignInPage),
+-        matching: find.byType(Text),
+-      ),
+-    ).map((widget) => widget.data ?? '');
++    final renderedText = tester
++        .widgetList<Text>(
++          find.descendant(
++            of: find.byType(SignInPage),
++            matching: find.byType(Text),
++          ),
++        )
++        .map((widget) => widget.data ?? '');
+     expect(
+       renderedText.any((text) => text.contains('private transport')),
+       isFalse,
+@@ -2109,26 +2129,24 @@ void main() {
+     expect(find.text('Please wait…'), findsNothing);
+   });
+ 
+-  testWidgets('registered account without membership is not shown as signed out', (
+-    tester,
+-  ) async {
+-    await pumpGuestWorkspace(
+-      tester,
+-      user: _TestUser(isAnonymous: false),
+-      membershipStatus: AccountMembershipStatus.noMembership,
+-    );
++  testWidgets(
++    'registered account without membership is not shown as signed out',
++    (tester) async {
++      await pumpGuestWorkspace(
++        tester,
++        user: _TestUser(isAnonymous: false),
++        membershipStatus: AccountMembershipStatus.noMembership,
++      );
+ 
+-    expect(
+-      find.textContaining('no organisation membership'),
+-      findsOneWidget,
+-    );
+-    await tester.tap(find.text('Account'));
+-    await tester.pumpAndSettle();
+-    expect(find.text('No organisation membership'), findsOneWidget);
+-    expect(find.text('Sign out'), findsOneWidget);
+-    expect(find.text('Sign in'), findsNothing);
+-    expect(find.text('Create account'), findsNothing);
+-  });
++      expect(find.textContaining('no organisation membership'), findsOneWidget);
++      await tester.tap(find.text('Account'));
++      await tester.pumpAndSettle();
++      expect(find.text('No organisation membership'), findsOneWidget);
++      expect(find.text('Sign out'), findsOneWidget);
++      expect(find.text('Sign in'), findsNothing);
++      expect(find.text('Create account'), findsNothing);
++    },
++  );
+ 
+   testWidgets('unverified registered accounts see the Groups gate', (
+     tester,
+@@ -2291,45 +2309,46 @@ void main() {
+     expect(find.text('Sign out'), findsOneWidget);
+   });
+ 
+-  testWidgets('Groups navigation is hidden for anonymous and unverified users', (
+-    tester,
+-  ) async {
+-    for (final user in [
+-      _TestUser(isAnonymous: true),
+-      _TestUser(isAnonymous: false, isEmailVerified: false),
+-    ]) {
+-      await tester.pumpWidget(
+-        ProviderScope(
+-          overrides: [
+-            authStateProvider.overrideWith((ref) => Stream.value(user)),
+-            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+-            currentMembershipProvider.overrideWith(
+-              (ref) async => const ActiveMembership(
+-                userId: 'app-user',
+-                organisationId: 'org',
+-                email: 'member@example.test',
+-                displayName: 'Member',
+-                role: 'member',
++  testWidgets(
++    'Groups navigation is hidden for anonymous and unverified users',
++    (tester) async {
++      for (final user in [
++        _TestUser(isAnonymous: true),
++        _TestUser(isAnonymous: false, isEmailVerified: false),
++      ]) {
++        await tester.pumpWidget(
++          ProviderScope(
++            overrides: [
++              authStateProvider.overrideWith((ref) => Stream.value(user)),
++              firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++              currentMembershipProvider.overrideWith(
++                (ref) async => const ActiveMembership(
++                  userId: 'app-user',
++                  organisationId: 'org',
++                  email: 'member@example.test',
++                  displayName: 'Member',
++                  role: 'member',
++                ),
+               ),
+-            ),
+-          ],
+-          child: const MaterialApp(
+-            home: Scaffold(
+-              body: AppShell(
+-                currentPath: '/',
+-                child: Center(child: Text('Organisation content')),
++            ],
++            child: const MaterialApp(
++              home: Scaffold(
++                body: AppShell(
++                  currentPath: '/',
++                  child: Center(child: Text('Organisation content')),
++                ),
+               ),
+             ),
+           ),
+-        ),
+-      );
+-      await tester.pumpAndSettle();
++        );
++        await tester.pumpAndSettle();
+ 
+-      expect(find.text('Groups'), findsNothing);
+-      await tester.pumpWidget(const SizedBox.shrink());
+-      await tester.pumpAndSettle();
+-    }
+-  });
++        expect(find.text('Groups'), findsNothing);
++        await tester.pumpWidget(const SizedBox.shrink());
++        await tester.pumpAndSettle();
++      }
++    },
++  );
+ 
+   testWidgets('Personal workspace navigation omits organisation destinations', (
+     tester,
+@@ -2483,41 +2502,37 @@ void main() {
+     expect(find.text('Create account'), findsNothing);
+   });
+ 
+-  testWidgets('membership lookup errors do not claim the account has no member', (
+-    tester,
+-  ) async {
+-    final user = _TestUser(isAnonymous: false);
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [
+-          authStateProvider.overrideWith((ref) => Stream.value(user)),
+-          accountMembershipStatusProvider.overrideWith(
+-            (ref) async => throw StateError('private test detail'),
+-          ),
+-          firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+-          guestWorkspaceStoreProvider.overrideWithValue(
+-            GuestWorkspaceStore(_MemoryGuestStorage()),
+-          ),
+-          currentGuestGroupsProvider.overrideWith(
+-            (ref) async => const <Map<String, dynamic>>[],
+-          ),
+-        ],
+-        child: const IntQaFlowApp(),
+-      ),
+-    );
+-    await tester.pumpAndSettle();
++  testWidgets(
++    'membership lookup errors do not claim the account has no member',
++    (tester) async {
++      final user = _TestUser(isAnonymous: false);
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [
++            authStateProvider.overrideWith((ref) => Stream.value(user)),
++            accountMembershipStatusProvider.overrideWith(
++              (ref) async => throw StateError('private test detail'),
++            ),
++            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++            guestWorkspaceStoreProvider.overrideWithValue(
++              GuestWorkspaceStore(_MemoryGuestStorage()),
++            ),
++            currentGuestGroupsProvider.overrideWith(
++              (ref) async => const <Map<String, dynamic>>[],
++            ),
++          ],
++          child: const IntQaFlowApp(),
++        ),
++      );
++      await tester.pumpAndSettle();
+ 
+-    expect(
+-      find.textContaining('could not be verified'),
+-      findsOneWidget,
+-    );
+-    expect(find.text('private test detail'), findsNothing);
+-    expect(find.text('No organisation membership'), findsNothing);
+-  });
++      expect(find.textContaining('could not be verified'), findsOneWidget);
++      expect(find.text('private test detail'), findsNothing);
++      expect(find.text('No organisation membership'), findsNothing);
++    },
++  );
+ 
+-  testWidgets('unverified accounts do not query Groups', (
+-    tester,
+-  ) async {
++  testWidgets('unverified accounts do not query Groups', (tester) async {
+     final user = _TestUser(isAnonymous: false);
+     var attempts = 0;
+     await tester.pumpWidget(
+@@ -2552,39 +2567,46 @@ void main() {
+       findsOneWidget,
+     );
+     expect(find.text('private test detail'), findsNothing);
+-    expect(find.text('No approved groups are linked to this identity.'), findsNothing);
++    expect(
++      find.text('No approved groups are linked to this identity.'),
++      findsNothing,
++    );
+     expect(attempts, 0);
+   });
+ 
+-  testWidgets('registration from anonymous session uses separate account flow', (
+-    tester,
+-  ) async {
+-    final anonymousUser = _TestUser(isAnonymous: true);
+-    final registeredUser = _TestUser(isAnonymous: false);
+-    final auth = _TestFirebaseAuth(anonymousUser)
+-      ..createCredential = _TestUserCredential(registeredUser);
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(home: _SignInLauncher()),
+-      ),
+-    );
+-    await tester.tap(find.text('Open personal account creation'));
+-    await tester.pumpAndSettle();
+-    await tester.enterText(find.byType(TextField).first, 'account@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
+-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+-    await tester.pumpAndSettle();
++  testWidgets(
++    'registration from anonymous session uses separate account flow',
++    (tester) async {
++      final anonymousUser = _TestUser(isAnonymous: true);
++      final registeredUser = _TestUser(isAnonymous: false);
++      final auth = _TestFirebaseAuth(anonymousUser)
++        ..createCredential = _TestUserCredential(registeredUser);
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [firebaseAuthProvider.overrideWithValue(auth)],
++          child: const MaterialApp(home: _SignInLauncher()),
++        ),
++      );
++      await tester.tap(find.text('Open personal account creation'));
++      await tester.pumpAndSettle();
++      await tester.enterText(
++        find.byType(TextField).first,
++        'account@example.test',
++      );
++      await tester.enterText(find.byType(TextField).last, 'secure-passphrase');
++      await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
++      await tester.pumpAndSettle();
+ 
+-    expect(anonymousUser.linkAttempts, 0);
+-    expect(anonymousUser.isAnonymous, isTrue);
+-    expect(auth.createAttempts, 1);
+-    expect(registeredUser.verificationEmailAttempts, 1);
+-    expect(
+-      find.textContaining('nothing is uploaded unless you choose items'),
+-      findsOneWidget,
+-    );
+-  });
++      expect(anonymousUser.linkAttempts, 0);
++      expect(anonymousUser.isAnonymous, isTrue);
++      expect(auth.createAttempts, 1);
++      expect(registeredUser.verificationEmailAttempts, 1);
++      expect(
++        find.textContaining('nothing is uploaded unless you choose items'),
++        findsOneWidget,
++      );
++    },
++  );
+ 
+   testWidgets('account creation sends verification email', (tester) async {
+     final user = _TestUser(isAnonymous: false);
+@@ -2592,12 +2614,8 @@ void main() {
+       ..createCredential = _TestUserCredential(user);
+     await tester.pumpWidget(
+       ProviderScope(
+-        overrides: [
+-          firebaseAuthProvider.overrideWithValue(auth),
+-        ],
+-        child: const MaterialApp(
+-          home: SignInPage(createAccount: true),
+-        ),
++        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
++        child: const MaterialApp(home: SignInPage(createAccount: true)),
+       ),
+     );
+     expect(
+@@ -2630,10 +2648,7 @@ void main() {
+       expectedMessage:
+           'An account already uses this email. Sign in or reset the password instead.',
+     );
+-    expect(
+-      find.textContaining('guest identity remains active'),
+-      findsNothing,
+-    );
++    expect(find.textContaining('guest identity remains active'), findsNothing);
+   });
+ 
+   testWidgets('separate signup explains weak passwords safely', (tester) async {
+@@ -2658,7 +2673,10 @@ void main() {
+         child: const MaterialApp(home: SignInPage()),
+       ),
+     );
+-    await tester.enterText(find.byType(TextField).first, ' member@example.test ');
++    await tester.enterText(
++      find.byType(TextField).first,
++      ' member@example.test ',
++    );
+     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+     await tester.pumpAndSettle();
+@@ -2674,15 +2692,11 @@ void main() {
+     tester,
+   ) async {
+     final auth = _TestFirebaseAuth(null)
+-      ..createCredential = _TestUserCredential(
+-        _TestUser(isAnonymous: false),
+-      );
++      ..createCredential = _TestUserCredential(_TestUser(isAnonymous: false));
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(
+-          home: SignInPage(createAccount: true),
+-        ),
++        child: const MaterialApp(home: SignInPage(createAccount: true)),
+       ),
+     );
+     await tester.enterText(find.byType(TextField).first, 'new@example.test');
+@@ -2705,12 +2719,13 @@ void main() {
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(
+-          home: SignInPage(),
+-        ),
++        child: const MaterialApp(home: SignInPage()),
+       ),
+     );
+-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
++    await tester.enterText(
++      find.byType(TextField).first,
++      'destination@example.test',
++    );
+     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+     await tester.pumpAndSettle();
+@@ -2768,7 +2783,10 @@ void main() {
+     expect(repository.listGroupsCalls, 0);
+     expect(repository.listArchivedGroupsCalls, 0);
+     expect(repository.getGroupCalls, 0);
+-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
++    await tester.enterText(
++      find.byType(TextField).first,
++      'destination@example.test',
++    );
+     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+     await tester.pumpAndSettle();
+diff --git a/apps/flutter_app/test/ask_page_test.dart b/apps/flutter_app/test/ask_page_test.dart
+index 962464a..aca6462 100644
+--- a/apps/flutter_app/test/ask_page_test.dart
++++ b/apps/flutter_app/test/ask_page_test.dart
+@@ -284,13 +284,13 @@ void main() {
+         ),
+         GoRoute(
+           path: '/questions/:id',
+-          builder: (_, state) => Text('Opened organisation: ${state.pathParameters['id']}'),
++          builder: (_, state) =>
++              Text('Opened organisation: ${state.pathParameters['id']}'),
+         ),
+         GoRoute(
+           path: '/guest/groups',
+-          builder: (_, state) => Text(
+-            'Opened group: ${state.uri.queryParameters['entryId']}',
+-          ),
++          builder: (_, state) =>
++              Text('Opened group: ${state.uri.queryParameters['entryId']}'),
+         ),
+       ],
+     );
+@@ -557,9 +557,7 @@ void main() {
+           questionsRepositoryProvider.overrideWithValue(questions),
+           departmentsProvider.overrideWith((ref) async => [_department()]),
+           teamsProvider.overrideWith((ref) async => [_team()]),
+-          personalWorkspaceRepositoryProvider.overrideWithValue(
+-            personal,
+-          ),
++          personalWorkspaceRepositoryProvider.overrideWithValue(personal),
+           guestGroupRepositoryProvider.overrideWithValue(groups),
+           guestWorkspaceStoreProvider.overrideWithValue(
+             GuestWorkspaceStore(storage),
+
+From 844e328181669039476226ae5fed720bdfb1809c Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 09:04:19 +0000
+Subject: [PATCH 2/2] Fix independent Flutter test compilation failures
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../test/account_state_widget_test.dart       | 50 ++++---------------
+ .../test/guest_group_dialog_test.dart         |  4 +-
+ 2 files changed, 11 insertions(+), 43 deletions(-)
+
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index ad5f746..8c3a3ef 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -434,7 +434,7 @@ void main() {
+     Stream<User?>? authChanges,
+     String initialLocation = '/personal/ask',
+   }) async {
+-    GuestWorkspacePage page({int tab = 0}) => Consumer(
++    Widget page({int tab = 0}) => Consumer(
+       builder: (context, ref, _) => GuestWorkspacePage(
+         firebaseReady: true,
+         personalWorkspaceEnabled: true,
+@@ -1543,11 +1543,7 @@ void main() {
+ 
+       expect(find.text('Save to private account'), findsOneWidget);
+       await tester.enterText(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is TextFormField &&
+-              widget.decoration.labelText == 'Question',
+-        ),
++        find.widgetWithText(TextFormField, 'Question'),
+         'Private default question',
+       );
+       await tester.enterText(
+@@ -1626,11 +1622,7 @@ void main() {
+       unawaited(router.push<void>('/personal/ask'));
+       await tester.pumpAndSettle();
+       await tester.enterText(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is TextFormField &&
+-              widget.decoration.labelText == 'Question',
+-        ),
++        find.widgetWithText(TextFormField, 'Question'),
+         'Held private question',
+       );
+       await tester.tap(find.text('Save to private account'));
+@@ -1703,11 +1695,7 @@ void main() {
+         authChanges: authChanges.stream,
+       );
+       await tester.enterText(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is TextFormField &&
+-              widget.decoration.labelText == 'Question',
+-        ),
++        find.widgetWithText(TextFormField, 'Question'),
+         'First identity private question',
+       );
+       await tester.tap(find.text('Save to private account'));
+@@ -1719,11 +1707,7 @@ void main() {
+       await tester.pumpAndSettle();
+       expect(find.text('First identity private question'), findsNothing);
+       await tester.enterText(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is TextFormField &&
+-              widget.decoration.labelText == 'Question',
+-        ),
++        find.widgetWithText(TextFormField, 'Question'),
+         'Second identity private question',
+       );
+       await tester.tap(find.text('Save to private account'));
+@@ -1763,11 +1747,7 @@ void main() {
+         store: store,
+       );
+       await tester.enterText(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is TextFormField &&
+-              widget.decoration.labelText == 'Question',
+-        ),
++        find.widgetWithText(TextFormField, 'Question'),
+         'Remove uncertain private create',
+       );
+       await tester.tap(find.text('Save to private account'));
+@@ -1806,11 +1786,7 @@ void main() {
+       );
+       expect(repository.listCalls, 1);
+       await tester.enterText(
+-        find.byWidgetPredicate(
+-          (widget) =>
+-              widget is TextFormField &&
+-              widget.decoration.labelText == 'Question',
+-        ),
++        find.widgetWithText(TextFormField, 'Question'),
+         'Refresh race question',
+       );
+       await tester.tap(find.text('Save to private account'));
+@@ -2003,19 +1979,11 @@ void main() {
+     await tester.pumpAndSettle();
+     expect(find.text('Create private session'), findsOneWidget);
+     await tester.enterText(
+-      find.byWidgetPredicate(
+-        (widget) =>
+-            widget is TextFormField &&
+-            widget.decoration.labelText == 'New Interact session',
+-      ),
++      find.widgetWithText(TextFormField, 'New Interact session'),
+       'Private session',
+     );
+     await tester.enterText(
+-      find.byWidgetPredicate(
+-        (widget) =>
+-            widget is TextFormField &&
+-            widget.decoration.labelText == 'First participant',
+-      ),
++      find.widgetWithText(TextFormField, 'First participant'),
+       'Participant One',
+     );
+     await tester.tap(find.text('Create private session'));
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index 1653ae6..d52eff3 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -1484,7 +1484,7 @@ void main() {
+     expect(ownerRepository.transferRequests, 1);
+     expect(find.textContaining('Waiting for Invited viewer to accept'), findsOneWidget);
+     expect(
+-      find.textContaining('Role: admin'),
++      find.textContaining('Your group role: admin'),
+       findsOneWidget,
+       reason: 'The requester keeps the current role until the recipient accepts.',
+     );
+@@ -1519,7 +1519,7 @@ void main() {
+       find.textContaining('asked to accept group administration'),
+       findsNothing,
+     );
+-    expect(find.textContaining('Role: admin'), findsOneWidget);
++    expect(find.textContaining('Your group role: admin'), findsOneWidget);
+     expect(tester.takeException(), isNull);
+   });
+ 

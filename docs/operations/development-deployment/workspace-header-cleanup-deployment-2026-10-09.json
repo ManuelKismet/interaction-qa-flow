@@ -1,0 +1,49 @@
+{
+  "source_commit": "8704a6d0c17517f0c636b5ae3057faa4d5870860",
+  "hosting": "HOSTING_RELEASE sites/intqaflow-dev/releases/1791535916149000 FILES 37 VERSION sites/intqaflow-dev/versions/070f7f727569b0c2",
+  "verified_files": [
+    {
+      "origin": "https://intqaflow-dev.web.app",
+      "file": "index.html",
+      "sha256": "a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858"
+    },
+    {
+      "origin": "https://intqaflow-dev.web.app",
+      "file": "flutter_bootstrap.js",
+      "sha256": "c088d6a22a3d07d885ae86aad1c2e84c454576fba16c393c0b9fd3e1b764552c"
+    },
+    {
+      "origin": "https://intqaflow-dev.web.app",
+      "file": "main.dart.js",
+      "sha256": "42f43df14a4c5c63cfe5ce865902cbabcd13e62fa75ecd1a3fadcdafc484705c"
+    },
+    {
+      "origin": "https://intqaflow-dev.web.app",
+      "file": "release-info.json",
+      "sha256": "5f85112a8852db563b08fc693dbb3555babefa648ae6ce205b803f9c4f922139"
+    },
+    {
+      "origin": "https://intqaflow-dev.firebaseapp.com",
+      "file": "index.html",
+      "sha256": "a06d2eb52561601b37b68f0fc8eb22498200b5eea6b8c828347f90ff74611858"
+    },
+    {
+      "origin": "https://intqaflow-dev.firebaseapp.com",
+      "file": "flutter_bootstrap.js",
+      "sha256": "c088d6a22a3d07d885ae86aad1c2e84c454576fba16c393c0b9fd3e1b764552c"
+    },
+    {
+      "origin": "https://intqaflow-dev.firebaseapp.com",
+      "file": "main.dart.js",
+      "sha256": "42f43df14a4c5c63cfe5ce865902cbabcd13e62fa75ecd1a3fadcdafc484705c"
+    },
+    {
+      "origin": "https://intqaflow-dev.firebaseapp.com",
+      "file": "release-info.json",
+      "sha256": "5f85112a8852db563b08fc693dbb3555babefa648ae6ce205b803f9c4f922139"
+    }
+  ],
+  "backend_unchanged": true,
+  "health": 200,
+  "flutter_tests": 392
+}

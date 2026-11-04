@@ -1,0 +1,119 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:int_qa_flow/core/api/api_client.dart';
+
+final personalWorkspaceRepositoryProvider =
+    Provider<PersonalWorkspaceRepository>(
+      (ref) => PersonalWorkspaceRepository(ref.watch(apiClientProvider)),
+    );
+
+class PersonalWorkspaceRepository {
+  const PersonalWorkspaceRepository(this._client);
+
+  final Dio _client;
+
+  Future<List<Map<String, dynamic>>> listItems({
+    required String expectedUid,
+  }) async {
+    final response = await _client.get<List<dynamic>>(
+      '/api/v1/personal/items',
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+    );
+    return [
+      for (final item in response.data ?? const [])
+        if (item is Map<String, dynamic>) item,
+    ];
+  }
+
+  Future<Map<String, dynamic>> searchInteract(
+    String query, {
+    required String expectedUid,
+  }) async {
+    final response = await _client.get<Map<String, dynamic>>(
+      '/api/v1/personal/interact/search',
+      queryParameters: {'query': query, 'limit': 25},
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+    );
+    return response.data ?? const {'results': [], 'partial': false};
+  }
+
+  Future<Map<String, dynamic>> searchKnowledge(
+    String query, {
+    required String expectedUid,
+  }) async {
+    final response = await _client.get<Map<String, dynamic>>(
+      '/api/v1/personal/items/search',
+      queryParameters: {'query': query, 'limit': 25},
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+    );
+    final data = response.data ?? const <String, dynamic>{};
+    return {
+      'results': (data['results'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList(),
+      'partial': data['partial'] == true,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> importItems(
+    List<Map<String, dynamic>> items, {
+    required String expectedUid,
+  }) async {
+    final response = await _client.post<Map<String, dynamic>>(
+      '/api/v1/personal/items/import',
+      data: {'items': items},
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+    );
+    final result = response.data?['items'];
+    if (result is! List ||
+        result.length != items.length ||
+        result.any((item) => item is! Map<String, dynamic>)) {
+      throw const FormatException('The account import response was invalid.');
+    }
+    return [for (final item in result) item as Map<String, dynamic>];
+  }
+
+  Future<Map<String, dynamic>> createItem({
+    required String kind,
+    required String sourceKey,
+    required String title,
+    required Map<String, dynamic> data,
+    required String expectedUid,
+  }) async {
+    final items = await importItems([
+      {'kind': kind, 'source_key': sourceKey, 'title': title, 'data': data},
+    ], expectedUid: expectedUid);
+    return items.single;
+  }
+
+  Future<Map<String, dynamic>> updateItem({
+    required String id,
+    required String expectedUid,
+    required int expectedRevision,
+    required String title,
+    required Map<String, dynamic> data,
+  }) async {
+    final response = await _client.put<Map<String, dynamic>>(
+      '/api/v1/personal/items/$id',
+      data: {
+        'expected_revision': expectedRevision,
+        'title': title,
+        'data': data,
+      },
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+    );
+    return response.data!;
+  }
+
+  Future<void> deleteItem(
+    String id, {
+    required String expectedUid,
+    required int expectedRevision,
+  }) async {
+    await _client.delete<void>(
+      '/api/v1/personal/items/$id',
+      queryParameters: {'expected_revision': expectedRevision},
+      options: Options(extra: {'expectedFirebaseUid': expectedUid}),
+    );
+  }
+}

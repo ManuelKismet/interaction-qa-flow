@@ -1,0 +1,2181 @@
+From cf605efe6b0ec1d3738f36c3270ebbb30d5c1173 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 13:44:40 +0000
+Subject: [PATCH] Gate Groups to verified registered accounts
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+
+diff --git a/apps/flutter_app/lib/core/auth/auth_providers.dart b/apps/flutter_app/lib/core/auth/auth_providers.dart
+index 7acc501..3f37fe3 100644
+--- a/apps/flutter_app/lib/core/auth/auth_providers.dart
++++ b/apps/flutter_app/lib/core/auth/auth_providers.dart
+@@ -2,6 +2,9 @@ import 'package:firebase_auth/firebase_auth.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:int_qa_flow/core/api/api_client.dart';
+ 
++bool isVerifiedRegisteredFirebaseUser(User? user) =>
++    user != null && !user.isAnonymous && user.emailVerified;
++
+ final firebaseAuthProvider = Provider<FirebaseAuth>(
+   (ref) => FirebaseAuth.instance,
+ );
+diff --git a/apps/flutter_app/lib/core/auth/sign_in_page.dart b/apps/flutter_app/lib/core/auth/sign_in_page.dart
+index 98036bf..9b76d75 100644
+--- a/apps/flutter_app/lib/core/auth/sign_in_page.dart
++++ b/apps/flutter_app/lib/core/auth/sign_in_page.dart
+@@ -8,20 +8,12 @@ class SignInPage extends ConsumerStatefulWidget {
+     this.linkGuestIdentity = false,
+     this.createAccount = false,
+     this.hasMeaningfulGuestWork = false,
+-    this.hasCurrentGuestGroupAccess = false,
+-    this.hasArchivedGuestGroups = false,
+-    this.hasSoleAdministeredGroup = false,
+-    this.guestGroupOwnershipUnavailable = false,
+     super.key,
+   });
+ 
+   final bool linkGuestIdentity;
+   final bool createAccount;
+   final bool hasMeaningfulGuestWork;
+-  final bool hasCurrentGuestGroupAccess;
+-  final bool hasArchivedGuestGroups;
+-  final bool hasSoleAdministeredGroup;
+-  final bool guestGroupOwnershipUnavailable;
+ 
+   @override
+   ConsumerState<SignInPage> createState() => _SignInPageState();
+@@ -97,17 +89,25 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+         } on FirebaseAuthException {
+           if (!mounted) return;
+           await _finishGuestLink(
+-            'Account created from this guest, but the account status could not be refreshed. The guest identity and group access remain linked. Sign in again to verify the account state.',
++            'Account created from this guest, but the account status could not '
++            'be refreshed. The guest identity remains linked. Sign in again to '
++            'verify the account state.',
+           );
+           return;
+         }
+         if (!mounted) return;
+         await _finishGuestLink(
+           verificationEmailFailed
+-              ? 'Account created from this guest, but the verification email could not be sent. The guest identity and group access remain linked. Sign in normally and contact your administrator if verification is still pending.'
++              ? 'Account created from this guest, but the verification email '
++                  'could not be sent. The guest identity remains linked. Sign '
++                  'in normally and contact your administrator if verification '
++                  'is still pending.'
+               : linkedUser.emailVerified
+-              ? 'Account created from this guest and verified. Group access is retained; local work stays on this device.'
+-              : 'Account created from this guest. Check your email to verify it. The guest identity and group access are retained; local work stays on this device.',
++              ? 'Account created from this guest and verified. Local work '
++                  'stays on this device.'
++              : 'Account created from this guest. Check your email to verify '
++                  'it. The guest identity remains linked; local work stays on '
++                  'this device.',
+         );
+       } else if (_createAccountMode) {
+         final currentUser = auth.currentUser;
+@@ -213,7 +213,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+               'email-already-in-use' ||
+               'credential-already-in-use' ||
+               'provider-already-linked' =>
+-                'That account could not be linked. This guest identity remains active; an existing account is never linked or granted group access automatically.',
++                'That account could not be linked. This guest identity remains '
++                'active; sign in with the existing account or try again.',
+               'network-request-failed' =>
+                 'Unable to reach the sign-in service. Check your connection and try again.',
+               'too-many-requests' =>
+@@ -247,53 +248,17 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+   }
+ 
+   bool get _hasMeaningfulCurrentGuestState =>
+-      widget.hasMeaningfulGuestWork ||
+-      widget.hasCurrentGuestGroupAccess ||
+-      widget.hasArchivedGuestGroups;
++      widget.hasMeaningfulGuestWork;
+ 
+   Future<bool> _confirmCurrentGuestState(
+     FirebaseAuth auth,
+     User? currentUser, {
+     required bool createSeparateAccount,
+   }) async {
+-    if (widget.guestGroupOwnershipUnavailable ||
+-        widget.hasSoleAdministeredGroup) {
+-      final message = widget.guestGroupOwnershipUnavailable
+-          ? 'Group administration could not be checked, so sign-in and '
+-                'separate-account creation are paused to protect group access. '
+-                'Keep this identity and retry after group access is available.'
+-          : 'This identity is the only administrator of at least one group. '
+-                'Keep this identity, or return to Groups → Manage '
+-                'members to request a transfer and wait for an active member to '
+-                'accept, or archive the group before leaving it. An archived group '
+-                'can be restored for 30 days only by this same Firebase identity.';
+-      if (mounted) {
+-        await showDialog<void>(
+-          context: context,
+-          builder: (context) => AlertDialog(
+-            title: const Text('Keep this group identity'),
+-            content: Text(message),
+-            actions: [
+-              FilledButton(
+-                onPressed: () => Navigator.pop(context),
+-                child: const Text('Keep this identity'),
+-              ),
+-            ],
+-          ),
+-        );
+-      }
+-      return false;
+-    }
+-
+     if (!_hasMeaningfulCurrentGuestState) return true;
+ 
+     final currentUid = currentUser?.uid;
+     final wasAnonymous = currentUser?.isAnonymous == true;
+-    final archivedGroupWarning = widget.hasArchivedGuestGroups
+-        ? ' Archived groups can be restored for 30 days only by the same '
+-              'Firebase account that archived them; starting fresh does not '
+-              'transfer restoration rights.'
+-        : '';
+     final confirmed = await showDialog<bool>(
+       context: context,
+       builder: (context) => AlertDialog(
+@@ -307,16 +272,11 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+               ? 'This starts a separate registered identity. The current guest '
+                     'workspace is different from that new account: local work '
+                     'stays in this browser unless you explicitly clear only its '
+-                    'local copy from Workspace options. Group membership '
+-                    'or administration does not transfer or get deleted. To keep '
+-                    'group access, create an account from this guest instead.'
++                    'local copy from Workspace options.'
+               : 'This signs in to your existing account; it does not upgrade '
+                     'the current guest identity. Local work stays in this browser. '
+                     'Keep it, or explicitly clear only the local copy from '
+-                    'Workspace options; sign-in never clears it. Group '
+-                    'membership and ownership stay with the current identity and '
+-                    'are not transferred.') +
+-              archivedGroupWarning,
++                    'Workspace options; sign-in never clears it.'),
+         ),
+         actions: [
+           TextButton(
+@@ -342,8 +302,10 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+       if (confirmed == false && createSeparateAccount && mounted) {
+         setState(() {
+           _message = currentUser?.isAnonymous == true
+-              ? 'Account creation cancelled. Your guest identity, group access, and local work are unchanged.'
+-              : 'Account creation cancelled. Your current workspace and local work are unchanged.';
++              ? 'Account creation cancelled. Your guest identity and local work '
++                  'are unchanged.'
++              : 'Account creation cancelled. Your current workspace and local '
++                  'work are unchanged.';
+         });
+       }
+       return false;
+@@ -422,10 +384,12 @@ class _SignInPageState extends ConsumerState<SignInPage> {
+                               const SizedBox(height: 8),
+                               Text(
+                                 _linkGuestMode
+-                                      ? 'Create a sign-in account from this guest to keep the same identity and group access. '
+-                                          'Local work stays on this device; it is not uploaded.'
++                                      ? 'Create a registered account from this '
++                                          'guest identity. Local work stays on '
++                                          'this device; it is not uploaded.'
+                                       : 'Start fresh with a separate registered identity. '
+-                                          'It does not transfer group access or upload local work; '
++                                          'It does not transfer local work or '
++                                          'upload it; '
+                                           'local work remains on this device.',
+                               ),
+                             ],
+diff --git a/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart b/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
+index 5eebb8d..15966e9 100644
+--- a/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
++++ b/apps/flutter_app/lib/features/guest/data/guest_group_repository.dart
+@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:int_qa_flow/core/api/api_client.dart';
+ import 'package:int_qa_flow/core/api/api_exception.dart';
++import 'package:int_qa_flow/core/auth/auth_providers.dart';
+ import 'package:int_qa_flow/features/guest/domain/guest_workspace_data.dart';
+ 
+ final guestGroupRepositoryProvider = Provider<GuestGroupRepository>((ref) {
+@@ -10,6 +11,12 @@ final guestGroupRepositoryProvider = Provider<GuestGroupRepository>((ref) {
+ 
+ final currentGuestGroupsProvider =
+     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
++      final user =
++          ref.watch(authStateProvider).value ??
++          ref.watch(firebaseAuthProvider).currentUser;
++      if (!isVerifiedRegisteredFirebaseUser(user)) {
++        return const [];
++      }
+       return ref.watch(guestGroupRepositoryProvider).listGroups();
+     });
+ 
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index e832c6f..a239c59 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -198,99 +198,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     return false;
+   }
+ 
+-  Future<void> _startSharedGuestIdentity() async {
+-    final currentUser = ref.read(firebaseAuthProvider).currentUser;
+-    if (currentUser != null && !currentUser.isAnonymous) {
+-      ScaffoldMessenger.of(context).showSnackBar(
+-        const SnackBar(
+-          content: Text(
+-            'This account is not a guest identity. Its signed-in identity was left unchanged.',
+-          ),
+-        ),
+-      );
+-      return;
+-    }
+-    final confirmed = await showDialog<bool>(
+-      context: context,
+-      builder: (context) => AlertDialog(
+-        title: const Text('Enable groups?'),
+-        content: const Text(
+-          'This uses a per-device guest identity. Only content you deliberately '
+-          'add to a group is stored online. Your local drafts stay on this device '
+-          'unless you preview and confirm an import.',
+-        ),
+-        actions: [
+-          TextButton(
+-            onPressed: () => Navigator.pop(context, false),
+-            child: const Text('Stay local'),
+-          ),
+-          FilledButton(
+-            onPressed: () => Navigator.pop(context, true),
+-            child: const Text('Continue to Groups'),
+-          ),
+-        ],
+-      ),
+-    );
+-    if (confirmed != true || !mounted) return;
+-    if (!await _saveBeforeLeaving() || !mounted) return;
+-    try {
+-      await ref.read(firebaseAuthProvider).signInAnonymously();
+-    } on Object {
+-      if (mounted) {
+-        ScaffoldMessenger.of(context).showSnackBar(
+-          const SnackBar(
+-            content: Text(
+-              'Groups are unavailable. Your local guest work is unchanged.',
+-            ),
+-          ),
+-        );
+-      }
+-    }
+-  }
+-
+   Future<void> _openSignIn({
+     bool createAccount = false,
+     bool linkGuest = false,
+   }) async {
+     if (_data == null && _loadError == null) await _load();
+     if (!mounted) return;
+-    final user = _currentAccountUser;
+-    var hasCurrentGuestGroupAccess = false;
+-    var hasArchivedGuestGroups = false;
+-    var hasSoleAdministeredGroup = false;
+-    var guestGroupOwnershipUnavailable = false;
+-    if (user?.isAnonymous == true && !linkGuest) {
+-      try {
+-        hasArchivedGuestGroups = (await ref
+-                .read(guestGroupRepositoryProvider)
+-                .listArchivedGroups())
+-            .isNotEmpty;
+-        final groups = await ref
+-            .read(guestGroupRepositoryProvider)
+-            .listGroups();
+-        hasCurrentGuestGroupAccess = groups.isNotEmpty;
+-        for (final group in groups.where(
+-          (group) => group['role'] == 'admin',
+-        )) {
+-          final detail = await ref
+-              .read(guestGroupRepositoryProvider)
+-              .getGroup(group['id'] as String);
+-          final members = (detail['members'] as List? ?? const [])
+-              .whereType<Map>();
+-          final activeAdmins = members.where(
+-            (member) =>
+-                member['role'] == 'admin' && member['status'] == 'active',
+-          );
+-          if (activeAdmins.length <= 1) {
+-            hasSoleAdministeredGroup = true;
+-            break;
+-          }
+-        }
+-      } on Object {
+-        guestGroupOwnershipUnavailable = true;
+-      }
+-    }
+-    if (!mounted) return;
+     if (!await _saveBeforeLeaving() || !mounted) return;
+     final data = _data;
+     await Navigator.of(context).push<void>(
+@@ -304,10 +217,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+               data.knowledge.isNotEmpty ||
+               data.sessions.isNotEmpty ||
+               data.templates.isNotEmpty,
+-          hasCurrentGuestGroupAccess: hasCurrentGuestGroupAccess,
+-          hasArchivedGuestGroups: hasArchivedGuestGroups,
+-          hasSoleAdministeredGroup: hasSoleAdministeredGroup,
+-          guestGroupOwnershipUnavailable: guestGroupOwnershipUnavailable,
+         ),
+       ),
+     );
+@@ -315,6 +224,42 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+ 
+   Future<void> _openSharedGroups() async {
+     if (!await _saveBeforeLeaving() || !mounted) return;
++    final user = ref.read(firebaseAuthProvider).currentUser;
++    if (!isVerifiedRegisteredFirebaseUser(user)) {
++      final action = await showDialog<String>(
++        context: context,
++        builder: (context) => AlertDialog(
++          title: const Text('Create an account to use Groups'),
++          content: const Text(
++            'Groups require a registered account with a verified email. '
++            'Your local Knowledge, Interact sessions, and drafts stay on this '
++            'device and are not uploaded by creating an account.',
++          ),
++          actions: [
++            TextButton(
++              onPressed: () => Navigator.pop(context),
++              child: const Text('Cancel'),
++            ),
++            TextButton(
++              onPressed: () => Navigator.pop(context, 'sign-in'),
++              child: const Text('Already have an account? Sign in'),
++            ),
++            FilledButton(
++              onPressed: () => Navigator.pop(context, 'create-account'),
++              child: const Text('Create an account'),
++            ),
++          ],
++        ),
++      );
++      if (!mounted) return;
++      if (action == 'sign-in') {
++        await _openSignIn();
++      } else if (action == 'create-account') {
++        final linkGuest = user?.isAnonymous == true;
++        await _openSignIn(createAccount: true, linkGuest: linkGuest);
++      }
++      return;
++    }
+     await Navigator.of(context).push<void>(
+       MaterialPageRoute<void>(
+         builder: (_) => const SharedGuestGroupsPage(),
+@@ -323,56 +268,12 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   }
+ 
+   Future<void> _signOut() async {
+-    var hasArchivedGroups = false;
+-    if (widget.sharedIdentityActive) {
+-      try {
+-        final repository = ref.read(guestGroupRepositoryProvider);
+-        final groups = await repository.listGroups();
+-        hasArchivedGroups = (await repository.listArchivedGroups()).isNotEmpty;
+-        for (final group in groups.where((group) => group['role'] == 'admin')) {
+-          final detail = await repository.getGroup(group['id'] as String);
+-          final members = (detail['members'] as List? ?? const [])
+-              .whereType<Map>();
+-          final activeAdmins = members.where(
+-            (member) =>
+-                member['role'] == 'admin' && member['status'] == 'active',
+-          );
+-          if (activeAdmins.length <= 1) {
+-            if (mounted) {
+-              ScaffoldMessenger.of(context).showSnackBar(
+-                SnackBar(
+-                  content: Text(
+-                    'Keep this identity until another active administrator '
+-                    'accepts a transfer or you archive the group.',
+-                  ),
+-                ),
+-              );
+-            }
+-            return;
+-          }
+-        }
+-      } on Object {
+-        if (mounted) {
+-          ScaffoldMessenger.of(context).showSnackBar(
+-            const SnackBar(
+-              content: Text(
+-                'Group administration could not be checked. Keep this '
+-                'identity and retry before signing out.',
+-              ),
+-            ),
+-          );
+-        }
+-        return;
+-      }
+-    }
+     final confirmed = await showDialog<bool>(
+       context: context,
+       builder: (context) => AlertDialog(
+         title: const Text('Sign out?'),
+         content: Text(
+-          widget.sharedIdentityActive
+-              ? 'This signs out of the shared guest identity. Active group access stays with this Firebase identity. Archived groups can be restored for 30 days only by the same identity that archived them; a different account does not inherit recovery rights.${hasArchivedGroups ? ' You have archived groups whose recovery depends on this identity.' : ''} Local work stays on this device.'
+-              : 'Your local work stays on this device.',
++          'Your local work stays on this device.',
+         ),
+         actions: [
+           TextButton(
+@@ -629,15 +530,13 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+   @override
+   Widget build(BuildContext context) {
+     final data = _data;
+-    final guestGroupsState = _hasSignedInNonGuestUser
++    final groupIdentity =
++        ref.watch(authStateProvider).value ??
++        ref.read(firebaseAuthProvider).currentUser;
++    final canUseGroups = isVerifiedRegisteredFirebaseUser(groupIdentity);
++    final guestGroupsState = canUseGroups
+         ? ref.watch(currentGuestGroupsProvider)
+         : null;
+-    final existingGuestGroups = guestGroupsState?.value ?? const [];
+-    final canOpenGuestGroups =
+-        widget.sharedIdentityActive ||
+-        _currentAccountUser?.isAnonymous == true ||
+-        _hasSignedInNonGuestUser ||
+-        existingGuestGroups.isNotEmpty;
+     return DefaultTabController(
+       length: 2,
+       child: Scaffold(
+@@ -650,23 +549,11 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+             overflow: TextOverflow.ellipsis,
+           ),
+           actions: [
+-            if (canOpenGuestGroups)
++            if (widget.firebaseReady)
+               IconButton(
+                 tooltip: 'Groups',
+                 onPressed: _openSharedGroups,
+                 icon: const Icon(Icons.group_outlined),
+-              )
+-            else if (_canStartSharedGuestIdentity)
+-              IconButton(
+-                tooltip: 'Enable groups',
+-                onPressed: _startSharedGuestIdentity,
+-                icon: const Icon(Icons.group_outlined),
+-              )
+-            else if (guestGroupsState?.hasError == true)
+-              IconButton(
+-                tooltip: 'Retry group access check',
+-                onPressed: () => ref.invalidate(currentGuestGroupsProvider),
+-                icon: const Icon(Icons.refresh),
+               ),
+             _accountMenu(),
+             PopupMenuButton<String>(
+@@ -754,7 +641,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                   if (widget.membershipStatus ==
+                       AccountMembershipStatus.noMembership)
+                     const _AccountMembershipNotice(
+-                      text: 'This signed-in account has no organisation membership. Creating an account does not enrol it. Groups are separate; only existing group access applies.',
++                      text: 'This signed-in account has no organisation '
++                          'membership. Groups require a verified registered '
++                          'account, but do not require organisation membership.',
+                     ),
+                   if (widget.membershipStatus ==
+                       AccountMembershipStatus.inactive)
+@@ -772,9 +661,14 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+                     Padding(
+                       padding: const EdgeInsets.all(12),
+                       child: Text(
+-                        _currentAccountUser?.emailVerified == true
+-                            ? 'Groups use this signed-in identity. Linking an account from a guest identity preserves its Firebase UID and group access; a separate account does not inherit group data.'
+-                            : 'Verify this account’s email before creating groups or redeeming invitations. You can keep using local work and existing groups; this account will not be switched to anonymous.',
++                        canUseGroups
++                            ? 'Groups use this signed-in Firebase identity. '
++                                'Group access is associated with this account; '
++                                'a separate account does not inherit its group '
++                                'data.'
++                            : 'Verify this account’s email before using Groups. '
++                                'Local work remains available, and organisation '
++                                'membership is not required for Groups.',
+                       ),
+                     ),
+                   if (guestGroupsState?.hasError == true)
+@@ -1141,12 +1035,6 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+     }
+   }
+ 
+-  bool get _canStartSharedGuestIdentity {
+-    if (!widget.firebaseReady) return false;
+-    final user = ref.read(firebaseAuthProvider).currentUser;
+-    return user == null || user.isAnonymous;
+-  }
+-
+   bool get _hasSignedInNonGuestUser {
+     final user = _currentAccountUser;
+     return user != null && !user.isAnonymous;
+@@ -1178,7 +1066,9 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+       };
+       explanation = switch (widget.membershipStatus) {
+         AccountMembershipStatus.noMembership =>
+-          'An account does not create an organisation membership. Groups are separate; only existing group access applies.',
++          'An account does not create an organisation membership. Groups '
++          'require a verified registered account but do not require '
++          'organisation membership.',
+         AccountMembershipStatus.inactive =>
+           'Organisation access is inactive. Local work remains on this device.',
+         AccountMembershipStatus.unavailable =>
+@@ -1186,9 +1076,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         _ => 'Organisation roles and group roles are separate.',
+       };
+     } else if (widget.sharedIdentityActive) {
+-      stateText = 'Group access identity';
++      stateText = 'Anonymous guest workspace';
+       explanation =
+-          'Only work explicitly shared with a group is online. Groups do not grant organisation access.';
++          'Anonymous guest identities can use local Knowledge and Interact '
++          'only. Groups require a registered account with a verified email.';
+     } else {
+       stateText = 'Local guest workspace';
+       explanation =
+@@ -1301,10 +1192,17 @@ class _GuestNotice extends StatelessWidget {
+         ? 'Registered workspace · $saveStatus'
+         : 'Guest workspace · $saveStatus';
+     final explanation = sharedIdentityActive
+-        ? 'A guest sign-in is active in this browser profile. People using this profile share that sign-in and its local drafts. Groups are separate; only work deliberately shared with a group is online.'
++        ? 'An anonymous guest sign-in is active in this browser profile. '
++            'People using this profile share that sign-in and its local drafts. '
++            'Groups require a registered account with a verified email.'
+         : isRegistered
+-        ? 'Registered workspace. Local drafts stay in this browser profile and may be visible to people using it. Groups and organisation access are separate.'
+-        : 'Guest workspace active in this browser profile. People using this profile can see its local work. Groups are separate; only work deliberately shared with a group is online. Clearing browser data or losing this device can erase local work.';
++        ? 'Registered workspace. Local drafts stay in this browser profile '
++            'and may be visible to people using it. Group and organisation '
++            'access are separate.'
++        : 'Guest workspace active in this browser profile. People using this '
++            'profile can see its local work. Groups require a registered '
++            'account with a verified email. Clearing browser data or losing '
++            'this device can erase local work.';
+     return Container(
+       width: double.infinity,
+       color: Theme.of(context).colorScheme.surfaceContainerHighest,
+@@ -2812,6 +2710,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+   String? _groupId;
+   bool _busy = false;
+   String? _error;
++  String? _activeUid;
++  int _loadGeneration = 0;
+   String _createGroupNameDraft = '';
+   String _createGroupDisplayNameDraft = '';
+   String _joinTokenDraft = '';
+@@ -2827,7 +2727,31 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+   void initState() {
+     super.initState();
+     WidgetsBinding.instance.addObserver(this);
+-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadGroups());
++    final user = ref.read(firebaseAuthProvider).currentUser;
++    _activeUid = isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null;
++    if (_activeUid != null) {
++      WidgetsBinding.instance.addPostFrameCallback((_) => _loadGroups());
++    }
++  }
++
++  void _identityChanged(User? user) {
++    final nextUid = isVerifiedRegisteredFirebaseUser(user) ? user!.uid : null;
++    if (nextUid == _activeUid) return;
++    _activeUid = nextUid;
++    _loadGeneration++;
++    if (mounted) {
++      setState(() {
++        _groups = const [];
++        _archivedGroups = const [];
++        _group = null;
++        _groupId = null;
++        _entries = const [];
++        _invitations = const [];
++        _error = null;
++        _busy = nextUid != null;
++      });
++    }
++    if (nextUid != null) _loadGroups();
+   }
+ 
+   @override
+@@ -2843,6 +2767,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+   }
+ 
+   Future<bool> _loadGroups() async {
++    if (!mounted) return false;
++    final user = ref.read(firebaseAuthProvider).currentUser;
++    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
++      return false;
++    }
++    final currentUser = user!;
++    final uid = currentUser.uid;
++    final generation = ++_loadGeneration;
+     setState(() {
+       _busy = true;
+       _error = null;
+@@ -2854,13 +2786,15 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     });
+     try {
+       final groups = await _repository.listGroups();
++      if (!_isCurrentLoad(uid, generation)) return false;
+       final archivedGroups = await _repository.listArchivedGroups();
++      if (!_isCurrentLoad(uid, generation)) return false;
+       final selected = groups.any((group) => group['id'] == _groupId)
+           ? _groupId
+           : groups.isEmpty
+           ? null
+           : groups.first['id'] as String;
+-      if (!mounted) return false;
++      if (!_isCurrentLoad(uid, generation)) return false;
+       setState(() {
+         _groups = groups;
+         _archivedGroups = archivedGroups;
+@@ -2869,7 +2803,11 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+         _groupId = selected;
+       });
+       if (selected != null) {
+-        return await _loadGroup(selected);
++        return await _loadGroup(
++          selected,
++          uid: uid,
++          generation: generation,
++        );
+       } else {
+         if (!mounted) return false;
+         setState(() {
+@@ -2880,7 +2818,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+         return true;
+       }
+     } on Object catch (error) {
+-      if (mounted) {
++      if (_isCurrentLoad(uid, generation)) {
+         setState(() {
+           _groups = const [];
+           _archivedGroups = const [];
+@@ -2892,12 +2830,33 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+       }
+       return false;
+     } finally {
+-      if (mounted) setState(() => _busy = false);
++      if (_isCurrentLoad(uid, generation)) {
++        setState(() => _busy = false);
++      }
+     }
+   }
+ 
+-  Future<bool> _loadGroup(String groupId) async {
+-    if (!mounted) return false;
++  bool _isCurrentLoad(String uid, int generation) {
++    final user = ref.read(firebaseAuthProvider).currentUser;
++    return mounted &&
++        generation == _loadGeneration &&
++        uid == _activeUid &&
++        user?.uid == uid &&
++        isVerifiedRegisteredFirebaseUser(user);
++  }
++
++  Future<bool> _loadGroup(
++    String groupId, {
++    String? uid,
++    int? generation,
++  }) async {
++    final user = ref.read(firebaseAuthProvider).currentUser;
++    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
++      return false;
++    }
++    final loadUid = uid ?? user!.uid;
++    final loadGeneration = generation ?? ++_loadGeneration;
++    if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
+     setState(() {
+       _busy = true;
+       _error = null;
+@@ -2908,14 +2867,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     });
+     try {
+       final detail = await _repository.getGroup(groupId);
++      if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
+       final entries = await _repository.searchEntries(
+         groupId: groupId,
+         query: _search.text,
+       );
++      if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
+       final invitations = detail['role'] == 'admin'
+           ? await _repository.listInvitations(groupId)
+           : const <Map<String, dynamic>>[];
+-      if (!mounted) return false;
++      if (!_isCurrentLoad(loadUid, loadGeneration)) return false;
+       setState(() {
+         _groupId = groupId;
+         _group = detail;
+@@ -2925,10 +2886,14 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+       });
+       return true;
+     } on Object catch (error) {
+-      if (mounted) setState(() => _error = _safeGuestError(error));
++      if (_isCurrentLoad(loadUid, loadGeneration)) {
++        setState(() => _error = _safeGuestError(error));
++      }
+       return false;
+     } finally {
+-      if (mounted) setState(() => _busy = false);
++      if (_isCurrentLoad(loadUid, loadGeneration)) {
++        setState(() => _busy = false);
++      }
+     }
+   }
+ 
+@@ -3011,6 +2976,12 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     Map<String, dynamic> archived,
+   ) async {
+     if (!mounted) return;
++    final user = ref.read(firebaseAuthProvider).currentUser;
++    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
++      return;
++    }
++    final uid = user!.uid;
++    final generation = ++_loadGeneration;
+     final groupId = archived['id'] as String;
+     final failure = _error ?? 'The request could not be verified.';
+     setState(() {
+@@ -3019,7 +2990,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+     });
+     try {
+       final groups = await _repository.listArchivedGroups();
+-      if (!mounted) return;
++      if (!_isCurrentLoad(uid, generation)) return;
+       setState(() {
+         _archivedGroups = groups;
+         _uncertainArchivedDeletionIds.remove(groupId);
+@@ -3027,7 +2998,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+             'Review it before retrying.';
+       });
+     } on Object catch (error) {
+-      if (!mounted) return;
++      if (!_isCurrentLoad(uid, generation)) return;
+       setState(() {
+         _uncertainArchivedDeletionIds.add(groupId);
+         if (!_archivedGroups.any((group) => group['id'] == groupId)) {
+@@ -3038,7 +3009,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+             'The item is retained; refresh status before retrying.';
+       });
+     } finally {
+-      if (mounted) setState(() => _busy = false);
++      if (_isCurrentLoad(uid, generation)) {
++        setState(() => _busy = false);
++      }
+     }
+   }
+ 
+@@ -3053,10 +3026,16 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+ 
+   Future<void> _refreshArchivedGroups() async {
+     if (!mounted) return;
++    final user = ref.read(firebaseAuthProvider).currentUser;
++    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
++      return;
++    }
++    final uid = user!.uid;
++    final generation = ++_loadGeneration;
+     setState(() => _busy = true);
+     try {
+       final groups = await _repository.listArchivedGroups();
+-      if (!mounted) return;
++      if (!_isCurrentLoad(uid, generation)) return;
+       setState(() {
+         _archivedGroups = groups;
+         _uncertainArchivedDeletionIds.clear();
+@@ -3064,7 +3043,7 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+         _error = null;
+       });
+     } on Object catch (error) {
+-      if (mounted) {
++      if (_isCurrentLoad(uid, generation)) {
+         setState(
+           () => _error =
+               'Archived-group status could not be refreshed. '
+@@ -3073,7 +3052,9 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+         );
+       }
+     } finally {
+-      if (mounted) setState(() => _busy = false);
++      if (_isCurrentLoad(uid, generation)) {
++        setState(() => _busy = false);
++      }
+     }
+   }
+ 
+@@ -3188,10 +3169,8 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+       builder: (context) => _GuestRequiredTextDialog(
+         title: 'Create a group',
+         description:
+-            'This creates the group using your current Firebase identity. '
+-            'Only content you later choose to share is uploaded. Linking an '
+-            'account from this guest identity keeps its group access; a separate '
+-            'account does not inherit this group or its data.',
++            'Groups require a registered account with a verified email. '
++            'Only content you later choose to share is uploaded.',
+         submitLabel: 'Create group',
+         fields: [
+           _GuestRequiredTextField(
+@@ -4111,7 +4090,60 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+   }
+ 
+   @override
+-  Widget build(BuildContext context) => Scaffold(
++  Widget build(BuildContext context) {
++    ref.listen<AsyncValue<User?>>(authStateProvider, (previous, next) {
++      if (next.isLoading) return;
++      _identityChanged(next.hasError ? null : next.value);
++    });
++    final user = ref.watch(firebaseAuthProvider).currentUser;
++    if (!isVerifiedRegisteredFirebaseUser(user) || user!.uid != _activeUid) {
++      final eligible = isVerifiedRegisteredFirebaseUser(user);
++      return Scaffold(
++        appBar: AppBar(title: const Text('Groups')),
++        body: Center(
++          child: Padding(
++            padding: const EdgeInsets.all(24),
++            child: Column(
++              mainAxisSize: MainAxisSize.min,
++              children: [
++                Text(
++                  eligible
++                      ? 'Checking account access…'
++                      : 'Groups require a registered account with a verified email.',
++                  textAlign: TextAlign.center,
++                ),
++                if (!eligible) ...[
++                  const SizedBox(height: 16),
++                  OutlinedButton(
++                    onPressed: () => Navigator.of(context).push<void>(
++                      MaterialPageRoute<void>(
++                        builder: (_) => const SignInPage(),
++                      ),
++                    ),
++                    child: const Text('Sign in'),
++                  ),
++                  FilledButton(
++                    onPressed: () => Navigator.of(context).push<void>(
++                      MaterialPageRoute<void>(
++                        builder: (_) => SignInPage(
++                          createAccount: true,
++                          linkGuestIdentity: user?.isAnonymous == true,
++                        ),
++                      ),
++                    ),
++                    child: const Text('Create account'),
++                  ),
++                ],
++              ],
++            ),
++          ),
++        ),
++      );
++    }
++    return _buildGroupsScaffold();
++  }
++
++  Widget _buildGroupsScaffold() => Scaffold(
+     appBar: AppBar(
+       title: const Text('Groups'),
+       actions: [
+@@ -4134,14 +4166,20 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+           children: [
+             const Expanded(
+               child: Text(
+-                'Groups are separate from organisations and teams. Membership does not grant organisation, department, or private-session access.',
++                'Groups require a registered account with a verified email, but '
++                'do not require organisation membership. Group membership does '
++                'not grant organisation, department, or private-session access.',
+               ),
+             ),
+             const _GuestInfoButton(
+               tooltip: 'Groups information',
+               title: 'About groups',
+               content:
+-                  'Groups are separate from organisations and teams. Group membership does not grant organisation, department, or private-session access. Use this signed-in Firebase identity for ownership. Linking an account from this guest identity preserves its group memberships; a separate account does not inherit group data or archived-group recovery rights.',
++                  'Groups require a registered Firebase account with a verified '
++                  'email, but do not require organisation membership. Group '
++                  'membership does not grant organisation, department, or '
++                  'private-session access. Group data remains associated with '
++                  'its Firebase UID; another account does not inherit it.',
+             ),
+           ],
+         ),
+@@ -4350,22 +4388,24 @@ class _SharedGuestGroupsPageState extends ConsumerState<SharedGuestGroupsPage>
+ 
+   bool get _canCreateOrJoin {
+     final user = ref.read(firebaseAuthProvider).currentUser;
+-    return user != null && (user.isAnonymous || user.emailVerified);
++    return isVerifiedRegisteredFirebaseUser(user);
+   }
+ 
+   String get _ineligibleIdentityMessage {
+     final user = ref.read(firebaseAuthProvider).currentUser;
+     if (user == null) {
+-      return 'Sign in with a Firebase anonymous identity or verified account before creating groups or redeeming invitations.';
++      return 'Sign in with a registered account and verify its email before '
++          'using Groups.';
+     }
+-    return 'Verify this account’s email before creating groups or redeeming invitations. Existing group access and local work remain available; the app will not switch identities.';
++    return 'Verify this account’s email before using Groups. Local work '
++        'remains available.';
+   }
+ }
+ 
+ String _safeGuestError(Object error) {
+   if (error is ApiException) return error.message;
+   if (error is DioException) return ApiException.fromDio(error).message;
+-  return 'The group request could not be verified. Check your sign-in and group access, then retry.';
++  return 'The group request could not be verified. Check your sign-in and retry.';
+ }
+ 
+ Future<ShareResultStatus?> _downloadPdfOrShareFile(
+diff --git a/apps/flutter_app/lib/shared/widgets/app_shell.dart b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+index 9904df3..5eafa82 100644
+--- a/apps/flutter_app/lib/shared/widgets/app_shell.dart
++++ b/apps/flutter_app/lib/shared/widgets/app_shell.dart
+@@ -15,7 +15,10 @@ class AppShell extends ConsumerWidget {
+   final String currentPath;
+   final Widget child;
+ 
+-  List<AppDestination> _destinations(String role) => [
++  List<AppDestination> _destinations(
++    String role, {
++    required bool showGroups,
++  }) => [
+     AppDestination(
+       label: 'Knowledge',
+       path: '/',
+@@ -28,12 +31,13 @@ class AppShell extends ConsumerWidget {
+       icon: Icons.account_tree_outlined,
+       selectedIcon: Icons.account_tree,
+     ),
+-    AppDestination(
+-      label: 'Groups',
+-      path: '/guest/groups',
+-      icon: Icons.group_outlined,
+-      selectedIcon: Icons.groups,
+-    ),
++    if (showGroups)
++      AppDestination(
++        label: 'Groups',
++        path: '/guest/groups',
++        icon: Icons.group_outlined,
++        selectedIcon: Icons.groups,
++      ),
+     AppDestination(
+       label: 'Review',
+       path: '/review-queue',
+@@ -129,7 +133,13 @@ class AppShell extends ConsumerWidget {
+   Widget build(BuildContext context, WidgetRef ref) {
+     final membership = ref.watch(currentMembershipProvider).value;
+     final role = membership?.role ?? '';
+-    final destinations = _destinations(role).where((destination) {
++    final user =
++        ref.watch(authStateProvider).value ??
++        ref.watch(firebaseAuthProvider).currentUser;
++    final destinations = _destinations(
++      role,
++      showGroups: isVerifiedRegisteredFirebaseUser(user),
++    ).where((destination) {
+       return destination.path != '/review-queue' ||
+           {'admin', 'answer_owner'}.contains(role);
+     }).toList();
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 11fc25c..e121380 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -84,6 +84,9 @@ class _TestFirebaseAuth extends Fake implements FirebaseAuth {
+   @override
+   final User? currentUser;
+ 
++  @override
++  Stream<User?> authStateChanges() => Stream.value(currentUser);
++
+   final FirebaseAuthException? createError;
+   final FirebaseAuthException? signInError;
+   int createAttempts = 0;
+@@ -155,16 +158,27 @@ class _TestGuestGroupRepository extends GuestGroupRepository {
+ 
+   final List<Map<String, dynamic>> groups;
+   final Map<String, Map<String, dynamic>> details;
++  var listGroupsCalls = 0;
++  var listArchivedGroupsCalls = 0;
++  var getGroupCalls = 0;
+ 
+   @override
+-  Future<List<Map<String, dynamic>>> listGroups() async => groups;
++  Future<List<Map<String, dynamic>>> listGroups() async {
++    listGroupsCalls++;
++    return groups;
++  }
+ 
+   @override
+-  Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
++  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
++    listArchivedGroupsCalls++;
++    return const [];
++  }
+ 
+   @override
+-  Future<Map<String, dynamic>> getGroup(String groupId) async =>
+-      details[groupId]!;
++  Future<Map<String, dynamic>> getGroup(String groupId) async {
++    getGroupCalls++;
++    return details[groupId]!;
++  }
+ }
+ 
+ class _SignInLauncher extends StatelessWidget {
+@@ -270,13 +284,13 @@ void main() {
+       await pumpGuestWorkspace(tester);
+ 
+       expect(find.text('Guest workspace · Saved on this device'), findsOneWidget);
+-      final enableGroupsButton = tester.widget<IconButton>(
++      final groupsButton = tester.widget<IconButton>(
+         find.byWidgetPredicate(
+           (widget) =>
+-              widget is IconButton && widget.tooltip == 'Enable groups',
++              widget is IconButton && widget.tooltip == 'Groups',
+         ),
+       );
+-      expect((enableGroupsButton.icon as Icon).icon, Icons.group_outlined);
++      expect((groupsButton.icon as Icon).icon, Icons.group_outlined);
+       expect(
+         find.textContaining('People using this profile can see its local work.'),
+         findsNothing,
+@@ -411,7 +425,7 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.byTooltip('Account'));
+     await tester.pumpAndSettle();
+-    expect(find.text('Group access identity'), findsOneWidget);
++    expect(find.text('Anonymous guest workspace'), findsOneWidget);
+     expect(find.text('Already have an account? Sign in'), findsOneWidget);
+     expect(find.text('Create account from this guest'), findsOneWidget);
+     expect(find.text('Start fresh with a separate account'), findsOneWidget);
+@@ -453,7 +467,7 @@ void main() {
+       findsOneWidget,
+     );
+     expect(
+-      find.textContaining('keep the same identity and group access'),
++      find.textContaining('Create a registered account from this guest identity'),
+       findsOneWidget,
+     );
+     expect(find.text('Start fresh with a separate account'), findsNothing);
+@@ -578,7 +592,7 @@ void main() {
+     expect(find.text('Create account'), findsNothing);
+   });
+ 
+-  testWidgets('registered accounts can still open existing groups', (
++  testWidgets('unverified registered accounts see the Groups gate', (
+     tester,
+   ) async {
+     await pumpGuestWorkspace(
+@@ -591,7 +605,10 @@ void main() {
+     );
+ 
+     expect(find.byTooltip('Groups'), findsOneWidget);
+-    expect(find.byTooltip('Enable groups'), findsNothing);
++    expect(
++      find.textContaining('Verify this account’s email before using Groups'),
++      findsOneWidget,
++    );
+   });
+ 
+   testWidgets('verified account without an organisation can open groups', (
+@@ -608,6 +625,56 @@ void main() {
+     expect(find.byTooltip('Enable groups'), findsNothing);
+   });
+ 
++  testWidgets(
++    'anonymous Groups prompt preserves local account flow without API calls',
++    (tester) async {
++      final guest = _TestUser(isAnonymous: true);
++      final repository = _TestGuestGroupRepository(
++        const [
++          {'id': 'group-1', 'name': 'Existing group', 'role': 'admin'},
++        ],
++        const {
++          'group-1': {
++            'members': [
++              {'id': 'member-1', 'role': 'admin', 'status': 'active'},
++            ],
++          },
++        },
++      );
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [
++            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(guest)),
++            guestGroupRepositoryProvider.overrideWithValue(repository),
++            guestWorkspaceStoreProvider.overrideWithValue(
++              GuestWorkspaceStore(_MemoryGuestStorage()),
++            ),
++          ],
++          child: MaterialApp(
++            home: GuestWorkspacePage(
++              firebaseReady: true,
++              accountUser: guest,
++              sharedIdentityActive: true,
++            ),
++          ),
++        ),
++      );
++      await tester.pumpAndSettle();
++      await tester.tap(find.byTooltip('Groups'));
++      await tester.pumpAndSettle();
++      expect(find.text('Create an account to use Groups'), findsOneWidget);
++      expect(repository.listGroupsCalls, 0);
++      expect(repository.listArchivedGroupsCalls, 0);
++      expect(repository.getGroupCalls, 0);
++
++      await tester.tap(find.text('Create an account'));
++      await tester.pumpAndSettle();
++      expect(find.byType(SignInPage), findsOneWidget);
++      expect(repository.listGroupsCalls, 0);
++      expect(repository.getGroupCalls, 0);
++    },
++  );
++
+   testWidgets('inactive and unavailable memberships are distinct states', (
+     tester,
+   ) async {
+@@ -651,7 +718,9 @@ void main() {
+             ),
+           ),
+           firebaseAuthProvider.overrideWithValue(
+-            _TestFirebaseAuth(_TestUser(isAnonymous: false)),
++            _TestFirebaseAuth(
++              _TestUser(isAnonymous: false, isEmailVerified: true),
++            ),
+           ),
+         ],
+         child: const MaterialApp(
+@@ -678,6 +747,46 @@ void main() {
+     expect(find.text('Sign out'), findsOneWidget);
+   });
+ 
++  testWidgets('Groups navigation is hidden for anonymous and unverified users', (
++    tester,
++  ) async {
++    for (final user in [
++      _TestUser(isAnonymous: true),
++      _TestUser(isAnonymous: false, isEmailVerified: false),
++    ]) {
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [
++            authStateProvider.overrideWith((ref) => Stream.value(user)),
++            firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
++            currentMembershipProvider.overrideWith(
++              (ref) async => const ActiveMembership(
++                userId: 'app-user',
++                organisationId: 'org',
++                email: 'member@example.test',
++                displayName: 'Member',
++                role: 'member',
++              ),
++            ),
++          ],
++          child: const MaterialApp(
++            home: Scaffold(
++              body: AppShell(
++                currentPath: '/',
++                child: Center(child: Text('Organisation content')),
++              ),
++            ),
++          ),
++        ),
++      );
++      await tester.pumpAndSettle();
++
++      expect(find.text('Groups'), findsNothing);
++      await tester.pumpWidget(const SizedBox.shrink());
++      await tester.pumpAndSettle();
++    }
++  });
++
+   testWidgets('registered account with no membership stays in local workspace', (
+     tester,
+   ) async {
+@@ -717,7 +826,7 @@ void main() {
+       findsOneWidget,
+     );
+     expect(
+-      find.textContaining('Groups and organisation access are separate'),
++      find.textContaining('Group and organisation access are separate'),
+       findsOneWidget,
+     );
+     await tester.tap(find.text('Close'));
+@@ -817,7 +926,7 @@ void main() {
+     expect(find.text('No organisation membership'), findsNothing);
+   });
+ 
+-  testWidgets('group lookup errors remain distinct from no access and retry', (
++  testWidgets('unverified accounts do not query Groups', (
+     tester,
+   ) async {
+     final user = _TestUser(isAnonymous: false);
+@@ -850,14 +959,12 @@ void main() {
+     await tester.pumpAndSettle();
+ 
+     expect(
+-      find.textContaining('Existing group access could not be checked'),
++      find.textContaining('Verify this account’s email before using Groups'),
+       findsOneWidget,
+     );
+     expect(find.text('private test detail'), findsNothing);
+     expect(find.text('No approved groups are linked to this identity.'), findsNothing);
+-    await tester.tap(find.text('Retry groups'));
+-    await tester.pumpAndSettle();
+-    expect(attempts, 2);
++    expect(attempts, 0);
+   });
+ 
+   testWidgets('link conflict keeps the current shared guest identity', (
+@@ -877,7 +984,7 @@ void main() {
+       ),
+     );
+     expect(
+-      find.textContaining('Create a sign-in account from this guest'),
++      find.textContaining('Create a registered account from this guest identity'),
+       findsOneWidget,
+     );
+     await tester.enterText(find.byType(TextField).first, 'account@example.test');
+@@ -925,7 +1032,7 @@ void main() {
+     expect(user.reloadAttempts, 1);
+     expect(find.byType(SignInPage), findsNothing);
+     expect(
+-      find.textContaining('The guest identity and group access are retained'),
++      find.textContaining('The guest identity remains linked'),
+       findsOneWidget,
+     );
+   });
+@@ -961,7 +1068,7 @@ void main() {
+     );
+     expect(
+       find.textContaining('group access remain linked'),
+-      findsOneWidget,
++      findsNothing,
+     );
+   });
+ 
+@@ -1013,7 +1120,8 @@ void main() {
+     );
+     expect(
+       find.textContaining(
+-        'Start fresh with a separate registered identity. It does not transfer group access',
++        'Start fresh with a separate registered identity. '
++        'It does not transfer local work',
+       ),
+       findsOneWidget,
+     );
+@@ -1058,7 +1166,7 @@ void main() {
+     );
+   });
+ 
+-  testWidgets('separate account creation warns before leaving groups', (
++  testWidgets('separate account creation preserves local-work confirmation', (
+     tester,
+   ) async {
+     final user = _TestUser(isAnonymous: true);
+@@ -1069,7 +1177,7 @@ void main() {
+         child: const MaterialApp(
+           home: SignInPage(
+             createAccount: true,
+-            hasCurrentGuestGroupAccess: true,
++            hasMeaningfulGuestWork: true,
+           ),
+         ),
+       ),
+@@ -1085,6 +1193,7 @@ void main() {
+       find.textContaining('current guest workspace is different from that new account'),
+       findsOneWidget,
+     );
++    expect(find.textContaining('group access'), findsNothing);
+     await tester.tap(find.text('Cancel account creation'));
+     await tester.pumpAndSettle();
+     expect(auth.createAttempts, 0);
+@@ -1119,16 +1228,13 @@ void main() {
+ 
+     expect(find.text('Start fresh with a separate account?'), findsOneWidget);
+     expect(find.textContaining('local work stays in this browser'), findsOneWidget);
+-    expect(
+-      find.textContaining('Group membership or administration does not transfer'),
+-      findsOneWidget,
+-    );
++    expect(find.textContaining('group membership'), findsNothing);
+     await tester.tap(find.text('Cancel account creation'));
+     await tester.pumpAndSettle();
+     expect(auth.createAttempts, 0);
+   });
+ 
+-  testWidgets('empty anonymous bootstrap can sign in without a warning', (
++  testWidgets('empty anonymous guest signs in without workspace confirmation', (
+     tester,
+   ) async {
+     final guest = _TestUser(isAnonymous: true);
+@@ -1152,7 +1258,7 @@ void main() {
+     expect(auth.lastSignInPassword, 'safe-test-password');
+   });
+ 
+-  testWidgets('sign-in warning identifies current workspace and destination', (
++  testWidgets('sign-in confirmation identifies local workspace and destination', (
+     tester,
+   ) async {
+     final guest = _TestUser(isAnonymous: true);
+@@ -1187,51 +1293,19 @@ void main() {
+     expect(auth.lastSignInPassword, 'safe-test-password');
+   });
+ 
+-  testWidgets('sole group administrator cannot switch identities', (
++  testWidgets('guest sign-in is blocked only for local-work confirmation', (
+     tester,
+   ) async {
+     final guest = _TestUser(isAnonymous: true);
+-    final auth = _TestFirebaseAuth(guest);
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(
+-          home: SignInPage(
+-            hasCurrentGuestGroupAccess: true,
+-            hasSoleAdministeredGroup: true,
+-          ),
+-        ),
+-      ),
+-    );
+-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+-    await tester.pumpAndSettle();
+-
+-    expect(find.text('Keep this group identity'), findsOneWidget);
+-    expect(
+-      find.textContaining(
+-        'request a transfer and wait for an active member to accept',
+-      ),
+-      findsOneWidget,
++    final auth = _TestFirebaseAuth(
++      guest,
++      signInError: FirebaseAuthException(code: 'network-request-failed'),
+     );
+-    expect(find.text('Continue to sign in'), findsNothing);
+-    await tester.tap(find.text('Keep this identity'));
+-    await tester.pumpAndSettle();
+-    expect(auth.signInAttempts, 0);
+-    expect(identical(auth.currentUser, guest), isTrue);
+-  });
+-
+-  testWidgets('archived group recovery is disclosed before sign-in', (
+-    tester,
+-  ) async {
+-    final guest = _TestUser(isAnonymous: true);
+-    final auth = _TestFirebaseAuth(guest);
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+         child: const MaterialApp(
+-          home: SignInPage(hasArchivedGuestGroups: true),
++          home: SignInPage(hasMeaningfulGuestWork: true),
+         ),
+       ),
+     );
+@@ -1241,19 +1315,15 @@ void main() {
+     await tester.pumpAndSettle();
+ 
+     expect(find.text('Sign in to your existing account?'), findsOneWidget);
+-    expect(
+-      find.textContaining(
+-        'only by the same Firebase account that archived them',
+-      ),
+-      findsOneWidget,
+-    );
+-    expect(find.textContaining('does not transfer restoration rights'), findsOneWidget);
+-    await tester.tap(find.text('Keep guest workspace'));
++    expect(find.textContaining('group access'), findsNothing);
++    expect(find.text('Keep this group identity'), findsNothing);
++    await tester.tap(find.text('Continue to sign in'));
+     await tester.pumpAndSettle();
+-    expect(auth.signInAttempts, 0);
++    expect(auth.signInAttempts, 1);
++    expect(identical(auth.currentUser, guest), isTrue);
+   });
+ 
+-  testWidgets('account menu detects and blocks a sole group administrator', (
++  testWidgets('opening sign-in never preflights Groups ownership', (
+     tester,
+   ) async {
+     final guest = _TestUser(isAnonymous: true);
+@@ -1293,40 +1363,20 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.text('Already have an account? Sign in'));
+     await tester.pumpAndSettle();
++    expect(repository.listGroupsCalls, 0);
++    expect(repository.listArchivedGroupsCalls, 0);
++    expect(repository.getGroupCalls, 0);
+     await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+     await tester.pumpAndSettle();
+ 
+-    expect(find.text('Keep this group identity'), findsOneWidget);
+-    expect(auth.signInAttempts, 0);
+-  });
+-
+-  testWidgets('unavailable group ownership check fails closed on identity switch', (
+-    tester,
+-  ) async {
+-    final guest = _TestUser(isAnonymous: true);
+-    final auth = _TestFirebaseAuth(guest);
+-    await tester.pumpWidget(
+-      ProviderScope(
+-        overrides: [firebaseAuthProvider.overrideWithValue(auth)],
+-        child: const MaterialApp(
+-          home: SignInPage(guestGroupOwnershipUnavailable: true),
+-        ),
+-      ),
+-    );
+-    await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+-    await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+-    await tester.pumpAndSettle();
+-
+-    expect(
+-      find.textContaining('sign-in and separate-account creation are paused'),
+-      findsOneWidget,
+-    );
+-    await tester.tap(find.text('Keep this identity'));
+-    await tester.pumpAndSettle();
+-    expect(auth.signInAttempts, 0);
++    if (find.text('Continue to sign in').evaluate().isNotEmpty) {
++      await tester.tap(find.text('Continue to sign in'));
++      await tester.pumpAndSettle();
++    }
++    expect(auth.signInAttempts, 1);
++    expect(find.text('Keep this group identity'), findsNothing);
+     expect(identical(auth.currentUser, guest), isTrue);
+   });
+ }
+diff --git a/apps/flutter_app/test/guest_group_dialog_test.dart b/apps/flutter_app/test/guest_group_dialog_test.dart
+index 88792e9..2582ea3 100644
+--- a/apps/flutter_app/test/guest_group_dialog_test.dart
++++ b/apps/flutter_app/test/guest_group_dialog_test.dart
+@@ -22,7 +22,10 @@ class _TestFirebaseAuth implements FirebaseAuth {
+   final User? user;
+ 
+   @override
+-  User? get currentUser => user ?? _TestUser();
++  User? get currentUser => user ?? _TestUser(anonymous: false, verified: true);
++
++  @override
++  Stream<User?> authStateChanges() => Stream.value(currentUser);
+ 
+   @override
+   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+@@ -30,8 +33,8 @@ class _TestFirebaseAuth implements FirebaseAuth {
+ 
+ class _TestUser implements User {
+   _TestUser({
+-    this.anonymous = true,
+-    this.verified = false,
++    this.anonymous = false,
++    this.verified = true,
+     this.testUid = 'test-anonymous-uid',
+   });
+ 
+@@ -244,11 +247,57 @@ class _FailingLocalStorage implements GuestStorage {
+ class _EmptyGroupsRepository extends GuestGroupRepository {
+   _EmptyGroupsRepository() : super(Dio());
+ 
++  var listGroupsCalls = 0;
++  var listArchivedGroupsCalls = 0;
++
++  @override
++  Future<List<Map<String, dynamic>>> listGroups() async {
++    listGroupsCalls++;
++    return [];
++  }
++
+   @override
+-  Future<List<Map<String, dynamic>>> listGroups() async => [];
++  Future<List<Map<String, dynamic>>> listArchivedGroups() async {
++    listArchivedGroupsCalls++;
++    return const [];
++  }
++}
++
++class _IdentityTransitionGroupsRepository extends GuestGroupRepository {
++  _IdentityTransitionGroupsRepository() : super(Dio());
++
++  final staleGroups = Completer<List<Map<String, dynamic>>>();
++  final recipientGroups = Completer<List<Map<String, dynamic>>>();
++  var listGroupsCalls = 0;
++
++  @override
++  Future<List<Map<String, dynamic>>> listGroups() {
++    listGroupsCalls++;
++    return switch (listGroupsCalls) {
++      1 => Future<List<Map<String, dynamic>>>.value([
++        {'id': 'owner-group', 'name': 'Owner group', 'role': 'viewer'},
++      ]),
++      2 => staleGroups.future,
++      _ => recipientGroups.future,
++    };
++  }
+ 
+   @override
+   Future<List<Map<String, dynamic>>> listArchivedGroups() async => const [];
++
++  @override
++  Future<Map<String, dynamic>> getGroup(String groupId) async => {
++    'id': groupId,
++    'name': groupId == 'owner-group' ? 'Owner group' : 'Recipient group',
++    'role': 'viewer',
++    'members': [],
++  };
++
++  @override
++  Future<List<Map<String, dynamic>>> searchEntries({
++    required String groupId,
++    String query = '',
++  }) async => const [];
+ }
+ 
+ class _ShareRepository extends GuestGroupRepository {
+@@ -505,22 +554,21 @@ class _MemoryGuestStorage implements GuestStorage {
+ 
+ void main() {
+   testWidgets(
+-    'verified registered identity can create and join while unverified is denied',
++    'only verified registered identities can create and join groups',
+     (tester) async {
+       for (final user in [
+-        _TestUser(),
++        _TestUser(anonymous: true, verified: false),
+         _TestUser(anonymous: false, verified: true),
+         _TestUser(anonymous: false, verified: false),
+       ]) {
+-        final eligible = user.isAnonymous || user.emailVerified;
++        final eligible = !user.isAnonymous && user.emailVerified;
++        final repository = _EmptyGroupsRepository();
+         final auth = _TestFirebaseAuth(user);
+         await tester.pumpWidget(
+           ProviderScope(
+             overrides: [
+               firebaseAuthProvider.overrideWithValue(auth),
+-              guestGroupRepositoryProvider.overrideWithValue(
+-                _EmptyGroupsRepository(),
+-              ),
++              guestGroupRepositoryProvider.overrideWithValue(repository),
+             ],
+             child: const MaterialApp(home: SharedGuestGroupsPage()),
+           ),
+@@ -528,20 +576,25 @@ void main() {
+         await tester.pumpAndSettle();
+ 
+         expect(find.text('Groups'), findsOneWidget);
+-        final createButton = tester.widget<FilledButton>(
+-          find.widgetWithText(FilledButton, 'Create group'),
+-        );
+-        final joinButton = tester.widget<OutlinedButton>(
+-          find.widgetWithText(OutlinedButton, 'Join with invitation'),
+-        );
+-        expect(createButton.onPressed != null, eligible);
+-        expect(joinButton.onPressed != null, eligible);
+-        expect(
+-          find.textContaining('Verify this account’s email'),
+-          user.isAnonymous || user.emailVerified
+-              ? findsNothing
+-              : findsOneWidget,
+-        );
++        if (eligible) {
++          final createButton = tester.widget<FilledButton>(
++            find.widgetWithText(FilledButton, 'Create group'),
++          );
++          final joinButton = tester.widget<OutlinedButton>(
++            find.widgetWithText(OutlinedButton, 'Join with invitation'),
++          );
++          expect(createButton.onPressed, isNotNull);
++          expect(joinButton.onPressed, isNotNull);
++          expect(repository.listGroupsCalls, 1);
++        } else {
++          expect(
++            find.textContaining('Groups require a registered account'),
++            findsOneWidget,
++          );
++          expect(find.text('Create group'), findsNothing);
++          expect(repository.listGroupsCalls, 0);
++          expect(repository.listArchivedGroupsCalls, 0);
++        }
+         expect(identical(user, auth.currentUser), isTrue);
+         await tester.pumpWidget(const SizedBox.shrink());
+         await tester.pumpAndSettle();
+@@ -549,6 +602,125 @@ void main() {
+     },
+   );
+ 
++  testWidgets(
++    'direct Groups route and lifecycle loads do not call API for guests',
++    (tester) async {
++    final user = _TestUser(anonymous: true, verified: false);
++    final auth = _TestFirebaseAuth(user);
++    final repository = _EmptyGroupsRepository();
++    final router = GoRouter(
++      initialLocation: '/guest/groups',
++      routes: [
++        GoRoute(
++          path: '/guest/groups',
++          builder: (context, state) => const SharedGuestGroupsPage(),
++        ),
++      ],
++    );
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          authStateProvider.overrideWith((ref) => Stream.value(user)),
++          firebaseAuthProvider.overrideWithValue(auth),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: MaterialApp.router(routerConfig: router),
++      ),
++    );
++    await tester.pumpAndSettle();
++    expect(
++      find.textContaining('Groups require a registered account'),
++      findsOneWidget,
++    );
++
++    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
++    await tester.pump();
++
++    expect(repository.listGroupsCalls, 0);
++    expect(repository.listArchivedGroupsCalls, 0);
++    await tester.pumpWidget(const SizedBox.shrink());
++    await tester.pumpAndSettle();
++    router.dispose();
++  });
++
++  testWidgets('UID change clears Groups state and ignores stale loads', (
++    tester,
++  ) async {
++    final owner = _TestUser(testUid: 'owner-uid');
++    final recipient = _TestUser(testUid: 'recipient-uid');
++    final auth = _SwitchingFirebaseAuth(owner);
++    final authEvents = StreamController<User?>.broadcast();
++    final repository = _IdentityTransitionGroupsRepository();
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          authStateProvider.overrideWith((ref) => authEvents.stream),
++          firebaseAuthProvider.overrideWithValue(auth),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: const MaterialApp(home: SharedGuestGroupsPage()),
++      ),
++    );
++    await tester.pumpAndSettle();
++    expect(find.text('Owner group · viewer'), findsOneWidget);
++
++    await tester.tap(find.byTooltip('Refresh'));
++    await tester.pump();
++    expect(repository.listGroupsCalls, 2);
++
++    auth.user = recipient;
++    authEvents.add(recipient);
++    await tester.pump();
++    await tester.pump();
++    expect(find.text('Owner group · viewer'), findsNothing);
++
++    repository.staleGroups.complete([
++      {'id': 'stale-group', 'name': 'Stale group', 'role': 'viewer'},
++    ]);
++    await tester.pump();
++    expect(find.text('Stale group · viewer'), findsNothing);
++
++    repository.recipientGroups.complete([
++      {'id': 'recipient-group', 'name': 'Recipient group', 'role': 'viewer'},
++    ]);
++    await tester.pumpAndSettle();
++    expect(find.text('Recipient group · viewer'), findsOneWidget);
++    expect(find.text('Stale group · viewer'), findsNothing);
++    await authEvents.close();
++  });
++
++  testWidgets('sign-out hides previously loaded Groups state', (tester) async {
++    final owner = _TestUser(testUid: 'owner-uid');
++    final auth = _SwitchingFirebaseAuth(owner);
++    final authEvents = StreamController<User?>.broadcast();
++    final repository = _IdentityTransitionGroupsRepository();
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          authStateProvider.overrideWith((ref) => authEvents.stream),
++          firebaseAuthProvider.overrideWithValue(auth),
++          guestGroupRepositoryProvider.overrideWithValue(repository),
++        ],
++        child: const MaterialApp(home: SharedGuestGroupsPage()),
++      ),
++    );
++    await tester.pumpAndSettle();
++    expect(find.text('Owner group · viewer'), findsOneWidget);
++
++    auth.user = null;
++    authEvents.add(null);
++    await tester.pump();
++    await tester.pump();
++
++    expect(find.text('Owner group · viewer'), findsNothing);
++    expect(
++      find.textContaining('Groups require a registered account'),
++      findsOneWidget,
++    );
++    expect(repository.listGroupsCalls, 1);
++    await authEvents.close();
++  });
++
+   testWidgets('Groups page explains access behind its info button', (
+     tester,
+   ) async {
+@@ -568,7 +740,8 @@ void main() {
+     expect(find.text('Groups'), findsOneWidget);
+     expect(
+       find.textContaining(
+-        'Membership does not grant organisation, department, or private-session access.',
++        'Groups require a registered account with a verified email, but do '
++        'not require organisation membership.',
+       ),
+       findsOneWidget,
+     );
+@@ -576,11 +749,7 @@ void main() {
+     await tester.pumpAndSettle();
+     expect(find.text('About groups'), findsOneWidget);
+     expect(
+-      find.textContaining('Use this signed-in Firebase identity for ownership.'),
+-      findsOneWidget,
+-    );
+-    expect(
+-      find.textContaining('archived-group recovery rights.'),
++      find.textContaining('Group data remains associated with its Firebase UID.'),
+       findsOneWidget,
+     );
+     await tester.tap(find.text('Close'));
+@@ -1082,17 +1251,20 @@ void main() {
+   });
+ 
+   testWidgets(
+-    'verified registered identity can create and join while unverified is denied',
++    'only verified registered identities can create and join groups',
+     (tester) async {
+-      for (final verified in [true, false]) {
+-        final user = _TestUser(anonymous: false, verified: verified);
++      for (final user in [
++        _TestUser(anonymous: false, verified: true),
++        _TestUser(anonymous: false, verified: false),
++        _TestUser(anonymous: true, verified: false),
++      ]) {
++        final eligible = !user.isAnonymous && user.emailVerified;
++        final repository = _EmptyGroupsRepository();
+         await tester.pumpWidget(
+           ProviderScope(
+             overrides: [
+               firebaseAuthProvider.overrideWithValue(_TestFirebaseAuth(user)),
+-              guestGroupRepositoryProvider.overrideWithValue(
+-                _EmptyGroupsRepository(),
+-              ),
++              guestGroupRepositoryProvider.overrideWithValue(repository),
+             ],
+             child: const MaterialApp(home: SharedGuestGroupsPage()),
+           ),
+@@ -1100,18 +1272,25 @@ void main() {
+         await tester.pumpAndSettle();
+ 
+         expect(find.text('Groups'), findsOneWidget);
+-        final createButton = tester.widget<FilledButton>(
+-          find.widgetWithText(FilledButton, 'Create group'),
+-        );
+-        final joinButton = tester.widget<OutlinedButton>(
+-          find.widgetWithText(OutlinedButton, 'Join with invitation'),
+-        );
+-        expect(createButton.onPressed != null, verified);
+-        expect(joinButton.onPressed != null, verified);
+-        expect(
+-          find.textContaining('Verify this account’s email'),
+-          verified ? findsNothing : findsOneWidget,
+-        );
++        if (eligible) {
++          final createButton = tester.widget<FilledButton>(
++            find.widgetWithText(FilledButton, 'Create group'),
++          );
++          final joinButton = tester.widget<OutlinedButton>(
++            find.widgetWithText(OutlinedButton, 'Join with invitation'),
++          );
++          expect(createButton.onPressed, isNotNull);
++          expect(joinButton.onPressed, isNotNull);
++          expect(repository.listGroupsCalls, 1);
++        } else {
++          expect(
++            find.textContaining('Groups require a registered account'),
++            findsOneWidget,
++          );
++          expect(find.text('Create group'), findsNothing);
++          expect(repository.listGroupsCalls, 0);
++          expect(repository.listArchivedGroupsCalls, 0);
++        }
+         expect(identical(user, _TestFirebaseAuth(user).currentUser), isTrue);
+         await tester.pumpWidget(const SizedBox.shrink());
+         await tester.pumpAndSettle();
+diff --git a/backend/app/api/v1/routes/guest.py b/backend/app/api/v1/routes/guest.py
+index 87c0bd7..66532b2 100644
+--- a/backend/app/api/v1/routes/guest.py
++++ b/backend/app/api/v1/routes/guest.py
+@@ -33,24 +33,32 @@ async def reject_identity_overrides(request: Request) -> None:
+         )
+ 
+ 
++def require_registered_verified_group_identity(
++    identity: GuestIdentity = Depends(get_guest_identity),
++) -> None:
++    if identity.sign_in_provider == "anonymous":
++        raise HTTPException(
++            status_code=403,
++            detail="A registered account is required to use Groups",
++        )
++    if not identity.email_verified:
++        raise HTTPException(
++            status_code=403,
++            detail="Verify your email address to use Groups",
++        )
++
++
+ router = APIRouter(
+     prefix="/guest",
+     tags=["shared guest groups"],
+-    dependencies=[Depends(require_app_check), Depends(reject_identity_overrides)],
++    dependencies=[
++        Depends(require_app_check),
++        Depends(reject_identity_overrides),
++        Depends(require_registered_verified_group_identity),
++    ],
+ )
+ 
+ 
+-def require_eligible_group_identity(identity: GuestIdentity) -> None:
+-    if (
+-        identity.sign_in_provider != "anonymous"
+-        and not identity.email_verified
+-    ):
+-        raise HTTPException(
+-            status_code=403,
+-            detail="A verified email is required for registered Firebase identities",
+-        )
+-
+-
+ @router.get("/groups")
+ async def list_groups(
+     identity: GuestIdentity = Depends(get_guest_identity),
+@@ -73,7 +81,6 @@ async def create_group(
+     identity: GuestIdentity = Depends(get_guest_identity),
+     session: AsyncSession = Depends(get_session),
+ ) -> dict:
+-    require_eligible_group_identity(identity)
+     return await GuestService(session).create_group(identity.firebase_uid, payload)
+ 
+ 
+@@ -142,7 +149,6 @@ async def join_invitation(
+     identity: GuestIdentity = Depends(get_guest_identity),
+     session: AsyncSession = Depends(get_session),
+ ) -> dict:
+-    require_eligible_group_identity(identity)
+     return await GuestService(session).join_invitation(
+         identity.firebase_uid, payload.token, payload.display_name
+     )
+diff --git a/backend/tests/test_guest_groups.py b/backend/tests/test_guest_groups.py
+index 4b34557..e61564d 100644
+--- a/backend/tests/test_guest_groups.py
++++ b/backend/tests/test_guest_groups.py
+@@ -25,7 +25,7 @@ PROJECT_ID = "intqaflow-dev"
+ 
+ def bearer(
+     uid: str,
+-    provider: str = "anonymous",
++    provider: str = "password",
+     *,
+     email_verified: bool | None = None,
+ ) -> dict[str, str]:
+@@ -61,6 +61,190 @@ async def make_group(client, uid: str, name: str) -> dict:
+     return response.json()
+ 
+ 
++@pytest.mark.asyncio
++async def test_all_group_routes_require_verified_registered_identity(
++    app_client, monkeypatch
++) -> None:
++    client, _ = app_client
++    install_test_tokens(monkeypatch)
++    group_id = "00000000-0000-0000-0000-000000000001"
++    entry_id = "00000000-0000-0000-0000-000000000002"
++    member_id = "00000000-0000-0000-0000-000000000003"
++    transfer_id = "00000000-0000-0000-0000-000000000004"
++    invitation_id = "00000000-0000-0000-0000-000000000005"
++    invitation_token = "x" * 40
++    knowledge = {
++        "kind": "knowledge",
++        "title": "Policy",
++        "data": {"body": "Local review only"},
++    }
++    routes = [
++        ("GET", "/api/v1/guest/groups", None, None),
++        ("GET", "/api/v1/guest/groups/archived", None, None),
++        (
++            "POST",
++            "/api/v1/guest/groups",
++            {"name": "Policy group", "display_name": "Reviewer"},
++            None,
++        ),
++        ("GET", f"/api/v1/guest/groups/{group_id}", None, None),
++        (
++            "POST",
++            f"/api/v1/guest/groups/{group_id}/invitations",
++            {"role": "viewer", "expires_in_hours": 24},
++            None,
++        ),
++        ("GET", f"/api/v1/guest/groups/{group_id}/invitations", None, None),
++        (
++            "DELETE",
++            f"/api/v1/guest/groups/{group_id}/invitations/{invitation_id}",
++            None,
++            None,
++        ),
++        (
++            "POST",
++            "/api/v1/guest/invitations/preview",
++            {"token": invitation_token},
++            None,
++        ),
++        (
++            "POST",
++            "/api/v1/guest/invitations/join",
++            {"token": invitation_token, "display_name": "Reviewer"},
++            None,
++        ),
++        (
++            "POST",
++            f"/api/v1/guest/groups/{group_id}/members/{member_id}/approve",
++            None,
++            None,
++        ),
++        (
++            "PATCH",
++            f"/api/v1/guest/groups/{group_id}/members/{member_id}/role",
++            {"role": "viewer"},
++            None,
++        ),
++        (
++            "DELETE",
++            f"/api/v1/guest/groups/{group_id}/members/{member_id}",
++            None,
++            None,
++        ),
++        (
++            "POST",
++            f"/api/v1/guest/groups/{group_id}/transfer-administration",
++            None,
++            {"member_id": member_id},
++        ),
++        (
++            "POST",
++            f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}/accept",
++            None,
++            None,
++        ),
++        (
++            "POST",
++            f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}/decline",
++            None,
++            None,
++        ),
++        (
++            "DELETE",
++            f"/api/v1/guest/groups/{group_id}/admin-transfers/{transfer_id}",
++            None,
++            None,
++        ),
++        ("POST", f"/api/v1/guest/groups/{group_id}/archive", None, None),
++        ("POST", f"/api/v1/guest/groups/{group_id}/restore", None, None),
++        ("DELETE", f"/api/v1/guest/groups/{group_id}/permanent", None, None),
++        ("DELETE", f"/api/v1/guest/groups/{group_id}", None, None),
++        ("GET", f"/api/v1/guest/groups/{group_id}/entries", None, None),
++        (
++            "POST",
++            f"/api/v1/guest/groups/{group_id}/entries",
++            knowledge,
++            None,
++        ),
++        (
++            "POST",
++            f"/api/v1/guest/groups/{group_id}/import",
++            {"entries": [knowledge]},
++            None,
++        ),
++        (
++            "GET",
++            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}",
++            None,
++            None,
++        ),
++        (
++            "PATCH",
++            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}",
++            {"expected_revision": 1, "title": "Updated policy"},
++            None,
++        ),
++        (
++            "DELETE",
++            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}",
++            None,
++            None,
++        ),
++        (
++            "GET",
++            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}/history",
++            None,
++            None,
++        ),
++        (
++            "GET",
++            f"/api/v1/guest/groups/{group_id}/entries/{entry_id}/export",
++            None,
++            None,
++        ),
++    ]
++
++    missing_token = await client.get("/api/v1/guest/groups")
++    invalid_token = await client.get(
++        "/api/v1/guest/groups",
++        headers={"Authorization": "Bearer " + "invalid"},
++    )
++    assert missing_token.status_code == 401
++    assert invalid_token.status_code == 401
++
++    for method, path, payload, params in routes:
++        for identity, detail in (
++            (
++                bearer("registered-shape", "anonymous"),
++                "A registered account is required to use Groups",
++            ),
++            (
++                bearer(
++                    "unverified-registered",
++                    "password",
++                    email_verified=False,
++                ),
++                "Verify your email address to use Groups",
++            ),
++        ):
++            response = await client.request(
++                method,
++                path,
++                headers=identity,
++                json=payload,
++                params=params,
++            )
++            assert response.status_code == 403, (method, path, response.text)
++            assert response.json() == {"detail": detail}
++
++    account_state = await client.get(
++        "/api/v1/account/state",
++        headers=bearer("preserved-anonymous-account-state", "anonymous"),
++    )
++    assert account_state.status_code == 200
++    assert account_state.json() == {"status": "shared_guest"}
++
++
+ @pytest.mark.asyncio
+ async def test_group_invites_roles_removal_and_group_boundary(app_client, monkeypatch) -> None:
+     client, session_factory = app_client
+@@ -459,7 +643,7 @@ async def test_guest_role_viewer_admin_transfer_and_no_org_escalation(
+         )
+     ).status_code == 404
+     anonymous_org_route = await client.get(
+-        "/api/v1/auth/me", headers=bearer("new-anonymous-user")
++        "/api/v1/auth/me", headers=bearer("new-anonymous-user", "anonymous")
+     )
+     assert anonymous_org_route.status_code == 401
+     wrong_header = await client.get(
+diff --git a/docs/architecture.md b/docs/architecture.md
+index a1dcaf1..4723796 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -90,10 +90,13 @@ infer the user's formal department.
+   `backend/app/models/guest.py`, not an organisation or department. Their API
+   verifies Firebase ID tokens and App Check independently and derives access
+   from the Firebase UID's group membership; caller-supplied identity headers are
+-  rejected. Anonymous Firebase identities and registered identities with a
+-  verified email may create groups or redeem invitations; unverified registered
+-  identities are denied these actions. Every invitation redemption remains
+-  pending until a group admin approves it.
++  rejected. Every group operation requires a non-anonymous Firebase identity
++  with a verified email; organisation membership is not required. Anonymous and
++  unverified identities are denied access, including read-only operations.
++  Existing group content remains keyed to its Firebase UID; linking credentials
++  to that same UID and verifying the email restores eligibility without
++  migrating the content. Every invitation redemption remains pending until a
++  group admin approves it.
+ - Group roles and invitation approval are enforced by guest services on every
+   content, search, history, export, and membership request. Invitation previews
+   disclose validity only. Group membership does not grant organisation,
+@@ -118,6 +121,10 @@ infer the user's formal department.
+   (24 hours by default, up to seven days); expired/revoked invitations are not
+   valid for preview or redemption. No backend store for private guest drafts
+   exists; group content is stored remotely only after an explicit group action.
++- Anonymous guests can continue using local Knowledge, Interact, templates, and
++  backup/import. Creating or signing into an account does not upload, migrate,
++  or delete that local data; account creation also does not purge existing
++  Groups content.
+ - Registered organisation routes continue to resolve active Firebase UID
+   mappings and retain the existing tenant, department, private-session,
+   governance, and audit checks. A linked guest identity can access only its
+diff --git a/docs/operations/guest-group-retention.md b/docs/operations/guest-group-retention.md
+index a40e71a..ef411ff 100644
+--- a/docs/operations/guest-group-retention.md
++++ b/docs/operations/guest-group-retention.md
+@@ -70,9 +70,13 @@ confirms its grants; do not broaden IAM or database privileges for this task.
+ 
+ Shared-group membership and administrator roles are keyed to the Firebase UID.
+ Creating an account from the current guest identity links credentials to that
+-same UID; signing into or creating a separate identity does not transfer group
+-membership or local browser work. Registered identities without an organisation
+-can still use their local workspace and any groups already linked to their UID.
++same UID; after email verification, that registered identity can continue to
++access groups already linked to the UID. Groups require a non-anonymous Firebase
++identity with a verified email, but do not require organisation membership.
++Signing into or creating a separate identity does not transfer group membership
++or local browser work. Anonymous guests retain local Knowledge, Interact,
++templates, and import/export; account creation or sign-in does not upload,
++migrate, or delete that local data or automatically purge existing Groups data.
+ Organisation membership and roles are independent of shared-group membership.
+ 
+ Administration transfer is recipient-accepted. An active group admin may request
+@@ -109,10 +113,8 @@ Archived listings expose server-derived `can_delete` separately from the
+ 
+ The Shared groups UI explains the member impact, irreversibility, and retained
+ local/exported copies before permanent deletion. It also explains the member
+-impact and same-UID recovery limit before archive and account departure. A
+-sole-admin identity may leave only after another active member accepts a transfer
+-or the group is archived. No group data is automatically migrated, imported, or
+-deleted by account creation or sign-in.
++impact and same-UID recovery limit before archive. No group data is automatically
++migrated, imported, or deleted by account creation or sign-in.
+ 
+ ## Scheduler review
+ 
+-- 
+2.55.0
+

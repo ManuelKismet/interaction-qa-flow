@@ -1,0 +1,69 @@
+From 1c94eafda8f499ead36a42b2f8e81106a3ada48a Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 11:35:53 +0000
+Subject: [PATCH] Clarify guest sign-in menu label
+
+Co-authored-by: ManuelKismet <32266457+ManuelKismet@users.noreply.github.com>
+---
+ .../features/guest/presentation/guest_workspace_page.dart  | 5 ++++-
+ apps/flutter_app/test/account_state_widget_test.dart       | 7 ++++---
+ 2 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+index af613b3..2b81c4d 100644
+--- a/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
++++ b/apps/flutter_app/lib/features/guest/presentation/guest_workspace_page.dart
+@@ -1232,7 +1232,10 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
+         ),
+         if (!registered && widget.firebaseReady) ...[
+           const PopupMenuDivider(),
+-          const PopupMenuItem(value: 'sign-in', child: Text('Sign in')),
++          const PopupMenuItem(
++            value: 'sign-in',
++            child: Text('Already have an account? Sign in'),
++          ),
+           if (widget.sharedIdentityActive)
+             const PopupMenuItem(
+               value: 'create-account',
+diff --git a/apps/flutter_app/test/account_state_widget_test.dart b/apps/flutter_app/test/account_state_widget_test.dart
+index 72669c8..c9858b8 100644
+--- a/apps/flutter_app/test/account_state_widget_test.dart
++++ b/apps/flutter_app/test/account_state_widget_test.dart
+@@ -287,7 +287,7 @@ void main() {
+       await tester.tap(find.byTooltip('Account'));
+       await tester.pumpAndSettle();
+       expect(find.text('Local guest workspace'), findsOneWidget);
+-      expect(find.text('Sign in'), findsOneWidget);
++      expect(find.text('Already have an account? Sign in'), findsOneWidget);
+       expect(find.text('Create account'), findsOneWidget);
+       expect(find.text('Sign out'), findsNothing);
+     },
+@@ -313,7 +313,7 @@ void main() {
+ 
+       await tester.tap(find.byTooltip('Account'));
+       await tester.pumpAndSettle();
+-      await tester.tap(find.text('Sign in'));
++      await tester.tap(find.text('Already have an account? Sign in'));
+       await tester.pumpAndSettle();
+       expect(find.text('Back to guest workspace'), findsOneWidget);
+       await tester.enterText(find.byType(TextField).first, 'member@example.test');
+@@ -405,6 +405,7 @@ void main() {
+     await tester.tap(find.byTooltip('Account'));
+     await tester.pumpAndSettle();
+     expect(find.text('Shared groups identity'), findsOneWidget);
++    expect(find.text('Already have an account? Sign in'), findsOneWidget);
+     expect(find.text('Create account from this guest'), findsOneWidget);
+     expect(find.text('Start fresh with a separate account'), findsOneWidget);
+     expect(find.text('Sign out'), findsNothing);
+@@ -1282,7 +1283,7 @@ void main() {
+     await tester.pumpAndSettle();
+     await tester.tap(find.byTooltip('Account'));
+     await tester.pumpAndSettle();
+-    await tester.tap(find.text('Sign in'));
++    await tester.tap(find.text('Already have an account? Sign in'));
+     await tester.pumpAndSettle();
+     await tester.enterText(find.byType(TextField).first, 'destination@example.test');
+     await tester.enterText(find.byType(TextField).last, 'safe-test-password');
+-- 
+2.55.0
+

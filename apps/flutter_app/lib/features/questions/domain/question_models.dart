@@ -74,6 +74,7 @@ class SemanticSearchResult {
     required this.matchedQuestionIds,
     required this.matchedText,
     required this.matchSource,
+    required this.matchMethod,
     this.answerVerifiedBy,
     this.answerVerifiedAt,
     this.answerFreshnessStatus,
@@ -81,6 +82,8 @@ class SemanticSearchResult {
     this.resolvedAt,
     this.department,
     this.team,
+    this.organisationName = 'Organisation',
+    this.relevanceScore = 0,
   });
 
   factory SemanticSearchResult.fromJson(Map<String, dynamic> json) =>
@@ -101,6 +104,7 @@ class SemanticSearchResult {
             .cast<String>(),
         matchedText: json['matched_text'] as String,
         matchSource: json['match_source'] as String,
+        matchMethod: json['match_method'] as String? ?? 'semantic',
         canonicalBody: json['canonical_body'] as String?,
         resolvedAt: _date(json['resolved_at']),
         answerVerifiedBy: json['answer_verified_by'] as String?,
@@ -116,6 +120,11 @@ class SemanticSearchResult {
         team: json['team'] == null
             ? null
             : TeamSummary.fromJson(json['team'] as Map<String, dynamic>),
+        organisationName:
+            json['organisation_name'] as String? ?? 'Organisation',
+        relevanceScore:
+            (json['relevance_score'] as num?)?.toDouble() ??
+            (json['similarity'] as num).toDouble(),
       );
 
   final String questionId;
@@ -133,6 +142,7 @@ class SemanticSearchResult {
   final List<String> matchedQuestionIds;
   final String matchedText;
   final String matchSource;
+  final String matchMethod;
   final String? canonicalBody;
   final DateTime? resolvedAt;
   final String? answerVerifiedBy;
@@ -140,6 +150,8 @@ class SemanticSearchResult {
   final String? answerFreshnessStatus;
   final DepartmentSummary? department;
   final TeamSummary? team;
+  final String organisationName;
+  final double relevanceScore;
 }
 
 class QuestionSummary {
@@ -196,6 +208,7 @@ class AnswerDetail {
     this.reviewDueAt,
     this.lastReviewedAt,
     this.freshnessStatus,
+    this.protectedAt,
   });
 
   factory AnswerDetail.fromJson(Map<String, dynamic> json) => AnswerDetail(
@@ -218,6 +231,7 @@ class AnswerDetail {
     reviewDueAt: _date(json['review_due_at']),
     lastReviewedAt: _date(json['last_reviewed_at']),
     freshnessStatus: json['freshness_status'] as String?,
+    protectedAt: _date(json['protected_at']),
   );
 
   final String id;
@@ -235,6 +249,7 @@ class AnswerDetail {
   final DateTime? reviewDueAt;
   final DateTime? lastReviewedAt;
   final String? freshnessStatus;
+  final DateTime? protectedAt;
 }
 
 DateTime? _date(dynamic value) =>
@@ -255,6 +270,9 @@ class QuestionDetail {
     this.resolvedAt,
     this.department,
     this.team,
+    this.protectedAt,
+    this.archivedAt,
+    this.visibility = 'organisation',
   });
 
   factory QuestionDetail.fromJson(Map<String, dynamic> json) => QuestionDetail(
@@ -289,6 +307,9 @@ class QuestionDetail {
         .map((item) => QuestionAlias.fromJson(item as Map<String, dynamic>))
         .toList(),
     resolvedAt: _date(json['resolved_at']),
+    protectedAt: _date(json['protected_at']),
+    archivedAt: _date(json['archived_at']),
+    visibility: json['visibility'] as String? ?? 'organisation',
   );
 
   final String id;
@@ -304,6 +325,43 @@ class QuestionDetail {
   final CanonicalQuestionSummary? canonicalQuestion;
   final List<QuestionAlias> aliases;
   final DateTime? resolvedAt;
+  final DateTime? protectedAt;
+  final DateTime? archivedAt;
+  final String visibility;
+}
+
+class QuestionChangeRequest {
+  const QuestionChangeRequest({
+    required this.id,
+    required this.questionId,
+    required this.requestedBy,
+    required this.reason,
+    required this.status,
+    this.proposedTitle,
+    this.proposedBody,
+    this.archiveRequested = false,
+  });
+
+  factory QuestionChangeRequest.fromJson(Map<String, dynamic> json) =>
+      QuestionChangeRequest(
+        id: json['id'] as String,
+        questionId: json['question_id'] as String,
+        requestedBy: json['requested_by'] as String,
+        proposedTitle: json['proposed_title'] as String?,
+        proposedBody: json['proposed_body'] as String?,
+        archiveRequested: json['archive_requested'] as bool,
+        reason: json['reason'] as String,
+        status: json['status'] as String,
+      );
+
+  final String id;
+  final String questionId;
+  final String requestedBy;
+  final String? proposedTitle;
+  final String? proposedBody;
+  final bool archiveRequested;
+  final String reason;
+  final String status;
 }
 
 class CanonicalQuestionSummary {
