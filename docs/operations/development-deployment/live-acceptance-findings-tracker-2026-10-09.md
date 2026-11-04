@@ -1,7 +1,7 @@
 # Live acceptance findings tracker — 9 October 2026
 
 Source: live-workspace-acceptance-2026-10-09.md, through commit 077f02f.
-Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F13 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
+Process: handle one numbered item at a time. Implementation does not establish hosted verification. Keep every row until its outcome and evidence are recorded. F01–F14 have been authorized individually. User instruction: resolve the findings one at a time, then deploy the validated fixes together to DEV; no interim deployments.
 
 | ID | Finding or behavior | Status |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ Process: handle one numbered item at a time. Implementation does not establish h
 | F11 | Guest reload returns Knowledge; saved Interact can be reopened | Fixed / automated-validated in PR #32; held for combined DEV confirmation |
 | F12 | Knowledge question team/department assignment alone does not restrict organisation-visible questions; Interact separately supports explicit team visibility | Fixed / automated-validated in PR #33 with explicit visibility; held for combined DEV confirmation |
 | F13 | Completed organisation Interact remains editable | Fixed / automated-validated in PR #34 with explicit Reopen session; held for combined DEV confirmation |
-| F14 | Restoring employee role leaves separate department-answer-owner assignment until explicitly removed | Pending behavior review; cleanup completed |
+| F14 | Restoring employee role leaves separate department-answer-owner assignment until explicitly removed | Fixed / automated-validated in PR #35 with explicit assignment review/removal; held for combined DEV confirmation |
 
 ## F01 implementation
 
@@ -162,3 +162,14 @@ Private session denial validation run 37975603979 / job 113972996702 passed 84 t
 
 F01–F13 are source-fixed and automated-validated, awaiting combined DEV deployment and hosted confirmation. F14 and C01–C06 remain tracked. No merge or deployment performed. F13 hosted completion/reopen/permissions checks and archive/export acceptance remain pending the combined rollout; automated API/export and narrow viewport tests do not close the hosted or physical-device coverage items.
 
+## F14 implementation and automated validation — 9 October 2026
+
+Draft PR #35: https://github.com/ManuelKismet/interaction-qa-flow/pull/35, branch fix/member-role-assignment-review-20261009, stacked on PR #34. Existing department answer-owner assignments are now listed in the member editor with an explicit explanation that changing the organisation role does not remove them. Saving shows whether the assignments will be kept or removed. Organisation owners can deliberately select “Remove all department answer-owner assignments on save”; the checkbox is unchecked by default. Non-owner admins retain read-only roles and see the assignment explanation without the combined-cleanup control. If assignment loading fails, member editing is unavailable with an explicit retry message, avoiding a role change without the assignment review.
+
+The member PATCH accepts clear_department_answer_owners=true only from an organisation owner. It removes the member's assignments within the current organisation in the same transaction as role/primary-department/status updates, and records one existing DEPARTMENT_OWNER_REMOVED audit event for each removed assignment. Omitted/false cleanup preserves assignments, and repeating cleanup is harmless. Validation failures roll back the combined changes. New department assignments lock and refresh the target member row before checking the existing answer_owner role requirement; a concurrent assignment waiting behind demotion and cleanup cannot recreate the removed assignment. No migration, implicit bulk cleanup or broader permission redesign. Existing individual assignment management remains separate.
+
+Final tested source commit a1b9ea0c2ac365704960293c71fd4b557d575d40. Member assignment review validation run 37976782931: Flutter job 113976981027 passed 28 tests across team_ui, member_assignment_repository, organisation_page, organisation_scope and responsive_organisation, with formatting and focused Flutter analysis clean. New 360px owner cases verify the Employee role change clearly retains or explicitly removes multiple assignments and sends the chosen flag; the non-owner regression shows no role/cleanup control and preserves assignments. Production repository test verifies the cleanup flag is sent only when selected, and department-only updates omit role and cleanup. PostgreSQL job 113976981426 passed the assignment-versus-demotion/cleanup race (1 test).
+
+Owner role controls validation run 37976782815 / job 113976980432 passed 16 tests. Backend validation run 37976782922 / job 113976981185 passed 182 tests, 36 skipped; dependency consistency, Ruff analysis and compilation passed. Three new API scenarios cover default retention, explicit removal across multiple departments, per-assignment audit, unrelated-member preservation, owner-only cleanup, foreign-member denial, idempotent cleanup, rejected assignment after demotion and invalid combined-save rollback. The default-suite PostgreSQL skip was separately exercised successfully above. Local full backend suite passed 182 tests, 36 skipped. All ten uploaded source/test/workflow blobs match local hashes; local formatting and git diff --check passed.
+
+F01–F14 are now source-fixed and automated-validated, awaiting one combined DEV deployment and hosted confirmation. C01–C06 remain open in the coverage ledger; no coverage item is silently closed by these automated tests. No merge or deployment performed. The combined rollout must include migration 0016 before the new backend/UI; hosted retests must verify all findings and preserve the original acceptance history and coverage evidence.

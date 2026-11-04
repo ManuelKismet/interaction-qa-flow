@@ -22,4 +22,5 @@ def test_unified_search_migration_follows_personal_workspace_revision() -> None:
     assert organisation_administration.down_revision == "0014"
     knowledge_visibility = scripts.get_revision("0016")
     assert knowledge_visibility.down_revision == "0015"
-    assert scripts.get_heads() == ["0016"]
+    assert scripts.get_revision("0017").down_revision == "0016"
+    assert scripts.get_heads() == ["0017"]
