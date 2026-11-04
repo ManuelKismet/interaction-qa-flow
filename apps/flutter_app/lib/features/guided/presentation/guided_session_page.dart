@@ -247,7 +247,7 @@ class _GuidedSessionPageState extends ConsumerState<GuidedSessionPage> {
         final topArea = <Widget>[
           NiaInlineGuidance(
             topic: NiaTopic.lifecycle,
-            lessonId: 'session.' + session.status,
+            lessonId: 'session.${session.status}',
             facts: {'status': session.status, 'canManage': canManageSession},
             busy: _saveState == GuidedSaveState.saving,
           ),
