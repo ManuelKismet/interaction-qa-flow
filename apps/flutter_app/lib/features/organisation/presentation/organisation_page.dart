@@ -77,6 +77,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
           );
       if (mounted && _isCurrentScope(scope, profile)) {
         ref.invalidate(myOrganisationJoinRequestsProvider);
+        ref.invalidate(pendingOrganisationJoinRequestsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Membership request saved.')),
         );
@@ -302,7 +303,7 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
                         title: Text(
                           '${request.requestType == 'team' ? 'Team' : 'Department'} request · ${request.status}',
                         ),
-                        subtitle: Text('Target ${request.targetId}'),
+                        subtitle: Text(_requestTargetName(request)),
                       ),
                   ],
                 ),
@@ -327,9 +328,9 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(
-                            '${request.requestType == 'team' ? 'Team membership' : 'Department change'} · target ${request.targetId}',
+                            '${request.requestType == 'team' ? 'Team membership' : 'Department change'} · ${_requestTargetName(request)}',
                           ),
-                          subtitle: Text('Request ${request.id}'),
+                          subtitle: Text(_requesterName(request)),
                           trailing: Wrap(
                             children: [
                               TextButton(
@@ -410,6 +411,20 @@ class _OrganisationPageState extends ConsumerState<OrganisationPage> {
         ],
         onChanged: (value) => setState(() => _targetId = value),
       );
+
+  String _requestTargetName(OrganisationJoinRequest request) {
+    final name = request.targetName?.trim();
+    return name != null && name.isNotEmpty
+        ? name
+        : request.requestType == 'team'
+        ? 'Team unavailable'
+        : 'Department unavailable';
+  }
+
+  String _requesterName(OrganisationJoinRequest request) {
+    final name = request.requesterName?.trim();
+    return name != null && name.isNotEmpty ? name : 'Requester unavailable';
+  }
 
   Future<void> _decide(OrganisationJoinRequest request, bool approve) async {
     final profileState = ref.read(organisationProfileProvider);

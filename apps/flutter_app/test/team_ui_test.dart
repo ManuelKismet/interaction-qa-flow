@@ -62,6 +62,23 @@ class _FakeGovernanceRepository extends GovernanceRepository {
   String? assignedOwnerId;
   String? teamMemberId;
   List<TeamMembership> teamMemberships = const [];
+  final editedRoles = <String?>[];
+  final editedDepartments = <String?>[];
+  final clearedAnswerOwners = <bool>[];
+
+  @override
+  Future<OrganisationMember> updateOrganisationMember(
+    String memberId, {
+    String? role,
+    String? departmentId,
+    bool clearDepartment = false,
+    bool clearDepartmentAnswerOwners = false,
+  }) async {
+    editedRoles.add(role);
+    editedDepartments.add(departmentId);
+    clearedAnswerOwners.add(clearDepartmentAnswerOwners);
+    return adminMember;
+  }
 
   @override
   Future<void> assignOwner(String departmentId, String userId) async {
@@ -92,6 +109,182 @@ class _FakeGovernanceRepository extends GovernanceRepository {
 }
 
 void main() {
+  for (final remove in [false, true]) {
+    testWidgets(
+      'role change explicitly ${remove ? 'removes' : 'keeps'} department assignments',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(360, 640);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        final repository = _FakeGovernanceRepository();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              organisationProfileProvider.overrideWith(
+                (ref) async => const OrganisationProfile(
+                  organisationId: 'org-1',
+                  organisationName: 'Example',
+                  userId: 'actor',
+                  role: 'admin',
+                  primaryDepartment: null,
+                  teams: [],
+                  isOwner: true,
+                  permissions: {'legacy_admin'},
+                  permissionScopes: [],
+                  assignmentManagers: [],
+                ),
+              ),
+              governanceRepositoryProvider.overrideWithValue(repository),
+              departmentsProvider.overrideWith((ref) async => const [finance]),
+              teamsProvider.overrideWith((ref) async => const []),
+              departmentOwnersProvider.overrideWith(
+                (ref) async => const [
+                  DepartmentAnswerOwner(
+                    id: 'assignment-1',
+                    department: finance,
+                    user: UserSummary(
+                      id: 'answer-owner-1',
+                      displayName: 'Answer Owner',
+                      role: 'answer_owner',
+                    ),
+                  ),
+                  DepartmentAnswerOwner(
+                    id: 'assignment-2',
+                    department: DepartmentSummary(
+                      id: 'department-2',
+                      name: 'Operations',
+                    ),
+                    user: UserSummary(
+                      id: 'answer-owner-1',
+                      displayName: 'Answer Owner',
+                      role: 'answer_owner',
+                    ),
+                  ),
+                ],
+              ),
+              organisationMembersProvider.overrideWith(
+                (ref) async => const [answerOwnerMember],
+              ),
+            ],
+            child: const MaterialApp(home: Scaffold(body: AdminPage())),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Manage'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('organisation-member-role')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Employee').last);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('assignments are separate'), findsOneWidget);
+        expect(find.text('Operations'), findsWidgets);
+        final removal = find.byKey(
+          const ValueKey('remove-department-answer-owner-assignments'),
+        );
+        expect(tester.widget<CheckboxListTile>(removal).value, isFalse);
+        if (remove) {
+          await tester.ensureVisible(removal);
+          await tester.pumpAndSettle();
+          await tester.tap(removal);
+          await tester.pumpAndSettle();
+        }
+        expect(
+          find.text(
+            remove
+                ? 'Saving will remove these assignments and record their removal.'
+                : 'Saving will keep these department answer-owner assignments.',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Save changes'));
+        await tester.pumpAndSettle();
+        expect(repository.editedRoles, ['employee']);
+        expect(repository.clearedAnswerOwners, [remove]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final owner in [false, true]) {
+    testWidgets(
+      '${owner ? 'owner' : 'non-owner admin'} member editor matches role authority',
+      (tester) async {
+        final repository = _FakeGovernanceRepository();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              organisationProfileProvider.overrideWith(
+                (ref) async => OrganisationProfile(
+                  organisationId: 'org-1',
+                  organisationName: 'Example',
+                  userId: 'actor',
+                  role: 'admin',
+                  primaryDepartment: null,
+                  teams: [],
+                  isOwner: owner,
+                  permissions: const {'legacy_admin'},
+                  permissionScopes: [],
+                  assignmentManagers: [],
+                ),
+              ),
+              governanceRepositoryProvider.overrideWithValue(repository),
+              departmentsProvider.overrideWith((ref) async => const [finance]),
+              teamsProvider.overrideWith((ref) async => const []),
+              departmentOwnersProvider.overrideWith(
+                (ref) async => const [
+                  DepartmentAnswerOwner(
+                    id: 'existing-assignment',
+                    department: finance,
+                    user: UserSummary(
+                      id: 'member-1',
+                      displayName: 'Member One',
+                      role: 'employee',
+                    ),
+                  ),
+                ],
+              ),
+              organisationMembersProvider.overrideWith(
+                (ref) async => const [adminMember],
+              ),
+            ],
+            child: const MaterialApp(home: Scaffold(body: AdminPage())),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Manage'));
+        await tester.pumpAndSettle();
+        final roleField = find.byKey(
+          const ValueKey('organisation-member-role'),
+        );
+        expect(roleField, owner ? findsOneWidget : findsNothing);
+        if (owner) {
+          await tester.tap(roleField);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Department answer owner').last);
+          await tester.pumpAndSettle();
+        } else {
+          expect(
+            find.text('Only an organisation owner can change this role.'),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(
+              const ValueKey('remove-department-answer-owner-assignments'),
+            ),
+            findsNothing,
+          );
+        }
+        await tester.tap(find.text('Save changes'));
+        await tester.pumpAndSettle();
+        expect(repository.editedRoles, [owner ? 'answer_owner' : null]);
+        expect(repository.editedDepartments, [finance.id]);
+        expect(repository.clearedAnswerOwners, [false]);
+      },
+    );
+  }
+
   test('linked team suggests its parent department', () {
     expect(
       suggestedDepartmentForTeam(const [payroll], payroll.id, null),

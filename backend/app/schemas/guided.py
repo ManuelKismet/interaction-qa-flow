@@ -277,6 +277,7 @@ class KnowledgeProposalDecision(BaseModel):
 
 
 class KnowledgeProposalResponse(EntityResponse):
+    already_pending: bool = False
     organisation_id: UUID
     guided_session_id: UUID
     guided_question_id: UUID
