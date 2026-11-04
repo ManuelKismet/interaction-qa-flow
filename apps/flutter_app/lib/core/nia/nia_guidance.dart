@@ -96,12 +96,13 @@ class _NiaRouteScope extends StatefulWidget {
 }
 
 class _NiaRouteScopeState extends State<_NiaRouteScope> {
-  late final int revision = widget.binding.session.bindingRevision;
+  late final int revision;
   void Function()? unsubscribe;
   bool invalid = false;
   @override
   void initState() {
     super.initState();
+    revision = widget.binding.session.bindingRevision;
     unsubscribe = widget.binding.session.listen(() {
       if (widget.binding.session.bindingRevision != revision && !invalid) {
         invalid = true;

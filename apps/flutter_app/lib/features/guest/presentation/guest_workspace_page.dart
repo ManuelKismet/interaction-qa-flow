@@ -2235,9 +2235,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                             AccountMembershipStatus.noMembership,
                         saveStatus: _saveStatus,
                       ),
-                      if (hasWorkspaceNavigation &&
-                          _verifiedPersonalUid == null)
-                        workspaceHelp,
+                      if (!compactViewport) workspaceHelp,
                     ],
                   ),
             actions: [
@@ -2250,10 +2248,7 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
                       AccountMembershipStatus.noMembership,
                   saveStatus: _saveStatus,
                 ),
-              if (viewport.width < 320 &&
-                  hasWorkspaceNavigation &&
-                  _verifiedPersonalUid == null)
-                workspaceHelp,
+              if (viewport.width < 320 && !compactViewport) workspaceHelp,
               if (compactViewport && !hasWorkspaceNavigation)
                 Builder(
                   builder: (context) => PopupMenuButton<int>(

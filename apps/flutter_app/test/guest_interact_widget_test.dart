@@ -1138,9 +1138,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          'Shared questions get separate answers from each '
-          'participant. Participant questions are asked only of '
-          'the active participant. Templates are optional.',
+          'Shared questions have separate answers for each participant. Participant questions apply only to their selected participant. Add a follow-up from the relevant answer to preserve its branch.',
         ),
         findsOneWidget,
       );
