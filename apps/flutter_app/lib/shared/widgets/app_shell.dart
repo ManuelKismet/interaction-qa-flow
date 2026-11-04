@@ -172,12 +172,13 @@ class AppShell extends ConsumerWidget {
         ),
       ),
       const PopupMenuDivider(),
-      const PopupMenuItem(
+      PopupMenuItem(
         value: 'nia-guidance',
-        child: ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.info_outline),
-          title: Text('Group access information'),
+        enabled: NiaHost.teachingOf(context)?.ready == true,
+        child: Text(
+          NiaHost.teachingOf(context)?.enabled == false
+              ? 'Turn NIA guidance on'
+              : 'Turn NIA guidance off',
         ),
       ),
       const PopupMenuItem(value: 'sign-out', child: Text('Sign out')),
