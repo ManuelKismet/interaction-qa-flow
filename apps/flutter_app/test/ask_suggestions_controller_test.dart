@@ -776,6 +776,316 @@ void main() {
       'next-uid',
     ]);
   });
+
+  test('local phrase beats semantic-only hits', () async {
+    final storage = _MemoryGuestStorage();
+    await GuestWorkspaceStore(storage).save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {
+            'id': 'local-answer',
+            'title': 'Account recovery notes',
+            'answer': 'Recover account access with the security desk.',
+          },
+          {
+            'id': 'local-body',
+            'title': 'Recovery checklist',
+            'body': 'Recover account access before resetting credentials.',
+          },
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        questionsRepositoryProvider.overrideWith(
+          (ref) => _QuestionsRepository([
+            _organisationResult(id: 'semantic-only', relevance: 1),
+          ]),
+        ),
+        personalWorkspaceRepositoryProvider.overrideWithValue(
+          _PersonalRepository([]),
+        ),
+        guestGroupRepositoryProvider.overrideWithValue(_GroupRepository([])),
+        guestWorkspaceStoreProvider.overrideWithValue(
+          GuestWorkspaceStore(storage),
+        ),
+        askSearchIdentityProvider.overrideWithValue(_activeIdentity),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.listen(askSuggestionsProvider, (_, _) {});
+    container
+        .read(askSuggestionsProvider.notifier)
+        .queryChanged('recover account access');
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+
+    final hits = container.read(askSuggestionsProvider).value!.hits;
+    expect(hits.take(2).map((hit) => hit.id), [
+      'local-answer',
+      'local-body',
+    ]);
+    expect(
+      hits.take(2).every(
+        (hit) => hit.snippet!.contains('Recover account access'),
+      ),
+      isTrue,
+    );
+    expect(hits.last.id, 'semantic-only');
+  });
+
+  test('scope dedup excludes inaccessible or other-owner hits', () async {
+    final questions = _QuestionsRepository([
+      _organisationResult(id: 'same-id', relevance: 0.8),
+    ]);
+    final personal = _PersonalRepository([
+      {
+        'source_id': 'same-id',
+        'owner_uid': 'someone-else',
+        'title': 'Other owner secret',
+        'data': {'answer': 'Do not show this.'},
+        'relevance_score': 2,
+      },
+      {
+        'source_id': 'private-duplicate',
+        'owner_uid': 'verified-uid',
+        'title': 'Private result',
+        'data': {'answer': 'Owner-only answer.'},
+        'relevance_score': 1,
+      },
+      {
+        'source_id': 'private-duplicate',
+        'owner_uid': 'verified-uid',
+        'title': 'Duplicate private result',
+        'data': {'answer': 'Duplicate payload.'},
+        'relevance_score': 0.9,
+      },
+    ]);
+    final groups = _GroupRepository([
+      {
+        'id': 'same-id',
+        'group_id': 'inaccessible-group',
+        'group_name': 'Inaccessible group',
+        'title': 'Inaccessible result',
+        'accessible': false,
+        'data': {'answer': 'Do not show group content.'},
+      },
+      {
+        'id': 'same-id',
+        'group_id': 'member-group',
+        'group_name': 'Member group',
+        'title': 'Group result',
+        'data': {'answer': 'Visible group answer.'},
+      },
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        questionsRepositoryProvider.overrideWith((ref) => questions),
+        personalWorkspaceRepositoryProvider.overrideWithValue(personal),
+        guestGroupRepositoryProvider.overrideWithValue(groups),
+        guestWorkspaceStoreProvider.overrideWithValue(
+          GuestWorkspaceStore(_MemoryGuestStorage()),
+        ),
+        askSearchIdentityProvider.overrideWithValue(_activeIdentity),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.listen(askSuggestionsProvider, (_, _) {});
+    container.read(askSuggestionsProvider.notifier).queryChanged('password');
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+
+    final hits = container.read(askSuggestionsProvider).value!.hits;
+    expect(hits.where((hit) => hit.id == 'same-id'), hasLength(2));
+    expect(hits.where((hit) => hit.source == 'Private'), hasLength(1));
+    expect(hits.any((hit) => hit.title == 'Other owner secret'), isFalse);
+    expect(hits.any((hit) => hit.title == 'Inaccessible result'), isFalse);
+    expect(hits.any((hit) => hit.title == 'Duplicate private result'), isFalse);
+    expect(
+      hits
+          .map((hit) => '${hit.destination}:${hit.groupId ?? ''}:${hit.id}')
+          .toSet(),
+      hasLength(hits.length),
+    );
+    expect(personal.expectedUid, 'verified-uid');
+  });
+
+  test('partial retry retains query and successful results', () async {
+    final questions = _QuestionsRepository([
+      _organisationResult(id: 'organisation-hit', relevance: 1.4),
+    ]);
+    final personal = _PersonalRepository([
+      {
+        'source_id': 'private-hit',
+        'title': 'Private password notes',
+        'data': {'answer': 'Owner-only notes.'},
+        'relevance_score': 1,
+      },
+    ])..failSearch = true;
+    final container = ProviderContainer(
+      overrides: [
+        questionsRepositoryProvider.overrideWith((ref) => questions),
+        personalWorkspaceRepositoryProvider.overrideWithValue(personal),
+        guestGroupRepositoryProvider.overrideWithValue(_GroupRepository([])),
+        guestWorkspaceStoreProvider.overrideWithValue(
+          GuestWorkspaceStore(_MemoryGuestStorage()),
+        ),
+        askSearchIdentityProvider.overrideWithValue(_activeIdentity),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.listen(askSuggestionsProvider, (_, _) {});
+    final controller = container.read(askSuggestionsProvider.notifier);
+    controller.queryChanged('password');
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+
+    final partial = container.read(askSuggestionsProvider).value!;
+    expect(partial.failedSources, contains('Private'));
+    expect(partial.hits.map((hit) => hit.id), ['organisation-hit']);
+
+    personal.failSearch = false;
+    controller.retry();
+    final refreshing = container.read(askSuggestionsProvider).value!;
+    expect(refreshing.isRefreshing, isTrue);
+    expect(refreshing.hits.map((hit) => hit.id), ['organisation-hit']);
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+
+    final retried = container.read(askSuggestionsProvider).value!;
+    expect(retried.failedSources, isEmpty);
+    expect(retried.hits.map((hit) => hit.id), [
+      'organisation-hit',
+      'private-hit',
+    ]);
+    expect(personal.requests, ['password', 'password']);
+    expect(questions.requests, ['password', 'password']);
+  });
+
+  test('drops stale results after identity and membership changes', () async {
+    final questions = _QuestionsRepository([]);
+    final first = Completer<List<SemanticSearchResult>>();
+    final second = Completer<List<SemanticSearchResult>>();
+    final third = Completer<List<SemanticSearchResult>>();
+    questions.pending.addAll([first, second, third]);
+    final personal = _PersonalRepository([]);
+    final storage = _MemoryGuestStorage();
+    await GuestWorkspaceStore(storage).save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {
+            'id': 'local-hit',
+            'title': 'Password help',
+            'answer': 'Local account recovery.',
+          },
+        ],
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        questionsRepositoryProvider.overrideWith((ref) => questions),
+        personalWorkspaceRepositoryProvider.overrideWithValue(personal),
+        guestGroupRepositoryProvider.overrideWithValue(_GroupRepository([])),
+        guestWorkspaceStoreProvider.overrideWithValue(
+          GuestWorkspaceStore(storage),
+        ),
+        askSearchIdentityProvider.overrideWith(
+          (ref) => ref.watch(_testAskIdentityProvider),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    final requestedScopes = <AskSearchIdentity>[];
+    questions.onSearch = () => requestedScopes.add(
+      container.read(_testAskIdentityProvider),
+    );
+    container.listen(askSuggestionsProvider, (_, _) {});
+    final controller = container.read(askSuggestionsProvider.notifier);
+    final identityController = container.read(
+      _testAskIdentityProvider.notifier,
+    );
+
+    controller.queryChanged('password');
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+    identityController.setIdentity(
+      const AskSearchIdentity(
+        verifiedUid: 'verified-uid',
+        membershipState: 'active',
+        organisationId: 'second-organisation',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+    second.complete([_organisationResult(id: 'current-org-hit', relevance: 1)]);
+    await Future<void>.delayed(Duration.zero);
+    first.complete([_organisationResult(id: 'old-org-hit', relevance: 1)]);
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      container.read(askSuggestionsProvider).value!.hits.map((hit) => hit.id),
+      contains('current-org-hit'),
+    );
+    expect(
+      container.read(askSuggestionsProvider).value!.hits.any(
+        (hit) => hit.id == 'old-org-hit',
+      ),
+      isFalse,
+    );
+
+    identityController.setIdentity(
+      const AskSearchIdentity(
+        verifiedUid: 'verified-uid',
+        membershipState: 'noMembership',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+    expect(
+      container.read(askSuggestionsProvider).value!.hits.map((hit) => hit.id),
+      ['local-hit'],
+    );
+    expect(questions.requests, ['password', 'password']);
+    expect(personal.requestedUids, [
+      'verified-uid',
+      'verified-uid',
+      'verified-uid',
+    ]);
+
+    identityController.setIdentity(
+      const AskSearchIdentity(
+        verifiedUid: 'next-uid',
+        membershipState: 'active',
+        organisationId: 'second-organisation',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+    expect(personal.expectedUid, 'next-uid');
+    expect(questions.requests, ['password', 'password', 'password']);
+    identityController.setIdentity(const AskSearchIdentity());
+    await Future<void>.delayed(const Duration(milliseconds: 380));
+    third.complete([_organisationResult(id: 'signed-out-hit', relevance: 1)]);
+    await Future<void>.delayed(Duration.zero);
+    final signedOut = container.read(askSuggestionsProvider).value!;
+    expect(signedOut.hits.map((hit) => hit.id), ['local-hit']);
+    expect(questions.requests, ['password', 'password', 'password']);
+    expect(requestedScopes, [
+      const AskSearchIdentity(
+        verifiedUid: 'verified-uid',
+        membershipState: 'active',
+        organisationId: 'first-organisation',
+      ),
+      const AskSearchIdentity(
+        verifiedUid: 'verified-uid',
+        membershipState: 'active',
+        organisationId: 'second-organisation',
+      ),
+      const AskSearchIdentity(
+        verifiedUid: 'next-uid',
+        membershipState: 'active',
+        organisationId: 'second-organisation',
+      ),
+    ]);
+    expect(personal.requests, ['password', 'password', 'password', 'password']);
+    expect(personal.requestedUids, [
+      'verified-uid',
+      'verified-uid',
+      'verified-uid',
+      'next-uid',
+    ]);
+  });
 }
 
 class _InteractQuestionsRepository extends _QuestionsRepository {
