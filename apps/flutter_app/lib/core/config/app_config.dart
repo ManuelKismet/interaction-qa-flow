@@ -31,12 +31,12 @@ abstract final class AppConfig {
   );
 
   static FirebaseOptions get firebaseOptions => FirebaseOptions(
-        apiKey: firebaseApiKey,
-        authDomain: firebaseAuthDomain,
-        projectId: firebaseProjectId,
-        appId: firebaseAppId,
-        messagingSenderId: firebaseMessagingSenderId,
-      );
+    apiKey: firebaseApiKey,
+    authDomain: firebaseAuthDomain,
+    projectId: firebaseProjectId,
+    appId: firebaseAppId,
+    messagingSenderId: firebaseMessagingSenderId,
+  );
 
   static bool get isFirebaseConfigured =>
       firebaseApiKey.isNotEmpty && recaptchaSiteKey.isNotEmpty;

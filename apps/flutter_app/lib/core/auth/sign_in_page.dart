@@ -13,10 +13,7 @@ void _completeDiagnosticSafely(AuthDiagnosticAttempt? attempt) {
 }
 
 class SignInPage extends ConsumerStatefulWidget {
-  const SignInPage({
-    this.createAccount = false,
-    super.key,
-  });
+  const SignInPage({this.createAccount = false, super.key});
 
   final bool createAccount;
 
@@ -62,13 +59,12 @@ class _SignInPageState extends ConsumerState<SignInPage> {
       final auth = ref.read(firebaseAuthProvider);
       final currentUser = auth.currentUser;
       final diagnosticLogger = ref.read(authDiagnosticLoggerProvider);
-      if (isExistingAccountSignIn) {
+      if (!isResetOperation && !isAccountCreation) {
         try {
           diagnosticAttempt = diagnosticLogger.beginSignIn(
             auth: auth,
             anonymousAtStart: currentUser?.isAnonymous == true,
-            registeredAtStart:
-                currentUser != null && !currentUser.isAnonymous,
+            registeredAtStart: currentUser != null && !currentUser.isAnonymous,
             emailPresent: email.isNotEmpty,
             passwordPresent: password.isNotEmpty,
           );
@@ -103,7 +99,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           if (!mounted) return;
           setState(() {
             _createAccountMode = false;
-            _message = 'Personal account created. Check your email to verify '
+            _message =
+                'Personal account created. Check your email to verify '
                 'it. Your local work remains on this device; nothing is uploaded '
                 'unless you choose items to import after verification.';
           });
@@ -111,20 +108,20 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           if (!mounted) return;
           setState(() {
             _createAccountMode = false;
-            _message = 'Personal account created, but the verification email '
+            _message =
+                'Personal account created, but the verification email '
                 'could not be sent. Local work remains on this device. Try again '
                 'later or request a new verification email.';
           });
         }
       } else {
-        await auth.signInWithEmailAndPassword(
+        final signedIn = await auth.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
         try {
           diagnosticAttempt?.recordFirebaseSuccess(
-            signedInUid:
-                signedIn.user?.uid ?? auth.currentUser?.uid,
+            signedInUid: signedIn.user?.uid ?? auth.currentUser?.uid,
           );
         } on Object {
           diagnosticAttempt?.complete();
@@ -150,7 +147,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                 'An account already uses this email. Sign in or reset the password instead.',
               'weak-password' =>
                 'Choose a stronger password and try creating the account again.',
-              'invalid-email' => 'Enter a valid email address to create an account.',
+              'invalid-email' =>
+                'Enter a valid email address to create an account.',
               'network-request-failed' =>
                 'Unable to reach the account service. Check your connection and try again.',
               'too-many-requests' =>
@@ -161,7 +159,8 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                 'Account creation is unavailable because the application configuration needs attention.',
               'captcha-check-failed' || 'invalid-app-credential' =>
                 'Application verification failed. Please contact the development administrator.',
-              _ => 'Unable to create the account. Check the details and try again.',
+              _ =>
+                'Unable to create the account. Check the details and try again.',
             }
           : switch (code) {
               'network-request-failed' =>
@@ -209,122 +208,117 @@ class _SignInPageState extends ConsumerState<SignInPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
+    body: SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: Card(
-                      margin: const EdgeInsets.all(24),
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: () =>
-                                    Navigator.of(context).maybePop(),
-                                icon: const Icon(Icons.arrow_back),
-                                label: const Text('Back to workspace'),
-                              ),
-                            ),
-                            Text(
-                              _resetMode
-                                  ? 'Reset password'
-                                  : _createAccountMode
-                                      ? 'Create a personal account'
-                                      : 'Sign in to IntQAFlow',
-                              style: Theme.of(context).textTheme.headlineSmall,
-                            ),
-                            if (_createAccountMode) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                'A personal account is separate from local '
-                                'work. Nothing is uploaded unless you choose '
-                                'items to import.',
-                              ),
-                            ],
-                            const SizedBox(height: 20),
-                            TextField(
-                              controller: _email,
-                              keyboardType: TextInputType.emailAddress,
-                              autofillHints: const [AutofillHints.email],
-                              decoration: const InputDecoration(
-                                labelText: 'Email',
-                              ),
-                            ),
-                            if (!_resetMode) ...[
-                              const SizedBox(height: 12),
-                              TextField(
-                                controller: _password,
-                                obscureText: true,
-                                autofillHints: const [AutofillHints.password],
-                                decoration: const InputDecoration(
-                                  labelText: 'Password',
-                                ),
-                                onSubmitted: (_) => _submit(),
-                              ),
-                            ],
-                            if (_error != null) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                _error!,
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
-                              ),
-                            ],
-                            if (_message != null) ...[
-                              const SizedBox(height: 12),
-                              Text(_message!),
-                            ],
-                            const SizedBox(height: 20),
-                            FilledButton(
-                              onPressed: _busy ? null : _submit,
-                              child: Text(_actionLabel()),
-                            ),
-                            TextButton(
-                              onPressed: _busy
-                                  ? null
-                                  : () => setState(() {
-                                      if (_resetMode) {
-                                        _resetMode = false;
-                                      } else if (_createAccountMode) {
-                                        _createAccountMode = false;
-                                      } else {
-                                        _createAccountMode = true;
-                                      }
-                                      _error = null;
-                                      _message = null;
-                                    }),
-                              child: Text(
-                                _resetMode
-                                    ? 'Back to sign in'
-                                    : _createAccountMode
-                                        ? 'Back to sign in'
-                                        : 'Create a personal account',
-                              ),
-                            ),
-                            if (!_resetMode && !_createAccountMode)
-                              TextButton(
-                                onPressed: _busy
-                                    ? null
-                                    : () => setState(() {
-                                        _resetMode = true;
-                                        _error = null;
-                                        _message = null;
-                                      }),
-                                child: const Text('Forgot password?'),
-                              ),
-                          ],
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Card(
+                  margin: const EdgeInsets.all(24),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(Icons.arrow_back),
+                            label: const Text('Back to workspace'),
+                          ),
                         ),
-                      ),
+                        Text(
+                          _resetMode
+                              ? 'Reset password'
+                              : _createAccountMode
+                              ? 'Create a personal account'
+                              : 'Sign in to IntQAFlow',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        if (_createAccountMode) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'A personal account is separate from local '
+                            'work. Nothing is uploaded unless you choose '
+                            'items to import.',
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: _email,
+                          keyboardType: TextInputType.emailAddress,
+                          autofillHints: const [AutofillHints.email],
+                          decoration: const InputDecoration(labelText: 'Email'),
+                        ),
+                        if (!_resetMode) ...[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _password,
+                            obscureText: true,
+                            autofillHints: const [AutofillHints.password],
+                            decoration: const InputDecoration(
+                              labelText: 'Password',
+                            ),
+                            onSubmitted: (_) => _submit(),
+                          ),
+                        ],
+                        if (_error != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ],
+                        if (_message != null) ...[
+                          const SizedBox(height: 12),
+                          Text(_message!),
+                        ],
+                        const SizedBox(height: 20),
+                        FilledButton(
+                          onPressed: _busy ? null : _submit,
+                          child: Text(_actionLabel()),
+                        ),
+                        TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() {
+                                  if (_resetMode) {
+                                    _resetMode = false;
+                                  } else if (_createAccountMode) {
+                                    _createAccountMode = false;
+                                  } else {
+                                    _createAccountMode = true;
+                                  }
+                                  _error = null;
+                                  _message = null;
+                                }),
+                          child: Text(
+                            _resetMode
+                                ? 'Back to sign in'
+                                : _createAccountMode
+                                ? 'Back to sign in'
+                                : 'Create a personal account',
+                          ),
+                        ),
+                        if (!_resetMode && !_createAccountMode)
+                          TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => setState(() {
+                                    _resetMode = true;
+                                    _error = null;
+                                    _message = null;
+                                  }),
+                            child: const Text('Forgot password?'),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -332,5 +326,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }

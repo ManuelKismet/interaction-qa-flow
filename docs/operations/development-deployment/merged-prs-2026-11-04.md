@@ -43,3 +43,8 @@ Original head dd27a1bc9ed3fbd4b81fa7776557cf7e714fa404 retained in merge history
 ## Consolidation decisions
 
 All 15 remaining open PR heads are ancestors of this release candidate; the current feature stack was already merged in dependency order. Original commit histories are retained. Superseded recovery/editor additions that duplicated current classes or callback ownership were resolved to the current validated implementation. The removed synthetic membership seeder stays removed. The current awaited answer-visibility check and navigation signature were retained instead of obsolete API variants. Useful opt-in authentication diagnostics and additional regression coverage were retained. The original four dirty documentation files in /workspaces/intqaflow are untouched. Combined validation and DEV deployment follow this source consolidation; production is outside this release target.
+
+
+## Combined release compatibility validation
+
+The original pending heads are all retained in this merge graph. Unique authentication diagnostics are explicitly gated to debug DEV and now observe both account and membership lookups without changing UID cancellation guards. Existing template editor behavior is exposed for its retained draft/snapshot regression test. Superseded duplicate guest tests were removed while keeping their current passing versions. Backend: 231 tests passed with all PostgreSQL gates enabled, zero skipped. Ruff and compile checks passed. Flutter analysis has zero errors and warnings (15 informational style hints). Final complete Flutter regression run and release build are in progress; publication remains gated on their results.

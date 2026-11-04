@@ -39,10 +39,8 @@ class _TestFirebaseApp extends Fake implements FirebaseApp {
 }
 
 class _TestAuth extends Fake implements FirebaseAuth {
-  _TestAuth({
-    this.projectId = 'intqaflow-dev',
-    Stream<User?>? authStateStream,
-  }) : _authStateStream = authStateStream;
+  _TestAuth({this.projectId = 'intqaflow-dev', Stream<User?>? authStateStream})
+    : _authStateStream = authStateStream;
 
   final String projectId;
   final Stream<User?>? _authStateStream;
@@ -71,7 +69,9 @@ class _ResponseAdapter implements HttpClientAdapter {
     return ResponseBody.fromString(
       body,
       200,
-      headers: {Headers.contentTypeHeader: ['application/json']},
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
     );
   }
 
@@ -117,10 +117,7 @@ void main() {
 
   test('disabled diagnostics emit no events', () {
     final output = <String>[];
-    final diagnostics = AuthDiagnosticLogger(
-      enabled: false,
-      sink: output.add,
-    );
+    final diagnostics = AuthDiagnosticLogger(enabled: false, sink: output.add);
 
     expect(
       diagnostics.beginSignIn(
@@ -220,19 +217,16 @@ void main() {
     final events = output
         .map((line) => jsonDecode(line) as Map<String, dynamic>)
         .toList();
-    expect(
-      events.map((event) => event['stage']),
-      [
-        'credentialsCaptured',
-        'firebaseCallStarted',
-        'firebaseCallSucceeded',
-        'authStateObserved',
-        'accountLookupStarted',
-        'accountLookupCompleted',
-        'membershipLookupStarted',
-        'membershipLookupCompleted',
-      ],
-    );
+    expect(events.map((event) => event['stage']), [
+      'credentialsCaptured',
+      'firebaseCallStarted',
+      'firebaseCallSucceeded',
+      'authStateObserved',
+      'accountLookupStarted',
+      'accountLookupCompleted',
+      'membershipLookupStarted',
+      'membershipLookupCompleted',
+    ]);
     expect(events.first['appName'], 'test-app');
     expect(events.first['projectId'], 'intqaflow-dev');
     expect(events.first['buildId'], 'test-build');
@@ -391,58 +385,58 @@ void main() {
     },
   );
 
-  test('late lookup response cannot complete or clear a newer attempt', () async {
-    final output = <String>[];
-    var nextAttempt = 0;
-    final diagnostics = AuthDiagnosticLogger(
-      enabled: true,
-      projectId: 'intqaflow-dev',
-      sink: output.add,
-      attemptIdGenerator: () => 'attempt-${nextAttempt++}',
-    );
-    AuthDiagnosticAttempt startAttempt(String uid) {
-      final attempt = diagnostics.beginSignIn(
-        auth: _TestAuth(),
-        anonymousAtStart: true,
-        registeredAtStart: false,
-        emailPresent: true,
-        passwordPresent: true,
-      )!;
-      attempt.record(AuthDiagnosticStage.firebaseCallStarted);
-      diagnostics.observeAuthState(user: _TestUser(uid));
-      attempt.recordFirebaseSuccess(signedInUid: uid);
-      return attempt;
-    }
+  test(
+    'late lookup response cannot complete or clear a newer attempt',
+    () async {
+      final output = <String>[];
+      var nextAttempt = 0;
+      final diagnostics = AuthDiagnosticLogger(
+        enabled: true,
+        projectId: 'intqaflow-dev',
+        sink: output.add,
+        attemptIdGenerator: () => 'attempt-${nextAttempt++}',
+      );
+      AuthDiagnosticAttempt startAttempt(String uid) {
+        final attempt = diagnostics.beginSignIn(
+          auth: _TestAuth(),
+          anonymousAtStart: true,
+          registeredAtStart: false,
+          emailPresent: true,
+          passwordPresent: true,
+        )!;
+        attempt.record(AuthDiagnosticStage.firebaseCallStarted);
+        diagnostics.observeAuthState(user: _TestUser(uid));
+        attempt.recordFirebaseSuccess(signedInUid: uid);
+        return attempt;
+      }
 
-    final attemptA = startAttempt('user-a');
-    final delayedResponse = Completer<String>();
-    final lookupA = diagnostics.beginAccountLookup(userId: 'user-a')!;
-    final lookupAFuture = delayedResponse.future.then(lookupA.complete);
-    lookupA.cancel();
-    attemptA.complete();
+      final attemptA = startAttempt('user-a');
+      final delayedResponse = Completer<String>();
+      final lookupA = diagnostics.beginAccountLookup(userId: 'user-a')!;
+      final lookupAFuture = delayedResponse.future.then(lookupA.complete);
+      lookupA.cancel();
+      attemptA.complete();
 
-    final attemptB = startAttempt('user-b');
-    expect(
-      diagnostics.beginAccountLookup(userId: 'unrelated-user'),
-      isNull,
-    );
-    expect(diagnostics.hasActiveAttempt, isTrue);
-    final lookupB = diagnostics.beginAccountLookup(userId: 'user-b')!;
-    delayedResponse.complete('no_membership');
-    await lookupAFuture;
+      final attemptB = startAttempt('user-b');
+      expect(diagnostics.beginAccountLookup(userId: 'unrelated-user'), isNull);
+      expect(diagnostics.hasActiveAttempt, isTrue);
+      final lookupB = diagnostics.beginAccountLookup(userId: 'user-b')!;
+      delayedResponse.complete('no_membership');
+      await lookupAFuture;
 
-    expect(diagnostics.hasActiveAttempt, isTrue);
-    expect(
-      output
-          .map((line) => jsonDecode(line) as Map<String, dynamic>)
-          .where((event) => event['attemptId'] == 'attempt-1')
-          .map((event) => event['lookupOutcome']),
-      isNot(contains('no_membership')),
-    );
-    lookupB.complete('active');
-    expect(diagnostics.hasActiveAttempt, isTrue);
-    attemptB.complete();
-  });
+      expect(diagnostics.hasActiveAttempt, isTrue);
+      expect(
+        output
+            .map((line) => jsonDecode(line) as Map<String, dynamic>)
+            .where((event) => event['attemptId'] == 'attempt-1')
+            .map((event) => event['lookupOutcome']),
+        isNot(contains('no_membership')),
+      );
+      lookupB.complete('active');
+      expect(diagnostics.hasActiveAttempt, isTrue);
+      attemptB.complete();
+    },
+  );
 
   test('a different UID transition clears the attempt before lookups', () {
     final output = <String>[];

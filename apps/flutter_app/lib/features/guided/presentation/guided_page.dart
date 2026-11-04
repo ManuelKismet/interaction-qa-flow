@@ -516,7 +516,10 @@ class _TemplatesList extends ConsumerWidget {
         await showGuidedScopedDialog<List<GuidedTemplateQuestion>>(
           context: context,
           repository: repository,
-          builder: (_) => _TemplateVersionDialog(template: template),
+          builder: (_) => GuidedTemplateVersionDraftDialog(
+            questions: template.questions,
+            currentVersion: template.currentVersion,
+          ),
         );
     if (questions == null || !context.mounted) return;
     await repository.versionTemplate(template.id, questions);
@@ -693,22 +696,29 @@ class _TemplateVersionDraftQuestion {
   final TextEditingController controller;
 }
 
-class _TemplateVersionDialog extends StatefulWidget {
-  const _TemplateVersionDialog({required this.template});
+class GuidedTemplateVersionDraftDialog extends StatefulWidget {
+  const GuidedTemplateVersionDraftDialog({
+    super.key,
+    required this.questions,
+    this.currentVersion = 0,
+  });
 
-  final GuidedTemplate template;
+  final List<GuidedTemplateQuestion> questions;
+  final int currentVersion;
 
   @override
-  State<_TemplateVersionDialog> createState() => _TemplateVersionDialogState();
+  State<GuidedTemplateVersionDraftDialog> createState() =>
+      _TemplateVersionDialogState();
 }
 
-class _TemplateVersionDialogState extends State<_TemplateVersionDialog> {
+class _TemplateVersionDialogState
+    extends State<GuidedTemplateVersionDraftDialog> {
   late final List<_TemplateVersionDraftQuestion> _drafts = [
-    for (final question in widget.template.questions)
+    for (final question in widget.questions)
       _TemplateVersionDraftQuestion.existing(question),
   ];
 
-  late final Set<String> _questionsWithChildren = widget.template.questions
+  late final Set<String> _questionsWithChildren = widget.questions
       .map((question) => question.parentTemplateQuestionId)
       .whereType<String>()
       .toSet();
@@ -743,7 +753,7 @@ class _TemplateVersionDialogState extends State<_TemplateVersionDialog> {
         _drafts.isNotEmpty &&
         _drafts.every((draft) => draft.controller.text.trim().isNotEmpty);
     return AlertDialog(
-      title: Text('Edit questions for v${widget.template.currentVersion + 1}'),
+      title: Text('Edit questions for v${widget.currentVersion + 1}'),
       content: SizedBox(
         width: 600,
         height: 520,

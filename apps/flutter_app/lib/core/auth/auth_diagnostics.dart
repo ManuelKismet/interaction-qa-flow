@@ -38,13 +38,11 @@ class AuthDiagnosticLogger {
     void Function(String message)? sink,
     String Function()? attemptIdGenerator,
     DateTime Function()? clock,
-  }) : enabled =
-           isEnabledForBuild(
-             debugBuild: kDebugMode,
-             optedIn:
-                 enabled ?? const bool.fromEnvironment('AUTH_DIAGNOSTICS'),
-             projectId: projectId ?? AppConfig.firebaseProjectId,
-           ),
+  }) : enabled = isEnabledForBuild(
+         debugBuild: kDebugMode,
+         optedIn: enabled ?? const bool.fromEnvironment('AUTH_DIAGNOSTICS'),
+         projectId: projectId ?? AppConfig.firebaseProjectId,
+       ),
        _appName = _safeIdentity(appName ?? '[DEFAULT]', '[DEFAULT]'),
        _buildId = _safeIdentity(buildId ?? AppConfig.buildId, 'unspecified'),
        _sink = sink ?? debugPrint,
@@ -66,8 +64,7 @@ class AuthDiagnosticLogger {
     required bool debugBuild,
     required bool optedIn,
     required String projectId,
-  }) =>
-      debugBuild && optedIn && projectId == 'intqaflow-dev';
+  }) => debugBuild && optedIn && projectId == 'intqaflow-dev';
 
   static String _safeIdentity(String value, String fallback) {
     if (value.length > 80 || !RegExp(r'^[A-Za-z0-9._:-]+$').hasMatch(value)) {

@@ -820,14 +820,11 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 380));
 
     final hits = container.read(askSuggestionsProvider).value!.hits;
-    expect(hits.take(2).map((hit) => hit.id), [
-      'local-answer',
-      'local-body',
-    ]);
+    expect(hits.take(2).map((hit) => hit.id), ['local-answer', 'local-body']);
     expect(
-      hits.take(2).every(
-        (hit) => hit.snippet!.contains('Recover account access'),
-      ),
+      hits
+          .take(2)
+          .every((hit) => hit.snippet!.contains('Recover account access')),
       isTrue,
     );
     expect(hits.last.id, 'semantic-only');
@@ -992,9 +989,8 @@ void main() {
     );
     addTearDown(container.dispose);
     final requestedScopes = <AskSearchIdentity>[];
-    questions.onSearch = () => requestedScopes.add(
-      container.read(_testAskIdentityProvider),
-    );
+    questions.onSearch = () =>
+        requestedScopes.add(container.read(_testAskIdentityProvider));
     container.listen(askSuggestionsProvider, (_, _) {});
     final controller = container.read(askSuggestionsProvider.notifier);
     final identityController = container.read(
@@ -1020,9 +1016,11 @@ void main() {
       contains('current-org-hit'),
     );
     expect(
-      container.read(askSuggestionsProvider).value!.hits.any(
-        (hit) => hit.id == 'old-org-hit',
-      ),
+      container
+          .read(askSuggestionsProvider)
+          .value!
+          .hits
+          .any((hit) => hit.id == 'old-org-hit'),
       isFalse,
     );
 
