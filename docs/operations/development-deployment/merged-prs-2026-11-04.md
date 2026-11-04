@@ -35,3 +35,7 @@ Original head d20a6bab7196d81e578f1b986e4dff239e108c31 retained in merge history
 ## PR #6 — Fix membership loading for empty JSON requests and expose safe dev auth errors
 
 Original head 9236eb5fcbd2f1212ebed8d2a345b72241d3d108 retained in merge history. Current validated fixes win conflicting older implementations. Unique retained paths: none; later source already incorporates the implementation.
+
+## PR #1 — docs: separate IntQAFlow operating and release-readiness audit
+
+Original head dd27a1bc9ed3fbd4b81fa7776557cf7e714fa404 retained in merge history. Current validated fixes win conflicting older implementations. Unique retained paths: docs/operations/README.md.
