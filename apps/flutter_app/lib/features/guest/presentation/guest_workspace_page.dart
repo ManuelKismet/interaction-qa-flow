@@ -2080,6 +2080,18 @@ class _GuestWorkspacePageState extends ConsumerState<GuestWorkspacePage>
             _pendingPersonalImport.isNotEmpty ||
             _personalImportNeedsReselection);
     final workspaceNotices = <Widget>[
+      if (_verifiedPersonalUid != null)
+        NiaInlineGuidance(
+          topic: NiaTopic.storage,
+          lessonId: 'workspace.storage.personal.v1',
+          facts: const {'private': true},
+          busy:
+              _hasPendingWorkspaceChanges ||
+              _personalLoading ||
+              _personalError != null ||
+              widget.authUnavailable,
+        ),
+
       if (_unsavedChanges)
         MaterialBanner(
           forceActionsBelow: narrowViewport,
@@ -2957,15 +2969,17 @@ class _GuestNotice extends StatelessWidget {
   final bool isRegistered, isPrivateAccount, noOrganisationMembership;
   final String saveStatus;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.zero,
-    child: Text(
-      saveStatus,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: Theme.of(context).textTheme.bodySmall,
-    ),
-  );
+  Widget build(BuildContext context) => isPrivateAccount
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: EdgeInsets.zero,
+          child: Text(
+            saveStatus,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        );
 }
 
 class _AccountMembershipNotice extends StatelessWidget {
