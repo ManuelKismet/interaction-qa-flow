@@ -3,12 +3,14 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/app.dart';
+import 'package:int_qa_flow/core/auth/auth_diagnostics.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
 import 'package:int_qa_flow/core/auth/sign_in_page.dart';
 import 'package:int_qa_flow/features/guest/data/guest_group_repository.dart';
@@ -72,6 +74,19 @@ class _TestUserCredential extends Fake implements UserCredential {
 
   @override
   final User? user;
+}
+
+class _TestFirebaseApp extends Fake implements FirebaseApp {
+  @override
+  String get name => 'test-app';
+
+  @override
+  FirebaseOptions get options => const FirebaseOptions(
+    apiKey: 'test-api-key',
+    appId: 'test-app-id',
+    messagingSenderId: 'test-sender-id',
+    projectId: 'intqaflow-dev',
+  );
 }
 
 class _TestFirebaseAuth extends Fake implements FirebaseAuth {
@@ -3037,6 +3052,9 @@ void main() {
     expect(find.byTooltip('Workspace options'), findsOneWidget);
     expect(find.byTooltip('Guest workspace options'), findsNothing);
     expect(find.textContaining('guest'), findsNothing);
+    expect(find.text('Registered workspace · Saved on this device'), findsOneWidget);
+    await tester.tap(find.byTooltip('Workspace storage information'));
+    await tester.pumpAndSettle();
     expect(
       find.textContaining('Registered personal account · Local copy'),
       findsNothing,

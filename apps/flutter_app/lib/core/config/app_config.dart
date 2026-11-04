@@ -18,6 +18,10 @@ abstract final class AppConfig {
     'FIREBASE_APP_ID',
     defaultValue: '1:398672910103:web:e968506023d8eab9290952',
   );
+  static const buildId = String.fromEnvironment(
+    'APP_BUILD_ID',
+    defaultValue: 'unspecified',
+  );
   static const firebaseMessagingSenderId = String.fromEnvironment(
     'FIREBASE_MESSAGING_SENDER_ID',
     defaultValue: '398672910103',

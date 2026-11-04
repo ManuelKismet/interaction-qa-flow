@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:int_qa_flow/core/api/api_client.dart';
+import 'package:int_qa_flow/core/auth/auth_diagnostics.dart';
 
 bool isVerifiedRegisteredFirebaseUser(User? user) =>
     user != null && !user.isAnonymous && user.emailVerified;
@@ -11,7 +12,17 @@ final firebaseAuthProvider = Provider<FirebaseAuth>(
 );
 
 final authStateProvider = StreamProvider<User?>(
-  (ref) => ref.watch(firebaseAuthProvider).authStateChanges(),
+  (ref) => ref
+      .watch(firebaseAuthProvider)
+      .authStateChanges()
+      .map((user) {
+        try {
+          ref.read(authDiagnosticLoggerProvider).observeAuthState(user: user);
+        } on Object {
+          // Auth diagnostics must not affect auth-state delivery.
+        }
+        return user;
+      }),
 );
 
 final currentMembershipProvider = FutureProvider.autoDispose<ActiveMembership>((

@@ -554,6 +554,7 @@ void main() {
 
 class MemoryGuestStorage implements GuestStorage {
   String? value;
+  bool failWrites = false;
 
   @override
   void remove() => value = null;
@@ -562,5 +563,8 @@ class MemoryGuestStorage implements GuestStorage {
   String? read() => value;
 
   @override
-  void write(String value) => this.value = value;
+  void write(String value) {
+    if (failWrites) throw StateError('storage write failure');
+    this.value = value;
+  }
 }

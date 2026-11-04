@@ -1,7 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:int_qa_flow/core/auth/auth_diagnostics.dart';
 import 'package:int_qa_flow/core/auth/auth_providers.dart';
+
+void _completeDiagnosticSafely(AuthDiagnosticAttempt? attempt) {
+  try {
+    attempt?.complete();
+  } on Object {
+    return;
+  }
+}
 
 class SignInPage extends ConsumerStatefulWidget {
   const SignInPage({
@@ -38,17 +47,35 @@ class _SignInPageState extends ConsumerState<SignInPage> {
   }
 
   Future<void> _submit() async {
+    if (_busy) return;
     final isResetOperation = _resetMode;
     final isAccountCreation = _createAccountMode;
     final email = _email.text.trim();
     final password = _password.text;
+    AuthDiagnosticAttempt? diagnosticAttempt;
     setState(() {
       _busy = true;
       _error = null;
       _message = null;
     });
-    final auth = ref.read(firebaseAuthProvider);
     try {
+      final auth = ref.read(firebaseAuthProvider);
+      final currentUser = auth.currentUser;
+      final diagnosticLogger = ref.read(authDiagnosticLoggerProvider);
+      if (isExistingAccountSignIn) {
+        try {
+          diagnosticAttempt = diagnosticLogger.beginSignIn(
+            auth: auth,
+            anonymousAtStart: currentUser?.isAnonymous == true,
+            registeredAtStart:
+                currentUser != null && !currentUser.isAnonymous,
+            emailPresent: email.isNotEmpty,
+            passwordPresent: password.isNotEmpty,
+          );
+        } on Object {
+          diagnosticAttempt = null;
+        }
+      }
       if (_resetMode) {
         await auth.sendPasswordResetEmail(email: email);
         if (!mounted) return;
@@ -94,22 +121,25 @@ class _SignInPageState extends ConsumerState<SignInPage> {
           email: email,
           password: password,
         );
+        try {
+          diagnosticAttempt?.recordFirebaseSuccess(
+            signedInUid:
+                signedIn.user?.uid ?? auth.currentUser?.uid,
+          );
+        } on Object {
+          diagnosticAttempt?.complete();
+        }
       }
     } on FirebaseAuthException catch (error) {
-      // Log only a sanitized error code; never credentials or exception details.
       final code = error.code
           .toLowerCase()
           .split('/')
           .last
           .replaceAll(RegExp(r'[^a-z0-9_-]'), '');
-      const diagnostics = bool.fromEnvironment('AUTH_DIAGNOSTICS');
-      if (diagnostics) {
-        final app = auth.app;
-        final projectId = app.options.projectId;
-        debugPrint(
-          'Firebase authentication failed: auth/$code '
-          '(app=${app.name}, project=$projectId)',
-        );
+      try {
+        diagnosticAttempt?.recordFirebaseFailure(error.code);
+      } on Object {
+        diagnosticAttempt?.complete();
       }
       if (!mounted) return;
       final message = isResetOperation
@@ -154,7 +184,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               _ => 'Sign-in failed. Please try again.',
             };
       setState(() {
-        _error = message + (diagnostics ? ' [auth/$code]' : '');
+        _error = message;
       });
     } on Object {
       if (!mounted) return;
@@ -162,6 +192,10 @@ class _SignInPageState extends ConsumerState<SignInPage> {
         _error = 'Unable to complete this account request. Please try again.';
       });
     } finally {
+      if (diagnosticAttempt != null &&
+          !diagnosticAttempt.firebaseCallSucceeded) {
+        _completeDiagnosticSafely(diagnosticAttempt);
+      }
       if (mounted) setState(() => _busy = false);
     }
   }
