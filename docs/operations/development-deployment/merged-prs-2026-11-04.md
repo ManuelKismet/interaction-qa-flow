@@ -39,3 +39,7 @@ Original head 9236eb5fcbd2f1212ebed8d2a345b72241d3d108 retained in merge history
 ## PR #1 — docs: separate IntQAFlow operating and release-readiness audit
 
 Original head dd27a1bc9ed3fbd4b81fa7776557cf7e714fa404 retained in merge history. Current validated fixes win conflicting older implementations. Unique retained paths: docs/operations/README.md.
+
+## Consolidation decisions
+
+All 15 remaining open PR heads are ancestors of this release candidate; the current feature stack was already merged in dependency order. Original commit histories are retained. Superseded recovery/editor additions that duplicated current classes or callback ownership were resolved to the current validated implementation. The removed synthetic membership seeder stays removed. The current awaited answer-visibility check and navigation signature were retained instead of obsolete API variants. Useful opt-in authentication diagnostics and additional regression coverage were retained. The original four dirty documentation files in /workspaces/intqaflow are untouched. Combined validation and DEV deployment follow this source consolidation; production is outside this release target.
