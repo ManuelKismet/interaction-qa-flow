@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:int_qa_flow/features/questions/presentation/question_visibility_field.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:int_qa_flow/core/api/api_exception.dart';
@@ -37,27 +38,26 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
   Widget build(BuildContext context) {
     final detail = ref.watch(questionDetailProvider(widget.questionId));
     return detail.when(
-      data: (question) => _buildDetail(
-        question,
-        ref.watch(currentMembershipProvider).value,
-      ),
-      loading: () => _withBackNavigation(
-        const Center(child: CircularProgressIndicator()),
-      ),
-      error: (error, stackTrace) => _withBackNavigation(Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Unable to load this question.'),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () =>
-                  ref.invalidate(questionDetailProvider(widget.questionId)),
-              child: const Text('Try again'),
-            ),
-          ],
+      data: (question) =>
+          _buildDetail(question, ref.watch(currentMembershipProvider).value),
+      loading: () =>
+          _withBackNavigation(const Center(child: CircularProgressIndicator())),
+      error: (error, stackTrace) => _withBackNavigation(
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Unable to load this question.'),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () =>
+                    ref.invalidate(questionDetailProvider(widget.questionId)),
+                child: const Text('Try again'),
+              ),
+            ],
+          ),
         ),
-      )),
+      ),
     );
   }
 
@@ -83,26 +83,33 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
   Widget _buildDetail(QuestionDetail question, ActiveMembership? membership) {
     final isAdmin = membership?.role == 'admin';
     final isAuthor = question.author.id == membership?.userId;
-    final hasContributions = question.answers.isNotEmpty ||
+    final hasContributions =
+        question.answers.isNotEmpty ||
         question.commentCount > 0 ||
         question.protectedAt != null;
-    final isProtected = question.protectedAt != null ||
+    final isProtected =
+        question.protectedAt != null ||
         question.acceptedAnswer != null ||
         question.answers.any(
           (answer) => answer.protectedAt != null || answer.status == 'verified',
         );
     final canResolve = isAdmin || (isAuthor && !isProtected);
-    final canManageQuestion = isAdmin ||
-        (isAuthor && !hasContributions && !isProtected);
+    final canManageQuestion =
+        isAdmin || (isAuthor && !hasContributions && !isProtected);
     final canRequestReview =
-        isAuthor && hasContributions && !isAdmin && question.status != 'archived';
-    final canRestore = question.status == 'archived' &&
+        isAuthor &&
+        hasContributions &&
+        !isAdmin &&
+        question.status != 'archived';
+    final canRestore =
+        question.status == 'archived' &&
         (isAdmin || (isAuthor && !hasContributions && !isProtected));
     final departmentOwnerIds = membership?.role == 'answer_owner'
         ? ref.watch(myDepartmentOwnerIdsProvider).asData?.value
         : null;
     final departmentId = question.department?.id;
-    final canGovern = isAdmin ||
+    final canGovern =
+        isAdmin ||
         (departmentId != null &&
             departmentOwnerIds?.contains(departmentId) == true);
     final otherAnswers = question.answers
@@ -131,7 +138,8 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                           style: Theme.of(context).textTheme.headlineMedium,
                         ),
                       ),
-                      if (canManageQuestion && question.status != 'archived') ...[
+                      if (canManageQuestion &&
+                          question.status != 'archived') ...[
                         IconButton(
                           tooltip: 'Edit question',
                           onPressed: _isMutating
@@ -173,6 +181,7 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                         question.department!.name,
                       if (question.team != null) question.team!.name,
                       question.status.replaceAll('_', ' '),
+                      'Visibility: ${question.visibility}',
                     ].join(' · '),
                     style: const TextStyle(color: Colors.black54),
                   ),
@@ -297,13 +306,14 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                           ? () => _showChallenges(accepted)
                           : null,
                       onHistory: () => _showHistory(accepted),
-                      onEdit: _canManageAnswer(accepted, membership, accepted: true)
+                      onEdit:
+                          _canManageAnswer(accepted, membership, accepted: true)
                           ? () => _editAnswer(accepted, question)
                           : null,
                       onDelete:
                           _canManageAnswer(accepted, membership, accepted: true)
-                              ? () => _deleteAnswer(accepted, question)
-                              : null,
+                          ? () => _deleteAnswer(accepted, question)
+                          : null,
                     ),
                   ],
                   if (otherAnswers.isNotEmpty) ...[
@@ -332,18 +342,20 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
                             ? () => _showChallenges(answer)
                             : null,
                         onHistory: () => _showHistory(answer),
-                        onEdit: _canManageAnswer(
-                          answer,
-                          membership,
-                          accepted: false,
-                        )
+                        onEdit:
+                            _canManageAnswer(
+                              answer,
+                              membership,
+                              accepted: false,
+                            )
                             ? () => _editAnswer(answer, question)
                             : null,
-                        onDelete: _canManageAnswer(
-                          answer,
-                          membership,
-                          accepted: false,
-                        )
+                        onDelete:
+                            _canManageAnswer(
+                              answer,
+                              membership,
+                              accepted: false,
+                            )
                             ? () => _deleteAnswer(answer, question)
                             : null,
                         onAccept: canResolve && question.status != 'archived'
@@ -980,6 +992,7 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
               body: result.body,
               departmentId: result.departmentId,
               teamId: result.teamId,
+              visibility: result.visibility,
               reason: result.reason.isEmpty ? null : result.reason,
             ),
         'Question updated.',
@@ -1014,10 +1027,8 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
             child: const Text('Cancel'),
           ),
           FilledButton.icon(
-            onPressed: () => Navigator.pop(
-              context,
-              reason.text.trim().isNotEmpty,
-            ),
+            onPressed: () =>
+                Navigator.pop(context, reason.text.trim().isNotEmpty),
             icon: const Icon(Icons.archive_outlined),
             label: const Text('Archive'),
           ),
@@ -1063,10 +1074,8 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              context,
-              reason.text.trim().isNotEmpty,
-            ),
+            onPressed: () =>
+                Navigator.pop(context, reason.text.trim().isNotEmpty),
             child: const Text('Restore'),
           ),
         ],
@@ -1092,7 +1101,9 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     );
     if (result == null) return;
     await _runAction(
-      () => ref.read(questionsRepositoryProvider).requestChangeReview(
+      () => ref
+          .read(questionsRepositoryProvider)
+          .requestChangeReview(
             question.id,
             title: result.title,
             body: result.body,
@@ -1108,9 +1119,8 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     ActiveMembership? membership, {
     required bool accepted,
   }) {
-    final protected = accepted ||
-        answer.status == 'verified' ||
-        answer.protectedAt != null;
+    final protected =
+        accepted || answer.status == 'verified' || answer.protectedAt != null;
     if (protected) return membership?.role == 'admin';
     return answer.author.id == membership?.userId;
   }
@@ -1160,7 +1170,9 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     );
     if (confirmed == true && mounted) {
       await _runAction(
-        () => ref.read(questionsRepositoryProvider).updateAnswer(
+        () => ref
+            .read(questionsRepositoryProvider)
+            .updateAnswer(
               answer.id,
               body: body.text.trim(),
               reason: needsReason ? reason.text.trim() : null,
@@ -1172,7 +1184,10 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     reason.dispose();
   }
 
-  Future<void> _deleteAnswer(AnswerDetail answer, QuestionDetail question) async {
+  Future<void> _deleteAnswer(
+    AnswerDetail answer,
+    QuestionDetail question,
+  ) async {
     final needsReason =
         answer.status == 'verified' ||
         answer.protectedAt != null ||
@@ -1185,7 +1200,9 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('This action cannot be undone for an unapproved answer.'),
+            const Text(
+              'This action cannot be undone for an unapproved answer.',
+            ),
             if (needsReason) ...[
               const SizedBox(height: 12),
               TextField(
@@ -1212,7 +1229,9 @@ class _QuestionDetailPageState extends ConsumerState<QuestionDetailPage> {
     );
     if (confirmed == true && mounted) {
       await _runAction(
-        () => ref.read(questionsRepositoryProvider).deleteAnswer(
+        () => ref
+            .read(questionsRepositoryProvider)
+            .deleteAnswer(
               answer.id,
               reason: needsReason ? reason.text.trim() : null,
             ),
@@ -1265,6 +1284,7 @@ class _QuestionEditResult {
     required this.departmentId,
     required this.teamId,
     required this.reason,
+    required this.visibility,
   });
 
   final String title;
@@ -1272,6 +1292,7 @@ class _QuestionEditResult {
   final String? departmentId;
   final String? teamId;
   final String reason;
+  final String visibility;
 }
 
 class _QuestionEditDialog extends StatefulWidget {
@@ -1295,6 +1316,7 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
   late final TextEditingController _reasonController;
   late String? _departmentId;
   late String? _teamId;
+  late String _visibility;
 
   @override
   void initState() {
@@ -1304,6 +1326,7 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
     _reasonController = TextEditingController();
     _departmentId = widget.question.department?.id;
     _teamId = widget.question.team?.id;
+    _visibility = widget.question.visibility;
   }
 
   @override
@@ -1356,6 +1379,11 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
                 onChanged: (value) => setState(() => _departmentId = value),
               ),
               const SizedBox(height: 12),
+              QuestionVisibilityField(
+                value: _visibility,
+                onChanged: (value) => setState(() => _visibility = value),
+              ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
                 initialValue: _teamId,
                 isExpanded: true,
@@ -1403,7 +1431,13 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _titleController.text.trim().isEmpty ||
+          onPressed:
+              _titleController.text.trim().isEmpty ||
+                  !questionVisibilityHasScope(
+                    _visibility,
+                    _departmentId,
+                    _teamId,
+                  ) ||
                   ((widget.question.answers.isNotEmpty ||
                           widget.question.commentCount > 0 ||
                           widget.question.protectedAt != null) &&
@@ -1419,6 +1453,7 @@ class _QuestionEditDialogState extends State<_QuestionEditDialog> {
                       departmentId: _departmentId,
                       teamId: _teamId,
                       reason: _reasonController.text.trim(),
+                      visibility: _visibility,
                     ),
                   );
                 },
@@ -1478,77 +1513,78 @@ class _QuestionChangeRequestDialogState
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Request a change review'),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Current question: ${widget.question.title}'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Proposed question wording (optional)',
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _bodyController,
-                  minLines: 2,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    labelText: 'Proposed detail (optional)',
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _archive,
-                  title: const Text('Request archival instead'),
-                  onChanged: (value) => setState(() => _archive = value ?? false),
-                ),
-                TextField(
-                  controller: _reasonController,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: const InputDecoration(labelText: 'Reason'),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ],
+    title: const Text('Request a change review'),
+    content: SizedBox(
+      width: 520,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Current question: ${widget.question.title}'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: 'Proposed question wording (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
             ),
-          ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _bodyController,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Proposed detail (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _archive,
+              title: const Text('Request archival instead'),
+              onChanged: (value) => setState(() => _archive = value ?? false),
+            ),
+            TextField(
+              controller: _reasonController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Reason'),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: _reasonController.text.trim().isEmpty ||
-                    (!_archive &&
-                        _titleController.text.trim().isEmpty &&
-                        _bodyController.text.trim().isEmpty)
-                ? null
-                : () => Navigator.pop(
-                      context,
-                      _ChangeReviewResult(
-                        title: _titleController.text.trim().isEmpty
-                            ? null
-                            : _titleController.text.trim(),
-                        body: _bodyController.text.trim().isEmpty
-                            ? null
-                            : _bodyController.text.trim(),
-                        archive: _archive,
-                        reason: _reasonController.text.trim(),
-                      ),
-                    ),
-            child: const Text('Submit request'),
-          ),
-        ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed:
+            _reasonController.text.trim().isEmpty ||
+                (!_archive &&
+                    _titleController.text.trim().isEmpty &&
+                    _bodyController.text.trim().isEmpty)
+            ? null
+            : () => Navigator.pop(
+                context,
+                _ChangeReviewResult(
+                  title: _titleController.text.trim().isEmpty
+                      ? null
+                      : _titleController.text.trim(),
+                  body: _bodyController.text.trim().isEmpty
+                      ? null
+                      : _bodyController.text.trim(),
+                  archive: _archive,
+                  reason: _reasonController.text.trim(),
+                ),
+              ),
+        child: const Text('Submit request'),
+      ),
+    ],
+  );
 }
 
 class _AnswerView extends StatelessWidget {

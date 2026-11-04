@@ -91,7 +91,7 @@ class CommentService:
         if not question:
             raise NotFoundError("Question not found")
         actor = await self.permissions.actor(user_id, organisation_id)
-        self.permissions.require_question_visibility(actor, question)
+        await self.permissions.require_question_visibility(actor, question)
         return question, actor
 
     @staticmethod
