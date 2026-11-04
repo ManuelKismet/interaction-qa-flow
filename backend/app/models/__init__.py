@@ -112,3 +112,4 @@ __all__ = [
     "User",
     "UserRole",
 ]
+from app.models.suggestion_bank import BankSuggestion, BankActivity, BankFollower
