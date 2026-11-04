@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 import pytest
 import pytest_asyncio
 from fastapi import Request
@@ -362,6 +362,3 @@ async def test_group_viewer_boundary_revocation_and_other_group_isolation(bank):
     assert (
         await c.get("/api/v1/suggestion-bank/" + item["id"], headers=auth("admin"))
     ).status_code == 404
-
-
-from uuid import UUID

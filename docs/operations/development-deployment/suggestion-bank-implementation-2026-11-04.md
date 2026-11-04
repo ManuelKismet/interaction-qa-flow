@@ -18,3 +18,7 @@ A first broad PostgreSQL run reused the migration database, causing old integrat
 ## Delivery status
 
 Source implementation and automated validation are complete. Migration 0017 is included. No merge, Cloud Run deployment, Firebase Hosting publication, production promotion or live user/device acceptance is claimed. The existing development release remains in place. The new local test PostgreSQL instance may be stopped after validation; existing services, databases and active worktrees must be preserved.
+
+## CI source-analysis follow-up
+
+GitHub CI identified two module-level imports placed after declarations. Both were moved to the import section. The exact locked Ruff 0.16.10 check (E4,E7,E9,F821), Python compilation and complete backend tests were rerun after this import-only correction. No product behavior, permissions or build configuration changed.

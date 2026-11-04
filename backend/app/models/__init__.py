@@ -54,6 +54,8 @@ from app.models.team import Team, TeamStatus
 from app.models.team_membership import TeamMembership
 from app.models.user import User, UserRole
 
+from app.models.suggestion_bank import BankSuggestion, BankActivity, BankFollower
+
 __all__ = [
     "Answer",
     "AnswerChallenge",
@@ -112,4 +114,3 @@ __all__ = [
     "User",
     "UserRole",
 ]
-from app.models.suggestion_bank import BankSuggestion, BankActivity, BankFollower
