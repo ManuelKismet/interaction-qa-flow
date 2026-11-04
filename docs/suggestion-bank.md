@@ -10,6 +10,10 @@ Reviewers use the existing scoped review permission, department answer ownership
 
 The review flow is Submitted -> Under review -> Needs information / Planned -> In progress -> Implemented / Not proceeding. A reviewer can decline with a reason, or reopen a closed decision for review. Planning/progress/completion require an accountable reviewer. Official actions require an explanation. Closed suggestions remain readable and can retain agreed workplace guidance.
 
+## Where to open it
+
+Organisation members use Suggestions beside Knowledge and Interact. Verified personal accounts use their Group bank: open Groups, select an active Group, then Group options → Suggestions & practices. Group viewers can read the bank; existing contributor and reviewer permissions still control actions. Anonymous guests and unverified accounts cannot access Group banks. There is no standalone private personal Suggestion Bank.
+
 ## Duplicate contributions and escalation
 
 The submission dialog checks related accessible suggestions and offers a deliberate choice to open/support an existing suggestion or submit separately. Reviewers link duplicates only within the identical audience. Original suggestions, authors, examples and history are retained; links can be removed. Linked originals cannot form chains or cycles. Linking is a reversible merge-by-reference, not destructive consolidation.
