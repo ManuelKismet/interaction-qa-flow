@@ -726,6 +726,182 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('registered account without guest work has no guest tools', (
+    tester,
+  ) async {
+    final repository = _TestPersonalWorkspaceRepository([
+      {
+        'id': 'record-account',
+        'kind': 'knowledge',
+        'source_key': 'knowledge:account-only',
+        'data': {'id': 'account-only', 'title': 'Private account work'},
+        'revision': 1,
+      },
+    ]);
+    await pumpPersonalRouter(
+      tester,
+      user: _TestUser(isAnonymous: false, isEmailVerified: true),
+      repository: repository,
+      store: GuestWorkspaceStore(_MemoryGuestStorage()),
+    );
+    await tester.tap(find.byTooltip('Workspace options'));
+    await tester.pumpAndSettle();
+    expect(find.text('Personal workspace settings'), findsOneWidget);
+    expect(find.text('Groups'), findsWidgets);
+    expect(find.text('Finish importing your guest data'), findsNothing);
+    expect(find.text('Back up guest data'), findsNothing);
+    expect(find.text('Import local JSON backup'), findsNothing);
+    expect(find.text('Import local work into my account'), findsNothing);
+    expect(find.text('Discard guest data on this device'), findsNothing);
+    expect(repository.imports, isEmpty);
+    expect(repository.deleteCalls, 0);
+  });
+
+  testWidgets(
+    'completed guest import hides recovery tools and survives reload',
+    (tester) async {
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        const GuestWorkspaceData(
+          knowledge: [
+            {'id': 'guest-1', 'title': 'Guest original'},
+          ],
+        ),
+      );
+      final repository = _TestPersonalWorkspaceRepository([]);
+      final user = _TestUser(isAnonymous: false, isEmailVerified: true);
+      await pumpPersonalRouter(
+        tester,
+        user: user,
+        repository: repository,
+        store: store,
+      );
+      await openPersonalImportFromMenu(tester);
+      await tester.tap(find.text('Import selected work'));
+      await tester.pumpAndSettle();
+      expect(repository.imports, hasLength(1));
+      expect((await store.load()).knowledge.single['id'], 'guest-1');
+      await tester.tap(find.byTooltip('Workspace options'));
+      await tester.pumpAndSettle();
+      expect(find.text('Finish importing your guest data'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      await pumpPersonalRouter(
+        tester,
+        user: user,
+        repository: repository,
+        store: store,
+      );
+      await tester.tap(find.byTooltip('Workspace options'));
+      await tester.pumpAndSettle();
+      expect(find.text('Finish importing your guest data'), findsNothing);
+      expect(repository.items, hasLength(1));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      final otherAccount = _TestPersonalWorkspaceRepository([]);
+      await pumpPersonalRouter(
+        tester,
+        user: _TestUser(
+          isAnonymous: false,
+          isEmailVerified: true,
+          testUid: 'other-account',
+        ),
+        repository: otherAccount,
+        store: store,
+      );
+      await tester.tap(find.byTooltip('Workspace options'));
+      await tester.pumpAndSettle();
+      expect(find.text('Finish importing your guest data'), findsOneWidget);
+      expect(otherAccount.imports, isEmpty);
+    },
+  );
+
+  testWidgets('partial imports offer only remaining guest work', (
+    tester,
+  ) async {
+    final store = GuestWorkspaceStore(_MemoryGuestStorage());
+    await store.save(
+      const GuestWorkspaceData(
+        knowledge: [
+          {'id': 'already-imported', 'title': 'Imported guest original'},
+          {'id': 'remaining', 'title': 'Guest work still to import'},
+        ],
+      ),
+    );
+    final repository = _TestPersonalWorkspaceRepository([
+      {
+        'id': 'imported-record',
+        'kind': 'knowledge',
+        'source_key': 'knowledge:already-imported',
+        'data': {'id': 'already-imported', 'title': 'Account copy'},
+        'revision': 1,
+      },
+    ]);
+    await pumpPersonalRouter(
+      tester,
+      user: _TestUser(isAnonymous: false, isEmailVerified: true),
+      repository: repository,
+      store: store,
+    );
+    await openPersonalImportFromMenu(tester);
+    expect(find.text('Guest work still to import'), findsOneWidget);
+    expect(find.text('Imported guest original'), findsNothing);
+    await tester.tap(find.text('Import selected work'));
+    await tester.pumpAndSettle();
+    expect(
+      repository.imports.single.single['source_key'],
+      'knowledge:remaining',
+    );
+    expect(repository.items, hasLength(2));
+  });
+
+  testWidgets(
+    'discarding remaining guest data cancels a failed import without deleting account work',
+    (tester) async {
+      final store = GuestWorkspaceStore(_MemoryGuestStorage());
+      await store.save(
+        const GuestWorkspaceData(
+          knowledge: [
+            {'id': 'unconfirmed', 'title': 'Unconfirmed guest work'},
+          ],
+        ),
+      );
+      final repository = _TestPersonalWorkspaceRepository([])
+        ..failedImports = 1;
+      await pumpPersonalRouter(
+        tester,
+        user: _TestUser(isAnonymous: false, isEmailVerified: true),
+        repository: repository,
+        store: store,
+      );
+      await openPersonalImportFromMenu(tester);
+      await tester.tap(find.text('Import selected work'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retry import'), findsOneWidget);
+      await tester.tap(find.byTooltip('Workspace options'));
+      await tester.pumpAndSettle();
+      expect(find.text('Finish importing your guest data'), findsOneWidget);
+      await _tapVisibleTarget(
+        tester,
+        find.text('Discard guest data on this device'),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('unfinished guest import will also be cancelled'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Clear local copy'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retry import'), findsNothing);
+      expect((await store.load()).knowledge, isEmpty);
+      expect(repository.imports, hasLength(1));
+      expect(repository.deleteCalls, 0);
+      await tester.tap(find.byTooltip('Workspace options'));
+      await tester.pumpAndSettle();
+      expect(find.text('Finish importing your guest data'), findsNothing);
+    },
+  );
+
   testWidgets('personal shell provides the only workspace navigation', (
     tester,
   ) async {
@@ -1486,7 +1662,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Workspace options'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Clear local copy on this device'));
+    await tester.tap(find.text('Discard guest data on this device'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Clear local copy'));
     await tester.pumpAndSettle();
@@ -2326,6 +2502,17 @@ void main() {
       expect(find.byTooltip('Workspace options'), findsOneWidget);
       expect(find.text('Create private session'), findsNothing);
 
+      await tester.tap(find.byTooltip('Workspace options'));
+      await tester.pumpAndSettle();
+      final discardItem = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Discard guest data on this device'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
+      );
+      expect(discardItem.enabled, isFalse);
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
       importGate.complete();
       await tester.pumpAndSettle();
       expect(repository.items, hasLength(1));

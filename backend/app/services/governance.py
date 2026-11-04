@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.embedding_provider import (
@@ -280,7 +281,12 @@ class GovernanceService:
         department = await self.departments.get_for_organisation(
             department_id, organisation_id
         )
-        owner = await self.users.get_for_organisation(owner_user_id, organisation_id)
+        owner = await self.session.scalar(
+            select(User).where(
+                User.id == owner_user_id,
+                User.organisation_id == organisation_id,
+            ).with_for_update().execution_options(populate_existing=True)
+        )
         if not department or not owner:
             raise NotFoundError("Department or user not found in this organisation")
         if owner.role != UserRole.ANSWER_OWNER:
